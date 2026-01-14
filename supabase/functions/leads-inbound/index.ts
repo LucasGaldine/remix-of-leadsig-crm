@@ -1,0 +1,228 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-leadsig-api-key",
+};
+
+// Zapier-friendly payload structure
+interface InboundLeadPayload {
+  // Required
+  source: string; // facebook | google | angi | yelp | thumbtack | custom
+  
+  // Lead info
+  name?: string;
+  phone?: string;
+  email?: string;
+  serviceType?: string;
+  budget?: number;
+  location?: string;
+  address?: string;
+  message?: string;
+  
+  // External reference
+  externalLeadId?: string; // Alias for externalSourceId
+  externalSourceId?: string;
+  
+  // Raw data passthrough
+  raw?: Record<string, unknown>;
+  externalPayload?: Record<string, unknown>; // Legacy support
+}
+
+Deno.serve(async (req) => {
+  console.log("leads-inbound: Request received", req.method);
+
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Validate API key
+    const apiKey = req.headers.get("x-leadsig-api-key");
+    if (!apiKey) {
+      console.log("leads-inbound: Missing API key");
+      return new Response(
+        JSON.stringify({ error: "Missing x-leadsig-api-key header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Hash the API key to compare with stored hash
+    const encoder = new TextEncoder();
+    const data = encoder.encode(apiKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const keyHash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    // Look up the API key
+    const { data: apiKeyRecord, error: keyError } = await supabase
+      .from("api_keys")
+      .select("user_id, is_active")
+      .eq("key_hash", keyHash)
+      .single();
+
+    if (keyError || !apiKeyRecord) {
+      console.log("leads-inbound: Invalid API key");
+      return new Response(
+        JSON.stringify({ error: "Invalid API key" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!apiKeyRecord.is_active) {
+      console.log("leads-inbound: API key is inactive");
+      return new Response(
+        JSON.stringify({ error: "API key is inactive" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const userId = apiKeyRecord.user_id;
+
+    // Update last_used_at
+    await supabase
+      .from("api_keys")
+      .update({ last_used_at: new Date().toISOString() })
+      .eq("key_hash", keyHash);
+
+    // Parse request body
+    const payload: InboundLeadPayload = await req.json();
+    console.log("leads-inbound: Payload received", JSON.stringify(payload));
+
+    // Validate required fields
+    if (!payload.name && !payload.phone) {
+      return new Response(
+        JSON.stringify({ error: "Either name or phone is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!payload.source) {
+      return new Response(
+        JSON.stringify({ error: "Source is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Normalize external ID (support both naming conventions)
+    const externalId = payload.externalLeadId || payload.externalSourceId;
+    
+    // Normalize raw payload (support both naming conventions)
+    const rawPayload = payload.raw || payload.externalPayload || {};
+
+    // Create notes from message + raw payload if provided
+    let leadNotes = "";
+    if (payload.message) {
+      leadNotes = payload.message;
+    }
+
+    // Create the lead - inbound leads default to pending approval
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .insert({
+        name: payload.name || "Unknown",
+        phone: payload.phone,
+        email: payload.email,
+        service_type: payload.serviceType,
+        estimated_budget: payload.budget,
+        city: payload.location,
+        address: payload.address,
+        source: payload.source,
+        external_source_id: externalId,
+        external_payload: rawPayload,
+        notes: leadNotes || null,
+        status: "new",
+        created_by: userId,
+        approval_status: "pending", // Inbound leads require approval
+        submitted_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (leadError) {
+      console.error("leads-inbound: Failed to create lead", leadError);
+      return new Response(
+        JSON.stringify({ error: "Failed to create lead", details: leadError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Log a system interaction
+    await supabase.from("interactions").insert({
+      lead_id: lead.id,
+      type: "system",
+      direction: "na",
+      summary: `Lead created via API from ${payload.source}`,
+      metadata: { source: payload.source, externalSourceId: payload.externalSourceId },
+    });
+
+    console.log("leads-inbound: Lead created successfully", lead.id);
+
+    // Send notifications (fire and forget - don't block response)
+    const notificationPayload = {
+      leadId: lead.id,
+      leadName: lead.name,
+      leadPhone: lead.phone,
+      leadEmail: lead.email,
+      source: payload.source,
+      serviceType: payload.serviceType,
+      userId: userId,
+    };
+
+    // Send email notification
+    try {
+      const emailResponse = await fetch(`${supabaseUrl}/functions/v1/notify-new-lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify(notificationPayload),
+      });
+      
+      if (!emailResponse.ok) {
+        console.error("leads-inbound: Failed to send email notification", await emailResponse.text());
+      } else {
+        console.log("leads-inbound: Email notification sent successfully");
+      }
+    } catch (emailError) {
+      console.error("leads-inbound: Error sending email notification", emailError);
+    }
+
+    // Send SMS notification
+    try {
+      const smsResponse = await fetch(`${supabaseUrl}/functions/v1/notify-new-lead-sms`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify(notificationPayload),
+      });
+      
+      if (!smsResponse.ok) {
+        console.error("leads-inbound: Failed to send SMS notification", await smsResponse.text());
+      } else {
+        console.log("leads-inbound: SMS notification sent successfully");
+      }
+    } catch (smsError) {
+      console.error("leads-inbound: Error sending SMS notification", smsError);
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, lead }),
+      { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("leads-inbound: Unexpected error", error);
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

@@ -1,0 +1,177 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Core Brand - Forest Green operational palette */
+    --background: 210 20% 98%;
+    --foreground: 220 25% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 10%;
+
+    /* Primary: Deep forest green - professional, grounded */
+    --primary: 152 45% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Slate for UI elements */
+    --secondary: 215 20% 94%;
+    --secondary-foreground: 220 25% 20%;
+
+    --muted: 215 20% 96%;
+    --muted-foreground: 215 15% 45%;
+
+    --accent: 152 35% 92%;
+    --accent-foreground: 152 45% 20%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 152 45% 28%;
+
+    --radius: 0.75rem;
+
+    /* Status Colors - The operational truth */
+    --status-confirmed: 152 55% 40%;
+    --status-confirmed-bg: 152 55% 95%;
+    --status-pending: 43 90% 50%;
+    --status-pending-bg: 43 90% 95%;
+    --status-attention: 0 72% 51%;
+    --status-attention-bg: 0 72% 96%;
+    --status-paid: 217 75% 50%;
+    --status-paid-bg: 217 75% 96%;
+
+    /* Operational surfaces */
+    --surface-elevated: 0 0% 100%;
+    --surface-sunken: 215 25% 96%;
+
+    /* Touch targets for gloved hands */
+    --touch-target-min: 48px;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 152 45% 28%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 152 35% 94%;
+    --sidebar-accent-foreground: 152 45% 20%;
+    --sidebar-border: 215 20% 88%;
+    --sidebar-ring: 152 45% 28%;
+  }
+
+  .dark {
+    --background: 220 20% 8%;
+    --foreground: 210 20% 98%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 152 50% 45%;
+    --primary-foreground: 220 20% 8%;
+
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 210 20% 90%;
+
+    --muted: 220 15% 18%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 152 30% 18%;
+    --accent-foreground: 152 50% 80%;
+
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 152 50% 45%;
+
+    --status-confirmed: 152 55% 50%;
+    --status-confirmed-bg: 152 40% 15%;
+    --status-pending: 43 85% 55%;
+    --status-pending-bg: 43 60% 12%;
+    --status-attention: 0 70% 55%;
+    --status-attention-bg: 0 50% 12%;
+    --status-paid: 217 70% 55%;
+    --status-paid-bg: 217 50% 12%;
+
+    --surface-elevated: 220 20% 14%;
+    --surface-sunken: 220 20% 6%;
+
+    --sidebar-background: 220 20% 10%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 152 50% 45%;
+    --sidebar-primary-foreground: 220 20% 8%;
+    --sidebar-accent: 152 30% 18%;
+    --sidebar-accent-foreground: 152 50% 80%;
+    --sidebar-border: 220 15% 20%;
+    --sidebar-ring: 152 50% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Ensure touch targets are large enough for gloved hands */
+  button, a, [role="button"] {
+    min-height: var(--touch-target-min);
+  }
+}
+
+@layer utilities {
+  /* Status badge utilities */
+  .status-confirmed {
+    @apply bg-[hsl(var(--status-confirmed-bg))] text-[hsl(var(--status-confirmed))];
+  }
+  
+  .status-pending {
+    @apply bg-[hsl(var(--status-pending-bg))] text-[hsl(var(--status-pending))];
+  }
+  
+  .status-attention {
+    @apply bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))];
+  }
+  
+  .status-paid {
+    @apply bg-[hsl(var(--status-paid-bg))] text-[hsl(var(--status-paid))];
+  }
+
+  /* Card elevation */
+  .card-elevated {
+    @apply bg-card shadow-sm border border-border;
+  }
+
+  /* Safe area padding for mobile */
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-top {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
