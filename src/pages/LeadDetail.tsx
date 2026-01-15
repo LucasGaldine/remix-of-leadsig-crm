@@ -72,6 +72,9 @@ const PIPELINE_STAGES: { value: string; label: string; color: string }[] = [
   { value: "new", label: "New", color: "bg-blue-500" },
   { value: "contacted", label: "Contacted", color: "bg-yellow-500" },
   { value: "qualified", label: "Qualified", color: "bg-primary" },
+  { value: "scheduled", label: "Scheduled", color: "bg-purple-500" },
+  { value: "in_progress", label: "In Progress", color: "bg-orange-500" },
+  { value: "won", label: "Won", color: "bg-green-500" },
   { value: "lost", label: "Lost", color: "bg-red-500" },
 ];
 
@@ -203,6 +206,21 @@ export default function LeadDetail() {
 
   const updateLeadStatus = async (newStatus: string) => {
     if (!lead) return;
+
+    if (newStatus === "scheduled") {
+      toast.info("To set status to Scheduled, convert this lead to a job and add a scheduled date in the future.");
+      return;
+    }
+
+    if (newStatus === "in_progress") {
+      toast.info("To set status to In Progress, convert this lead to a job with a scheduled date that is today or in the past.");
+      return;
+    }
+
+    if (newStatus === "won") {
+      setShowJobDialog(true);
+      return;
+    }
 
     const { error } = await supabase
       .from("leads")
