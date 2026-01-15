@@ -8,7 +8,7 @@ import { LeadCard, Lead } from "@/components/leads/LeadCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
-import { useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates } from "@/hooks/useDashboardLeads";
+import { useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates, useActiveJobs } from "@/hooks/useDashboardLeads";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 
@@ -19,6 +19,7 @@ export default function Index() {
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
   const { data: inProgressLeadsData = [], isLoading: inProgressLoading } = useInProgressLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
+  const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
 
@@ -41,6 +42,7 @@ export default function Index() {
 
   const qualifiedLeads = qualifiedLeadsData.map(formatLeadForCard);
   const inProgressLeads = inProgressLeadsData.map(formatLeadForCard);
+  const activeJobs = activeJobsData.map(formatLeadForCard);
   const pendingApprovals = pendingApprovalsData.map((estimate: any) => ({
     id: estimate.id,
     clientName: estimate.job?.customer?.name || "Unknown",
@@ -123,21 +125,21 @@ export default function Index() {
         <section>
           <SectionHeader
             title="Today's Jobs"
-            count={qualifiedLeads.length}
+            count={activeJobs.length}
             action={{ label: "View all", onClick: () => navigate("/leads") }}
             className="mb-3"
           />
-          {leadsLoading ? (
+          {activeJobsLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : qualifiedLeads.length === 0 ? (
+          ) : activeJobs.length === 0 ? (
             <div className="card-elevated rounded-lg p-6 text-center">
               <p className="text-muted-foreground">No jobs today</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {qualifiedLeads.map((lead) => (
+              {activeJobs.map((lead) => (
                 <LeadCard
                   key={lead.id}
                   lead={lead}
