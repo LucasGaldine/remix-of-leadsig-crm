@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Calendar, Clock, UserCheck, CheckCircle } from "lucide-react";
+import { Clock, UserCheck, CheckCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -8,7 +8,7 @@ import { LeadCard, Lead } from "@/components/leads/LeadCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
-import { useActiveJobs, useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates } from "@/hooks/useDashboardLeads";
+import { useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates } from "@/hooks/useDashboardLeads";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 
@@ -16,7 +16,6 @@ export default function Index() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
-  const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
   const { data: inProgressLeadsData = [], isLoading: inProgressLoading } = useInProgressLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
@@ -40,7 +39,6 @@ export default function Index() {
     qualificationScore: lead.qualification_score || 0,
   });
 
-  const activeJobs = activeJobsData.map(formatLeadForCard);
   const qualifiedLeads = qualifiedLeadsData.map(formatLeadForCard);
   const inProgressLeads = inProgressLeadsData.map(formatLeadForCard);
   const pendingApprovals = pendingApprovalsData.map((estimate: any) => ({
@@ -61,13 +59,6 @@ export default function Index() {
 
         {/* Quick Stats */}
         <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-4 px-4">
-          <StatCard
-            label="Active Jobs"
-            value={activeJobs.length}
-            icon={Calendar}
-            variant="success"
-            onClick={() => navigate("/leads")}
-          />
           <StatCard
             label="Leads Pending"
             value={pendingLeadsCount}
@@ -90,41 +81,6 @@ export default function Index() {
             onClick={() => navigate("/leads")}
           />
         </div>
-
-        {/* Active Jobs */}
-        <section>
-          <SectionHeader
-            title="Active Jobs"
-            count={activeJobs.length}
-            action={{ label: "View all", onClick: () => navigate("/leads") }}
-            className="mb-3"
-          />
-          {activeJobsLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : activeJobs.length === 0 ? (
-            <div className="card-elevated rounded-lg p-6 text-center">
-              <p className="text-muted-foreground">No active jobs at the moment</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activeJobs.map((lead) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  onClick={() => handleLeadClick(lead.id)}
-                  onCall={() => {
-                    if (import.meta.env.DEV) console.log("Call", lead.phone);
-                  }}
-                  onMessage={() => {
-                    if (import.meta.env.DEV) console.log("Message", lead.phone);
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </section>
 
         {/* Pending Approvals */}
         {!approvalsLoading && pendingApprovals.length > 0 && (
