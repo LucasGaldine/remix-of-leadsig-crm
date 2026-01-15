@@ -12,21 +12,35 @@ import {
   FileText,
   DollarSign,
   ChevronRight,
+  Calendar,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { useJob } from "@/hooks/useJobs";
+import { useJob, useUpdateJob } from "@/hooks/useJobs";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"details" | "checklist" | "photos" | "notes">("details");
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    scheduled_date: "",
+    scheduled_time_start: "",
+    scheduled_time_end: ""
+  });
 
   const { data: job, isLoading, error } = useJob(id);
+  const updateJobMutation = useUpdateJob();
 
   if (isLoading) {
     return (
@@ -69,6 +83,66 @@ export default function JobDetail() {
     if (clientAddress) {
       const address = encodeURIComponent(clientAddress);
       window.open(`https://maps.google.com/?q=${address}`);
+    }
+  };
+
+  const handleMarkComplete = async () => {
+    if (!id) return;
+
+    try {
+      await updateJobMutation.mutateAsync({
+        id,
+        status: "completed"
+      });
+      toast.success("Job marked as complete!");
+      setCompleteDialogOpen(false);
+    } catch (error) {
+      console.error("Error marking job as complete:", error);
+      toast.error("Failed to mark job as complete");
+    }
+  };
+
+  const openScheduleDialog = () => {
+    setScheduleForm({
+      scheduled_date: job?.scheduled_date || "",
+      scheduled_time_start: job?.scheduled_time_start || "",
+      scheduled_time_end: job?.scheduled_time_end || ""
+    });
+    setScheduleDialogOpen(true);
+  };
+
+  const handleSchedule = async () => {
+    if (!id || !scheduleForm.scheduled_date) {
+      toast.error("Please select a date");
+      return;
+    }
+
+    try {
+      const scheduledDate = new Date(scheduleForm.scheduled_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      scheduledDate.setHours(0, 0, 0, 0);
+
+      let newStatus = job?.status;
+      if (scheduledDate <= today) {
+        newStatus = "in_progress";
+      } else {
+        newStatus = "scheduled";
+      }
+
+      await updateJobMutation.mutateAsync({
+        id,
+        scheduled_date: scheduleForm.scheduled_date,
+        scheduled_time_start: scheduleForm.scheduled_time_start || null,
+        scheduled_time_end: scheduleForm.scheduled_time_end || null,
+        status: newStatus
+      });
+
+      toast.success("Job scheduled successfully!");
+      setScheduleDialogOpen(false);
+    } catch (error) {
+      console.error("Error scheduling job:", error);
+      toast.error("Failed to schedule job");
     }
   };
 
@@ -175,12 +249,15 @@ export default function JobDetail() {
             </button>
 
             {/* Schedule */}
-            <div className="card-elevated rounded-lg p-4">
+            <button
+              onClick={openScheduleDialog}
+              className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+            >
               <div className="flex items-start gap-3">
                 <div className="p-2 rounded-lg bg-secondary">
                   <Clock className="h-5 w-5 text-secondary-foreground" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="font-medium text-foreground">Schedule</p>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     {scheduledDate}
@@ -189,8 +266,9 @@ export default function JobDetail() {
                     {scheduledTime}
                   </p>
                 </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
               </div>
-            </div>
+            </button>
 
             {/* Crew */}
             {job.crew_lead && (
@@ -279,10 +357,90 @@ export default function JobDetail() {
 
       {/* Bottom Action */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-        <Button className="w-full h-14 text-base font-semibold">
-          Mark as Complete
+        <Button
+          className="w-full h-14 text-base font-semibold"
+          onClick={() => setCompleteDialogOpen(true)}
+          disabled={job.status === "completed"}
+        >
+          {job.status === "completed" ? "Job Completed" : "Mark as Complete"}
         </Button>
       </div>
+
+      {/* Complete Confirmation Dialog */}
+      <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark Job as Complete</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark this job as complete? This will update the job status.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleMarkComplete}>
+              Mark Complete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Schedule Dialog */}
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Schedule Job</DialogTitle>
+            <DialogDescription>
+              Set or update the schedule for this job.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="schedule-date">Scheduled Date *</Label>
+              <Input
+                id="schedule-date"
+                type="date"
+                value={scheduleForm.scheduled_date}
+                onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_date: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="schedule-start-time">Start Time</Label>
+                <Input
+                  id="schedule-start-time"
+                  type="time"
+                  value={scheduleForm.scheduled_time_start}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_time_start: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-end-time">End Time</Label>
+                <Input
+                  id="schedule-end-time"
+                  type="time"
+                  value={scheduleForm.scheduled_time_end}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_time_end: e.target.value })}
+                />
+              </div>
+            </div>
+            {scheduleForm.scheduled_date && (
+              <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
+                {new Date(scheduleForm.scheduled_date) > new Date()
+                  ? "Status will be set to: Scheduled"
+                  : "Status will be set to: In Progress"}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSchedule} disabled={!scheduleForm.scheduled_date}>
+              Save Schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MobileNav />
     </div>
