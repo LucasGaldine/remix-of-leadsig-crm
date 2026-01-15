@@ -51,7 +51,7 @@ export function useActiveJobs() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["dashboard-leads", "qualified"],
+    queryKey: ["dashboard-leads", "active-jobs"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
