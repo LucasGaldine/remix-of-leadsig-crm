@@ -65,7 +65,7 @@ export default function JobDetail() {
   const clientPhone = job.customer?.phone || "";
   const clientAddress = job.address || "";
   const scheduledDate = job.scheduled_date
-    ? format(new Date(job.scheduled_date), "EEEE, MMMM d, yyyy")
+    ? format(new Date(job.scheduled_date + "T00:00:00"), "EEEE, MMMM d, yyyy")
     : "Not scheduled";
   const scheduledTime = job.scheduled_time_start && job.scheduled_time_end
     ? `${job.scheduled_time_start} - ${job.scheduled_time_end}`
@@ -118,7 +118,7 @@ export default function JobDetail() {
     }
 
     try {
-      const scheduledDate = new Date(scheduleForm.scheduled_date);
+      const scheduledDate = new Date(scheduleForm.scheduled_date + "T00:00:00");
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       scheduledDate.setHours(0, 0, 0, 0);
@@ -444,7 +444,7 @@ export default function JobDetail() {
             </div>
             {scheduleForm.scheduled_date && (
               <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
-                {new Date(scheduleForm.scheduled_date) > new Date()
+                {new Date(scheduleForm.scheduled_date + "T00:00:00") > new Date()
                   ? "Status will be set to: Scheduled"
                   : "Status will be set to: In Progress"}
               </div>
