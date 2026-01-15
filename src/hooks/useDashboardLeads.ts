@@ -57,7 +57,7 @@ export function useActiveJobs() {
         .from("leads")
         .select("*")
         .eq("approval_status", "approved")
-        .eq("status", "qualified")
+        .eq("status", "scheduled")
         .order("created_at", { ascending: false })
         .limit(5);
 
