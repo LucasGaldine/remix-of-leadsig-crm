@@ -29,19 +29,6 @@ export default function Schedule() {
     setSelectedDate((prev) => addDays(prev, 7));
   };
 
-  const formatJobForCard = (job: any) => ({
-    id: job.id,
-    clientName: job.customer?.name || job.name || "Unknown",
-    clientAddress: job.customer?.address || job.address || "Unknown",
-    serviceType: job.service_type || "Unknown",
-    scheduledTime: job.scheduled_time_start && job.scheduled_time_end
-      ? `${job.scheduled_time_start} - ${job.scheduled_time_end}`
-      : "Time not set",
-    status: job.status,
-    crewLead: job.crew_lead?.full_name || "Unassigned",
-    estimateValue: Number(job.estimated_value) || 0,
-  });
-
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
@@ -161,7 +148,7 @@ export default function Schedule() {
             {todaysJobs.map((job) => (
               <JobCard
                 key={job.id}
-                job={formatJobForCard(job)}
+                job={job}
                 onClick={() => navigate(`/jobs/${job.id}`)}
               />
             ))}
