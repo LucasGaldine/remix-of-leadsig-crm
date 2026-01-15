@@ -26,24 +26,32 @@ interface JobCardProps {
   className?: string;
 }
 
-function formatScheduledTime(date: string | null, timeStart: string | null): string {
-  if (!date) return "Not scheduled";
+function formatTime(time: string | null): string {
+  if (!time) return "";
 
-  const jobDate = new Date(date);
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
 
-  const isToday = jobDate.toDateString() === today.toDateString();
-  const isTomorrow = jobDate.toDateString() === tomorrow.toDateString();
+  return `${displayHour}:${minutes} ${ampm}`;
+}
 
-  if (isToday) {
-    return timeStart ? `Today, ${timeStart.slice(0, 5)}` : "Today";
-  } else if (isTomorrow) {
-    return timeStart ? `Tomorrow, ${timeStart.slice(0, 5)}` : "Tomorrow";
-  } else {
-    return jobDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+function formatScheduledTime(timeStart: string | null, timeEnd: string | null): string {
+  if (!timeStart && !timeEnd) return "Not scheduled";
+
+  const startFormatted = formatTime(timeStart);
+  const endFormatted = formatTime(timeEnd);
+
+  if (startFormatted && endFormatted) {
+    return `${startFormatted} - ${endFormatted}`;
+  } else if (startFormatted) {
+    return startFormatted;
+  } else if (endFormatted) {
+    return endFormatted;
   }
+
+  return "Not scheduled";
 }
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
@@ -61,7 +69,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
     unqualified: "Unqualified",
   };
 
-  const scheduledTime = formatScheduledTime(job.scheduled_date, job.scheduled_time_start);
+  const scheduledTime = formatScheduledTime(job.scheduled_time_start, job.scheduled_time_end);
   const address = job.address || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
 
