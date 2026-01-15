@@ -57,7 +57,7 @@ export function usePayments(filter?: { status?: PaymentStatus; limit?: number })
         .select(`
           *,
           customer:customers(id, name),
-          job:jobs(id, name),
+          lead:leads(id, name),
           invoice:invoices(id, total)
         `)
         .order("created_at", { ascending: false });
@@ -117,7 +117,7 @@ export function usePayment(id: string | undefined) {
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          job:jobs(id, name),
+          lead:leads(id, name),
           invoice:invoices(id, total, balance_due)
         `)
         .eq("id", id)

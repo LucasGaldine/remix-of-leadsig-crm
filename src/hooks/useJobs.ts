@@ -52,8 +52,9 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           customer:customers(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
-        .not("customer_id", "is", null)
-        .order("scheduled_date", { ascending: true });
+        .eq("approval_status", "approved")
+        .in("status", ["scheduled", "in_progress", "completed", "won", "cancelled", "on_hold"])
+        .order("created_at", { ascending: false });
 
       if (filter?.status) {
         query = query.eq("status", filter.status);

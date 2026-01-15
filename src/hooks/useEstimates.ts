@@ -61,7 +61,7 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
         .select(`
           *,
           customer:customers(id, name),
-          job:jobs(id, name),
+          lead:leads(id, name),
           line_items:estimate_line_items(
             id,
             name,
@@ -128,7 +128,7 @@ export function useEstimate(id: string | undefined) {
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          job:jobs(id, name),
+          lead:leads(id, name),
           line_items:estimate_line_items(
             id,
             name,

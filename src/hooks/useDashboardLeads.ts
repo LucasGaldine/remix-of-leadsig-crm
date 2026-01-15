@@ -57,7 +57,7 @@ export function usePendingApprovalEstimates() {
         .from("estimates")
         .select(`
           *,
-          job:jobs(
+          lead:leads(
             id,
             name,
             customer:customers(id, name)

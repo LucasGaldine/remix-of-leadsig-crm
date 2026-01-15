@@ -61,7 +61,7 @@ export function useInvoices(filter?: { status?: InvoiceStatus; limit?: number })
         .select(`
           *,
           customer:customers(id, name),
-          job:jobs(id, name),
+          lead:leads(id, name),
           line_items:invoice_line_items(
             id,
             name,
@@ -128,7 +128,7 @@ export function useInvoice(id: string | undefined) {
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          job:jobs(id, name),
+          lead:leads(id, name),
           line_items:invoice_line_items(
             id,
             name,

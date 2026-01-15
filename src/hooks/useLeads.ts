@@ -7,7 +7,7 @@ import { useAuth } from "./useAuth";
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
 type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
 type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
-type LeadStatus = Database["public"]["Enums"]["lead_status"];
+type LeadStatus = Database["public"]["Enums"]["unified_status"];
 
 export function useLeads(filter?: LeadStatus | "all") {
   const { user } = useAuth();
