@@ -935,138 +935,144 @@ export default function LeadDetail() {
       </div>
 
       {/* Pipeline Stage Selector */}
-      <div className="px-4 pb-4">
-        <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
-        <div className="flex flex-wrap gap-2">
-          {PIPELINE_STAGES.map((stage) => (
-            <button
-              key={stage.value}
-              onClick={() => updateLeadStatus(stage.value)}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
-                lead.status === stage.value
-                  ? `${stage.color} text-white`
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-              )}
-            >
-              {stage.label}
-            </button>
-          ))}
+      {!["scheduled", "in_progress", "won"].includes(lead.status) && (
+        <div className="px-4 pb-4">
+          <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
+          <div className="flex flex-wrap gap-2">
+            {PIPELINE_STAGES.map((stage) => (
+              <button
+                key={stage.value}
+                onClick={() => updateLeadStatus(stage.value)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                  lead.status === stage.value
+                    ? `${stage.color} text-white`
+                    : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                )}
+              >
+                {stage.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Quick Estimate Panel */}
-      <div className="px-4 pb-4">
-        <QuickEstimatePanel 
-          leadId={id!} 
-          onEstimateSaved={fetchInteractions}
-          onConvertToEstimate={(estimateId) => {
-            toast.success("Draft created! Redirecting to estimates...");
-            navigate("/payments");
-          }}
-        />
-      </div>
+      {!["scheduled", "in_progress", "won"].includes(lead.status) && (
+        <div className="px-4 pb-4">
+          <QuickEstimatePanel
+            leadId={id!}
+            onEstimateSaved={fetchInteractions}
+            onConvertToEstimate={(estimateId) => {
+              toast.success("Draft created! Redirecting to estimates...");
+              navigate("/payments");
+            }}
+          />
+        </div>
+      )}
 
       {/* Qualification Panel */}
-      <div className="px-4 pb-4">
-        <div className="card-elevated rounded-lg p-4">
-          <h3 className="font-medium mb-3">Qualification</h3>
-          
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
-              <Switch
-                id="budget-confirmed"
-                checked={qualification?.budget_confirmed ?? false}
-                onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
-              />
-            </div>
+      {!["scheduled", "in_progress", "won"].includes(lead.status) && (
+        <div className="px-4 pb-4">
+          <div className="card-elevated rounded-lg p-4">
+            <h3 className="font-medium mb-3">Qualification</h3>
 
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
-              <Switch
-                id="service-area"
-                checked={qualification?.service_area_fit ?? false}
-                onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
-              <Switch
-                id="decision-maker"
-                checked={qualification?.decision_maker_confirmed ?? false}
-                onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
-              />
-            </div>
-
-            <div>
-              <Label>Timeline</Label>
-              <Select
-                value={qualification?.timeline || "none"}
-                onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select timeline" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {TIMELINE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Notes</Label>
-              <Textarea
-                value={qualNotes}
-                onChange={(e) => setQualNotes(e.target.value)}
-                onBlur={() => updateQualification({ notes: qualNotes })}
-                placeholder="Add qualification notes..."
-                className="mt-1"
-                rows={2}
-              />
-            </div>
-
-            {qualification?.fit_score !== undefined && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Fit Score:</span>
-                <span className={cn(
-                  "font-semibold",
-                  qualification.fit_score >= 70 ? "text-status-confirmed" :
-                  qualification.fit_score >= 40 ? "text-status-pending" : "text-status-attention"
-                )}>
-                  {qualification.fit_score}/100
-                </span>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
+                <Switch
+                  id="budget-confirmed"
+                  checked={qualification?.budget_confirmed ?? false}
+                  onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
+                />
               </div>
-            )}
 
-            <div className="flex gap-2 pt-2">
-              <Button 
-                variant="default" 
-                size="sm" 
-                className="flex-1"
-                onClick={markQualified}
-                disabled={lead.status === "qualified"}
-              >
-                <Check className="h-4 w-4 mr-1" /> Mark Qualified
-              </Button>
-              <Button 
-                variant="destructive" 
-                size="sm" 
-                className="flex-1"
-                onClick={() => setDisqualifyOpen(true)}
-              >
-                <X className="h-4 w-4 mr-1" /> Disqualify
-              </Button>
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
+                <Switch
+                  id="service-area"
+                  checked={qualification?.service_area_fit ?? false}
+                  onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
+                <Switch
+                  id="decision-maker"
+                  checked={qualification?.decision_maker_confirmed ?? false}
+                  onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
+                />
+              </div>
+
+              <div>
+                <Label>Timeline</Label>
+                <Select
+                  value={qualification?.timeline || "none"}
+                  onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select timeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {TIMELINE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Notes</Label>
+                <Textarea
+                  value={qualNotes}
+                  onChange={(e) => setQualNotes(e.target.value)}
+                  onBlur={() => updateQualification({ notes: qualNotes })}
+                  placeholder="Add qualification notes..."
+                  className="mt-1"
+                  rows={2}
+                />
+              </div>
+
+              {qualification?.fit_score !== undefined && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Fit Score:</span>
+                  <span className={cn(
+                    "font-semibold",
+                    qualification.fit_score >= 70 ? "text-status-confirmed" :
+                    qualification.fit_score >= 40 ? "text-status-pending" : "text-status-attention"
+                  )}>
+                    {qualification.fit_score}/100
+                  </span>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="flex-1"
+                  onClick={markQualified}
+                  disabled={lead.status === "qualified"}
+                >
+                  <Check className="h-4 w-4 mr-1" /> Mark Qualified
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setDisqualifyOpen(true)}
+                >
+                  <X className="h-4 w-4 mr-1" /> Disqualify
+                </Button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Interaction Timeline */}
       <div className="px-4 pb-4">
