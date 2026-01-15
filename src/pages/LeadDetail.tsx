@@ -68,14 +68,10 @@ interface Qualification {
   notes: string | null;
 }
 
-// Use string type for stages since TypeScript types may not be regenerated yet
 const PIPELINE_STAGES: { value: string; label: string; color: string }[] = [
   { value: "new", label: "New", color: "bg-blue-500" },
   { value: "contacted", label: "Contacted", color: "bg-yellow-500" },
   { value: "qualified", label: "Qualified", color: "bg-primary" },
-  { value: "scheduled", label: "Scheduled", color: "bg-purple-500" },
-  { value: "in_progress", label: "In Progress", color: "bg-orange-500" },
-  { value: "won", label: "Won", color: "bg-emerald-600" },
   { value: "lost", label: "Lost", color: "bg-red-500" },
 ];
 
@@ -138,6 +134,15 @@ export default function LeadDetail() {
     notes: ""
   });
   const [saving, setSaving] = useState(false);
+
+  // Create job dialog
+  const [createJobDialogOpen, setCreateJobDialogOpen] = useState(false);
+  const [jobForm, setJobForm] = useState({
+    price: "",
+    scheduled_date: "",
+    scheduled_time_start: "",
+    scheduled_time_end: ""
+  });
 
   // Creating job state
   const [creatingJob, setCreatingJob] = useState(false);
@@ -337,8 +342,23 @@ export default function LeadDetail() {
     toast.success("Lead disqualified");
   };
 
+  const openCreateJobDialog = () => {
+    setJobForm({
+      price: lead?.estimated_value?.toString() || "",
+      scheduled_date: "",
+      scheduled_time_start: "",
+      scheduled_time_end: ""
+    });
+    setCreateJobDialogOpen(true);
+  };
+
   const createJob = async () => {
     if (!lead || creatingJob) return;
+
+    if (!jobForm.price) {
+      toast.error("Price is required");
+      return;
+    }
 
     setCreatingJob(true);
     const loadingToast = toast.loading("Creating job...");
@@ -346,7 +366,6 @@ export default function LeadDetail() {
     try {
       let customerId = null;
 
-      // Check for existing customer by phone
       if (lead.phone) {
         const { data: existingCustomer, error: lookupError } = await supabase
           .from("customers")
@@ -364,7 +383,6 @@ export default function LeadDetail() {
         }
       }
 
-      // Create new customer if none found
       if (!customerId) {
         const { data: newCustomer, error: customerError } = await supabase
           .from("customers")
@@ -388,13 +406,30 @@ export default function LeadDetail() {
         console.log("Created new customer:", customerId);
       }
 
-      // Update the lead to become a job by adding job fields
+      let newStatus: LeadStatus = "won";
+
+      if (jobForm.scheduled_date) {
+        const scheduledDate = new Date(jobForm.scheduled_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        scheduledDate.setHours(0, 0, 0, 0);
+
+        if (scheduledDate <= today) {
+          newStatus = "in_progress";
+        } else {
+          newStatus = "scheduled";
+        }
+      }
+
       const { data: jobData, error: updateError } = await supabase
         .from("leads")
         .update({
           customer_id: customerId,
-          status: "scheduled",
-          estimated_value: lead.estimated_value,
+          status: newStatus,
+          actual_value: parseFloat(jobForm.price),
+          scheduled_date: jobForm.scheduled_date || null,
+          scheduled_time_start: jobForm.scheduled_time_start || null,
+          scheduled_time_end: jobForm.scheduled_time_end || null,
         })
         .eq("id", lead.id)
         .select(`
@@ -411,7 +446,6 @@ export default function LeadDetail() {
 
       console.log("Lead converted to job successfully:", jobData.id);
 
-      // Log the conversion interaction
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "status_change" as InteractionType,
@@ -423,16 +457,14 @@ export default function LeadDetail() {
       toast.dismiss(loadingToast);
       toast.success("Lead converted to job successfully!");
 
-      // Pre-populate the query cache with the job data
       if (jobData) {
         queryClient.setQueryData(["job", jobData.id], jobData);
       }
 
-      // Invalidate both leads and jobs lists
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
 
-      // Navigate to the job detail page
+      setCreateJobDialogOpen(false);
       navigate(`/jobs/${jobData.id}`);
     } catch (error) {
       console.error("Error creating job:", error);
@@ -588,7 +620,7 @@ export default function LeadDetail() {
     );
   }
 
-  const showConvertButton = ["qualified", "scheduled", "in_progress"].includes(lead.status as string);
+  const showConvertButton = lead.status === "qualified";
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -756,6 +788,74 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
+      {/* Create Job Dialog */}
+      <Dialog open={createJobDialogOpen} onOpenChange={setCreateJobDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Job</DialogTitle>
+            <DialogDescription>
+              Set the price and schedule for this job. The status will be automatically set based on the schedule.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="job-price">Price *</Label>
+              <Input
+                id="job-price"
+                type="number"
+                value={jobForm.price}
+                onChange={(e) => setJobForm({ ...jobForm, price: e.target.value })}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="job-date">Scheduled Date</Label>
+              <Input
+                id="job-date"
+                type="date"
+                value={jobForm.scheduled_date}
+                onChange={(e) => setJobForm({ ...jobForm, scheduled_date: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="job-start-time">Start Time</Label>
+                <Input
+                  id="job-start-time"
+                  type="time"
+                  value={jobForm.scheduled_time_start}
+                  onChange={(e) => setJobForm({ ...jobForm, scheduled_time_start: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job-end-time">End Time</Label>
+                <Input
+                  id="job-end-time"
+                  type="time"
+                  value={jobForm.scheduled_time_end}
+                  onChange={(e) => setJobForm({ ...jobForm, scheduled_time_end: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
+              {!jobForm.scheduled_date && "Status will be set to: Won"}
+              {jobForm.scheduled_date && new Date(jobForm.scheduled_date) > new Date() && "Status will be set to: Scheduled"}
+              {jobForm.scheduled_date && new Date(jobForm.scheduled_date) <= new Date() && "Status will be set to: In Progress"}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateJobDialogOpen(false)} disabled={creatingJob}>
+              Cancel
+            </Button>
+            <Button onClick={createJob} disabled={creatingJob || !jobForm.price}>
+              {creatingJob ? "Creating..." : "Create Job"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Lead Info Card */}
       <div className="px-4 py-4">
         <div className="card-elevated rounded-lg p-4 space-y-3">
@@ -803,9 +903,9 @@ export default function LeadDetail() {
               <MessageSquare className="h-4 w-4 mr-1" /> Text
             </Button>
             {showConvertButton && (
-              <Button size="sm" className="flex-1" onClick={createJob} disabled={creatingJob}>
+              <Button size="sm" className="flex-1" onClick={openCreateJobDialog} disabled={creatingJob}>
                 <Briefcase className="h-4 w-4 mr-1" />
-                {creatingJob ? "Creating..." : "Create Job"}
+                Create Job
               </Button>
             )}
           </div>
