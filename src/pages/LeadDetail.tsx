@@ -271,20 +271,20 @@ export default function LeadDetail() {
 
   const updateQualification = async (updates: Partial<Qualification>) => {
     setSavingQual(true);
-    
+
     // Calculate fit score based on toggles
     const budgetConfirmed = updates.budget_confirmed ?? qualification?.budget_confirmed ?? false;
     const serviceAreaFit = updates.service_area_fit ?? qualification?.service_area_fit ?? false;
     const decisionMakerConfirmed = updates.decision_maker_confirmed ?? qualification?.decision_maker_confirmed ?? false;
-    const timeline = updates.timeline ?? qualification?.timeline;
-    
+    const timeline = 'timeline' in updates ? updates.timeline : qualification?.timeline;
+
     let fitScore = 0;
     if (budgetConfirmed) fitScore += 30;
     if (serviceAreaFit) fitScore += 30;
     if (decisionMakerConfirmed) fitScore += 25;
-    if (timeline === "asap" || timeline === "1_2_weeks") fitScore += 15;
-    else if (timeline === "2_4_weeks") fitScore += 10;
-    else if (timeline === "1_3_months") fitScore += 5;
+    if (timeline && (timeline === "asap" || timeline === "1_2_weeks")) fitScore += 15;
+    else if (timeline && timeline === "2_4_weeks") fitScore += 10;
+    else if (timeline && timeline === "1_3_months") fitScore += 5;
 
     const payload = {
       ...updates,
