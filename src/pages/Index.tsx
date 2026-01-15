@@ -9,7 +9,7 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
-import { useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates, useActiveJobs } from "@/hooks/useDashboardLeads";
+import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@/hooks/useDashboardLeads";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 
@@ -18,7 +18,6 @@ export default function Index() {
   const { user } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
-  const { data: inProgressLeadsData = [], isLoading: inProgressLoading } = useInProgressLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
 
@@ -42,7 +41,6 @@ export default function Index() {
   });
 
   const qualifiedLeads = qualifiedLeadsData.map(formatLeadForCard);
-  const inProgressLeads = inProgressLeadsData.map(formatLeadForCard);
   const pendingApprovals = pendingApprovalsData.map((estimate: any) => ({
     id: estimate.id,
     clientName: estimate.job?.customer?.name || "Unknown",
@@ -184,33 +182,6 @@ export default function Index() {
             </div>
           )}
         </section>
-
-        {/* In Progress Leads */}
-        {!inProgressLoading && inProgressLeads.length > 0 && (
-          <section>
-            <SectionHeader
-              title="In Progress"
-              count={inProgressLeads.length}
-              action={{ label: "View all", onClick: () => navigate("/leads") }}
-              className="mb-3"
-            />
-            <div className="space-y-3">
-              {inProgressLeads.map((lead) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  onClick={() => handleLeadClick(lead.id)}
-                  onCall={() => {
-                    if (import.meta.env.DEV) console.log("Call", lead.phone);
-                  }}
-                  onMessage={() => {
-                    if (import.meta.env.DEV) console.log("Message", lead.phone);
-                  }}
-                />
-              ))}
-            </div>
-          </section>
-        )}
       </main>
 
       <MobileNav />

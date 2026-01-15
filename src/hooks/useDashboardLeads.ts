@@ -26,27 +26,6 @@ export function useQualifiedLeads() {
   });
 }
 
-export function useInProgressLeads() {
-  const { user } = useAuth();
-
-  return useQuery({
-    queryKey: ["dashboard-leads", "in_progress"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("approval_status", "approved")
-        .eq("status", "in_progress")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-      return data as Lead[];
-    },
-    enabled: !!user,
-  });
-}
-
 export function useActiveJobs() {
   const { user } = useAuth();
   const today = new Date().toISOString().split("T")[0];
