@@ -11,6 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useCreateJob } from "@/hooks/useJobs";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -18,6 +22,7 @@ interface CreateJobDialogProps {
 }
 
 export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
+  const { user } = useAuth();
   const [jobName, setJobName] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -26,23 +31,75 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const [jobAddress, setJobAddress] = useState("");
   const [estimatedValue, setEstimatedValue] = useState("");
   const [description, setDescription] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const createJob = useCreateJob();
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log({
-      jobName,
-      customerName,
-      phone,
-      email,
-      serviceType,
-      jobAddress,
-      estimatedValue,
-      description,
-    });
-    onOpenChange(false);
+    if (!user) {
+      toast.error("You must be logged in to create a job");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { data: customer, error: customerError } = await supabase
+        .from("customers")
+        .insert({
+          name: customerName,
+          phone: phone || null,
+          email: email || null,
+          address: jobAddress || null,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (customerError) throw customerError;
+
+      await createJob.mutateAsync({
+        name: jobName,
+        customer_id: customer.id,
+        phone: phone || null,
+        email: email || null,
+        service_type: serviceType || null,
+        address: jobAddress || null,
+        estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
+        description: description || null,
+        status: "scheduled",
+      });
+
+      toast.success("Job created successfully!");
+
+      setJobName("");
+      setCustomerName("");
+      setPhone("");
+      setEmail("");
+      setServiceType("");
+      setJobAddress("");
+      setEstimatedValue("");
+      setDescription("");
+
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error creating job:", error);
+      toast.error("Failed to create job. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
+    setJobName("");
+    setCustomerName("");
+    setPhone("");
+    setEmail("");
+    setServiceType("");
+    setJobAddress("");
+    setEstimatedValue("");
+    setDescription("");
     onOpenChange(false);
   };
 
@@ -184,15 +241,17 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               type="button"
               variant="outline"
               onClick={handleCancel}
+              disabled={isLoading}
               className="px-8 h-12 text-base rounded-lg border-gray-300"
             >
               Cancel
             </Button>
             <Button
               type="submit"
+              disabled={isLoading}
               className="px-8 h-12 text-base bg-emerald-700 hover:bg-emerald-800 rounded-lg"
             >
-              Create Job
+              {isLoading ? "Creating..." : "Create Job"}
             </Button>
           </div>
         </form>

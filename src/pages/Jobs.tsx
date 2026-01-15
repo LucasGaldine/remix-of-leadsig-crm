@@ -1,19 +1,35 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Input } from "@/components/ui/input";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
+import { JobCard } from "@/components/jobs/JobCard";
 import { Search, Bell, Briefcase } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useJobs, useJobCounts, useJobRevenue } from "@/hooks/useJobs";
+import { useAuth } from "@/hooks/useAuth";
+import { Database } from "@/integrations/supabase/types";
 
-type JobStatus = "all" | "scheduled" | "in_progress" | "completed" | "won" | "cancelled";
+type JobStatus = Database["public"]["Enums"]["unified_status"];
 
 export default function Jobs() {
-  const [selectedStatus, setSelectedStatus] = useState<JobStatus>("all");
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [selectedStatus, setSelectedStatus] = useState<JobStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
 
-  const statusCounts = {
+  const filter = useMemo(() => ({
+    status: selectedStatus !== "all" ? selectedStatus : undefined,
+    searchQuery: searchQuery,
+  }), [selectedStatus, searchQuery]);
+
+  const { data: jobs = [], isLoading } = useJobs(filter);
+  const { data: counts } = useJobCounts();
+  const { data: revenue = 0 } = useJobRevenue();
+
+  const statusCounts = counts || {
     all: 0,
     scheduled: 0,
     in_progress: 0,
@@ -22,7 +38,7 @@ export default function Jobs() {
     cancelled: 0,
   };
 
-  const statusTabs: { value: JobStatus; label: string }[] = [
+  const statusTabs: { value: JobStatus | "all"; label: string }[] = [
     { value: "all", label: "All" },
     { value: "scheduled", label: "Scheduled" },
     { value: "in_progress", label: "In Progress" },
@@ -35,20 +51,26 @@ export default function Jobs() {
     setIsCreateJobOpen(true);
   };
 
+  const handleJobClick = (jobId: string) => {
+    navigate(`/jobs/${jobId}`);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <header className="bg-white border-b border-gray-200 px-4 py-4">
         <div className="flex items-start justify-between mb-1">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">Jobs</h1>
-            <p className="text-sm text-gray-500 mt-0.5">$0 collected this month</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              ${revenue.toLocaleString()} collected this month
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <button className="text-gray-600 hover:text-gray-900">
               <Bell className="h-5 w-5" />
             </button>
             <div className="h-9 w-9 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-700">
-              LG
+              {user?.email?.substring(0, 2).toUpperCase() || "U"}
             </div>
           </div>
         </div>
@@ -83,9 +105,23 @@ export default function Jobs() {
           ))}
         </div>
 
-        <div className="flex items-center justify-center py-32">
-          <p className="text-gray-500 text-base">No jobs found</p>
-        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-32">
+            <p className="text-gray-500 text-base">Loading jobs...</p>
+          </div>
+        ) : jobs.length === 0 ? (
+          <div className="flex items-center justify-center py-32">
+            <p className="text-gray-500 text-base">
+              {searchQuery ? "No jobs match your search" : "No jobs found"}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 pb-4">
+            {jobs.map((job) => (
+              <JobCard key={job.id} job={job} onClick={() => handleJobClick(job.id)} />
+            ))}
+          </div>
+        )}
       </main>
 
       <FloatingActionButton

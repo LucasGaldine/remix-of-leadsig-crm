@@ -14,7 +14,7 @@ type JobInsert = Omit<LeadInsert, "approval_status"> & { customer_id: string };
 type JobUpdate = LeadUpdate;
 type JobStatus = UnifiedStatus;
 
-export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: number }) {
+export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: number; searchQuery?: string }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -34,6 +34,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           console.log("Real-time job update:", payload.eventType);
           queryClient.invalidateQueries({ queryKey: ["jobs"] });
           queryClient.invalidateQueries({ queryKey: ["job-counts"] });
+          queryClient.invalidateQueries({ queryKey: ["job-revenue"] });
         }
       )
       .subscribe();
@@ -62,6 +63,12 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
 
       if (filter?.date) {
         query = query.eq("scheduled_date", filter.date);
+      }
+
+      if (filter?.searchQuery && filter.searchQuery.trim()) {
+        query = query.or(
+          `name.ilike.%${filter.searchQuery}%,address.ilike.%${filter.searchQuery}%,service_type.ilike.%${filter.searchQuery}%,description.ilike.%${filter.searchQuery}%`
+        );
       }
 
       if (filter?.limit) {
@@ -217,6 +224,34 @@ export function useJobCounts() {
       });
 
       return counts;
+    },
+    enabled: !!user,
+  });
+}
+
+export function useJobRevenue() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ["job-revenue"],
+    queryFn: async () => {
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const { data, error } = await supabase
+        .from("leads")
+        .select("actual_value")
+        .in("status", ["completed", "won"])
+        .gte("updated_at", startOfMonth.toISOString());
+
+      if (error) throw error;
+
+      const total = data.reduce((sum, job) => {
+        return sum + (Number(job.actual_value) || 0);
+      }, 0);
+
+      return total;
     },
     enabled: !!user,
   });
