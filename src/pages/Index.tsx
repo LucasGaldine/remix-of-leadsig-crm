@@ -119,6 +119,41 @@ export default function Index() {
           </section>
         )}
 
+        {/* Today's Jobs */}
+        <section>
+          <SectionHeader
+            title="Today's Jobs"
+            count={qualifiedLeads.length}
+            action={{ label: "View all", onClick: () => navigate("/leads") }}
+            className="mb-3"
+          />
+          {leadsLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : qualifiedLeads.length === 0 ? (
+            <div className="card-elevated rounded-lg p-6 text-center">
+              <p className="text-muted-foreground">No jobs today</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {qualifiedLeads.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onClick={() => handleLeadClick(lead.id)}
+                  onCall={() => {
+                    if (import.meta.env.DEV) console.log("Call", lead.phone);
+                  }}
+                  onMessage={() => {
+                    if (import.meta.env.DEV) console.log("Message", lead.phone);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* Qualified Leads */}
         <section>
           <SectionHeader
