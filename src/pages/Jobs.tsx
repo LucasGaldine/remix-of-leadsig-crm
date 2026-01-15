@@ -35,7 +35,8 @@ export default function Jobs() {
     in_progress: 0,
     completed: 0,
     won: 0,
-    cancelled: 0,
+    invoiced: 0,
+    paid: 0,
   };
 
   const statusTabs: { value: JobStatus | "all"; label: string }[] = [
@@ -44,7 +45,8 @@ export default function Jobs() {
     { value: "in_progress", label: "In Progress" },
     { value: "completed", label: "Completed" },
     { value: "won", label: "Won" },
-    { value: "cancelled", label: "Cancelled" },
+    { value: "invoiced", label: "Invoiced" },
+    { value: "paid", label: "Paid" },
   ];
 
   const handleCreateJob = () => {

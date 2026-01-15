@@ -54,7 +54,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
-        .in("status", ["scheduled", "in_progress", "completed", "won", "cancelled"])
+        .in("status", ["scheduled", "in_progress", "completed", "won", "invoiced", "paid"])
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -204,7 +204,7 @@ export function useJobCounts() {
       const { data, error } = await supabase
         .from("leads")
         .select("status")
-        .in("status", ["scheduled", "in_progress", "completed", "won", "cancelled"]);
+        .in("status", ["scheduled", "in_progress", "completed", "won", "invoiced", "paid"]);
 
       if (error) throw error;
 
@@ -214,7 +214,8 @@ export function useJobCounts() {
         in_progress: 0,
         completed: 0,
         won: 0,
-        cancelled: 0,
+        invoiced: 0,
+        paid: 0,
       };
 
       data.forEach((lead) => {
@@ -242,7 +243,7 @@ export function useJobRevenue() {
       const { data, error } = await supabase
         .from("leads")
         .select("actual_value")
-        .in("status", ["completed", "won"])
+        .in("status", ["completed", "won", "invoiced", "paid"])
         .gte("updated_at", startOfMonth.toISOString());
 
       if (error) throw error;
