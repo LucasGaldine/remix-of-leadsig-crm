@@ -434,7 +434,7 @@ export default function LeadDetail() {
         .eq("id", lead.id)
         .select(`
           *,
-          customer:customers(id, name, email, phone, address),
+          customer:customers!leads_customer_id_fkey(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
         .single();
