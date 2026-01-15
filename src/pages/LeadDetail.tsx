@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical } from "lucide-react";
+import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -123,6 +124,20 @@ export default function LeadDetail() {
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Edit dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    service_type: "",
+    address: "",
+    city: "",
+    estimated_value: "",
+    notes: ""
+  });
+  const [saving, setSaving] = useState(false);
 
   // Creating job state
   const [creatingJob, setCreatingJob] = useState(false);
@@ -428,9 +443,56 @@ export default function LeadDetail() {
     }
   };
 
+  const openEditDialog = () => {
+    if (!lead) return;
+    setEditForm({
+      name: lead.name,
+      phone: lead.phone || "",
+      email: lead.email || "",
+      service_type: lead.service_type || "",
+      address: lead.address || "",
+      city: lead.city || "",
+      estimated_value: lead.estimated_value?.toString() || "",
+      notes: lead.notes || ""
+    });
+    setEditDialogOpen(true);
+  };
+
+  const saveLead = async () => {
+    if (!lead) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("leads")
+        .update({
+          name: editForm.name,
+          phone: editForm.phone || null,
+          email: editForm.email || null,
+          service_type: editForm.service_type || null,
+          address: editForm.address || null,
+          city: editForm.city || null,
+          estimated_value: editForm.estimated_value ? parseFloat(editForm.estimated_value) : null,
+          notes: editForm.notes || null,
+        })
+        .eq("id", lead.id);
+
+      if (error) throw error;
+
+      toast.success("Lead updated successfully");
+      setEditDialogOpen(false);
+      fetchLead();
+    } catch (error) {
+      console.error("Error updating lead:", error);
+      toast.error("Failed to update lead");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const deleteLead = async () => {
     if (!lead) return;
-    
+
     setDeleting(true);
     try {
       const { error } = await supabase
@@ -558,7 +620,11 @@ export default function LeadDetail() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem 
+              <DropdownMenuItem onClick={openEditDialog}>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Lead
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() => setDeleteDialogOpen(true)}
               >
@@ -581,7 +647,7 @@ export default function LeadDetail() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={deleteLead}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -591,6 +657,104 @@ export default function LeadDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Lead Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Lead</DialogTitle>
+            <DialogDescription>
+              Update the lead information below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name *</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                placeholder="Customer name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                type="tel"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                placeholder="(555) 555-5555"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                placeholder="email@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-service">Service Type</Label>
+              <Input
+                id="edit-service"
+                value={editForm.service_type}
+                onChange={(e) => setEditForm({ ...editForm, service_type: e.target.value })}
+                placeholder="e.g., Lawn Care, Tree Removal"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-address">Address</Label>
+              <Input
+                id="edit-address"
+                value={editForm.address}
+                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                placeholder="Street address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-city">City</Label>
+              <Input
+                id="edit-city"
+                value={editForm.city}
+                onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                placeholder="City"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-value">Estimated Value</Label>
+              <Input
+                id="edit-value"
+                type="number"
+                value={editForm.estimated_value}
+                onChange={(e) => setEditForm({ ...editForm, estimated_value: e.target.value })}
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                placeholder="Additional notes..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={saveLead} disabled={saving || !editForm.name.trim()}>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Lead Info Card */}
       <div className="px-4 py-4">
