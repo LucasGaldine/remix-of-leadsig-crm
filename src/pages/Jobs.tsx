@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Input } from "@/components/ui/input";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
+import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { Search, Bell, Briefcase } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +11,7 @@ type JobStatus = "all" | "scheduled" | "in_progress" | "completed" | "won" | "ca
 export default function Jobs() {
   const [selectedStatus, setSelectedStatus] = useState<JobStatus>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
 
   const statusCounts = {
     all: 0,
@@ -30,7 +32,7 @@ export default function Jobs() {
   ];
 
   const handleCreateJob = () => {
-    console.log("Create job clicked");
+    setIsCreateJobOpen(true);
   };
 
   return (
@@ -96,6 +98,8 @@ export default function Jobs() {
           },
         ]}
       />
+
+      <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
 
       <MobileNav />
     </div>
