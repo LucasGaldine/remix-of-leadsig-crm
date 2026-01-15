@@ -51,7 +51,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
         .from("leads")
         .select(`
           *,
-          customer:customers(id, name, email, phone, address),
+          customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
         .in("status", ["scheduled", "in_progress", "completed", "won", "cancelled"])
@@ -121,7 +121,7 @@ export function useJob(id: string | undefined) {
         .from("leads")
         .select(`
           *,
-          customer:customers(id, name, email, phone, address),
+          customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
         .eq("id", id)
