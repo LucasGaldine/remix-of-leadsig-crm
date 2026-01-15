@@ -78,11 +78,7 @@ export function usePendingApprovalEstimates() {
         .from("estimates")
         .select(`
           *,
-          lead:leads(
-            id,
-            name,
-            customer:customers(id, name)
-          )
+          customer:customers(id, name)
         `)
         .eq("status", "sent")
         .order("created_at", { ascending: false })
