@@ -11,16 +11,16 @@ import { Input } from "@/components/ui/input";
 import { useJobs } from "@/hooks/useJobs";
 import { Database } from "@/integrations/supabase/types";
 
-type JobStatus = Database["public"]["Enums"]["job_status"];
+type JobStatus = Database["public"]["Enums"]["unified_status"];
 type FilterStatus = "all" | JobStatus;
 
 const filterOptions: { value: FilterStatus; label: string }[] = [
   { value: "all", label: "All" },
   { value: "scheduled", label: "Scheduled" },
-  { value: "in-progress", label: "In Progress" },
+  { value: "in_progress", label: "In Progress" },
   { value: "completed", label: "Completed" },
-  { value: "invoiced", label: "Invoiced" },
-  { value: "paid", label: "Paid" },
+  { value: "won", label: "Won" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 export default function Jobs() {
@@ -49,11 +49,11 @@ export default function Jobs() {
 
   // Calculate revenue
   const totalRevenue = allJobs
-    .filter((j) => j.status === "paid")
+    .filter((j) => j.status === "won")
     .reduce((sum, j) => sum + (Number(j.actual_value) || Number(j.estimated_value) || 0), 0);
 
   const pendingRevenue = allJobs
-    .filter((j) => ["completed", "invoiced"].includes(j.status))
+    .filter((j) => ["completed"].includes(j.status))
     .reduce((sum, j) => sum + (Number(j.actual_value) || Number(j.estimated_value) || 0), 0);
 
   if (isLoading) {

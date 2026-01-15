@@ -45,7 +45,7 @@ export default function Leads() {
     name: lead.name,
     phone: lead.phone || "",
     serviceType: lead.service_type || "Unknown",
-    estimatedBudget: lead.estimated_budget || 0,
+    estimatedBudget: lead.estimated_value || 0,
     location: lead.city || "Unknown",
     source: lead.source || "Unknown",
     createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),

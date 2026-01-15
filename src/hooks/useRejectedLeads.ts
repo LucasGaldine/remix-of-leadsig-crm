@@ -9,7 +9,7 @@ interface RejectedLead {
   phone: string | null;
   email: string | null;
   service_type: string | null;
-  estimated_budget: number | null;
+  estimated_value: number | null;
   city: string | null;
   address: string | null;
   source: string | null;
@@ -53,7 +53,7 @@ export function useRejectedLeads() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("id, name, phone, email, service_type, estimated_budget, city, address, source, created_at, rejected_at, approval_status, approval_reason")
+        .select("id, name, phone, email, service_type, estimated_value, city, address, source, created_at, rejected_at, approval_status, approval_reason")
         .eq("approval_status", "rejected")
         .order("rejected_at", { ascending: false });
 

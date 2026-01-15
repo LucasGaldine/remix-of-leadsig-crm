@@ -81,7 +81,7 @@ export default function JobDetail() {
         <div className="flex items-start justify-between mb-3">
           <div>
             <StatusBadge status={job.status} size="lg">
-              {job.status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              {job.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
             </StatusBadge>
             <h2 className="text-xl font-bold text-foreground mt-2">
               {job.customer?.name || "Unknown Client"}

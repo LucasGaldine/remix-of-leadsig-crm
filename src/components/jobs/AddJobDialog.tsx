@@ -84,9 +84,9 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
 
       if (customerError) throw customerError;
 
-      // Then create the job
+      // Then create the job (in the leads table)
       const { data: job, error: jobError } = await supabase
-        .from("jobs")
+        .from("leads")
         .insert([{
           name: formData.name.trim(),
           customer_id: customer.id,
@@ -97,6 +97,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
           notes: formData.notes.trim() || null,
           created_by: user.id,
           status: "scheduled",
+          approval_status: "approved",
         }])
         .select()
         .single();

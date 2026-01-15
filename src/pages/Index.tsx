@@ -51,7 +51,7 @@ export default function Index() {
     name: lead.name,
     phone: lead.phone || "",
     serviceType: lead.service_type || "Unknown",
-    estimatedBudget: Number(lead.estimated_budget) || 0,
+    estimatedBudget: Number(lead.estimated_value) || 0,
     location: lead.city || "Unknown",
     source: lead.source || "Unknown",
     createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),

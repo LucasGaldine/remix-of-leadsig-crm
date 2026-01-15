@@ -73,7 +73,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           service_type: formData.serviceType || null,
           city: formData.city.trim() || null,
           address: formData.address.trim() || null,
-          estimated_budget: formData.estimatedBudget ? parseFloat(formData.estimatedBudget) : null,
+          estimated_value: formData.estimatedBudget ? parseFloat(formData.estimatedBudget) : null,
           source: formData.source || "Manual",
           notes: formData.notes.trim() || null,
           created_by: user.id,

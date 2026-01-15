@@ -4,10 +4,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useAuth } from "./useAuth";
 
-type Job = Database["public"]["Tables"]["jobs"]["Row"];
-type JobInsert = Database["public"]["Tables"]["jobs"]["Insert"];
-type JobUpdate = Database["public"]["Tables"]["jobs"]["Update"];
-type JobStatus = Database["public"]["Enums"]["job_status"];
+type Lead = Database["public"]["Tables"]["leads"]["Row"];
+type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
+type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
+type UnifiedStatus = Database["public"]["Enums"]["unified_status"];
+
+type Job = Lead;
+type JobInsert = Omit<LeadInsert, "approval_status"> & { customer_id: string };
+type JobUpdate = LeadUpdate;
+type JobStatus = UnifiedStatus;
 
 export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: number }) {
   const { user } = useAuth();
@@ -23,7 +28,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
         {
           event: "*",
           schema: "public",
-          table: "jobs",
+          table: "leads",
         },
         (payload) => {
           console.log("Real-time job update:", payload.eventType);
@@ -41,12 +46,13 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
     queryKey: ["jobs", filter],
     queryFn: async () => {
       let query = supabase
-        .from("jobs")
+        .from("leads")
         .select(`
           *,
-          customer:customers(id, name, email, phone),
-          crew_lead:profiles!jobs_crew_lead_id_fkey(id, full_name)
+          customer:customers(id, name, email, phone, address),
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
+        .not("customer_id", "is", null)
         .order("scheduled_date", { ascending: true });
 
       if (filter?.status) {
@@ -84,7 +90,7 @@ export function useJob(id: string | undefined) {
         {
           event: "*",
           schema: "public",
-          table: "jobs",
+          table: "leads",
           filter: `id=eq.${id}`,
         },
         () => {
@@ -104,11 +110,11 @@ export function useJob(id: string | undefined) {
       if (!id) return null;
 
       const { data, error } = await supabase
-        .from("jobs")
+        .from("leads")
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          crew_lead:profiles!jobs_crew_lead_id_fkey(id, full_name)
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
         .eq("id", id)
         .maybeSingle();
@@ -127,12 +133,17 @@ export function useCreateJob() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async (job: Omit<JobInsert, "created_by">) => {
+    mutationFn: async (job: Omit<JobInsert, "created_by" | "approval_status">) => {
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await supabase
-        .from("jobs")
-        .insert({ ...job, created_by: user.id })
+        .from("leads")
+        .insert({
+          ...job,
+          created_by: user.id,
+          approval_status: "approved",
+          status: job.status || "scheduled"
+        })
         .select()
         .single();
 
@@ -141,6 +152,7 @@ export function useCreateJob() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
     },
   });
 }
@@ -151,7 +163,7 @@ export function useUpdateJob() {
   return useMutation({
     mutationFn: async ({ id, ...updates }: JobUpdate & { id: string }) => {
       const { data, error } = await supabase
-        .from("jobs")
+        .from("leads")
         .update(updates)
         .eq("id", id)
         .select()
@@ -163,6 +175,7 @@ export function useUpdateJob() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
     },
   });
 }

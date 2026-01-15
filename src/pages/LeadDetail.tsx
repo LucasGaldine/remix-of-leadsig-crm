@@ -34,7 +34,7 @@ interface Lead {
   service_type: string | null;
   city: string | null;
   address: string | null;
-  estimated_budget: number | null;
+  estimated_value: number | null;
   source: string | null;
   status: LeadStatus;
   qualification_score: number | null;
@@ -373,29 +373,28 @@ export default function LeadDetail() {
         console.log("Created new customer:", customerId);
       }
 
-      // Create the job using mutation hook
-      const jobData = await createJobMutation.mutateAsync({
-        name: `${lead.name} - ${lead.service_type || "Job"}`,
-        customer_id: customerId,
-        service_type: lead.service_type,
-        address: lead.address || lead.city,
-        estimated_value: lead.estimated_budget,
-        status: "scheduled",
-        lead_id: lead.id,
-      });
-
-      console.log("Job created successfully:", jobData.id);
-
-      // Fetch the complete job data with relations
-      const { data: completeJobData } = await supabase
-        .from("jobs")
+      // Update the lead to become a job by adding job fields
+      const { data: jobData, error: updateError } = await supabase
+        .from("leads")
+        .update({
+          customer_id: customerId,
+          status: "scheduled",
+          estimated_value: lead.estimated_value,
+        })
+        .eq("id", lead.id)
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          crew_lead:profiles!jobs_crew_lead_id_fkey(id, full_name)
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
-        .eq("id", jobData.id)
         .single();
+
+      if (updateError) {
+        console.error("Error converting lead to job:", updateError);
+        throw new Error("Failed to convert lead to job");
+      }
+
+      console.log("Lead converted to job successfully:", jobData.id);
 
       // Log the conversion interaction
       await supabase.from("interactions").insert({
@@ -406,19 +405,17 @@ export default function LeadDetail() {
         created_by: user?.id,
       });
 
-      // Update lead status to won
-      await updateLeadStatus("won");
-
       toast.dismiss(loadingToast);
-      toast.success("Job created successfully!");
+      toast.success("Lead converted to job successfully!");
 
       // Pre-populate the query cache with the job data
-      if (completeJobData) {
-        queryClient.setQueryData(["job", jobData.id], completeJobData);
+      if (jobData) {
+        queryClient.setQueryData(["job", jobData.id], jobData);
       }
 
-      // Invalidate jobs list to ensure it shows up
+      // Invalidate both leads and jobs lists
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
 
       // Navigate to the job detail page
       navigate(`/jobs/${jobData.id}`);
@@ -617,11 +614,11 @@ export default function LeadDetail() {
                 <p className="font-medium">{lead.city}</p>
               </div>
             )}
-            {lead.estimated_budget && (
+            {lead.estimated_value && (
               <div>
                 <span className="text-muted-foreground">Budget</span>
                 <p className="font-medium text-status-confirmed">
-                  ${lead.estimated_budget.toLocaleString()}
+                  ${lead.estimated_value.toLocaleString()}
                 </p>
               </div>
             )}

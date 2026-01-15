@@ -3,8 +3,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { Database } from "@/integrations/supabase/types";
 
-type JobStatus = Database["public"]["Enums"]["job_status"];
-type DbJob = Database["public"]["Tables"]["jobs"]["Row"];
+type JobStatus = Database["public"]["Enums"]["unified_status"];
+type DbJob = Database["public"]["Tables"]["leads"]["Row"];
 
 export interface Job extends DbJob {
   customer?: {
@@ -48,11 +48,17 @@ function formatScheduledTime(date: string | null, timeStart: string | null): str
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
   const statusLabels: Record<JobStatus, string> = {
+    new: "New",
+    contacted: "Contacted",
+    qualified: "Qualified",
     scheduled: "Scheduled",
     in_progress: "In Progress",
     completed: "Completed",
-    invoiced: "Invoiced",
-    paid: "Paid",
+    won: "Won",
+    lost: "Lost",
+    cancelled: "Cancelled",
+    on_hold: "On Hold",
+    unqualified: "Unqualified",
   };
 
   const scheduledTime = formatScheduledTime(job.scheduled_date, job.scheduled_time_start);

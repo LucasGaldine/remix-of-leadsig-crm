@@ -187,11 +187,11 @@ export default function LeadsRejected() {
                       </p>
 
                       <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
-                        {lead.estimated_budget && lead.estimated_budget > 0 && (
+                        {lead.estimated_value && lead.estimated_value > 0 && (
                           <div className="flex items-center gap-1.5">
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                             <span className="text-muted-foreground">
-                              ${lead.estimated_budget.toLocaleString()}
+                              ${lead.estimated_value.toLocaleString()}
                             </span>
                           </div>
                         )}

@@ -11,7 +11,7 @@ interface PendingLead {
   phone: string | null;
   email: string | null;
   service_type: string | null;
-  estimated_budget: number | null;
+  estimated_value: number | null;
   city: string | null;
   address: string | null;
   source: string | null;
@@ -55,7 +55,7 @@ export function usePendingLeads() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("id, name, phone, email, service_type, estimated_budget, city, address, source, created_at, submitted_at, approval_status")
+        .select("id, name, phone, email, service_type, estimated_value, city, address, source, created_at, submitted_at, approval_status")
         .eq("approval_status", "pending")
         .order("created_at", { ascending: false });
 
