@@ -29,7 +29,7 @@ export default function Jobs() {
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
   const [showAddJob, setShowAddJob] = useState(false);
 
-  const { data: allJobs = [], isLoading } = useJobs();
+  const { data: allJobs = [], isLoading } = useJobs({ limit: 100 });
 
   const filteredJobs = allJobs.filter((job) => {
     const customerName = job.customer?.name || "";

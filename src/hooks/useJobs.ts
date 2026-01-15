@@ -9,7 +9,7 @@ type JobInsert = Database["public"]["Tables"]["jobs"]["Insert"];
 type JobUpdate = Database["public"]["Tables"]["jobs"]["Update"];
 type JobStatus = Database["public"]["Enums"]["job_status"];
 
-export function useJobs(filter?: { status?: JobStatus; date?: string }) {
+export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: number }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -55,6 +55,10 @@ export function useJobs(filter?: { status?: JobStatus; date?: string }) {
 
       if (filter?.date) {
         query = query.eq("scheduled_date", filter.date);
+      }
+
+      if (filter?.limit) {
+        query = query.limit(filter.limit);
       }
 
       const { data, error } = await query;
