@@ -218,7 +218,11 @@ export default function LeadDetail() {
     }
 
     if (newStatus === "won") {
-      setShowJobDialog(true);
+      if (lead.status !== "qualified") {
+        toast.error("Lead must be qualified before converting to Won");
+        return;
+      }
+      setCreateJobDialogOpen(true);
       return;
     }
 
