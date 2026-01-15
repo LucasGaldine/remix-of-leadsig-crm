@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Calendar, Clock, AlertCircle, UserCheck, DollarSign, CheckCircle } from "lucide-react";
+import { Calendar, Clock, UserCheck, CheckCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -9,81 +9,20 @@ import { LeadCard, Lead } from "@/components/leads/LeadCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
-
-// Demo data - will be replaced with real data from database
-const todaysJobs: Job[] = [
-  {
-    id: "1",
-    clientName: "Johnson Residence",
-    clientAddress: "1234 Oak Street, Springfield",
-    serviceType: "Patio Installation",
-    scheduledTime: "8:00 AM - 12:00 PM",
-    status: "in-progress",
-    crewLead: "Mike Thompson",
-    estimateValue: 8500,
-  },
-  {
-    id: "2",
-    clientName: "Anderson Property",
-    clientAddress: "567 Maple Ave, Riverside",
-    serviceType: "Retaining Wall",
-    scheduledTime: "1:00 PM - 5:00 PM",
-    status: "scheduled",
-    crewLead: "Carlos Rodriguez",
-    estimateValue: 12000,
-  },
-];
-
-const qualifiedLeads: Lead[] = [
-  {
-    id: "1",
-    name: "Sarah Mitchell",
-    phone: "(555) 123-4567",
-    serviceType: "Driveway Pavers",
-    estimatedBudget: 15000,
-    location: "Oak Park",
-    source: "Google",
-    createdAt: "2 hours ago",
-    status: "qualified",
-    qualificationScore: 92,
-  },
-  {
-    id: "2",
-    name: "Robert Chen",
-    phone: "(555) 987-6543",
-    serviceType: "Backyard Renovation",
-    estimatedBudget: 25000,
-    location: "Riverside",
-    source: "Referral",
-    createdAt: "4 hours ago",
-    status: "qualified",
-    qualificationScore: 88,
-  },
-];
-
-const pendingApprovals = [
-  {
-    id: "1",
-    clientName: "Williams Family",
-    serviceType: "Pool Deck",
-    estimateValue: 18500,
-    sentAt: "Yesterday",
-  },
-  {
-    id: "2",
-    clientName: "Garcia Home",
-    serviceType: "Fire Pit Area",
-    estimateValue: 6800,
-    sentAt: "2 days ago",
-  },
-];
+import { useTodaysJobs } from "@/hooks/useJobs";
+import { useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates } from "@/hooks/useDashboardLeads";
+import { formatDistanceToNow } from "date-fns";
+import { Loader2 } from "lucide-react";
 
 export default function Index() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
+  const { data: todaysJobsData = [], isLoading: jobsLoading } = useTodaysJobs();
+  const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
+  const { data: inProgressLeadsData = [], isLoading: inProgressLoading } = useInProgressLeads();
+  const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
 
-  // Check if email is confirmed (Supabase stores this in email_confirmed_at)
   const isEmailConfirmed = !!user?.email_confirmed_at;
 
   const handleJobClick = (jobId: string) => {
@@ -93,6 +32,43 @@ export default function Index() {
   const handleLeadClick = (leadId: string) => {
     navigate(`/leads/${leadId}`);
   };
+
+  const formatJobForCard = (job: any): Job => ({
+    id: job.id,
+    clientName: job.customer?.name || "Unknown Client",
+    clientAddress: job.address || "No address",
+    serviceType: job.service_type || "Unknown Service",
+    scheduledTime: job.scheduled_time_start && job.scheduled_time_end
+      ? `${job.scheduled_time_start} - ${job.scheduled_time_end}`
+      : "Time TBD",
+    status: job.status,
+    crewLead: job.crew_lead?.full_name || "Unassigned",
+    estimateValue: Number(job.estimated_value) || 0,
+  });
+
+  const formatLeadForCard = (lead: any): Lead => ({
+    id: lead.id,
+    name: lead.name,
+    phone: lead.phone || "",
+    serviceType: lead.service_type || "Unknown",
+    estimatedBudget: Number(lead.estimated_budget) || 0,
+    location: lead.city || "Unknown",
+    source: lead.source || "Unknown",
+    createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),
+    status: lead.status,
+    qualificationScore: lead.qualification_score || 0,
+  });
+
+  const todaysJobs = todaysJobsData.map(formatJobForCard);
+  const qualifiedLeads = qualifiedLeadsData.map(formatLeadForCard);
+  const inProgressLeads = inProgressLeadsData.map(formatLeadForCard);
+  const pendingApprovals = pendingApprovalsData.map((estimate: any) => ({
+    id: estimate.id,
+    clientName: estimate.job?.customer?.name || "Unknown",
+    serviceType: estimate.job?.name || "Unknown",
+    estimateValue: Number(estimate.total_amount) || 0,
+    sentAt: formatDistanceToNow(new Date(estimate.created_at), { addSuffix: true }),
+  }));
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -142,15 +118,25 @@ export default function Index() {
             action={{ label: "View all", onClick: () => navigate("/schedule") }}
             className="mb-3"
           />
-          <div className="space-y-3">
-            {todaysJobs.map((job) => (
-              <JobCard key={job.id} job={job} onClick={() => handleJobClick(job.id)} />
-            ))}
-          </div>
+          {jobsLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : todaysJobs.length === 0 ? (
+            <div className="card-elevated rounded-lg p-6 text-center">
+              <p className="text-muted-foreground">No jobs scheduled for today</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {todaysJobs.map((job) => (
+                <JobCard key={job.id} job={job} onClick={() => handleJobClick(job.id)} />
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Pending Approvals */}
-        {pendingApprovals.length > 0 && (
+        {!approvalsLoading && pendingApprovals.length > 0 && (
           <section>
             <SectionHeader
               title="Awaiting Approval"
@@ -194,22 +180,59 @@ export default function Index() {
             action={{ label: "View all", onClick: () => navigate("/leads") }}
             className="mb-3"
           />
-          <div className="space-y-3">
-            {qualifiedLeads.map((lead) => (
-              <LeadCard
-                key={lead.id}
-                lead={lead}
-                onClick={() => handleLeadClick(lead.id)}
-                onCall={() => {
-                  if (import.meta.env.DEV) console.log("Call", lead.phone);
-                }}
-                onMessage={() => {
-                  if (import.meta.env.DEV) console.log("Message", lead.phone);
-                }}
-              />
-            ))}
-          </div>
+          {leadsLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : qualifiedLeads.length === 0 ? (
+            <div className="card-elevated rounded-lg p-6 text-center">
+              <p className="text-muted-foreground">No qualified leads at the moment</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {qualifiedLeads.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onClick={() => handleLeadClick(lead.id)}
+                  onCall={() => {
+                    if (import.meta.env.DEV) console.log("Call", lead.phone);
+                  }}
+                  onMessage={() => {
+                    if (import.meta.env.DEV) console.log("Message", lead.phone);
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </section>
+
+        {/* In Progress Leads */}
+        {!inProgressLoading && inProgressLeads.length > 0 && (
+          <section>
+            <SectionHeader
+              title="In Progress"
+              count={inProgressLeads.length}
+              action={{ label: "View all", onClick: () => navigate("/leads") }}
+              className="mb-3"
+            />
+            <div className="space-y-3">
+              {inProgressLeads.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onClick={() => handleLeadClick(lead.id)}
+                  onCall={() => {
+                    if (import.meta.env.DEV) console.log("Call", lead.phone);
+                  }}
+                  onMessage={() => {
+                    if (import.meta.env.DEV) console.log("Message", lead.phone);
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       <MobileNav />
