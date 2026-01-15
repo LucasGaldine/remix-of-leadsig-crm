@@ -386,6 +386,17 @@ export default function LeadDetail() {
 
       console.log("Job created successfully:", jobData.id);
 
+      // Fetch the complete job data with relations
+      const { data: completeJobData } = await supabase
+        .from("jobs")
+        .select(`
+          *,
+          customer:customers(id, name, email, phone, address),
+          crew_lead:profiles!jobs_crew_lead_id_fkey(id, full_name)
+        `)
+        .eq("id", jobData.id)
+        .single();
+
       // Log the conversion interaction
       await supabase.from("interactions").insert({
         lead_id: lead.id,
@@ -401,12 +412,13 @@ export default function LeadDetail() {
       toast.dismiss(loadingToast);
       toast.success("Job created successfully!");
 
-      // Invalidate job queries to ensure fresh data
-      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      await queryClient.invalidateQueries({ queryKey: ["job", jobData.id] });
+      // Pre-populate the query cache with the job data
+      if (completeJobData) {
+        queryClient.setQueryData(["job", jobData.id], completeJobData);
+      }
 
-      // Small delay to ensure database consistency
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Invalidate jobs list to ensure it shows up
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
 
       // Navigate to the job detail page
       navigate(`/jobs/${jobData.id}`);
