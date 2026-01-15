@@ -5,6 +5,7 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
 import { LeadCard, Lead } from "@/components/leads/LeadCard";
+import { JobCard } from "@/components/jobs/JobCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
@@ -42,7 +43,6 @@ export default function Index() {
 
   const qualifiedLeads = qualifiedLeadsData.map(formatLeadForCard);
   const inProgressLeads = inProgressLeadsData.map(formatLeadForCard);
-  const activeJobs = activeJobsData.map(formatLeadForCard);
   const pendingApprovals = pendingApprovalsData.map((estimate: any) => ({
     id: estimate.id,
     clientName: estimate.job?.customer?.name || "Unknown",
@@ -125,31 +125,25 @@ export default function Index() {
         <section>
           <SectionHeader
             title="Today's Jobs"
-            count={activeJobs.length}
-            action={{ label: "View all", onClick: () => navigate("/leads") }}
+            count={activeJobsData.length}
+            action={{ label: "View all", onClick: () => navigate("/jobs") }}
             className="mb-3"
           />
           {activeJobsLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : activeJobs.length === 0 ? (
+          ) : activeJobsData.length === 0 ? (
             <div className="card-elevated rounded-lg p-6 text-center">
               <p className="text-muted-foreground">No jobs today</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {activeJobs.map((lead) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  onClick={() => handleLeadClick(lead.id)}
-                  onCall={() => {
-                    if (import.meta.env.DEV) console.log("Call", lead.phone);
-                  }}
-                  onMessage={() => {
-                    if (import.meta.env.DEV) console.log("Message", lead.phone);
-                  }}
+              {activeJobsData.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  onClick={() => navigate(`/jobs/${job.id}`)}
                 />
               ))}
             </div>

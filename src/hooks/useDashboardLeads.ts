@@ -49,20 +49,25 @@ export function useInProgressLeads() {
 
 export function useActiveJobs() {
   const { user } = useAuth();
+  const today = new Date().toISOString().split("T")[0];
 
   return useQuery({
-    queryKey: ["dashboard-leads", "active-jobs"],
+    queryKey: ["dashboard-leads", "active-jobs", today],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("*")
+        .select(`
+          *,
+          customer:customers!customer_id(id, name, email, phone, address),
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
+        `)
         .eq("approval_status", "approved")
-        .in("status", ["scheduled","in_progress", "won","completed"])
-        .order("created_at", { ascending: false })
-        .limit(5);
+        .in("status", ["scheduled", "in_progress"])
+        .eq("scheduled_date", today)
+        .order("scheduled_time_start", { ascending: true, nullsFirst: false });
 
       if (error) throw error;
-      return data as Lead[];
+      return data;
     },
     enabled: !!user,
   });
