@@ -69,7 +69,7 @@ interface Qualification {
 const PIPELINE_STAGES: { value: string; label: string; color: string }[] = [
   { value: "new", label: "New", color: "bg-blue-500" },
   { value: "contacted", label: "Contacted", color: "bg-yellow-500" },
-  { value: "qualified", label: "Qualified", color: "bg-green-500" },
+  { value: "qualified", label: "Qualified", color: "bg-primary" },
   { value: "scheduled", label: "Scheduled", color: "bg-purple-500" },
   { value: "in_progress", label: "In Progress", color: "bg-orange-500" },
   { value: "won", label: "Won", color: "bg-emerald-600" },
@@ -433,9 +433,16 @@ export default function LeadDetail() {
             <h1 className="font-semibold text-lg">{lead.name}</h1>
             <p className="text-sm text-muted-foreground">{lead.service_type || "No service type"}</p>
           </div>
-          <StatusBadge status={getStatusBadgeStatus(lead.status)}>
-            {lead.status.replace("_", " ")}
-          </StatusBadge>
+          {lead.status === "qualified" ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary border border-primary/20">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              qualified
+            </span>
+          ) : (
+            <StatusBadge status={getStatusBadgeStatus(lead.status)}>
+              {lead.status.replace("_", " ")}
+            </StatusBadge>
+          )}
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -572,8 +579,8 @@ export default function LeadDetail() {
           <h3 className="font-medium mb-3">Qualification</h3>
           
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="budget-confirmed">Budget Confirmed</Label>
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
               <Switch
                 id="budget-confirmed"
                 checked={qualification?.budget_confirmed ?? false}
@@ -581,8 +588,8 @@ export default function LeadDetail() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <Label htmlFor="service-area">In Service Area</Label>
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
               <Switch
                 id="service-area"
                 checked={qualification?.service_area_fit ?? false}
@@ -590,8 +597,8 @@ export default function LeadDetail() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <Label htmlFor="decision-maker">Decision Maker</Label>
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
               <Switch
                 id="decision-maker"
                 checked={qualification?.decision_maker_confirmed ?? false}
