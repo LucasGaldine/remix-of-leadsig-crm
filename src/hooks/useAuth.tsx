@@ -107,36 +107,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string, selectedRole: AppRole) => {
     const redirectUrl = `${window.location.origin}/`;
-    
-    const { data, error } = await supabase.auth.signUp({
+
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
+          role: selectedRole,
         },
       },
     });
 
     if (error) return { error };
-
-    // Assign role after signup
-    if (data.user) {
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: data.user.id,
-          role: selectedRole,
-        });
-
-      if (roleError) {
-        if (import.meta.env.DEV) {
-          console.error('Error assigning role:', roleError);
-        }
-        return { error: roleError };
-      }
-    }
 
     return { error: null };
   };
