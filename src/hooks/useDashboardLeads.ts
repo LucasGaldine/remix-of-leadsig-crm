@@ -47,6 +47,26 @@ export function useInProgressLeads() {
   });
 }
 
+export function useActiveJobs() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ["dashboard-leads", "active-jobs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("*")
+        .in("status", ["scheduled", "in_progress", "won", "completed", "canceled"])
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      return data as Lead[];
+    },
+    enabled: !!user,
+  });
+}
+
 export function usePendingApprovalEstimates() {
   const { user } = useAuth();
 

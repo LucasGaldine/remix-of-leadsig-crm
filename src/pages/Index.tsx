@@ -4,13 +4,11 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
-import { JobCard, Job } from "@/components/jobs/JobCard";
 import { LeadCard, Lead } from "@/components/leads/LeadCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
-import { useTodaysJobs } from "@/hooks/useJobs";
-import { useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates } from "@/hooks/useDashboardLeads";
+import { useActiveJobs, useQualifiedLeads, useInProgressLeads, usePendingApprovalEstimates } from "@/hooks/useDashboardLeads";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 
@@ -18,33 +16,16 @@ export default function Index() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
-  const { data: todaysJobsData = [], isLoading: jobsLoading } = useTodaysJobs();
+  const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
   const { data: inProgressLeadsData = [], isLoading: inProgressLoading } = useInProgressLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
 
-  const handleJobClick = (jobId: string) => {
-    navigate(`/jobs/${jobId}`);
-  };
-
   const handleLeadClick = (leadId: string) => {
     navigate(`/leads/${leadId}`);
   };
-
-  const formatJobForCard = (job: any): Job => ({
-    id: job.id,
-    clientName: job.customer?.name || "Unknown Client",
-    clientAddress: job.address || "No address",
-    serviceType: job.service_type || "Unknown Service",
-    scheduledTime: job.scheduled_time_start && job.scheduled_time_end
-      ? `${job.scheduled_time_start} - ${job.scheduled_time_end}`
-      : "Time TBD",
-    status: job.status,
-    crewLead: job.crew_lead?.full_name || "Unassigned",
-    estimateValue: Number(job.estimated_value) || 0,
-  });
 
   const formatLeadForCard = (lead: any): Lead => ({
     id: lead.id,
@@ -59,7 +40,7 @@ export default function Index() {
     qualificationScore: lead.qualification_score || 0,
   });
 
-  const todaysJobs = todaysJobsData.map(formatJobForCard);
+  const activeJobs = activeJobsData.map(formatLeadForCard);
   const qualifiedLeads = qualifiedLeadsData.map(formatLeadForCard);
   const inProgressLeads = inProgressLeadsData.map(formatLeadForCard);
   const pendingApprovals = pendingApprovalsData.map((estimate: any) => ({
@@ -81,11 +62,11 @@ export default function Index() {
         {/* Quick Stats */}
         <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-4 px-4">
           <StatCard
-            label="Today's Jobs"
-            value={todaysJobs.length}
+            label="Active Jobs"
+            value={activeJobs.length}
             icon={Calendar}
             variant="success"
-            onClick={() => navigate("/schedule")}
+            onClick={() => navigate("/leads")}
           />
           <StatCard
             label="Leads Pending"
@@ -110,26 +91,36 @@ export default function Index() {
           />
         </div>
 
-        {/* Today's Jobs */}
+        {/* Active Jobs */}
         <section>
           <SectionHeader
-            title="Today's Jobs"
-            count={todaysJobs.length}
-            action={{ label: "View all", onClick: () => navigate("/schedule") }}
+            title="Active Jobs"
+            count={activeJobs.length}
+            action={{ label: "View all", onClick: () => navigate("/leads") }}
             className="mb-3"
           />
-          {jobsLoading ? (
+          {activeJobsLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : todaysJobs.length === 0 ? (
+          ) : activeJobs.length === 0 ? (
             <div className="card-elevated rounded-lg p-6 text-center">
-              <p className="text-muted-foreground">No jobs scheduled for today</p>
+              <p className="text-muted-foreground">No active jobs at the moment</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {todaysJobs.map((job) => (
-                <JobCard key={job.id} job={job} onClick={() => handleJobClick(job.id)} />
+              {activeJobs.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onClick={() => handleLeadClick(lead.id)}
+                  onCall={() => {
+                    if (import.meta.env.DEV) console.log("Call", lead.phone);
+                  }}
+                  onMessage={() => {
+                    if (import.meta.env.DEV) console.log("Message", lead.phone);
+                  }}
+                />
               ))}
             </div>
           )}
