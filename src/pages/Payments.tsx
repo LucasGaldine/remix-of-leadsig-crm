@@ -11,214 +11,10 @@ import { EstimateCard } from "@/components/payments/EstimateCard";
 import { InvoiceCard } from "@/components/payments/InvoiceCard";
 import { PaymentCard } from "@/components/payments/PaymentCard";
 import { cn } from "@/lib/utils";
-import { Estimate, Invoice, Payment } from "@/types/payments";
-
-// Demo data
-const demoEstimates: Estimate[] = [
-  {
-    id: "est-1",
-    customerId: "cust-1",
-    customerName: "Johnson Residence",
-    jobId: "job-1",
-    jobName: "Patio Installation",
-    lineItems: [
-      { id: "li-1", name: "Cambridge Cobble Pavers", qty: 400, unit: "sq ft", unitPrice: 12, total: 4800 },
-      { id: "li-2", name: "Base Preparation", qty: 1, unit: "job", unitPrice: 1500, total: 1500 },
-      { id: "li-3", name: "Labor", qty: 24, unit: "hours", unitPrice: 85, total: 2040 },
-    ],
-    subtotal: 8340,
-    taxRate: 0.08,
-    tax: 667.20,
-    discount: 0,
-    total: 9007.20,
-    status: "sent",
-    createdAt: "Jan 10",
-    sentAt: "Jan 10",
-    expiresAt: "Jan 24",
-  },
-  {
-    id: "est-2",
-    customerId: "cust-2",
-    customerName: "Williams Family",
-    jobId: "job-2",
-    jobName: "Pool Deck",
-    lineItems: [
-      { id: "li-1", name: "Travertine Pavers", qty: 600, unit: "sq ft", unitPrice: 18, total: 10800 },
-      { id: "li-2", name: "Drainage System", qty: 1, unit: "job", unitPrice: 2500, total: 2500 },
-    ],
-    subtotal: 13300,
-    taxRate: 0.08,
-    tax: 1064,
-    discount: 500,
-    total: 13864,
-    status: "viewed",
-    createdAt: "Jan 8",
-    sentAt: "Jan 8",
-    viewedAt: "Jan 9",
-    expiresAt: "Jan 22",
-  },
-  {
-    id: "est-3",
-    customerId: "cust-3",
-    customerName: "Garcia Home",
-    jobId: "job-3",
-    jobName: "Fire Pit Area",
-    lineItems: [
-      { id: "li-1", name: "Fire Pit Kit", qty: 1, unit: "kit", unitPrice: 2500, total: 2500 },
-      { id: "li-2", name: "Seating Area Pavers", qty: 200, unit: "sq ft", unitPrice: 14, total: 2800 },
-    ],
-    subtotal: 5300,
-    taxRate: 0.08,
-    tax: 424,
-    discount: 0,
-    total: 5724,
-    status: "accepted",
-    createdAt: "Jan 5",
-    sentAt: "Jan 5",
-    viewedAt: "Jan 5",
-    acceptedAt: "Jan 6",
-  },
-];
-
-const demoInvoices: Invoice[] = [
-  {
-    id: "inv-1",
-    customerId: "cust-4",
-    customerName: "Martinez Backyard",
-    jobId: "job-4",
-    jobName: "Walkway Installation",
-    lineItems: [
-      { id: "li-1", name: "Bluestone Pavers", qty: 150, unit: "sq ft", unitPrice: 20, total: 3000 },
-      { id: "li-2", name: "Installation Labor", qty: 16, unit: "hours", unitPrice: 75, total: 1200 },
-    ],
-    subtotal: 4200,
-    taxRate: 0.08,
-    tax: 336,
-    discount: 0,
-    total: 4536,
-    balanceDue: 4536,
-    status: "sent",
-    dueDate: "Jan 20",
-    createdAt: "Jan 6",
-    sentAt: "Jan 6",
-  },
-  {
-    id: "inv-2",
-    customerId: "cust-5",
-    customerName: "Thompson Estate",
-    jobId: "job-5",
-    jobName: "Full Landscape",
-    lineItems: [
-      { id: "li-1", name: "Design & Planning", qty: 1, unit: "job", unitPrice: 5000, total: 5000 },
-      { id: "li-2", name: "Materials", qty: 1, unit: "lot", unitPrice: 15000, total: 15000 },
-      { id: "li-3", name: "Labor", qty: 120, unit: "hours", unitPrice: 85, total: 10200 },
-    ],
-    subtotal: 30200,
-    taxRate: 0.08,
-    tax: 2416,
-    discount: 1000,
-    total: 31616,
-    balanceDue: 0,
-    status: "paid",
-    dueDate: "Jan 5",
-    createdAt: "Dec 20",
-    sentAt: "Dec 20",
-    paidAt: "Jan 3",
-  },
-  {
-    id: "inv-3",
-    customerId: "cust-6",
-    customerName: "Chen Residence",
-    jobId: "job-6",
-    jobName: "Retaining Wall",
-    lineItems: [
-      { id: "li-1", name: "Wall Blocks", qty: 200, unit: "blocks", unitPrice: 12, total: 2400 },
-      { id: "li-2", name: "Labor", qty: 32, unit: "hours", unitPrice: 85, total: 2720 },
-    ],
-    subtotal: 5120,
-    taxRate: 0.08,
-    tax: 409.60,
-    discount: 0,
-    total: 5529.60,
-    balanceDue: 2764.80,
-    status: "partial",
-    dueDate: "Jan 15",
-    createdAt: "Jan 2",
-    sentAt: "Jan 2",
-  },
-  {
-    id: "inv-4",
-    customerId: "cust-7",
-    customerName: "Wilson Property",
-    jobId: "job-7",
-    jobName: "Driveway Extension",
-    lineItems: [
-      { id: "li-1", name: "Concrete Work", qty: 1, unit: "job", unitPrice: 8500, total: 8500 },
-    ],
-    subtotal: 8500,
-    taxRate: 0.08,
-    tax: 680,
-    discount: 0,
-    total: 9180,
-    balanceDue: 9180,
-    status: "overdue",
-    dueDate: "Jan 1",
-    createdAt: "Dec 15",
-    sentAt: "Dec 15",
-  },
-];
-
-const demoPayments: Payment[] = [
-  {
-    id: "pay-1",
-    invoiceId: "inv-2",
-    customerId: "cust-5",
-    customerName: "Thompson Estate",
-    jobId: "job-5",
-    amount: 31616,
-    method: "ach",
-    status: "completed",
-    transactionRef: "ACH-2024-0103-001",
-    createdAt: "Jan 3",
-    receiptUrl: "#",
-  },
-  {
-    id: "pay-2",
-    invoiceId: "inv-3",
-    customerId: "cust-6",
-    customerName: "Chen Residence",
-    jobId: "job-6",
-    amount: 2764.80,
-    method: "card",
-    status: "completed",
-    transactionRef: "CC-2024-0108-002",
-    createdAt: "Jan 8",
-    receiptUrl: "#",
-  },
-  {
-    id: "pay-3",
-    invoiceId: "inv-5",
-    customerId: "cust-8",
-    customerName: "Adams Home",
-    jobId: "job-8",
-    amount: 1500,
-    method: "cash",
-    status: "completed",
-    createdAt: "Jan 10",
-  },
-  {
-    id: "pay-4",
-    invoiceId: "inv-6",
-    customerId: "cust-9",
-    customerName: "Baker Landscaping",
-    amount: 3200,
-    method: "tap-to-pay",
-    status: "completed",
-    transactionRef: "TAP-2024-0112-001",
-    createdAt: "Jan 12",
-    receiptUrl: "#",
-  },
-];
+import { useEstimates } from "@/hooks/useEstimates";
+import { useInvoices } from "@/hooks/useInvoices";
+import { usePayments } from "@/hooks/usePayments";
+import { format } from "date-fns";
 
 type ActiveTab = "estimates" | "invoices" | "charge";
 type AgingFilter = "all" | "0-7" | "8-30" | "31+";
@@ -229,32 +25,51 @@ export default function Payments() {
   const [searchQuery, setSearchQuery] = useState("");
   const [agingFilter, setAgingFilter] = useState<AgingFilter>("all");
 
-  // Stats
-  const totalCollected = demoPayments.filter(p => p.status === "completed").reduce((sum, p) => sum + p.amount, 0);
-  const pendingInvoices = demoInvoices.filter(i => i.balanceDue > 0).reduce((sum, i) => sum + i.balanceDue, 0);
-  const pendingEstimates = demoEstimates.filter(e => e.status === "sent" || e.status === "viewed").reduce((sum, e) => sum + e.total, 0);
+  const { data: allEstimates = [], isLoading: estimatesLoading } = useEstimates({ limit: 100 });
+  const { data: allInvoices = [], isLoading: invoicesLoading } = useInvoices({ limit: 100 });
+  const { data: allPayments = [], isLoading: paymentsLoading } = usePayments({ limit: 100 });
 
-  // Filter logic
-  const filteredEstimates = demoEstimates.filter(e =>
-    e.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    e.jobName?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const isLoading = estimatesLoading || invoicesLoading || paymentsLoading;
 
-  const filteredInvoices = demoInvoices.filter(i => {
-    const matchesSearch = i.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      i.jobName?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+  const totalCollected = allPayments
+    .filter(p => p.status === "completed")
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const pendingInvoices = allInvoices
+    .filter(i => Number(i.balance_due || 0) > 0)
+    .reduce((sum, i) => sum + Number(i.balance_due || 0), 0);
+
+  const pendingEstimates = allEstimates
+    .filter(e => e.status === "sent" || e.status === "viewed")
+    .reduce((sum, e) => sum + Number(e.total || 0), 0);
+
+  const filteredEstimates = allEstimates.filter(e => {
+    const customerName = e.customer?.name || "";
+    const jobName = e.job?.name || "";
+    return (
+      customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      jobName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
+
+  const filteredInvoices = allInvoices.filter(i => {
+    const customerName = i.customer?.name || "";
+    const jobName = i.job?.name || "";
+    const matchesSearch =
+      customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      jobName.toLowerCase().includes(searchQuery.toLowerCase());
+
     if (agingFilter === "all") return matchesSearch;
-    // Simple aging filter simulation
     if (agingFilter === "0-7") return matchesSearch && i.status !== "overdue";
     if (agingFilter === "8-30") return matchesSearch && i.status === "partial";
     if (agingFilter === "31+") return matchesSearch && i.status === "overdue";
     return matchesSearch;
   });
 
-  const filteredPayments = demoPayments.filter(p =>
-    p.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPayments = allPayments.filter(p => {
+    const customerName = p.customer?.name || "";
+    return customerName.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   const handleExport = () => {
     toast.info("Export coming soon", {
@@ -269,6 +84,14 @@ export default function Payments() {
   const handleCreateInvoice = () => {
     navigate("/payments/invoices/new");
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-surface-sunken pb-24 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -404,13 +227,41 @@ export default function Payments() {
       <main className="px-4 py-4">
         {activeTab === "estimates" && (
           <div className="space-y-3">
-            {filteredEstimates.map((estimate) => (
-              <EstimateCard
-                key={estimate.id}
-                estimate={estimate}
-                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-              />
-            ))}
+            {filteredEstimates.map((estimate) => {
+              const transformedEstimate = {
+                id: estimate.id,
+                customerId: estimate.customer_id,
+                customerName: estimate.customer?.name || "Unknown",
+                jobId: estimate.job_id || undefined,
+                jobName: estimate.job?.name || undefined,
+                lineItems: estimate.line_items.map(item => ({
+                  id: item.id,
+                  name: item.name,
+                  qty: Number(item.quantity),
+                  unit: item.unit,
+                  unitPrice: Number(item.unit_price),
+                  total: Number(item.total),
+                })),
+                subtotal: Number(estimate.subtotal),
+                taxRate: Number(estimate.tax_rate),
+                tax: Number(estimate.tax),
+                discount: Number(estimate.discount),
+                total: Number(estimate.total),
+                status: estimate.status,
+                createdAt: estimate.created_at ? format(new Date(estimate.created_at), "MMM d") : "",
+                sentAt: estimate.sent_at ? format(new Date(estimate.sent_at), "MMM d") : undefined,
+                viewedAt: estimate.viewed_at ? format(new Date(estimate.viewed_at), "MMM d") : undefined,
+                acceptedAt: estimate.accepted_at ? format(new Date(estimate.accepted_at), "MMM d") : undefined,
+                expiresAt: estimate.expires_at ? format(new Date(estimate.expires_at), "MMM d") : undefined,
+              };
+              return (
+                <EstimateCard
+                  key={estimate.id}
+                  estimate={transformedEstimate}
+                  onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                />
+              );
+            })}
             {filteredEstimates.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">No estimates found</p>
@@ -421,13 +272,41 @@ export default function Payments() {
 
         {activeTab === "invoices" && (
           <div className="space-y-3">
-            {filteredInvoices.map((invoice) => (
-              <InvoiceCard
-                key={invoice.id}
-                invoice={invoice}
-                onClick={() => navigate(`/payments/invoices/${invoice.id}`)}
-              />
-            ))}
+            {filteredInvoices.map((invoice) => {
+              const transformedInvoice = {
+                id: invoice.id,
+                customerId: invoice.customer_id,
+                customerName: invoice.customer?.name || "Unknown",
+                jobId: invoice.job_id || undefined,
+                jobName: invoice.job?.name || undefined,
+                lineItems: invoice.line_items.map(item => ({
+                  id: item.id,
+                  name: item.name,
+                  qty: Number(item.quantity),
+                  unit: item.unit,
+                  unitPrice: Number(item.unit_price),
+                  total: Number(item.total),
+                })),
+                subtotal: Number(invoice.subtotal),
+                taxRate: Number(invoice.tax_rate),
+                tax: Number(invoice.tax),
+                discount: Number(invoice.discount),
+                total: Number(invoice.total),
+                balanceDue: Number(invoice.balance_due),
+                status: invoice.status,
+                dueDate: invoice.due_date ? format(new Date(invoice.due_date), "MMM d") : "",
+                createdAt: invoice.created_at ? format(new Date(invoice.created_at), "MMM d") : "",
+                sentAt: invoice.sent_at ? format(new Date(invoice.sent_at), "MMM d") : undefined,
+                paidAt: invoice.paid_at ? format(new Date(invoice.paid_at), "MMM d") : undefined,
+              };
+              return (
+                <InvoiceCard
+                  key={invoice.id}
+                  invoice={transformedInvoice}
+                  onClick={() => navigate(`/payments/invoices/${invoice.id}`)}
+                />
+              );
+            })}
             {filteredInvoices.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">No invoices found</p>
@@ -441,13 +320,28 @@ export default function Payments() {
             <div className="mb-4">
               <h3 className="font-semibold text-foreground mb-2">Recent Payments</h3>
             </div>
-            {filteredPayments.map((payment) => (
-              <PaymentCard
-                key={payment.id}
-                payment={payment}
-                onClick={() => navigate(`/payments/${payment.id}`)}
-              />
-            ))}
+            {filteredPayments.map((payment) => {
+              const transformedPayment = {
+                id: payment.id,
+                invoiceId: payment.invoice_id,
+                customerId: payment.customer_id,
+                customerName: payment.customer?.name || "Unknown",
+                jobId: payment.job_id || undefined,
+                amount: Number(payment.amount),
+                method: payment.method,
+                status: payment.status,
+                transactionRef: payment.transaction_ref || undefined,
+                createdAt: payment.created_at ? format(new Date(payment.created_at), "MMM d") : "",
+                receiptUrl: payment.receipt_url || undefined,
+              };
+              return (
+                <PaymentCard
+                  key={payment.id}
+                  payment={transformedPayment}
+                  onClick={() => navigate(`/payments/${payment.id}`)}
+                />
+              );
+            })}
             {filteredPayments.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">No payments found</p>
