@@ -51,12 +51,13 @@ export function useActiveJobs() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["dashboard-leads", "active-jobs"],
+    queryKey: ["dashboard-leads", "qualified"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
         .select("*")
-        .in("status", ["scheduled", "in_progress", "won", "completed", "canceled"])
+        .eq("approval_status", "approved")
+        .eq("status", "qualified")
         .order("created_at", { ascending: false })
         .limit(5);
 
