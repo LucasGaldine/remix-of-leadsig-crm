@@ -46,8 +46,10 @@
     --status-attention-bg: 0 72% 96%;
     --status-paid: 217 75% 50%;
     --status-paid-bg: 217 75% 96%;
-    --status-progress: 215 15% 45%;
-    --status-progress-bg: 215 15% 95%;
+    --status-progress: 43 90% 50%;
+    --status-progress-bg: 43 90% 95%;
+    --status-won: 215 15% 45%;
+    --status-won-bg: 215 15% 95%;
 
     /* Operational surfaces */
     --surface-elevated: 0 0% 100%;
@@ -103,8 +105,10 @@
     --status-attention-bg: 0 50% 12%;
     --status-paid: 217 70% 55%;
     --status-paid-bg: 217 50% 12%;
-    --status-progress: 215 15% 55%;
-    --status-progress-bg: 215 15% 18%;
+    --status-progress: 43 85% 55%;
+    --status-progress-bg: 43 60% 12%;
+    --status-won: 215 15% 55%;
+    --status-won-bg: 215 15% 18%;
 
     --surface-elevated: 220 20% 14%;
     --surface-sunken: 220 20% 6%;
@@ -157,6 +161,10 @@
 
   .status-progress {
     @apply bg-[hsl(var(--status-progress-bg))] text-[hsl(var(--status-progress))];
+  }
+
+  .status-won {
+    @apply bg-[hsl(var(--status-won-bg))] text-[hsl(var(--status-won))];
   }
 
   /* Card elevation */

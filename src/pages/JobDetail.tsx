@@ -146,6 +146,25 @@ export default function JobDetail() {
     }
   };
 
+  const handleClearSchedule = async () => {
+    if (!id) return;
+
+    try {
+      await updateJobMutation.mutateAsync({
+        id,
+        scheduled_date: null,
+        scheduled_time_start: null,
+        scheduled_time_end: null,
+      });
+
+      toast.success("Schedule cleared!");
+      setScheduleDialogOpen(false);
+    } catch (error) {
+      console.error("Error clearing schedule:", error);
+      toast.error("Failed to clear schedule");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Job Details" showBack backTo="/jobs" showNotifications={false} />
@@ -431,13 +450,22 @@ export default function JobDetail() {
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
-              Cancel
+          <DialogFooter className="sm:justify-between">
+            <Button
+              variant="destructive"
+              onClick={handleClearSchedule}
+              disabled={!job?.scheduled_date}
+            >
+              Clear Schedule
             </Button>
-            <Button onClick={handleSchedule} disabled={!scheduleForm.scheduled_date}>
-              Save Schedule
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSchedule} disabled={!scheduleForm.scheduled_date}>
+                Save Schedule
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
