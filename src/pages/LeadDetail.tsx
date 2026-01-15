@@ -315,10 +315,69 @@ export default function LeadDetail() {
     toast.success("Lead disqualified");
   };
 
-  const createJob = () => {
+  const createJob = async () => {
     if (!lead) return;
-    // Navigate to job creation with lead data pre-filled
-    navigate(`/jobs?createFrom=lead&leadId=${lead.id}&name=${encodeURIComponent(lead.name)}&serviceType=${encodeURIComponent(lead.service_type || "")}`);
+
+    try {
+      let customerId = null;
+
+      const { data: existingCustomers } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("phone", lead.phone)
+        .maybeSingle();
+
+      if (existingCustomers) {
+        customerId = existingCustomers.id;
+      } else {
+        const { data: newCustomer, error: customerError } = await supabase
+          .from("customers")
+          .insert({
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            address: lead.address || lead.city,
+            created_by: user?.id,
+          })
+          .select()
+          .single();
+
+        if (customerError) throw customerError;
+        customerId = newCustomer.id;
+      }
+
+      const { data: job, error: jobError } = await supabase
+        .from("jobs")
+        .insert({
+          name: `${lead.name} - ${lead.service_type || "Job"}`,
+          customer_id: customerId,
+          service_type: lead.service_type,
+          address: lead.address || lead.city,
+          estimated_value: lead.estimated_budget,
+          status: "scheduled",
+          created_by: user?.id,
+          lead_id: lead.id,
+        })
+        .select()
+        .single();
+
+      if (jobError) throw jobError;
+
+      await supabase.from("interactions").insert({
+        lead_id: lead.id,
+        type: "status_change" as InteractionType,
+        direction: "na" as InteractionDirection,
+        summary: "Converted to job",
+        created_by: user?.id,
+      });
+
+      await updateLeadStatus("won");
+      toast.success("Job created successfully!");
+      navigate(`/jobs/${job.id}`);
+    } catch (error) {
+      console.error("Error creating job:", error);
+      toast.error("Failed to create job");
+    }
   };
 
   const deleteLead = async () => {

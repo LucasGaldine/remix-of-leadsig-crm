@@ -1,18 +1,23 @@
 import { MapPin, Clock, User, ChevronRight } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
+import { Database } from "@/integrations/supabase/types";
 
-export type JobStatus = "scheduled" | "in-progress" | "completed" | "invoiced" | "paid";
+type JobStatus = Database["public"]["Enums"]["job_status"];
+type DbJob = Database["public"]["Tables"]["jobs"]["Row"];
 
-export interface Job {
-  id: string;
-  clientName: string;
-  clientAddress: string;
-  serviceType: string;
-  scheduledTime: string;
-  status: JobStatus;
-  crewLead?: string;
-  estimateValue?: number;
+export interface Job extends DbJob {
+  customer?: {
+    id: string;
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
+  } | null;
+  crew_lead?: {
+    id: string;
+    full_name?: string | null;
+  } | null;
 }
 
 interface JobCardProps {
@@ -21,14 +26,38 @@ interface JobCardProps {
   className?: string;
 }
 
+function formatScheduledTime(date: string | null, timeStart: string | null): string {
+  if (!date) return "Not scheduled";
+
+  const jobDate = new Date(date);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const isToday = jobDate.toDateString() === today.toDateString();
+  const isTomorrow = jobDate.toDateString() === tomorrow.toDateString();
+
+  if (isToday) {
+    return timeStart ? `Today, ${timeStart.slice(0, 5)}` : "Today";
+  } else if (isTomorrow) {
+    return timeStart ? `Tomorrow, ${timeStart.slice(0, 5)}` : "Tomorrow";
+  } else {
+    return jobDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+}
+
 export function JobCard({ job, onClick, className }: JobCardProps) {
   const statusLabels: Record<JobStatus, string> = {
     scheduled: "Scheduled",
-    "in-progress": "In Progress",
+    in_progress: "In Progress",
     completed: "Completed",
     invoiced: "Invoiced",
     paid: "Paid",
   };
+
+  const scheduledTime = formatScheduledTime(job.scheduled_date, job.scheduled_time_start);
+  const address = job.address || job.customer?.address || "No address";
+  const value = Number(job.actual_value) || Number(job.estimated_value);
 
   return (
     <button
@@ -47,39 +76,39 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
               {statusLabels[job.status]}
             </StatusBadge>
           </div>
-          
+
           <h3 className="font-semibold text-foreground truncate text-lg">
-            {job.clientName}
+            {job.customer?.name || job.name}
           </h3>
-          
+
           <p className="text-sm text-muted-foreground font-medium mt-0.5">
-            {job.serviceType}
+            {job.service_type || "No service type"}
           </p>
 
           <div className="flex flex-col gap-1 mt-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{job.clientAddress}</span>
-            </div>
-            
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4 flex-shrink-0" />
-              <span>{job.scheduledTime}</span>
+              <span className="truncate">{address}</span>
             </div>
 
-            {job.crewLead && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4 flex-shrink-0" />
+              <span>{scheduledTime}</span>
+            </div>
+
+            {job.crew_lead?.full_name && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <User className="h-4 w-4 flex-shrink-0" />
-                <span>{job.crewLead}</span>
+                <span>{job.crew_lead.full_name}</span>
               </div>
             )}
           </div>
         </div>
 
         <div className="flex flex-col items-end gap-2">
-          {job.estimateValue && (
+          {value > 0 && (
             <span className="text-lg font-bold text-foreground">
-              ${job.estimateValue.toLocaleString()}
+              ${value.toLocaleString()}
             </span>
           )}
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
