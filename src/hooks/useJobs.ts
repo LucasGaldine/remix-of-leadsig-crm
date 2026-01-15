@@ -33,6 +33,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
         (payload) => {
           console.log("Real-time job update:", payload.eventType);
           queryClient.invalidateQueries({ queryKey: ["jobs"] });
+          queryClient.invalidateQueries({ queryKey: ["job-counts"] });
         }
       )
       .subscribe();
@@ -52,7 +53,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           customer:customers(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
-        .eq("approval_status", "approved")
+        .in("status", ["scheduled", "in_progress", "completed", "won", "cancelled"])
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -152,6 +153,7 @@ export function useCreateJob() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["job-counts"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
     },
   });
@@ -174,6 +176,7 @@ export function useUpdateJob() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["job-counts"] });
       queryClient.invalidateQueries({ queryKey: ["job", data.id] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
     },
@@ -183,4 +186,38 @@ export function useUpdateJob() {
 export function useTodaysJobs() {
   const today = new Date().toISOString().split("T")[0];
   return useJobs({ date: today });
+}
+
+export function useJobCounts() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ["job-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("status")
+        .in("status", ["scheduled", "in_progress", "completed", "won", "cancelled"]);
+
+      if (error) throw error;
+
+      const counts: Record<string, number> = {
+        all: data.length,
+        scheduled: 0,
+        in_progress: 0,
+        completed: 0,
+        won: 0,
+        cancelled: 0,
+      };
+
+      data.forEach((lead) => {
+        if (lead.status && counts[lead.status] !== undefined) {
+          counts[lead.status]++;
+        }
+      });
+
+      return counts;
+    },
+    enabled: !!user,
+  });
 }

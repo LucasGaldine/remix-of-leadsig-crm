@@ -8,7 +8,7 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
-import { useJobs } from "@/hooks/useJobs";
+import { useJobs, useJobCounts } from "@/hooks/useJobs";
 import { Database } from "@/integrations/supabase/types";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
@@ -29,7 +29,8 @@ export default function Jobs() {
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
   const [showAddJob, setShowAddJob] = useState(false);
 
-  const { data: allJobs = [], isLoading } = useJobs({ limit: 100 });
+  const { data: allJobs = [], isLoading } = useJobs();
+  const { data: counts } = useJobCounts();
 
   const filteredJobs = allJobs.filter((job) => {
     const customerName = job.customer?.name || "";
@@ -89,10 +90,9 @@ export default function Jobs() {
       <div className="px-4 py-3 bg-card border-b border-border overflow-x-auto scrollbar-hide">
         <div className="flex gap-2">
           {filterOptions.map((option) => {
-            const count =
-              option.value === "all"
-                ? allJobs.length
-                : allJobs.filter((j) => j.status === option.value).length;
+            const count = option.value === "all"
+              ? (counts?.all || 0)
+              : (counts?.[option.value] || 0);
 
             return (
               <button
