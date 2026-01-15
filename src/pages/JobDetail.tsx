@@ -18,49 +18,58 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-// Demo job data
-const jobData = {
-  id: "1",
-  clientName: "Johnson Residence",
-  clientPhone: "(555) 123-4567",
-  clientEmail: "johnson@email.com",
-  clientAddress: "1234 Oak Street, Springfield, IL 62701",
-  serviceType: "Patio Installation",
-  scheduledDate: "Monday, January 13, 2025",
-  scheduledTime: "8:00 AM - 12:00 PM",
-  status: "in-progress" as const,
-  crewLead: "Mike Thompson",
-  crewMembers: ["Carlos Rodriguez", "James Wilson"],
-  estimateValue: 8500,
-  scope: "Install 400 sq ft paver patio with soldier course border. Customer selected Cambridge Cobble in Chestnut/Brown blend.",
-  materials: [
-    { name: "Cambridge Cobble Pavers", quantity: "45 pallets", checked: true },
-    { name: "Polymeric Sand", quantity: "10 bags", checked: true },
-    { name: "Edge Restraint", quantity: "120 ft", checked: false },
-    { name: "Crushed Stone Base", quantity: "8 tons", checked: true },
-  ],
-  photos: {
-    before: 2,
-    during: 5,
-    after: 0,
-  },
-  notes: [
-    { time: "8:15 AM", text: "Arrived on site, met with homeowner", author: "Mike T." },
-    { time: "9:30 AM", text: "Base prep complete, starting paver layout", author: "Mike T." },
-  ],
-};
+import { useJob } from "@/hooks/useJobs";
+import { format } from "date-fns";
 
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"details" | "checklist" | "photos" | "notes">("details");
 
-  const handleCall = () => window.open(`tel:${jobData.clientPhone}`);
-  const handleText = () => window.open(`sms:${jobData.clientPhone}`);
+  const { data: job, isLoading, error } = useJob(id);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-surface-sunken pb-24 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (error || !job) {
+    return (
+      <div className="min-h-screen bg-surface-sunken pb-24">
+        <PageHeader title="Job Details" showBack backTo="/jobs" showNotifications={false} />
+        <div className="flex items-center justify-center p-8">
+          <p className="text-muted-foreground">Job not found</p>
+        </div>
+        <MobileNav />
+      </div>
+    );
+  }
+
+  const clientPhone = job.customer?.phone || "";
+  const clientAddress = job.address || "";
+  const scheduledDate = job.scheduled_date
+    ? format(new Date(job.scheduled_date), "EEEE, MMMM d, yyyy")
+    : "Not scheduled";
+  const scheduledTime = job.scheduled_time_start && job.scheduled_time_end
+    ? `${job.scheduled_time_start} - ${job.scheduled_time_end}`
+    : "Time not set";
+
+  const handleCall = () => {
+    if (clientPhone) window.open(`tel:${clientPhone}`);
+  };
+
+  const handleText = () => {
+    if (clientPhone) window.open(`sms:${clientPhone}`);
+  };
+
   const handleNavigate = () => {
-    const address = encodeURIComponent(jobData.clientAddress);
-    window.open(`https://maps.google.com/?q=${address}`);
+    if (clientAddress) {
+      const address = encodeURIComponent(clientAddress);
+      window.open(`https://maps.google.com/?q=${address}`);
+    }
   };
 
   return (
@@ -71,17 +80,17 @@ export default function JobDetail() {
       <div className="bg-card border-b border-border px-4 py-4">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <StatusBadge status={jobData.status} size="lg">
-              In Progress
+            <StatusBadge status={job.status} size="lg">
+              {job.status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
             </StatusBadge>
             <h2 className="text-xl font-bold text-foreground mt-2">
-              {jobData.clientName}
+              {job.customer?.name || "Unknown Client"}
             </h2>
-            <p className="text-muted-foreground">{jobData.serviceType}</p>
+            <p className="text-muted-foreground">{job.service_type || job.name}</p>
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-foreground">
-              ${jobData.estimateValue.toLocaleString()}
+              ${job.estimated_value ? Number(job.estimated_value).toLocaleString() : "0"}
             </p>
           </div>
         </div>
@@ -158,7 +167,7 @@ export default function JobDetail() {
                 <div className="flex-1">
                   <p className="font-medium text-foreground">Job Location</p>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    {jobData.clientAddress}
+                    {clientAddress || "No address provided"}
                   </p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -174,134 +183,96 @@ export default function JobDetail() {
                 <div>
                   <p className="font-medium text-foreground">Schedule</p>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    {jobData.scheduledDate}
+                    {scheduledDate}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {jobData.scheduledTime}
+                    {scheduledTime}
                   </p>
                 </div>
               </div>
             </div>
 
             {/* Crew */}
-            <div className="card-elevated rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <User className="h-5 w-5 text-secondary-foreground" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">Crew</p>
-                  <p className="text-sm text-foreground mt-0.5">
-                    {jobData.crewLead} (Lead)
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {jobData.crewMembers.join(", ")}
-                  </p>
+            {job.crew_lead && (
+              <div className="card-elevated rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-secondary">
+                    <User className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">Crew Lead</p>
+                    <p className="text-sm text-foreground mt-0.5">
+                      {job.crew_lead?.full_name || "Assigned"}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Scope */}
-            <div className="card-elevated rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <FileText className="h-5 w-5 text-secondary-foreground" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">Scope of Work</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {jobData.scope}
-                  </p>
+            {/* Description/Notes */}
+            {(job.description || job.notes) && (
+              <div className="card-elevated rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-secondary">
+                    <FileText className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {job.description ? "Description" : "Notes"}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {job.description || job.notes}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
         {activeTab === "checklist" && (
           <div className="space-y-2">
-            <h3 className="font-semibold text-foreground mb-3">Materials</h3>
-            {jobData.materials.map((item, index) => (
-              <button
-                key={index}
-                className="w-full card-elevated rounded-lg p-4 flex items-center gap-3 text-left hover:shadow-md transition-all"
-              >
-                <div
-                  className={cn(
-                    "h-6 w-6 rounded-md border-2 flex items-center justify-center",
-                    item.checked
-                      ? "bg-status-confirmed border-status-confirmed"
-                      : "border-border"
-                  )}
-                >
-                  {item.checked && (
-                    <CheckSquare className="h-4 w-4 text-white" />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <p
-                    className={cn(
-                      "font-medium",
-                      item.checked ? "text-muted-foreground" : "text-foreground"
-                    )}
-                  >
-                    {item.name}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{item.quantity}</p>
-                </div>
-              </button>
-            ))}
+            <div className="text-center py-12">
+              <CheckSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground mb-4">No checklist items yet</p>
+              <Button variant="outline">Add Checklist Item</Button>
+            </div>
           </div>
         )}
 
         {activeTab === "photos" && (
           <div className="space-y-4">
-            {["Before", "During", "After"].map((phase) => {
-              const key = phase.toLowerCase() as keyof typeof jobData.photos;
-              const count = jobData.photos[key];
-              return (
-                <button
-                  key={phase}
-                  className="w-full card-elevated rounded-lg p-4 flex items-center justify-between hover:shadow-md transition-all"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-secondary">
-                      <Camera className="h-5 w-5 text-secondary-foreground" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-medium text-foreground">{phase} Photos</p>
-                      <p className="text-sm text-muted-foreground">
-                        {count} photo{count !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </button>
-              );
-            })}
-            <Button className="w-full gap-2 mt-4">
-              <Camera className="h-4 w-4" />
-              Add Photo
-            </Button>
+            <div className="text-center py-12">
+              <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground mb-4">No photos yet</p>
+              <Button className="gap-2">
+                <Camera className="h-4 w-4" />
+                Add Photo
+              </Button>
+            </div>
           </div>
         )}
 
         {activeTab === "notes" && (
           <div className="space-y-3">
-            {jobData.notes.map((note, index) => (
-              <div key={index} className="card-elevated rounded-lg p-4">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-foreground">
-                    {note.author}
-                  </span>
-                  <span className="text-sm text-muted-foreground">{note.time}</span>
+            {job.notes ? (
+              <>
+                <div className="card-elevated rounded-lg p-4">
+                  <p className="text-sm text-muted-foreground">{job.notes}</p>
                 </div>
-                <p className="text-sm text-muted-foreground">{note.text}</p>
+                <Button variant="outline" className="w-full gap-2">
+                  Edit Note
+                </Button>
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground mb-4">No notes yet</p>
+                <Button variant="outline" className="w-full gap-2">
+                  Add Note
+                </Button>
               </div>
-            ))}
-            <Button variant="outline" className="w-full gap-2 mt-4">
-              Add Note
-            </Button>
+            )}
           </div>
         )}
       </main>
