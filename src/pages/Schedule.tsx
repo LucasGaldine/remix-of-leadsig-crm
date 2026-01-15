@@ -1,53 +1,25 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { JobCard, Job } from "@/components/jobs/JobCard";
+import { JobCard } from "@/components/jobs/JobCard";
 import { cn } from "@/lib/utils";
 import { format, addDays, startOfWeek, isSameDay } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-
-// Demo data
-const scheduledJobs: Job[] = [
-  {
-    id: "1",
-    clientName: "Johnson Residence",
-    clientAddress: "1234 Oak Street, Springfield",
-    serviceType: "Patio Installation",
-    scheduledTime: "8:00 AM - 12:00 PM",
-    status: "in-progress",
-    crewLead: "Mike Thompson",
-    estimateValue: 8500,
-  },
-  {
-    id: "2",
-    clientName: "Anderson Property",
-    clientAddress: "567 Maple Ave, Riverside",
-    serviceType: "Retaining Wall",
-    scheduledTime: "1:00 PM - 5:00 PM",
-    status: "scheduled",
-    crewLead: "Carlos Rodriguez",
-    estimateValue: 12000,
-  },
-  {
-    id: "3",
-    clientName: "Miller Estate",
-    clientAddress: "890 Pine Road, Lakewood",
-    serviceType: "Walkway Installation",
-    scheduledTime: "9:00 AM - 2:00 PM",
-    status: "scheduled",
-    crewLead: "Mike Thompson",
-    estimateValue: 5200,
-  },
-];
+import { useScheduledJobs, useScheduledJobsForWeek } from "@/hooks/useScheduledJobs";
 
 export default function Schedule() {
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
+  const weekEnd = addDays(weekStart, 6);
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
+  const { data: todaysJobs = [], isLoading } = useScheduledJobs(selectedDateStr);
+  const { data: jobDates = new Set() } = useScheduledJobsForWeek(weekStart, weekEnd);
 
   const goToPreviousWeek = () => {
     setSelectedDate((prev) => addDays(prev, -7));
@@ -57,8 +29,18 @@ export default function Schedule() {
     setSelectedDate((prev) => addDays(prev, 7));
   };
 
-  // Filter jobs for selected date (demo: showing all for now)
-  const todaysJobs = scheduledJobs;
+  const formatJobForCard = (job: any) => ({
+    id: job.id,
+    clientName: job.customer?.name || job.name || "Unknown",
+    clientAddress: job.customer?.address || job.address || "Unknown",
+    serviceType: job.service_type || "Unknown",
+    scheduledTime: job.scheduled_time_start && job.scheduled_time_end
+      ? `${job.scheduled_time_start} - ${job.scheduled_time_end}`
+      : "Time not set",
+    status: job.status,
+    crewLead: job.crew_lead?.full_name || "Unassigned",
+    estimateValue: Number(job.estimated_value) || 0,
+  });
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -131,21 +113,17 @@ export default function Schedule() {
                 >
                   {format(day, "d")}
                 </span>
-                {/* Job indicator dots */}
-                <div className="flex gap-0.5 mt-1">
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      isSelected ? "bg-primary-foreground/60" : "bg-status-confirmed"
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      isSelected ? "bg-primary-foreground/60" : "bg-status-pending"
-                    )}
-                  />
-                </div>
+                {/* Job indicator dot */}
+                {jobDates.has(format(day, "yyyy-MM-dd")) && (
+                  <div className="flex gap-0.5 mt-1">
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        isSelected ? "bg-primary-foreground/60" : "bg-primary"
+                      )}
+                    />
+                  </div>
+                )}
               </button>
             );
           })}
@@ -159,27 +137,34 @@ export default function Schedule() {
             {format(selectedDate, "EEEE, MMMM d")}
           </h2>
           <span className="text-sm text-muted-foreground">
-            {todaysJobs.length} jobs
+            {todaysJobs.length} {todaysJobs.length === 1 ? "job" : "jobs"}
           </span>
         </div>
 
-        <div className="space-y-3">
-          {todaysJobs.map((job) => (
-            <JobCard
-              key={job.id}
-              job={job}
-              onClick={() => navigate(`/jobs/${job.id}`)}
-            />
-          ))}
-        </div>
-
-        {todaysJobs.length === 0 && (
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : todaysJobs.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground">No jobs scheduled for this day</p>
-            <Button className="mt-4 gap-2">
+            <Button
+              className="mt-4 gap-2"
+              onClick={() => navigate("/jobs")}
+            >
               <Plus className="h-4 w-4" />
               Schedule a Job
             </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {todaysJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={formatJobForCard(job)}
+                onClick={() => navigate(`/jobs/${job.id}`)}
+              />
+            ))}
           </div>
         )}
       </main>
