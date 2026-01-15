@@ -111,12 +111,14 @@ export function useJob(id: string | undefined) {
           crew_lead:profiles!jobs_crew_lead_id_fkey(id, full_name)
         `)
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-      return data as Job;
+      return data as Job | null;
     },
     enabled: !!user && !!id,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 3000),
   });
 }
 

@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useCreateJob } from "@/hooks/useJobs";
+import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
@@ -97,28 +99,33 @@ export default function LeadDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+  const queryClient = useQueryClient();
+  const createJobMutation = useCreateJob();
+
   const [lead, setLead] = useState<Lead | null>(null);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [qualification, setQualification] = useState<Qualification | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  
+
   // New note state
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
-  
+
   // Qualification state
   const [qualNotes, setQualNotes] = useState("");
   const [savingQual, setSavingQual] = useState(false);
-  
+
   // Disqualify dialog
   const [disqualifyOpen, setDisqualifyOpen] = useState(false);
   const [disqualifyReason, setDisqualifyReason] = useState<DisqualifyReason | null>(null);
-  
+
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Creating job state
+  const [creatingJob, setCreatingJob] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -316,20 +323,34 @@ export default function LeadDetail() {
   };
 
   const createJob = async () => {
-    if (!lead) return;
+    if (!lead || creatingJob) return;
+
+    setCreatingJob(true);
+    const loadingToast = toast.loading("Creating job...");
 
     try {
       let customerId = null;
 
-      const { data: existingCustomers } = await supabase
-        .from("customers")
-        .select("id")
-        .eq("phone", lead.phone)
-        .maybeSingle();
+      // Check for existing customer by phone
+      if (lead.phone) {
+        const { data: existingCustomer, error: lookupError } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("phone", lead.phone)
+          .maybeSingle();
 
-      if (existingCustomers) {
-        customerId = existingCustomers.id;
-      } else {
+        if (lookupError) {
+          console.error("Error looking up customer:", lookupError);
+        }
+
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+          console.log("Found existing customer:", customerId);
+        }
+      }
+
+      // Create new customer if none found
+      if (!customerId) {
         const { data: newCustomer, error: customerError } = await supabase
           .from("customers")
           .insert({
@@ -337,32 +358,35 @@ export default function LeadDetail() {
             phone: lead.phone,
             email: lead.email,
             address: lead.address || lead.city,
+            city: lead.city,
             created_by: user?.id,
           })
           .select()
           .single();
 
-        if (customerError) throw customerError;
+        if (customerError) {
+          console.error("Error creating customer:", customerError);
+          throw new Error("Failed to create customer record");
+        }
+
         customerId = newCustomer.id;
+        console.log("Created new customer:", customerId);
       }
 
-      const { data: job, error: jobError } = await supabase
-        .from("jobs")
-        .insert({
-          name: `${lead.name} - ${lead.service_type || "Job"}`,
-          customer_id: customerId,
-          service_type: lead.service_type,
-          address: lead.address || lead.city,
-          estimated_value: lead.estimated_budget,
-          status: "scheduled",
-          created_by: user?.id,
-          lead_id: lead.id,
-        })
-        .select()
-        .single();
+      // Create the job using mutation hook
+      const jobData = await createJobMutation.mutateAsync({
+        name: `${lead.name} - ${lead.service_type || "Job"}`,
+        customer_id: customerId,
+        service_type: lead.service_type,
+        address: lead.address || lead.city,
+        estimated_value: lead.estimated_budget,
+        status: "scheduled",
+        lead_id: lead.id,
+      });
 
-      if (jobError) throw jobError;
+      console.log("Job created successfully:", jobData.id);
 
+      // Log the conversion interaction
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "status_change" as InteractionType,
@@ -371,12 +395,27 @@ export default function LeadDetail() {
         created_by: user?.id,
       });
 
+      // Update lead status to won
       await updateLeadStatus("won");
+
+      toast.dismiss(loadingToast);
       toast.success("Job created successfully!");
-      navigate(`/jobs/${job.id}`);
+
+      // Invalidate job queries to ensure fresh data
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["job", jobData.id] });
+
+      // Small delay to ensure database consistency
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Navigate to the job detail page
+      navigate(`/jobs/${jobData.id}`);
     } catch (error) {
       console.error("Error creating job:", error);
-      toast.error("Failed to create job");
+      toast.dismiss(loadingToast);
+      toast.error(error instanceof Error ? error.message : "Failed to create job");
+    } finally {
+      setCreatingJob(false);
     }
   };
 
@@ -584,15 +623,16 @@ export default function LeadDetail() {
 
           {/* Quick Actions */}
           <div className="flex gap-2 pt-2 border-t border-border">
-            <Button variant="outline" size="sm" className="flex-1" onClick={() => logCall("outbound")}>
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => logCall("outbound")} disabled={creatingJob}>
               <Phone className="h-4 w-4 mr-1" /> Call
             </Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={logText}>
+            <Button variant="outline" size="sm" className="flex-1" onClick={logText} disabled={creatingJob}>
               <MessageSquare className="h-4 w-4 mr-1" /> Text
             </Button>
             {showConvertButton && (
-              <Button size="sm" className="flex-1" onClick={createJob}>
-                <Briefcase className="h-4 w-4 mr-1" /> Create Job
+              <Button size="sm" className="flex-1" onClick={createJob} disabled={creatingJob}>
+                <Briefcase className="h-4 w-4 mr-1" />
+                {creatingJob ? "Creating..." : "Create Job"}
               </Button>
             )}
           </div>
