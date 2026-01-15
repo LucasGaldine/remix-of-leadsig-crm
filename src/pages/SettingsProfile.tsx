@@ -1,17 +1,14 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { User, Camera, Save } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 const TIMEZONES = [
   { value: "America/New_York", label: "Eastern Time (ET)" },
@@ -22,14 +19,6 @@ const TIMEZONES = [
   { value: "Pacific/Honolulu", label: "Hawaii Time (HT)" },
   { value: "America/Phoenix", label: "Arizona Time (MST)" },
 ];
-
-interface NotificationPreferences {
-  email: boolean;
-  sms: boolean;
-  push: boolean;
-  newLeads: boolean;
-  jobUpdates: boolean;
-}
 
 export default function SettingsProfile() {
   const navigate = useNavigate();
@@ -51,14 +40,6 @@ export default function SettingsProfile() {
     confirmPassword: "",
   });
 
-  const [notifications, setNotifications] = useState<NotificationPreferences>({
-    email: true,
-    sms: true,
-    push: true,
-    newLeads: true,
-    jobUpdates: true,
-  });
-
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -70,10 +51,6 @@ export default function SettingsProfile() {
         phone: profile.phone || "",
         timezone: profile.timezone || "America/New_York",
       });
-
-      if (profile.notification_preferences) {
-        setNotifications(profile.notification_preferences as NotificationPreferences);
-      }
 
       setAvatarUrl(profile.avatar_url || null);
     }
@@ -91,7 +68,6 @@ export default function SettingsProfile() {
           email: formData.email,
           phone: formData.phone,
           timezone: formData.timezone,
-          notification_preferences: notifications,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
@@ -381,84 +357,6 @@ export default function SettingsProfile() {
             >
               {changingPassword ? "Changing Password..." : "Change Password"}
             </Button>
-          </div>
-        </div>
-
-        {/* Notification Preferences */}
-        <div className="card-elevated rounded-lg p-6">
-          <h3 className="font-semibold text-lg mb-4">Notification Preferences</h3>
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-muted-foreground">
-                Notification Channels
-              </p>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="notif-email" className="cursor-pointer flex-1">
-                  Email Notifications
-                </Label>
-                <Switch
-                  id="notif-email"
-                  checked={notifications.email}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, email: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="notif-sms" className="cursor-pointer flex-1">
-                  SMS Notifications
-                </Label>
-                <Switch
-                  id="notif-sms"
-                  checked={notifications.sms}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, sms: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="notif-push" className="cursor-pointer flex-1">
-                  Push Notifications
-                </Label>
-                <Switch
-                  id="notif-push"
-                  checked={notifications.push}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, push: checked })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-border pt-4 space-y-3">
-              <p className="text-sm font-medium text-muted-foreground">
-                Event Notifications
-              </p>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="notif-new-leads" className="cursor-pointer flex-1">
-                  New Leads
-                </Label>
-                <Switch
-                  id="notif-new-leads"
-                  checked={notifications.newLeads}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, newLeads: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="notif-job-updates" className="cursor-pointer flex-1">
-                  Job Updates
-                </Label>
-                <Switch
-                  id="notif-job-updates"
-                  checked={notifications.jobUpdates}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, jobUpdates: checked })
-                  }
-                />
-              </div>
-            </div>
           </div>
         </div>
       </main>
