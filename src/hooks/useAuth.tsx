@@ -11,6 +11,8 @@ interface Profile {
   email: string | null;
   phone: string | null;
   avatar_url: string | null;
+  timezone: string | null;
+  notification_preferences: Record<string, any> | null;
 }
 
 interface AuthContextType {
@@ -24,6 +26,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   isOwnerOrAdmin: () => boolean;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -142,6 +145,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return role === 'owner' || role === 'admin';
   };
 
+  const refreshProfile = async () => {
+    if (user) {
+      await fetchUserData(user.id);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -155,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         hasRole,
         isOwnerOrAdmin,
+        refreshProfile,
       }}
     >
       {children}

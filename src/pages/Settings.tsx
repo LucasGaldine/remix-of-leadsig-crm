@@ -168,7 +168,6 @@ export default function Settings() {
           icon: <User className="h-5 w-5" />,
           label: "Profile",
           description: profile?.full_name || profile?.email || "Your account settings",
-          comingSoon: true,
           onClick: () => navigate("/settings/profile"),
         },
         {
