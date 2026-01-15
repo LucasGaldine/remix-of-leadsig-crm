@@ -717,14 +717,14 @@ export default function LeadDetail() {
             <div>
               <Label>Timeline</Label>
               <Select
-                value={qualification?.timeline || ""}
-                onValueChange={(value) => updateQualification({ timeline: value ? value as TimelinePeriod : null })}
+                value={qualification?.timeline || "none"}
+                onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
               >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select timeline" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {TIMELINE_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
