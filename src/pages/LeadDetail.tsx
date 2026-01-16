@@ -144,9 +144,14 @@ export default function LeadDetail() {
   // Create estimate dialog
   const [createEstimateDialogOpen, setCreateEstimateDialogOpen] = useState(false);
 
-  // Convert to job dialog (simplified confirmation)
+  // Convert to job dialog with optional scheduling
   const [convertJobDialogOpen, setConvertJobDialogOpen] = useState(false);
   const [convertingJob, setConvertingJob] = useState(false);
+  const [jobSchedule, setJobSchedule] = useState({
+    scheduled_date: "",
+    scheduled_time_start: "",
+    scheduled_time_end: ""
+  });
 
   useEffect(() => {
     if (id) {
@@ -393,16 +398,43 @@ export default function LeadDetail() {
     const loadingToast = toast.loading("Converting to job...");
 
     try {
+      let newStatus: LeadStatus = "won";
+
+      if (jobSchedule.scheduled_date) {
+        const scheduledDate = new Date(jobSchedule.scheduled_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        scheduledDate.setHours(0, 0, 0, 0);
+
+        if (scheduledDate <= today) {
+          newStatus = "in_progress";
+        } else {
+          newStatus = "scheduled";
+        }
+      }
+
+      const { error: updateError } = await supabase
+        .from("leads")
+        .update({
+          status: newStatus,
+          scheduled_date: jobSchedule.scheduled_date || null,
+          scheduled_time_start: jobSchedule.scheduled_time_start || null,
+          scheduled_time_end: jobSchedule.scheduled_time_end || null,
+        })
+        .eq("id", lead.id);
+
+      if (updateError) throw new Error("Failed to update job status");
+
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "status_change" as InteractionType,
         direction: "na" as InteractionDirection,
-        summary: "Confirmed as job",
+        summary: `Converted to job with status: ${newStatus}`,
         created_by: user?.id,
       });
 
       toast.dismiss(loadingToast);
-      toast.success("Lead confirmed as job!");
+      toast.success("Lead converted to job successfully!");
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -734,25 +766,69 @@ export default function LeadDetail() {
       )}
 
       {/* Convert to Job Dialog */}
-      <AlertDialog open={convertJobDialogOpen} onOpenChange={setConvertJobDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Convert to Job</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to convert this lead to a job? The estimate is already created and will be attached to this job.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={convertingJob}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+      <Dialog open={convertJobDialogOpen} onOpenChange={setConvertJobDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Convert to Job</DialogTitle>
+            <DialogDescription>
+              The estimate is ready. You can optionally add a schedule or convert immediately.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="convert-scheduled-date">Scheduled Date (Optional)</Label>
+              <Input
+                id="convert-scheduled-date"
+                type="date"
+                value={jobSchedule.scheduled_date}
+                onChange={(e) => setJobSchedule({ ...jobSchedule, scheduled_date: e.target.value })}
+              />
+            </div>
+
+            {jobSchedule.scheduled_date && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="convert-start-time">Start Time</Label>
+                  <Input
+                    id="convert-start-time"
+                    type="time"
+                    value={jobSchedule.scheduled_time_start}
+                    onChange={(e) => setJobSchedule({ ...jobSchedule, scheduled_time_start: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="convert-end-time">End Time</Label>
+                  <Input
+                    id="convert-end-time"
+                    type="time"
+                    value={jobSchedule.scheduled_time_end}
+                    onChange={(e) => setJobSchedule({ ...jobSchedule, scheduled_time_end: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
+              {!jobSchedule.scheduled_date && "Status will be set to: Won"}
+              {jobSchedule.scheduled_date && new Date(jobSchedule.scheduled_date) > new Date() && "Status will be set to: Scheduled"}
+              {jobSchedule.scheduled_date && new Date(jobSchedule.scheduled_date) <= new Date() && "Status will be set to: In Progress"}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertJobDialogOpen(false)} disabled={convertingJob}>
+              Cancel
+            </Button>
+            <Button
               onClick={convertToJob}
               disabled={convertingJob}
             >
               {convertingJob ? "Converting..." : "Convert to Job"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Lead Info Card */}
       <div className="px-4 py-4">

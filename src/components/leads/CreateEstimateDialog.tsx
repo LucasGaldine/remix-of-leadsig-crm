@@ -114,28 +114,21 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
       const estimateTotal = validLineItems.reduce((sum, item) => sum + parseFloat(item.unit_price), 0);
 
-      const { data: jobData, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from("leads")
         .update({
           customer_id: customerId,
-          status: "won",
-          actual_value: estimateTotal,
+          estimated_value: estimateTotal,
         })
-        .eq("id", lead.id)
-        .select(`
-          *,
-          customer:customers!leads_customer_id_fkey(id, name, email, phone, address),
-          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
-        `)
-        .single();
+        .eq("id", lead.id);
 
-      if (updateError) throw new Error("Failed to convert lead to job");
+      if (updateError) throw new Error("Failed to attach customer to lead");
 
       const { data: estimateData, error: estimateError } = await supabase
         .from("estimates")
         .insert({
           customer_id: customerId,
-          job_id: jobData.id,
+          job_id: lead.id,
           subtotal: estimateTotal,
           tax_rate: 0,
           tax: 0,
@@ -170,14 +163,15 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
       await supabase.from("interactions").insert({
         lead_id: lead.id,
-        type: "status_change",
+        type: "note",
         direction: "na",
         summary: "Estimate created",
+        body: `Estimate created with ${validLineItems.length} line items totaling $${estimateTotal.toFixed(2)}`,
         created_by: user.id,
       });
 
       toast.dismiss(loadingToast);
-      toast.success("Estimate created successfully!");
+      toast.success("Estimate created successfully! You can now convert this lead to a job.");
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
