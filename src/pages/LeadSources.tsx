@@ -247,7 +247,13 @@ export default function LeadSources() {
   const handleConnect = async (platform: PlatformInfo) => {
     if (!user) return;
 
-    // For OAuth-supported platforms, show coming soon
+    // For Google, show webhook setup (for Google Ads lead forms)
+    if (platform.id === "google") {
+      await handleConnectWebhook(platform);
+      return;
+    }
+
+    // For other OAuth-supported platforms, show coming soon
     if (platform.oauthSupported) {
       setOauthComingSoonDialog({ open: true, platform });
       return;
@@ -255,7 +261,7 @@ export default function LeadSources() {
 
     // For email relay platforms, open the simple connect flow
     const inboundEmail = generateInboundEmail(user.id);
-    
+
     setConnectDialog({
       open: true,
       platform,
@@ -265,6 +271,59 @@ export default function LeadSources() {
       apiKeyId: null,
       copied: null,
     });
+  };
+
+  const handleConnectWebhook = async (platform: PlatformInfo) => {
+    if (!user) return;
+
+    // Check if user has an API key
+    if (apiKeys.length === 0) {
+      // Create a new API key for this user
+      const newApiKey = generateApiKey();
+      const keyHash = await hashApiKey(newApiKey);
+      const keyPrefix = newApiKey.slice(0, 12);
+
+      const { data: createdKey, error } = await supabase
+        .from("api_keys")
+        .insert({
+          user_id: user.id,
+          name: `${platform.name} Integration`,
+          key_hash: keyHash,
+          key_prefix: keyPrefix,
+          is_active: true,
+        })
+        .select("id, name, key_prefix, is_active")
+        .single();
+
+      if (error) {
+        console.error("Error creating API key:", error);
+        toast.error("Failed to create API key");
+        return;
+      }
+
+      setConnectDialog({
+        open: true,
+        platform,
+        method: "webhook",
+        inboundEmail: "",
+        apiKey: newApiKey,
+        apiKeyId: createdKey.id,
+        copied: null,
+      });
+
+      setApiKeys([createdKey, ...apiKeys]);
+    } else {
+      // Use existing API key (don't show the actual key, just tell them to use it)
+      setConnectDialog({
+        open: true,
+        platform,
+        method: "webhook",
+        inboundEmail: "",
+        apiKey: null,
+        apiKeyId: apiKeys[0].id,
+        copied: null,
+      });
+    }
   };
 
   const handleConnectViaEmailRelay = async (platform: PlatformInfo) => {
@@ -322,17 +381,78 @@ export default function LeadSources() {
       return;
     }
 
-    setConnectDialog({ 
-      open: false, 
-      platform: null, 
-      method: "email_relay", 
-      inboundEmail: "", 
-      apiKey: null, 
-      apiKeyId: null, 
-      copied: null 
+    setConnectDialog({
+      open: false,
+      platform: null,
+      method: "email_relay",
+      inboundEmail: "",
+      apiKey: null,
+      apiKeyId: null,
+      copied: null
     });
     setSuccessOpen(true);
     fetchData();
+  };
+
+  const handleConfirmWebhookConnection = async () => {
+    if (!user || !connectDialog.platform) return;
+
+    const platform = connectDialog.platform;
+
+    // Upsert the connection with webhook settings
+    const { error } = await supabase
+      .from("lead_source_connections")
+      .upsert({
+        user_id: user.id,
+        platform: platform.id,
+        status: "connected",
+        connected_at: new Date().toISOString(),
+        api_key_id: connectDialog.apiKeyId,
+        connection_method: "webhook",
+      }, {
+        onConflict: "user_id,platform",
+      });
+
+    if (error) {
+      console.error("Error creating connection:", error);
+      toast.error("Failed to connect");
+      return;
+    }
+
+    setConnectDialog({
+      open: false,
+      platform: null,
+      method: "webhook",
+      inboundEmail: "",
+      apiKey: null,
+      apiKeyId: null,
+      copied: null
+    });
+    setSuccessOpen(true);
+    fetchData();
+  };
+
+  const handleCopyWebhookUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(getWebhookUrl());
+      toast.success("Webhook URL copied!");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
+  const handleCopyApiKey = async () => {
+    if (!connectDialog.apiKey) return;
+    try {
+      await navigator.clipboard.writeText(connectDialog.apiKey);
+      setConnectDialog((prev) => ({ ...prev, copied: "key" }));
+      toast.success("API key copied!");
+      setTimeout(() => {
+        setConnectDialog((prev) => ({ ...prev, copied: null }));
+      }, 2000);
+    } catch {
+      toast.error("Failed to copy");
+    }
   };
 
   const handleDisconnect = async () => {
@@ -650,95 +770,242 @@ export default function LeadSources() {
         </DialogContent>
       </Dialog>
 
-      {/* Email Relay Connect Dialog */}
+      {/* Connect Dialog (Email Relay or Webhook) */}
       <Dialog
         open={connectDialog.open}
         onOpenChange={(open) => {
           if (!open) {
-            setConnectDialog({ 
-              open: false, 
-              platform: null, 
-              method: "email_relay", 
-              inboundEmail: "", 
-              apiKey: null, 
-              apiKeyId: null, 
-              copied: null 
+            setConnectDialog({
+              open: false,
+              platform: null,
+              method: "email_relay",
+              inboundEmail: "",
+              apiKey: null,
+              apiKeyId: null,
+              copied: null
             });
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {connectDialog.platform?.icon}
               Connect {connectDialog.platform?.name}
             </DialogTitle>
             <DialogDescription>
-              Set up email forwarding to receive leads automatically
+              {connectDialog.method === "webhook"
+                ? "Set up webhook integration for Google Ads lead forms"
+                : "Set up email forwarding to receive leads automatically"
+              }
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <h4 className="font-medium mb-2">Your LeadSig email address</h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                Forward lead emails from {connectDialog.platform?.name} to this address:
-              </p>
-              <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
-                <code className="flex-1 text-sm break-all font-mono">
-                  {connectDialog.inboundEmail}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCopyEmail}
-                >
-                  {connectDialog.copied === "email" ? (
-                    <Check className="h-4 w-4 text-status-confirmed" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
+          {connectDialog.method === "webhook" ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Google Ads Lead Forms</h4>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  This integration works with Google Ads lead form extensions. Follow the steps below to automatically send leads from your Google Ads campaigns to LeadSig.
+                </p>
               </div>
-            </div>
 
-            <div className="space-y-3">
-              <h4 className="font-medium">Quick setup</h4>
-              <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
-                <li>In your email (Gmail/Outlook), create a filter/rule for emails from {connectDialog.platform?.name}</li>
-                <li>Set the rule to forward matching emails to your LeadSig address above</li>
-              </ol>
-            </div>
-
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground">
-                  <span>Show detailed instructions</span>
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2">
-                <div className="p-3 bg-muted rounded-lg text-sm space-y-3">
-                  <div>
-                    <p className="font-medium mb-1">Gmail:</p>
-                    <ol className="list-decimal list-inside text-muted-foreground space-y-1">
-                      <li>Go to Settings → Filters and Blocked Addresses</li>
-                      <li>Create a new filter with "from" containing the platform domain</li>
-                      <li>Select "Forward it to" and add your LeadSig email</li>
-                    </ol>
-                  </div>
-                  <div>
-                    <p className="font-medium mb-1">Outlook:</p>
-                    <ol className="list-decimal list-inside text-muted-foreground space-y-1">
-                      <li>Go to Settings → Mail → Rules</li>
-                      <li>Add a new rule for emails from the platform</li>
-                      <li>Set action to "Forward to" your LeadSig email</li>
-                    </ol>
+              {connectDialog.apiKey && (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <h4 className="font-medium mb-2 text-yellow-900 dark:text-yellow-100 flex items-center gap-2">
+                    <span className="text-lg">⚠️</span> Save Your API Key
+                  </h4>
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
+                    This is the only time you'll see this key. Copy it now and save it securely.
+                  </p>
+                  <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
+                    <code className="flex-1 text-sm break-all font-mono">
+                      {connectDialog.apiKey}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleCopyApiKey}
+                    >
+                      {connectDialog.copied === "key" ? (
+                        <Check className="h-4 w-4 text-status-confirmed" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
+              )}
+
+              <div className="space-y-3">
+                <h4 className="font-medium">Setup Instructions</h4>
+                <ol className="text-sm space-y-3 list-decimal list-inside">
+                  <li className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Create or edit a lead form campaign in Google Ads</span>
+                  </li>
+                  <li className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Navigate to your lead form settings</span>
+                  </li>
+                  <li className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Enable webhook delivery with these details:</span>
+                    <div className="ml-6 mt-2 space-y-2">
+                      <div>
+                        <p className="text-xs font-medium mb-1">Webhook URL:</p>
+                        <div className="flex items-center gap-2 p-2 bg-muted rounded border">
+                          <code className="flex-1 text-xs break-all">
+                            {getWebhookUrl()}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={handleCopyWebhookUrl}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      {connectDialog.apiKey && (
+                        <div>
+                          <p className="text-xs font-medium mb-1">Add this header:</p>
+                          <div className="p-2 bg-muted rounded border">
+                            <code className="text-xs">
+                              x-leadsig-api-key: {connectDialog.apiKey}
+                            </code>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                  <li className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Configure the payload mapping:</span>
+                    <div className="ml-6 mt-2">
+                      <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+{`{
+  "source": "google",
+  "name": "{{full_name}}",
+  "phone": "{{phone_number}}",
+  "email": "{{email}}",
+  "serviceType": "{{service_type}}",
+  "location": "{{city}}",
+  "message": "{{message}}"
+}`}
+                      </pre>
+                    </div>
+                  </li>
+                  <li className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Test the connection in Google Ads to verify it works</span>
+                  </li>
+                </ol>
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground">
+                    <span className="flex items-center gap-2">
+                      <ExternalLink className="h-4 w-4" />
+                      Need help? View Google's documentation
+                    </span>
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2">
+                  <div className="p-3 bg-muted rounded-lg text-sm space-y-2">
+                    <p className="text-muted-foreground">
+                      For detailed instructions on setting up webhooks in Google Ads lead forms, visit:
+                    </p>
+                    <a
+                      href="https://support.google.com/google-ads/answer/7759777"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline flex items-center gap-1"
+                    >
+                      Google Ads Lead Form Extensions Help
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {!connectDialog.apiKey && (
+                <div className="p-3 bg-muted rounded-lg text-sm">
+                  <p className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Already have an API key?</span> You can manage your API keys in{" "}
+                    <button
+                      onClick={() => {
+                        navigate("/settings/api-keys");
+                      }}
+                      className="text-primary hover:underline"
+                    >
+                      Settings → API Keys
+                    </button>
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted/50 rounded-lg">
+                <h4 className="font-medium mb-2">Your LeadSig email address</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Forward lead emails from {connectDialog.platform?.name} to this address:
+                </p>
+                <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
+                  <code className="flex-1 text-sm break-all font-mono">
+                    {connectDialog.inboundEmail}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleCopyEmail}
+                  >
+                    {connectDialog.copied === "email" ? (
+                      <Check className="h-4 w-4 text-status-confirmed" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-medium">Quick setup</h4>
+                <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
+                  <li>In your email (Gmail/Outlook), create a filter/rule for emails from {connectDialog.platform?.name}</li>
+                  <li>Set the rule to forward matching emails to your LeadSig address above</li>
+                </ol>
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground">
+                    <span>Show detailed instructions</span>
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2">
+                  <div className="p-3 bg-muted rounded-lg text-sm space-y-3">
+                    <div>
+                      <p className="font-medium mb-1">Gmail:</p>
+                      <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                        <li>Go to Settings → Filters and Blocked Addresses</li>
+                        <li>Create a new filter with "from" containing the platform domain</li>
+                        <li>Select "Forward it to" and add your LeadSig email</li>
+                      </ol>
+                    </div>
+                    <div>
+                      <p className="font-medium mb-1">Outlook:</p>
+                      <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                        <li>Go to Settings → Mail → Rules</li>
+                        <li>Add a new rule for emails from the platform</li>
+                        <li>Set action to "Forward to" your LeadSig email</li>
+                      </ol>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
@@ -747,8 +1014,8 @@ export default function LeadSources() {
             >
               Cancel
             </Button>
-            <Button onClick={handleConfirmEmailRelayConnection}>
-              I've Set Up Forwarding
+            <Button onClick={connectDialog.method === "webhook" ? handleConfirmWebhookConnection : handleConfirmEmailRelayConnection}>
+              {connectDialog.method === "webhook" ? "I've Configured Google Ads" : "I've Set Up Forwarding"}
             </Button>
           </DialogFooter>
         </DialogContent>
