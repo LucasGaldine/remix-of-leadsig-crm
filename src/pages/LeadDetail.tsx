@@ -474,6 +474,28 @@ export default function LeadDetail() {
 
       console.log("Lead converted to job successfully:", jobData.id);
 
+      if (!currentAccount) {
+        throw new Error("No account selected");
+      }
+
+      const estimateTotal = parseFloat(jobForm.price);
+      const { error: estimateError } = await supabase.from("estimates").insert({
+        customer_id: customerId,
+        job_id: jobData.id,
+        subtotal: estimateTotal,
+        tax_rate: 0,
+        tax: 0,
+        discount: 0,
+        total: estimateTotal,
+        status: "draft",
+        created_by: user?.id,
+        account_id: currentAccount.id,
+      });
+
+      if (estimateError) {
+        console.error("Error creating estimate:", estimateError);
+      }
+
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "status_change" as InteractionType,
@@ -491,6 +513,7 @@ export default function LeadDetail() {
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
 
       setCreateJobDialogOpen(false);
       navigate(`/jobs/${jobData.id}`);

@@ -317,7 +317,7 @@ export default function JobDetail() {
           </div>
           <div className="text-right ml-4">
             <p className="text-2xl font-bold text-foreground">
-              ${estimate?.total ? Number(estimate.total).toLocaleString() : "0"}
+              ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
             </p>
             <p className="text-xs text-muted-foreground">Estimate Total</p>
           </div>
