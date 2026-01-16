@@ -43,8 +43,8 @@ export default function Index() {
   const qualifiedLeads = qualifiedLeadsData.map(formatLeadForCard);
   const pendingApprovals = pendingApprovalsData.map((estimate: any) => ({
     id: estimate.id,
-    clientName: estimate.job?.customer?.name || "Unknown",
-    serviceType: estimate.job?.name || "Unknown",
+    clientName: estimate.customer?.name || "Unknown",
+    serviceType: estimate.name || "Estimate",
     estimateValue: Number(estimate.total_amount) || 0,
     sentAt: formatDistanceToNow(new Date(estimate.created_at), { addSuffix: true }),
   }));
