@@ -841,16 +841,22 @@ export default function LeadSources() {
                 <h4 className="font-medium">Setup Instructions</h4>
                 <ol className="text-sm space-y-3 list-decimal list-inside">
                   <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Create or edit a lead form campaign in Google Ads</span>
+                    <span className="font-medium text-foreground">Sign in to your Google Ads account</span>
                   </li>
                   <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Navigate to your lead form settings</span>
+                    <span className="font-medium text-foreground">Create or edit a lead form campaign</span>
                   </li>
                   <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Enable webhook delivery with these details:</span>
-                    <div className="ml-6 mt-2 space-y-2">
+                    <span className="font-medium text-foreground">In your lead form settings, scroll to "Webhook integration (optional)"</span>
+                  </li>
+                  <li className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Enter your webhook details:</span>
+                    <div className="ml-6 mt-2 space-y-3">
                       <div>
-                        <p className="text-xs font-medium mb-1">Webhook URL:</p>
+                        <p className="text-xs font-medium mb-1 flex items-center gap-1">
+                          Webhook URL
+                          <span className="text-muted-foreground font-normal">(paste this in Google Ads)</span>
+                        </p>
                         <div className="flex items-center gap-2 p-2 bg-muted rounded border">
                           <code className="flex-1 text-xs break-all">
                             {getWebhookUrl()}
@@ -867,36 +873,46 @@ export default function LeadSources() {
                       </div>
                       {connectDialog.apiKey && (
                         <div>
-                          <p className="text-xs font-medium mb-1">Add this header:</p>
-                          <div className="p-2 bg-muted rounded border">
-                            <code className="text-xs">
-                              x-leadsig-api-key: {connectDialog.apiKey}
+                          <p className="text-xs font-medium mb-1 flex items-center gap-1">
+                            Key
+                            <span className="text-muted-foreground font-normal">(paste this in the Key field)</span>
+                          </p>
+                          <div className="flex items-center gap-2 p-2 bg-muted rounded border">
+                            <code className="flex-1 text-xs break-all">
+                              {connectDialog.apiKey}
                             </code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={handleCopyApiKey}
+                            >
+                              {connectDialog.copied === "key" ? (
+                                <Check className="h-3 w-3 text-status-confirmed" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                            </Button>
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            The key field in Google Ads has a 50 character limit. Your full API key will work correctly.
+                          </p>
                         </div>
                       )}
                     </div>
                   </li>
                   <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Configure the payload mapping:</span>
-                    <div className="ml-6 mt-2">
-                      <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
-{`{
-  "source": "google",
-  "name": "{{full_name}}",
-  "phone": "{{phone_number}}",
-  "email": "{{email}}",
-  "serviceType": "{{service_type}}",
-  "location": "{{city}}",
-  "message": "{{message}}"
-}`}
-                      </pre>
-                    </div>
+                    <span className="font-medium text-foreground">Click "Send test data" in Google Ads to verify the connection</span>
                   </li>
                   <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Test the connection in Google Ads to verify it works</span>
+                    <span className="font-medium text-foreground">Save your lead form settings</span>
                   </li>
                 </ol>
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <p className="text-xs text-blue-800 dark:text-blue-200">
+                    <span className="font-medium">Note:</span> Google will automatically send all lead form fields to LeadSig. Our system intelligently maps common fields like name, email, phone, and address.
+                  </p>
+                </div>
               </div>
 
               <Collapsible>

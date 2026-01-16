@@ -9,7 +9,7 @@ const corsHeaders = {
 interface InboundLeadPayload {
   // Required
   source: string; // facebook | google | angi | yelp | thumbtack | custom
-  
+
   // Lead info
   name?: string;
   phone?: string;
@@ -19,14 +19,105 @@ interface InboundLeadPayload {
   location?: string;
   address?: string;
   message?: string;
-  
+
   // External reference
   externalLeadId?: string; // Alias for externalSourceId
   externalSourceId?: string;
-  
+
   // Raw data passthrough
   raw?: Record<string, unknown>;
   externalPayload?: Record<string, unknown>; // Legacy support
+}
+
+// Google Ads webhook format
+interface GoogleAdsWebhookPayload {
+  lead_id: string;
+  form_id: string;
+  campaign_id?: string;
+  ad_group_id?: string;
+  create_time?: string;
+  user_column_data: Array<{
+    column_name: string;
+    string_value?: string;
+    boolean_value?: boolean;
+  }>;
+}
+
+// Helper function to parse Google Ads webhook
+function parseGoogleAdsWebhook(payload: GoogleAdsWebhookPayload): InboundLeadPayload {
+  const leadData: InboundLeadPayload = {
+    source: "google",
+    externalSourceId: payload.lead_id,
+    raw: payload as unknown as Record<string, unknown>,
+  };
+
+  // Parse user_column_data
+  for (const column of payload.user_column_data) {
+    const columnName = column.column_name.toUpperCase();
+    const value = column.string_value || String(column.boolean_value || "");
+
+    switch (columnName) {
+      case "EMAIL":
+        leadData.email = value;
+        break;
+      case "PHONE_NUMBER":
+      case "PHONE":
+        leadData.phone = value;
+        break;
+      case "FULL_NAME":
+      case "FIRST_NAME":
+      case "NAME":
+        leadData.name = value;
+        break;
+      case "LAST_NAME":
+        if (leadData.name) {
+          leadData.name = `${leadData.name} ${value}`;
+        } else {
+          leadData.name = value;
+        }
+        break;
+      case "CITY":
+      case "LOCATION":
+        leadData.location = value;
+        break;
+      case "ADDRESS":
+      case "STREET_ADDRESS":
+        leadData.address = value;
+        break;
+      case "ZIP_CODE":
+      case "POSTAL_CODE":
+        if (leadData.location) {
+          leadData.location = `${leadData.location}, ${value}`;
+        } else {
+          leadData.location = value;
+        }
+        break;
+      case "MESSAGE":
+      case "COMMENTS":
+      case "DESCRIPTION":
+        leadData.message = value;
+        break;
+      case "SERVICE_TYPE":
+      case "SERVICE":
+        leadData.serviceType = value;
+        break;
+      case "BUDGET":
+        leadData.budget = parseFloat(value) || undefined;
+        break;
+    }
+  }
+
+  return leadData;
+}
+
+// Helper to detect if payload is Google Ads format
+function isGoogleAdsWebhook(payload: unknown): payload is GoogleAdsWebhookPayload {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "user_column_data" in payload &&
+    Array.isArray((payload as GoogleAdsWebhookPayload).user_column_data)
+  );
 }
 
 Deno.serve(async (req) => {
@@ -42,12 +133,19 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Validate API key
-    const apiKey = req.headers.get("x-leadsig-api-key");
+    // Validate API key - check header first, then query params
+    let apiKey = req.headers.get("x-leadsig-api-key");
+
+    if (!apiKey) {
+      // Check query parameters (Google Ads sends key as query param)
+      const url = new URL(req.url);
+      apiKey = url.searchParams.get("key") || url.searchParams.get("api_key");
+    }
+
     if (!apiKey) {
       console.log("leads-inbound: Missing API key");
       return new Response(
-        JSON.stringify({ error: "Missing x-leadsig-api-key header" }),
+        JSON.stringify({ error: "Missing API key. Provide via x-leadsig-api-key header or 'key' query parameter" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -91,13 +189,24 @@ Deno.serve(async (req) => {
       .eq("key_hash", keyHash);
 
     // Parse request body
-    const payload: InboundLeadPayload = await req.json();
-    console.log("leads-inbound: Payload received", JSON.stringify(payload));
+    const rawPayload = await req.json();
+    console.log("leads-inbound: Raw payload received", JSON.stringify(rawPayload));
+
+    // Check if this is a Google Ads webhook format
+    let payload: InboundLeadPayload;
+    if (isGoogleAdsWebhook(rawPayload)) {
+      console.log("leads-inbound: Detected Google Ads webhook format");
+      payload = parseGoogleAdsWebhook(rawPayload);
+      console.log("leads-inbound: Parsed payload", JSON.stringify(payload));
+    } else {
+      // Standard format
+      payload = rawPayload as InboundLeadPayload;
+    }
 
     // Validate required fields
-    if (!payload.name && !payload.phone) {
+    if (!payload.name && !payload.phone && !payload.email) {
       return new Response(
-        JSON.stringify({ error: "Either name or phone is required" }),
+        JSON.stringify({ error: "At least one of name, phone, or email is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
