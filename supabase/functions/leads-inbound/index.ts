@@ -32,10 +32,10 @@ interface InboundLeadPayload {
 // Google Ads webhook format
 interface GoogleAdsWebhookPayload {
   lead_id: string;
-  form_id: number;
-  campaign_id?: number;
-  adgroup_id?: number;
-  creative_id?: number;
+  form_id: string;
+  campaign_id?: string;
+  adgroup_id?: string;
+  creative_id?: string;
   google_key?: string;
   gcl_id?: string;
   api_version?: string;
@@ -158,11 +158,14 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Log all headers for debugging (helps identify Google's header names)
+    console.log("leads-inbound: Request headers", Object.fromEntries(req.headers.entries()));
+
     // Parse request body first to check for Google Ads webhook
     const rawPayload = await req.json();
     console.log("leads-inbound: Raw payload received", JSON.stringify(rawPayload));
 
-    // Validate API key - check Google Ads webhook first, then header, then query params
+    // Validate API key - check multiple possible locations
     let apiKey: string | null = null;
 
     // Check if this is a Google Ads webhook (has google_key in body)
@@ -170,20 +173,30 @@ Deno.serve(async (req) => {
       apiKey = rawPayload.google_key;
       console.log("leads-inbound: Using google_key from webhook payload");
     } else {
-      // Check header
-      apiKey = req.headers.get("x-leadsig-api-key");
+      // Check common Google header names first, then custom headers
+      apiKey =
+        req.headers.get("x-goog-webhook-key") ||
+        req.headers.get("x-goog-api-key") ||
+        req.headers.get("google-ads-webhook-key") ||
+        req.headers.get("x-google-api-key") ||
+        req.headers.get("authorization")?.replace("Bearer ", "") ||
+        req.headers.get("x-leadsig-api-key");
 
       if (!apiKey) {
         // Check query parameters
         const url = new URL(req.url);
         apiKey = url.searchParams.get("key") || url.searchParams.get("api_key");
       }
+
+      if (apiKey) {
+        console.log("leads-inbound: API key found in headers or query params");
+      }
     }
 
     if (!apiKey) {
       console.log("leads-inbound: Missing API key");
       return new Response(
-        JSON.stringify({ error: "Missing API key. Provide via google_key in body, x-leadsig-api-key header, or 'key' query parameter" }),
+        JSON.stringify({ error: "Missing API key. Provide via google_key in body, headers (x-goog-webhook-key, x-goog-api-key, authorization, x-leadsig-api-key), or 'key' query parameter" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -254,9 +267,9 @@ Deno.serve(async (req) => {
 
     // Normalize external ID (support both naming conventions)
     const externalId = payload.externalLeadId || payload.externalSourceId;
-    
-    // Normalize raw payload (support both naming conventions)
-    const rawPayload = payload.raw || payload.externalPayload || {};
+
+    // Normalize external payload (support both naming conventions)
+    const externalPayload = payload.raw || payload.externalPayload || {};
 
     // Create notes from message + raw payload if provided
     let leadNotes = "";
@@ -277,7 +290,7 @@ Deno.serve(async (req) => {
         address: payload.address,
         source: payload.source,
         external_source_id: externalId,
-        external_payload: rawPayload,
+        external_payload: externalPayload,
         notes: leadNotes || null,
         status: "new",
         created_by: userId,
