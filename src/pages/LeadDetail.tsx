@@ -99,7 +99,7 @@ const DISQUALIFY_REASONS: { value: DisqualifyReason; label: string }[] = [
 export default function LeadDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
   const deleteLeadMutation = useDeleteLead();
@@ -379,7 +379,7 @@ export default function LeadDetail() {
     if (!lead || creatingJob) return;
 
     if (!jobForm.price) {
-      toast.error("Price is required");
+      toast.error("Estimate is required");
       return;
     }
 
@@ -407,6 +407,10 @@ export default function LeadDetail() {
       }
 
       if (!customerId) {
+        if (!currentAccount) {
+          throw new Error("No account selected");
+        }
+
         const { data: newCustomer, error: customerError } = await supabase
           .from("customers")
           .insert({
@@ -416,6 +420,7 @@ export default function LeadDetail() {
             address: lead.address || lead.city,
             city: lead.city,
             created_by: user?.id,
+            account_id: currentAccount.id,
           })
           .select()
           .single();
@@ -814,7 +819,7 @@ export default function LeadDetail() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="job-price">Price *</Label>
+              <Label htmlFor="job-price">Estimate *</Label>
               <Input
                 id="job-price"
                 type="number"
