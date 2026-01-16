@@ -49,13 +49,20 @@ Deno.serve(async (req) => {
     // Verify API key
     const { data: apiKeyRecord, error: keyError } = await supabase
       .from("api_keys")
-      .select("user_id, is_active")
+      .select("user_id, account_id, is_active")
       .eq("key_hash", keyHash)
       .single();
 
     if (keyError || !apiKeyRecord || !apiKeyRecord.is_active) {
       return new Response(
         JSON.stringify({ error: "Invalid or inactive API key" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!apiKeyRecord.account_id) {
+      return new Response(
+        JSON.stringify({ error: "API key is not associated with an account" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

@@ -135,7 +135,7 @@ const generateInboundEmail = (userId: string): string => {
 
 export default function LeadSources() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   const [connections, setConnections] = useState<LeadSourceConnection[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -185,10 +185,10 @@ export default function LeadSources() {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [user, currentAccount]);
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!user || !currentAccount) return;
 
     const [connectionsRes, keysRes] = await Promise.all([
       supabase
@@ -198,7 +198,7 @@ export default function LeadSources() {
       supabase
         .from("api_keys")
         .select("id, name, key_prefix, is_active")
-        .eq("user_id", user.id)
+        .eq("account_id", currentAccount.id)
         .eq("is_active", true)
         .order("created_at", { ascending: false }),
     ]);
@@ -274,7 +274,7 @@ export default function LeadSources() {
   };
 
   const handleConnectWebhook = async (platform: PlatformInfo) => {
-    if (!user) return;
+    if (!user || !currentAccount) return;
 
     // For debugging: Check if we have a recently created API key in session storage
     const debugApiKey = sessionStorage.getItem('leadsig_debug_api_key');
@@ -290,6 +290,7 @@ export default function LeadSources() {
         .from("api_keys")
         .insert({
           user_id: user.id,
+          account_id: currentAccount.id,
           name: `${platform.name} Integration`,
           key_hash: keyHash,
           key_prefix: keyPrefix,
