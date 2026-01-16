@@ -223,8 +223,8 @@ export default function LeadSources() {
   };
 
   const getWebhookUrl = () => {
-    const projectId = "pjovvijpmbgorcfblggs";
-    return `https://${projectId}.supabase.co/functions/v1/leads-inbound`;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    return `${supabaseUrl}/functions/v1/leads-inbound`;
   };
 
   const generateApiKey = (): string => {
