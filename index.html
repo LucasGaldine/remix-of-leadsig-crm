@@ -21,6 +21,25 @@
 
   <body>
     <div id="root"></div>
+    <script>
+      if (typeof window !== 'undefined') {
+        const createStub = () => ({
+          get: () => undefined,
+          set: () => undefined,
+          init: () => undefined,
+          track: () => undefined,
+          identify: () => undefined,
+          page: () => undefined,
+          on: () => undefined,
+          off: () => undefined,
+          once: () => undefined,
+        });
+
+        if (!window.chmln) window.chmln = createStub();
+        if (!window.messo) window.messo = createStub();
+        if (!window.blitz) window.blitz = createStub();
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
