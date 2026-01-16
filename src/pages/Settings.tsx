@@ -64,7 +64,6 @@ export default function Settings() {
           icon: <Building2 className="h-5 w-5" />,
           label: "Company Profile",
           description: "Name, logo, contact info",
-          comingSoon: true,
           onClick: () => navigate("/settings/company"),
         },
         {
