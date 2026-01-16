@@ -18,6 +18,7 @@ import {
 interface PricingRule {
   id?: string;
   user_id: string;
+  account_id?: string;
   service_type: string;
   base_labor_rate: number;
   material_rate: number;
@@ -30,8 +31,8 @@ interface PricingRule {
 
 export default function SettingsPricingRules() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  
+  const { user, currentAccount } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rules, setRules] = useState<Record<ServiceType, PricingRule>>({} as Record<ServiceType, PricingRule>);
@@ -39,16 +40,16 @@ export default function SettingsPricingRules() {
 
   useEffect(() => {
     fetchRules();
-  }, [user?.id]);
+  }, [user?.id, currentAccount?.id]);
 
   const fetchRules = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !currentAccount?.id) return;
 
     setLoading(true);
     const { data, error } = await supabase
       .from("pricing_rules")
       .select("*")
-      .eq("user_id", user.id);
+      .eq("account_id", currentAccount.id);
 
     if (error) {
       console.error("Error fetching rules:", error);
@@ -87,14 +88,14 @@ export default function SettingsPricingRules() {
   };
 
   const saveRules = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !currentAccount?.id) return;
 
     setSaving(true);
-    
+
     try {
       for (const serviceType of Object.keys(rules) as ServiceType[]) {
         const rule = rules[serviceType];
-        
+
         if (rule.id) {
           // Update existing rule
           const { error } = await supabase
@@ -116,6 +117,7 @@ export default function SettingsPricingRules() {
             .from("pricing_rules")
             .insert({
               user_id: user.id,
+              account_id: currentAccount.id,
               service_type: serviceType,
               base_labor_rate: rule.base_labor_rate,
               material_rate: rule.material_rate,
