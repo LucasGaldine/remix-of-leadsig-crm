@@ -29,7 +29,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const [email, setEmail] = useState("");
   const [serviceType, setServiceType] = useState("");
   const [jobAddress, setJobAddress] = useState("");
-  const [estimatedValue, setEstimatedValue] = useState("");
   const [description, setDescription] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -96,13 +95,12 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         email: email || null,
         service_type: serviceType || null,
         address: jobAddress || null,
-        estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
         description: description || null,
         scheduled_date: scheduledDateTime,
         status,
       });
 
-      toast.success("Job created successfully!");
+      toast.success("Job and estimate created successfully!");
 
       setJobName("");
       setCustomerName("");
@@ -110,7 +108,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       setEmail("");
       setServiceType("");
       setJobAddress("");
-      setEstimatedValue("");
       setDescription("");
       setScheduledDate("");
       setScheduledTime("");
@@ -131,7 +128,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setEmail("");
     setServiceType("");
     setJobAddress("");
-    setEstimatedValue("");
     setDescription("");
     setScheduledDate("");
     setScheduledTime("");
@@ -239,20 +235,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 value={jobAddress}
                 onChange={(e) => setJobAddress(e.target.value)}
                 placeholder="123 Main St, Austin, TX"
-                className="h-12 text-base border-gray-300 rounded-lg"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="estimatedValue" className="text-base font-semibold text-gray-900">
-                Estimated Value ($)
-              </Label>
-              <Input
-                id="estimatedValue"
-                type="number"
-                value={estimatedValue}
-                onChange={(e) => setEstimatedValue(e.target.value)}
-                placeholder="5000"
                 className="h-12 text-base border-gray-300 rounded-lg"
               />
             </div>

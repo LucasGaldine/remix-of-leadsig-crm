@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   MapPin,
@@ -47,8 +47,6 @@ export default function JobDetail() {
     name: "",
     service_type: "",
     address: "",
-    estimated_value: "",
-    actual_value: "",
     description: "",
     customer_name: "",
     customer_phone: "",
@@ -57,6 +55,35 @@ export default function JobDetail() {
 
   const { data: job, isLoading, error } = useJob(id);
   const updateJobMutation = useUpdateJob();
+
+  const [estimate, setEstimate] = useState<any>(null);
+  const [estimateLoading, setEstimateLoading] = useState(true);
+
+  useEffect(() => {
+    if (id) {
+      fetchEstimate();
+    }
+  }, [id]);
+
+  const fetchEstimate = async () => {
+    if (!id) return;
+
+    setEstimateLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("estimates")
+        .select("id, total, status, line_items:estimate_line_items(id)")
+        .eq("job_id", id)
+        .maybeSingle();
+
+      if (error) throw error;
+      setEstimate(data);
+    } catch (error) {
+      console.error("Error fetching estimate:", error);
+    } finally {
+      setEstimateLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -186,8 +213,6 @@ export default function JobDetail() {
       name: job?.name || "",
       service_type: job?.service_type || "",
       address: job?.address || "",
-      estimated_value: job?.estimated_value?.toString() || "",
-      actual_value: job?.actual_value?.toString() || "",
       description: job?.description || "",
       customer_name: job?.customer?.name || "",
       customer_phone: job?.customer?.phone || "",
@@ -217,8 +242,6 @@ export default function JobDetail() {
         name: editForm.name.trim() || null,
         service_type: editForm.service_type || null,
         address: editForm.address.trim() || null,
-        estimated_value: editForm.estimated_value ? parseFloat(editForm.estimated_value) : null,
-        actual_value: editForm.actual_value ? parseFloat(editForm.actual_value) : null,
         description: editForm.description.trim() || null,
       });
 
@@ -258,13 +281,9 @@ export default function JobDetail() {
           </div>
           <div className="text-right ml-4">
             <p className="text-2xl font-bold text-foreground">
-              ${job.estimated_value ? Number(job.estimated_value).toLocaleString() : "0"}
+              ${estimate?.total ? Number(estimate.total).toLocaleString() : "0"}
             </p>
-            {job.actual_value && (
-              <p className="text-sm text-muted-foreground">
-                Actual: ${Number(job.actual_value).toLocaleString()}
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">Estimate Total</p>
           </div>
         </div>
 
@@ -368,6 +387,30 @@ export default function JobDetail() {
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
               </div>
             </button>
+
+            {/* Estimate */}
+            {estimate && (
+              <button
+                onClick={() => navigate(`/estimate/${estimate.id}`)}
+                className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-secondary">
+                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">Estimate</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      ${Number(estimate.total).toLocaleString()} · {estimate.status}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {estimate.line_items?.length || 0} line items
+                    </p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </button>
+            )}
 
             {/* Crew */}
             {job.crew_lead && (
@@ -636,28 +679,6 @@ export default function JobDetail() {
                   onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
                   placeholder="123 Main St, Austin, TX"
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-estimated-value">Estimated Value ($)</Label>
-                  <Input
-                    id="edit-estimated-value"
-                    type="number"
-                    value={editForm.estimated_value}
-                    onChange={(e) => setEditForm({ ...editForm, estimated_value: e.target.value })}
-                    placeholder="5000"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-actual-value">Actual Value ($)</Label>
-                  <Input
-                    id="edit-actual-value"
-                    type="number"
-                    value={editForm.actual_value}
-                    onChange={(e) => setEditForm({ ...editForm, actual_value: e.target.value })}
-                    placeholder="5500"
-                  />
-                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-description">Description</Label>
