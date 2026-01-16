@@ -19,10 +19,16 @@ export interface EstimateWithDetails extends Estimate {
   line_items: {
     id: string;
     name: string;
+    description?: string;
     quantity: number;
     unit: string;
     unit_price: number;
     total: number;
+    sort_order?: number;
+    is_change_order?: boolean;
+    change_order_type?: 'added' | 'edited' | 'deleted';
+    original_line_item_id?: string;
+    changed_at?: string;
   }[];
 }
 
@@ -67,10 +73,16 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
           line_items:estimate_line_items(
             id,
             name,
+            description,
             quantity,
             unit,
             unit_price,
-            total
+            total,
+            sort_order,
+            is_change_order,
+            change_order_type,
+            original_line_item_id,
+            changed_at
           )
         `)
         .eq("account_id", currentAccount.id)
@@ -140,7 +152,11 @@ export function useEstimate(id: string | undefined) {
             unit,
             unit_price,
             total,
-            sort_order
+            sort_order,
+            is_change_order,
+            change_order_type,
+            original_line_item_id,
+            changed_at
           )
         `)
         .eq("id", id)
