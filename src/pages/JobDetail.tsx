@@ -179,25 +179,6 @@ export default function JobDetail() {
         scheduled_time_end: scheduleForm.scheduled_time_end || undefined,
       });
 
-      const scheduledDate = new Date(scheduleForm.scheduled_date + "T00:00:00");
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      scheduledDate.setHours(0, 0, 0, 0);
-
-      let newStatus = job?.status;
-      if (scheduledDate <= today && newStatus !== "completed" && newStatus !== "in_progress") {
-        newStatus = "in_progress";
-      } else if (scheduledDate > today && newStatus === "new") {
-        newStatus = "scheduled";
-      }
-
-      if (newStatus !== job?.status) {
-        await updateJobMutation.mutateAsync({
-          id,
-          status: newStatus
-        });
-      }
-
       toast.success("Schedule added successfully!");
       setScheduleForm({ scheduled_date: "", scheduled_time_start: "", scheduled_time_end: "" });
       setScheduleDialogOpen(false);
@@ -389,7 +370,7 @@ export default function JobDetail() {
       </div>
 
       {/* Tab Content */}
-      <main className="px-4 py-4">
+      <main className="px-4 py-4 pb-32">
         {activeTab === "details" && (
           <div className="space-y-4">
             {/* Location */}
@@ -646,10 +627,9 @@ export default function JobDetail() {
             </div>
             {scheduleForm.scheduled_date && (
               <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
-                {hasSchedules ? "Adding additional scheduled date" :
-                 new Date(scheduleForm.scheduled_date + "T00:00:00") > new Date()
-                  ? "Job status will be set to: Scheduled"
-                  : "Job status will be set to: In Progress"}
+                {hasSchedules
+                  ? "Adding additional scheduled date. Job status will update automatically based on all scheduled dates."
+                  : "Job status will update automatically based on scheduled dates."}
               </div>
             )}
           </div>
