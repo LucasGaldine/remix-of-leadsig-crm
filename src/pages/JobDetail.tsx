@@ -13,6 +13,7 @@ import {
   DollarSign,
   ChevronRight,
   Calendar,
+  Edit,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -22,10 +23,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useJob, useUpdateJob } from "@/hooks/useJobs";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -33,10 +37,22 @@ export default function JobDetail() {
   const [activeTab, setActiveTab] = useState<"details" | "checklist" | "photos" | "notes">("details");
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
     scheduled_date: "",
     scheduled_time_start: "",
     scheduled_time_end: ""
+  });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    service_type: "",
+    address: "",
+    estimated_value: "",
+    actual_value: "",
+    description: "",
+    customer_name: "",
+    customer_phone: "",
+    customer_email: "",
   });
 
   const { data: job, isLoading, error } = useJob(id);
@@ -165,6 +181,55 @@ export default function JobDetail() {
     }
   };
 
+  const openEditDialog = () => {
+    setEditForm({
+      name: job?.name || "",
+      service_type: job?.service_type || "",
+      address: job?.address || "",
+      estimated_value: job?.estimated_value?.toString() || "",
+      actual_value: job?.actual_value?.toString() || "",
+      description: job?.description || "",
+      customer_name: job?.customer?.name || "",
+      customer_phone: job?.customer?.phone || "",
+      customer_email: job?.customer?.email || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEdit = async () => {
+    if (!id) return;
+
+    try {
+      if (job?.customer?.id) {
+        await supabase
+          .from("customers")
+          .update({
+            name: editForm.customer_name.trim(),
+            phone: editForm.customer_phone.trim() || null,
+            email: editForm.customer_email.trim() || null,
+            address: editForm.address.trim() || null,
+          })
+          .eq("id", job.customer.id);
+      }
+
+      await updateJobMutation.mutateAsync({
+        id,
+        name: editForm.name.trim() || null,
+        service_type: editForm.service_type || null,
+        address: editForm.address.trim() || null,
+        estimated_value: editForm.estimated_value ? parseFloat(editForm.estimated_value) : null,
+        actual_value: editForm.actual_value ? parseFloat(editForm.actual_value) : null,
+        description: editForm.description.trim() || null,
+      });
+
+      toast.success("Job updated successfully!");
+      setEditDialogOpen(false);
+    } catch (error) {
+      console.error("Error updating job:", error);
+      toast.error("Failed to update job");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Job Details" showBack backTo="/jobs" showNotifications={false} />
@@ -172,19 +237,34 @@ export default function JobDetail() {
       {/* Status Banner */}
       <div className="bg-card border-b border-border px-4 py-4">
         <div className="flex items-start justify-between mb-3">
-          <div>
-            <StatusBadge status={job.status} size="lg">
-              {job.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-            </StatusBadge>
-            <h2 className="text-xl font-bold text-foreground mt-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <StatusBadge status={job.status} size="lg">
+                {job.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              </StatusBadge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={openEditDialog}
+                className="ml-auto"
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+            </div>
+            <h2 className="text-xl font-bold text-foreground">
               {job.customer?.name || "Unknown Client"}
             </h2>
             <p className="text-muted-foreground">{job.service_type || job.name}</p>
           </div>
-          <div className="text-right">
+          <div className="text-right ml-4">
             <p className="text-2xl font-bold text-foreground">
               ${job.estimated_value ? Number(job.estimated_value).toLocaleString() : "0"}
             </p>
+            {job.actual_value && (
+              <p className="text-sm text-muted-foreground">
+                Actual: ${Number(job.actual_value).toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
 
@@ -466,6 +546,138 @@ export default function JobDetail() {
                 Save Schedule
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Job Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Job Details</DialogTitle>
+            <DialogDescription>
+              Update job and customer information.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Customer Info</h3>
+              <div className="space-y-2">
+                <Label htmlFor="edit-customer-name">Customer Name</Label>
+                <Input
+                  id="edit-customer-name"
+                  value={editForm.customer_name}
+                  onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
+                  placeholder="John Smith"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-customer-phone">Phone</Label>
+                  <Input
+                    id="edit-customer-phone"
+                    type="tel"
+                    value={editForm.customer_phone}
+                    onChange={(e) => setEditForm({ ...editForm, customer_phone: e.target.value })}
+                    placeholder="(555) 123-4567"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-customer-email">Email</Label>
+                  <Input
+                    id="edit-customer-email"
+                    type="email"
+                    value={editForm.customer_email}
+                    onChange={(e) => setEditForm({ ...editForm, customer_email: e.target.value })}
+                    placeholder="john@email.com"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Job Details</h3>
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Job Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  placeholder="Smith Patio Project"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-service-type">Service Type</Label>
+                <Select
+                  value={editForm.service_type}
+                  onValueChange={(v) => setEditForm({ ...editForm, service_type: v })}
+                >
+                  <SelectTrigger id="edit-service-type">
+                    <SelectValue placeholder="Select service type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Pavers / Patio">Pavers / Patio</SelectItem>
+                    <SelectItem value="Concrete">Concrete</SelectItem>
+                    <SelectItem value="Sod / Lawn">Sod / Lawn</SelectItem>
+                    <SelectItem value="Deck">Deck</SelectItem>
+                    <SelectItem value="Fencing">Fencing</SelectItem>
+                    <SelectItem value="Retaining Wall">Retaining Wall</SelectItem>
+                    <SelectItem value="Landscaping">Landscaping</SelectItem>
+                    <SelectItem value="Hardscaping">Hardscaping</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-address">Job Address</Label>
+                <Input
+                  id="edit-address"
+                  value={editForm.address}
+                  onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                  placeholder="123 Main St, Austin, TX"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-estimated-value">Estimated Value ($)</Label>
+                  <Input
+                    id="edit-estimated-value"
+                    type="number"
+                    value={editForm.estimated_value}
+                    onChange={(e) => setEditForm({ ...editForm, estimated_value: e.target.value })}
+                    placeholder="5000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-actual-value">Actual Value ($)</Label>
+                  <Input
+                    id="edit-actual-value"
+                    type="number"
+                    value={editForm.actual_value}
+                    onChange={(e) => setEditForm({ ...editForm, actual_value: e.target.value })}
+                    placeholder="5500"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  placeholder="Project scope and details..."
+                  rows={3}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEdit}>
+              Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
