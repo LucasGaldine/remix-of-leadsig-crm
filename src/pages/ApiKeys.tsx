@@ -40,8 +40,8 @@ interface ApiKey {
 
 export default function ApiKeys() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  
+  const { user, currentAccount } = useAuth();
+
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -61,15 +61,15 @@ export default function ApiKeys() {
 
   useEffect(() => {
     fetchApiKeys();
-  }, [user]);
+  }, [user, currentAccount]);
 
   const fetchApiKeys = async () => {
-    if (!user) return;
-    
+    if (!user || !currentAccount) return;
+
     const { data, error } = await supabase
       .from("api_keys")
       .select("id, name, key_prefix, is_active, last_used_at, created_at, expires_at")
-      .eq("user_id", user.id)
+      .eq("account_id", currentAccount.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -99,16 +99,17 @@ export default function ApiKeys() {
   };
 
   const handleCreateKey = async () => {
-    if (!user || !newKeyName.trim()) return;
-    
+    if (!user || !currentAccount || !newKeyName.trim()) return;
+
     setCreating(true);
-    
+
     const apiKey = generateApiKey();
     const keyHash = await hashApiKey(apiKey);
     const keyPrefix = apiKey.slice(0, 10) + "...";
 
     const { error } = await supabase.from("api_keys").insert({
       user_id: user.id,
+      account_id: currentAccount.id,
       name: newKeyName.trim(),
       key_hash: keyHash,
       key_prefix: keyPrefix,
@@ -126,7 +127,7 @@ export default function ApiKeys() {
       fetchApiKeys();
       toast.success("API key created");
     }
-    
+
     setCreating(false);
   };
 

@@ -211,12 +211,12 @@ Deno.serve(async (req) => {
     // Look up the API key
     const { data: apiKeyRecord, error: keyError } = await supabase
       .from("api_keys")
-      .select("user_id, is_active")
+      .select("user_id, account_id, is_active")
       .eq("key_hash", keyHash)
       .single();
 
     if (keyError || !apiKeyRecord) {
-      console.log("leads-inbound: Invalid API key");
+      console.log("leads-inbound: Invalid API key", keyError);
       return new Response(
         JSON.stringify({ error: "Invalid API key" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -231,7 +231,16 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (!apiKeyRecord.account_id) {
+      console.log("leads-inbound: API key has no account_id");
+      return new Response(
+        JSON.stringify({ error: "API key is not associated with an account" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const userId = apiKeyRecord.user_id;
+    const accountId = apiKeyRecord.account_id;
 
     // Update last_used_at
     await supabase
@@ -294,6 +303,7 @@ Deno.serve(async (req) => {
         notes: leadNotes || null,
         status: "new",
         created_by: userId,
+        account_id: accountId,
         approval_status: "pending", // Inbound leads require approval
         submitted_at: new Date().toISOString(),
       })
