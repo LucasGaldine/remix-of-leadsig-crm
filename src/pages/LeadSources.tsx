@@ -276,6 +276,9 @@ export default function LeadSources() {
   const handleConnectWebhook = async (platform: PlatformInfo) => {
     if (!user) return;
 
+    // For debugging: Check if we have a recently created API key in session storage
+    const debugApiKey = sessionStorage.getItem('leadsig_debug_api_key');
+
     // Check if user has an API key
     if (apiKeys.length === 0) {
       // Create a new API key for this user
@@ -301,6 +304,9 @@ export default function LeadSources() {
         return;
       }
 
+      // Store in session storage for debugging purposes
+      sessionStorage.setItem('leadsig_debug_api_key', newApiKey);
+
       setConnectDialog({
         open: true,
         platform,
@@ -313,13 +319,13 @@ export default function LeadSources() {
 
       setApiKeys([createdKey, ...apiKeys]);
     } else {
-      // Use existing API key (don't show the actual key, just tell them to use it)
+      // Use existing API key - show the debug key if available
       setConnectDialog({
         open: true,
         platform,
         method: "webhook",
         inboundEmail: "",
-        apiKey: null,
+        apiKey: debugApiKey,
         apiKeyId: apiKeys[0].id,
         copied: null,
       });
@@ -813,10 +819,10 @@ export default function LeadSources() {
               {connectDialog.apiKey && (
                 <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <h4 className="font-medium mb-2 text-yellow-900 dark:text-yellow-100 flex items-center gap-2">
-                    <span className="text-lg">⚠️</span> Save Your API Key
+                    <span className="text-lg">⚠️</span> Your API Key
                   </h4>
                   <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
-                    This is the only time you'll see this key. Copy it now and save it securely.
+                    Copy this key and paste it into Google Ads. This key is visible during your current browser session for debugging.
                   </p>
                   <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
                     <code className="flex-1 text-sm break-all font-mono">
