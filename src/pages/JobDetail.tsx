@@ -16,6 +16,7 @@ import {
   Edit,
   Trash2,
   MoreVertical,
+  Plus,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -30,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useJob, useUpdateJob, useDeleteJob } from "@/hooks/useJobs";
+import { useJobSchedules, useAddJobSchedule, useUpdateJobSchedule, useDeleteJobSchedule } from "@/hooks/useJobSchedules";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,6 +60,10 @@ export default function JobDetail() {
   });
 
   const { data: job, isLoading, error } = useJob(id);
+  const { data: schedules = [], isLoading: schedulesLoading } = useJobSchedules(id);
+  const addScheduleMutation = useAddJobSchedule();
+  const updateScheduleMutation = useUpdateJobSchedule();
+  const deleteScheduleMutation = useDeleteJobSchedule();
   const updateJobMutation = useUpdateJob();
   const deleteJobMutation = useDeleteJob();
 
@@ -112,12 +118,12 @@ export default function JobDetail() {
 
   const clientPhone = job.customer?.phone || "";
   const clientAddress = job.address || "";
-  const scheduledDate = job.scheduled_date
-    ? format(new Date(job.scheduled_date + "T00:00:00"), "EEEE, MMMM d, yyyy")
+  const hasSchedules = schedules && schedules.length > 0;
+  const scheduledDatesText = hasSchedules
+    ? schedules.length === 1
+      ? format(new Date(schedules[0].scheduled_date + "T00:00:00"), "EEEE, MMM d, yyyy")
+      : `${schedules.length} scheduled dates`
     : "Not scheduled";
-  const scheduledTime = job.scheduled_time_start && job.scheduled_time_end
-    ? `${job.scheduled_time_start} - ${job.scheduled_time_end}`
-    : "Time not set";
 
   const handleCall = () => {
     if (clientPhone) window.open(`tel:${clientPhone}`);
@@ -152,9 +158,9 @@ export default function JobDetail() {
 
   const openScheduleDialog = () => {
     setScheduleForm({
-      scheduled_date: job?.scheduled_date || "",
-      scheduled_time_start: job?.scheduled_time_start || "",
-      scheduled_time_end: job?.scheduled_time_end || ""
+      scheduled_date: "",
+      scheduled_time_start: "",
+      scheduled_time_end: ""
     });
     setScheduleDialogOpen(true);
   };
@@ -166,50 +172,53 @@ export default function JobDetail() {
     }
 
     try {
+      await addScheduleMutation.mutateAsync({
+        lead_id: id,
+        scheduled_date: scheduleForm.scheduled_date,
+        scheduled_time_start: scheduleForm.scheduled_time_start || undefined,
+        scheduled_time_end: scheduleForm.scheduled_time_end || undefined,
+      });
+
       const scheduledDate = new Date(scheduleForm.scheduled_date + "T00:00:00");
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       scheduledDate.setHours(0, 0, 0, 0);
 
       let newStatus = job?.status;
-      if (scheduledDate <= today) {
+      if (scheduledDate <= today && newStatus !== "completed" && newStatus !== "in_progress") {
         newStatus = "in_progress";
-      } else {
+      } else if (scheduledDate > today && newStatus === "new") {
         newStatus = "scheduled";
       }
 
-      await updateJobMutation.mutateAsync({
-        id,
-        scheduled_date: scheduleForm.scheduled_date,
-        scheduled_time_start: scheduleForm.scheduled_time_start || null,
-        scheduled_time_end: scheduleForm.scheduled_time_end || null,
-        status: newStatus
-      });
+      if (newStatus !== job?.status) {
+        await updateJobMutation.mutateAsync({
+          id,
+          status: newStatus
+        });
+      }
 
-      toast.success("Job scheduled successfully!");
+      toast.success("Schedule added successfully!");
+      setScheduleForm({ scheduled_date: "", scheduled_time_start: "", scheduled_time_end: "" });
       setScheduleDialogOpen(false);
     } catch (error) {
-      console.error("Error scheduling job:", error);
-      toast.error("Failed to schedule job");
+      console.error("Error adding schedule:", error);
+      toast.error("Failed to add schedule");
     }
   };
 
-  const handleClearSchedule = async () => {
+  const handleDeleteSchedule = async (scheduleId: string) => {
     if (!id) return;
 
     try {
-      await updateJobMutation.mutateAsync({
-        id,
-        scheduled_date: null,
-        scheduled_time_start: null,
-        scheduled_time_end: null,
+      await deleteScheduleMutation.mutateAsync({
+        id: scheduleId,
+        lead_id: id,
       });
-
-      toast.success("Schedule cleared!");
-      setScheduleDialogOpen(false);
+      toast.success("Schedule removed!");
     } catch (error) {
-      console.error("Error clearing schedule:", error);
-      toast.error("Failed to clear schedule");
+      console.error("Error removing schedule:", error);
+      toast.error("Failed to remove schedule");
     }
   };
 
@@ -403,26 +412,60 @@ export default function JobDetail() {
             </button>
 
             {/* Schedule */}
-            <button
-              onClick={openScheduleDialog}
-              className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-            >
-              <div className="flex items-start gap-3">
+            <div className="card-elevated rounded-lg p-4">
+              <div className="flex items-start gap-3 mb-3">
                 <div className="p-2 rounded-lg bg-secondary">
                   <Clock className="h-5 w-5 text-secondary-foreground" />
                 </div>
                 <div className="flex-1">
                   <p className="font-medium text-foreground">Schedule</p>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    {scheduledDate}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {scheduledTime}
+                    {scheduledDatesText}
                   </p>
                 </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
               </div>
-            </button>
+
+              {schedulesLoading ? (
+                <div className="flex justify-center py-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+                </div>
+              ) : hasSchedules ? (
+                <div className="space-y-2 mb-3">
+                  {schedules.map((schedule) => (
+                    <div key={schedule.id} className="flex items-center justify-between p-2 bg-secondary/50 rounded-md">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d, yyyy")}
+                        </p>
+                        {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                          <p className="text-xs text-muted-foreground">
+                            {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteSchedule(schedule.id)}
+                        className="h-7 w-7 p-0"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openScheduleDialog}
+                className="w-full gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Schedule Date
+              </Button>
+            </div>
 
             {/* Estimate */}
             {estimate && (
@@ -566,9 +609,9 @@ export default function JobDetail() {
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Schedule Job</DialogTitle>
+            <DialogTitle>Add Schedule Date</DialogTitle>
             <DialogDescription>
-              Set or update the schedule for this job.
+              Add a new scheduled work date for this job. You can add multiple dates for multi-day projects.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -603,28 +646,20 @@ export default function JobDetail() {
             </div>
             {scheduleForm.scheduled_date && (
               <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
-                {new Date(scheduleForm.scheduled_date + "T00:00:00") > new Date()
-                  ? "Status will be set to: Scheduled"
-                  : "Status will be set to: In Progress"}
+                {hasSchedules ? "Adding additional scheduled date" :
+                 new Date(scheduleForm.scheduled_date + "T00:00:00") > new Date()
+                  ? "Job status will be set to: Scheduled"
+                  : "Job status will be set to: In Progress"}
               </div>
             )}
           </div>
-          <DialogFooter className="sm:justify-between">
-            <Button
-              variant="destructive"
-              onClick={handleClearSchedule}
-              disabled={!job?.scheduled_date}
-            >
-              Clear Schedule
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
+              Cancel
             </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSchedule} disabled={!scheduleForm.scheduled_date}>
-                Save Schedule
-              </Button>
-            </div>
+            <Button onClick={handleSchedule} disabled={!scheduleForm.scheduled_date}>
+              Add Schedule
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
