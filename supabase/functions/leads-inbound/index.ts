@@ -329,57 +329,6 @@ Deno.serve(async (req) => {
 
     console.log("leads-inbound: Lead created successfully", lead.id);
 
-    // Send notifications (fire and forget - don't block response)
-    const notificationPayload = {
-      leadId: lead.id,
-      leadName: lead.name,
-      leadPhone: lead.phone,
-      leadEmail: lead.email,
-      source: payload.source,
-      serviceType: payload.serviceType,
-      userId: userId,
-    };
-
-    // Send email notification
-    try {
-      const emailResponse = await fetch(`${supabaseUrl}/functions/v1/notify-new-lead`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify(notificationPayload),
-      });
-      
-      if (!emailResponse.ok) {
-        console.error("leads-inbound: Failed to send email notification", await emailResponse.text());
-      } else {
-        console.log("leads-inbound: Email notification sent successfully");
-      }
-    } catch (emailError) {
-      console.error("leads-inbound: Error sending email notification", emailError);
-    }
-
-    // Send SMS notification
-    try {
-      const smsResponse = await fetch(`${supabaseUrl}/functions/v1/notify-new-lead-sms`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify(notificationPayload),
-      });
-      
-      if (!smsResponse.ok) {
-        console.error("leads-inbound: Failed to send SMS notification", await smsResponse.text());
-      } else {
-        console.log("leads-inbound: SMS notification sent successfully");
-      }
-    } catch (smsError) {
-      console.error("leads-inbound: Error sending SMS notification", smsError);
-    }
-
     return new Response(
       JSON.stringify({ success: true, lead }),
       { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
