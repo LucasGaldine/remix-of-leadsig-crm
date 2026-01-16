@@ -2,7 +2,7 @@ import { Phone, MessageSquare, Calendar, ChevronRight, DollarSign } from "lucide
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 
-export type LeadStatus = "new" | "contacted" | "qualified" | "scheduled" | "in_progress" | "won" | "lost" | "unqualified" | "converted" | "rejected";
+export type LeadStatus = "new" | "contacted" | "qualified" | "scheduled" | "in_progress" | "completed" | "won" | "lost" | "unqualified" | "converted" | "rejected" | "on_hold" | "invoiced" | "paid";
 
 export interface Lead {
   id: string;
@@ -30,12 +30,16 @@ export function LeadCard({ lead, onClick, onCall, onMessage, className }: LeadCa
     switch (status) {
       case "qualified":
       case "scheduled":
+      case "completed":
       case "won":
       case "converted":
+      case "invoiced":
+      case "paid":
         return "confirmed";
       case "new":
       case "contacted":
       case "in_progress":
+      case "on_hold":
         return "pending";
       case "rejected":
       case "lost":
@@ -52,11 +56,15 @@ export function LeadCard({ lead, onClick, onCall, onMessage, className }: LeadCa
     qualified: "Qualified",
     scheduled: "Scheduled",
     in_progress: "In Progress",
+    completed: "Completed",
     won: "Won",
     lost: "Lost",
     unqualified: "Unqualified",
     converted: "Converted",
     rejected: "Rejected",
+    on_hold: "On Hold",
+    invoiced: "Invoiced",
+    paid: "Paid",
   };
 
   return (

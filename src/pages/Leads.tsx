@@ -23,6 +23,7 @@ const filterOptions: { value: FilterStatus; label: string }[] = [
   { value: "qualified", label: "Qualified" },
   { value: "scheduled", label: "Scheduled" },
   { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
 ];
