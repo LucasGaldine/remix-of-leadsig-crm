@@ -21,7 +21,7 @@ const TIMEZONES = [
 ];
 
 export default function SettingsProfile() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, role, currentAccount, refreshProfile } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
@@ -41,6 +41,17 @@ export default function SettingsProfile() {
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const formatRole = (role: string | null) => {
+    if (!role) return "N/A";
+    const roleMap: Record<string, string> = {
+      owner: "Owner",
+      admin: "Administrator",
+      sales: "Sales",
+      crew_lead: "Crew Lead",
+    };
+    return roleMap[role] || role;
+  };
 
   useEffect(() => {
     if (profile) {
@@ -227,6 +238,27 @@ export default function SettingsProfile() {
                 JPG, PNG or GIF. Max 5MB.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Account & Role Information */}
+        <div className="card-elevated rounded-lg p-6">
+          <h3 className="font-semibold text-lg mb-4">Account Information</h3>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <div className="px-3 py-2 bg-secondary rounded-md text-sm">
+                {formatRole(role)}
+              </div>
+            </div>
+            {currentAccount && (
+              <div className="space-y-2">
+                <Label>Company</Label>
+                <div className="px-3 py-2 bg-secondary rounded-md text-sm">
+                  {currentAccount.company_name}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
