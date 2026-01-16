@@ -8,7 +8,7 @@ interface EstimateCardProps {
 }
 
 const statusConfig: Record<EstimateStatus, { label: string; className: string; icon: React.ReactNode }> = {
-  draft: { label: "Draft", className: "bg-secondary text-secondary-foreground", icon: <FileText className="h-3 w-3" /> },
+  draft: { label: "Estimate", className: "bg-secondary text-secondary-foreground", icon: <FileText className="h-3 w-3" /> },
   sent: { label: "Sent", className: "status-pending", icon: <Clock className="h-3 w-3" /> },
   viewed: { label: "Viewed", className: "status-paid", icon: <Eye className="h-3 w-3" /> },
   accepted: { label: "Accepted", className: "status-confirmed", icon: <Check className="h-3 w-3" /> },
