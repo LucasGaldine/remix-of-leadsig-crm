@@ -1,0 +1,299 @@
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Plus, X } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+
+interface CreateEstimateDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  lead: {
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    city: string | null;
+    service_type: string | null;
+    estimated_value: number | null;
+  };
+  onSuccess: () => void;
+}
+
+interface LineItem {
+  name: string;
+  description: string;
+  unit_price: string;
+}
+
+export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: CreateEstimateDialogProps) {
+  const { user, currentAccount } = useAuth();
+  const queryClient = useQueryClient();
+
+  const initialLineItems: LineItem[] = lead.estimated_value
+    ? [{ name: lead.service_type || "Service", description: "", unit_price: lead.estimated_value.toString() }]
+    : [{ name: "", description: "", unit_price: "" }];
+
+  const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
+  const [creating, setCreating] = useState(false);
+
+  const addLineItem = () => {
+    setLineItems([...lineItems, { name: "", description: "", unit_price: "" }]);
+  };
+
+  const removeLineItem = (index: number) => {
+    setLineItems(lineItems.filter((_, i) => i !== index));
+  };
+
+  const updateLineItem = (index: number, field: keyof LineItem, value: string) => {
+    const updated = [...lineItems];
+    updated[index][field] = value;
+    setLineItems(updated);
+  };
+
+  const calculateTotal = () => {
+    return lineItems
+      .filter(item => item.unit_price)
+      .reduce((sum, item) => sum + parseFloat(item.unit_price || "0"), 0);
+  };
+
+  const handleCreate = async () => {
+    if (!user || !currentAccount) {
+      toast.error("Authentication required");
+      return;
+    }
+
+    const validLineItems = lineItems.filter(item => item.name && item.unit_price);
+    if (validLineItems.length === 0) {
+      toast.error("At least one line item is required");
+      return;
+    }
+
+    setCreating(true);
+    const loadingToast = toast.loading("Creating estimate...");
+
+    try {
+      let customerId = null;
+
+      if (lead.phone) {
+        const { data: existingCustomer } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("phone", lead.phone)
+          .maybeSingle();
+
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+        }
+      }
+
+      if (!customerId) {
+        const { data: newCustomer, error: customerError } = await supabase
+          .from("customers")
+          .insert({
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            address: lead.address || lead.city,
+            city: lead.city,
+            created_by: user.id,
+            account_id: currentAccount.id,
+          })
+          .select()
+          .single();
+
+        if (customerError) throw new Error("Failed to create customer");
+        customerId = newCustomer.id;
+      }
+
+      const estimateTotal = validLineItems.reduce((sum, item) => sum + parseFloat(item.unit_price), 0);
+
+      const { data: jobData, error: updateError } = await supabase
+        .from("leads")
+        .update({
+          customer_id: customerId,
+          status: "won",
+          actual_value: estimateTotal,
+        })
+        .eq("id", lead.id)
+        .select(`
+          *,
+          customer:customers!leads_customer_id_fkey(id, name, email, phone, address),
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
+        `)
+        .single();
+
+      if (updateError) throw new Error("Failed to convert lead to job");
+
+      const { data: estimateData, error: estimateError } = await supabase
+        .from("estimates")
+        .insert({
+          customer_id: customerId,
+          job_id: jobData.id,
+          subtotal: estimateTotal,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          total: estimateTotal,
+          status: "draft",
+          created_by: user.id,
+          account_id: currentAccount.id,
+        })
+        .select()
+        .single();
+
+      if (estimateError) throw new Error("Failed to create estimate");
+
+      const lineItemsToInsert = validLineItems.map((item, index) => ({
+        estimate_id: estimateData.id,
+        account_id: currentAccount.id,
+        name: item.name,
+        description: item.description || null,
+        quantity: 1,
+        unit: "item",
+        unit_price: parseFloat(item.unit_price),
+        total: parseFloat(item.unit_price),
+        sort_order: index,
+      }));
+
+      const { error: lineItemsError } = await supabase
+        .from("estimate_line_items")
+        .insert(lineItemsToInsert);
+
+      if (lineItemsError) throw new Error("Failed to create line items");
+
+      await supabase.from("interactions").insert({
+        lead_id: lead.id,
+        type: "status_change",
+        direction: "na",
+        summary: "Estimate created",
+        created_by: user.id,
+      });
+
+      toast.dismiss(loadingToast);
+      toast.success("Estimate created successfully!");
+
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+
+      onSuccess();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error creating estimate:", error);
+      toast.dismiss(loadingToast);
+      toast.error(error instanceof Error ? error.message : "Failed to create estimate");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create Estimate</DialogTitle>
+          <DialogDescription>
+            Add line items for this estimate. The total will be calculated automatically.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-semibold">Line Items *</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addLineItem}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Item
+              </Button>
+            </div>
+
+            {lineItems.map((item, index) => (
+              <div key={index} className="p-4 border border-border rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+                  {lineItems.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeLineItem(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`item-name-${index}`}>Title *</Label>
+                  <Input
+                    id={`item-name-${index}`}
+                    value={item.name}
+                    onChange={(e) => updateLineItem(index, "name", e.target.value)}
+                    placeholder="e.g., Paver Installation"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`item-description-${index}`}>Description</Label>
+                  <Textarea
+                    id={`item-description-${index}`}
+                    value={item.description}
+                    onChange={(e) => updateLineItem(index, "description", e.target.value)}
+                    placeholder="Additional details..."
+                    rows={2}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`item-price-${index}`}>Price *</Label>
+                  <Input
+                    id={`item-price-${index}`}
+                    type="number"
+                    value={item.unit_price}
+                    onChange={(e) => updateLineItem(index, "unit_price", e.target.value)}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+            ))}
+
+            <div className="bg-secondary p-4 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="font-semibold">Total Estimate:</span>
+                <span className="text-xl font-bold">
+                  ${calculateTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={creating}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreate}
+            disabled={creating || !lineItems.some(item => item.name && item.unit_price)}
+          >
+            {creating ? "Creating..." : "Create Estimate"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

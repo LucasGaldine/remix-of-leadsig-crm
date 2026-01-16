@@ -4,6 +4,7 @@ import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriang
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
+import { CreateEstimateDialog } from "@/components/leads/CreateEstimateDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -109,6 +110,7 @@ export default function LeadDetail() {
   const [qualification, setQualification] = useState<Qualification | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [hasEstimate, setHasEstimate] = useState(false);
 
   // New note state
   const [newNote, setNewNote] = useState("");
@@ -139,23 +141,19 @@ export default function LeadDetail() {
   });
   const [saving, setSaving] = useState(false);
 
-  // Create job dialog
-  const [createJobDialogOpen, setCreateJobDialogOpen] = useState(false);
-  const [jobForm, setJobForm] = useState({
-    lineItems: [{ name: "", description: "", unit_price: "" }],
-    scheduled_date: "",
-    scheduled_time_start: "",
-    scheduled_time_end: ""
-  });
+  // Create estimate dialog
+  const [createEstimateDialogOpen, setCreateEstimateDialogOpen] = useState(false);
 
-  // Creating job state
-  const [creatingJob, setCreatingJob] = useState(false);
+  // Convert to job dialog (simplified confirmation)
+  const [convertJobDialogOpen, setConvertJobDialogOpen] = useState(false);
+  const [convertingJob, setConvertingJob] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchLead();
       fetchInteractions();
       fetchQualification();
+      checkEstimate();
     }
   }, [id]);
 
@@ -205,6 +203,16 @@ export default function LeadDetail() {
     }
   };
 
+  const checkEstimate = async () => {
+    const { data } = await supabase
+      .from("estimates")
+      .select("id")
+      .eq("job_id", id)
+      .maybeSingle();
+
+    setHasEstimate(!!data);
+  };
+
   const updateLeadStatus = async (newStatus: string) => {
     if (!lead) return;
 
@@ -223,7 +231,12 @@ export default function LeadDetail() {
         toast.error("Lead must be qualified before converting to Won");
         return;
       }
-      setCreateJobDialogOpen(true);
+      if (!hasEstimate) {
+        toast.error("Please create an estimate first");
+        setCreateEstimateDialogOpen(true);
+        return;
+      }
+      setConvertJobDialogOpen(true);
       return;
     }
 
@@ -365,198 +378,43 @@ export default function LeadDetail() {
     toast.success("Lead disqualified");
   };
 
-  const openCreateJobDialog = () => {
-    const initialLineItems = lead?.estimated_value
-      ? [{ name: lead.service_type || "Service", description: "", unit_price: lead.estimated_value.toString() }]
-      : [{ name: "", description: "", unit_price: "" }];
-
-    setJobForm({
-      lineItems: initialLineItems,
-      scheduled_date: "",
-      scheduled_time_start: "",
-      scheduled_time_end: ""
-    });
-    setCreateJobDialogOpen(true);
+  const handleEstimateSuccess = () => {
+    fetchLead();
+    checkEstimate();
   };
 
-  const createJob = async () => {
-    if (!lead || creatingJob) return;
-
-    const validLineItems = jobForm.lineItems.filter(item => item.name && item.unit_price);
-    if (validLineItems.length === 0) {
-      toast.error("At least one line item is required");
+  const convertToJob = async () => {
+    if (!lead || !hasEstimate) {
+      toast.error("An estimate is required to convert to job");
       return;
     }
 
-    setCreatingJob(true);
-    const loadingToast = toast.loading("Creating job...");
+    setConvertingJob(true);
+    const loadingToast = toast.loading("Converting to job...");
 
     try {
-      let customerId = null;
-
-      if (lead.phone) {
-        const { data: existingCustomer, error: lookupError } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("phone", lead.phone)
-          .maybeSingle();
-
-        if (lookupError) {
-          console.error("Error looking up customer:", lookupError);
-        }
-
-        if (existingCustomer) {
-          customerId = existingCustomer.id;
-          console.log("Found existing customer:", customerId);
-        }
-      }
-
-      if (!customerId) {
-        if (!currentAccount) {
-          throw new Error("No account selected");
-        }
-
-        const { data: newCustomer, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            name: lead.name,
-            phone: lead.phone,
-            email: lead.email,
-            address: lead.address || lead.city,
-            city: lead.city,
-            created_by: user?.id,
-            account_id: currentAccount.id,
-          })
-          .select()
-          .single();
-
-        if (customerError) {
-          console.error("Error creating customer:", customerError);
-          throw new Error("Failed to create customer record");
-        }
-
-        customerId = newCustomer.id;
-        console.log("Created new customer:", customerId);
-      }
-
-      let newStatus: LeadStatus = "won";
-
-      if (jobForm.scheduled_date) {
-        const scheduledDate = new Date(jobForm.scheduled_date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        scheduledDate.setHours(0, 0, 0, 0);
-
-        if (scheduledDate <= today) {
-          newStatus = "in_progress";
-        } else {
-          newStatus = "scheduled";
-        }
-      }
-
-      const estimateTotal = validLineItems.reduce((sum, item) => sum + parseFloat(item.unit_price), 0);
-
-      const { data: jobData, error: updateError } = await supabase
-        .from("leads")
-        .update({
-          customer_id: customerId,
-          status: newStatus,
-          actual_value: estimateTotal,
-          scheduled_date: jobForm.scheduled_date || null,
-          scheduled_time_start: jobForm.scheduled_time_start || null,
-          scheduled_time_end: jobForm.scheduled_time_end || null,
-        })
-        .eq("id", lead.id)
-        .select(`
-          *,
-          customer:customers!leads_customer_id_fkey(id, name, email, phone, address),
-          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
-        `)
-        .single();
-
-      if (updateError) {
-        console.error("Error converting lead to job:", updateError);
-        throw new Error("Failed to convert lead to job");
-      }
-
-      console.log("Lead converted to job successfully:", jobData.id);
-
-      if (!currentAccount) {
-        throw new Error("No account selected");
-      }
-
-      const { data: estimateData, error: estimateError } = await supabase
-        .from("estimates")
-        .insert({
-          customer_id: customerId,
-          job_id: jobData.id,
-          subtotal: estimateTotal,
-          tax_rate: 0,
-          tax: 0,
-          discount: 0,
-          total: estimateTotal,
-          status: "draft",
-          created_by: user?.id,
-          account_id: currentAccount.id,
-        })
-        .select()
-        .single();
-
-      if (estimateError) {
-        console.error("Error creating estimate:", estimateError);
-        throw new Error("Failed to create estimate");
-      }
-
-      if (validLineItems.length > 0) {
-        const lineItemsToInsert = validLineItems.map((item, index) => ({
-          estimate_id: estimateData.id,
-          account_id: currentAccount.id,
-          name: item.name,
-          description: item.description || null,
-          quantity: 1,
-          unit: "item",
-          unit_price: parseFloat(item.unit_price),
-          total: parseFloat(item.unit_price),
-          sort_order: index,
-        }));
-
-        const { error: lineItemsError } = await supabase
-          .from("estimate_line_items")
-          .insert(lineItemsToInsert);
-
-        if (lineItemsError) {
-          console.error("Error creating estimate line items:", lineItemsError);
-          throw new Error(`Failed to create line items: ${lineItemsError.message}`);
-        }
-      }
-
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "status_change" as InteractionType,
         direction: "na" as InteractionDirection,
-        summary: "Converted to job",
+        summary: "Confirmed as job",
         created_by: user?.id,
       });
 
       toast.dismiss(loadingToast);
-      toast.success("Lead converted to job successfully!");
-
-      if (jobData) {
-        queryClient.setQueryData(["job", jobData.id], jobData);
-      }
+      toast.success("Lead confirmed as job!");
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
-      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
 
-      setCreateJobDialogOpen(false);
-      navigate(`/jobs/${jobData.id}`);
+      setConvertJobDialogOpen(false);
+      navigate(`/jobs/${lead.id}`);
     } catch (error) {
-      console.error("Error creating job:", error);
+      console.error("Error converting to job:", error);
       toast.dismiss(loadingToast);
-      toast.error(error instanceof Error ? error.message : "Failed to create job");
+      toast.error("Failed to convert to job");
     } finally {
-      setCreatingJob(false);
+      setConvertingJob(false);
     }
   };
 
@@ -865,165 +723,36 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Job Dialog */}
-      <Dialog open={createJobDialogOpen} onOpenChange={setCreateJobDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create Job</DialogTitle>
-            <DialogDescription>
-              Add line items for this job. The total will be calculated automatically.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">Line Items *</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setJobForm({
-                      ...jobForm,
-                      lineItems: [...jobForm.lineItems, { name: "", description: "", unit_price: "" }]
-                    });
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Item
-                </Button>
-              </div>
+      {/* Create Estimate Dialog */}
+      {lead && (
+        <CreateEstimateDialog
+          open={createEstimateDialogOpen}
+          onOpenChange={setCreateEstimateDialogOpen}
+          lead={lead}
+          onSuccess={handleEstimateSuccess}
+        />
+      )}
 
-              {jobForm.lineItems.map((item, index) => (
-                <div key={index} className="p-4 border border-border rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-                    {jobForm.lineItems.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const newLineItems = jobForm.lineItems.filter((_, i) => i !== index);
-                          setJobForm({ ...jobForm, lineItems: newLineItems });
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-name-${index}`}>Title *</Label>
-                    <Input
-                      id={`item-name-${index}`}
-                      value={item.name}
-                      onChange={(e) => {
-                        const newLineItems = [...jobForm.lineItems];
-                        newLineItems[index].name = e.target.value;
-                        setJobForm({ ...jobForm, lineItems: newLineItems });
-                      }}
-                      placeholder="e.g., Paver Installation"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-description-${index}`}>Description</Label>
-                    <Textarea
-                      id={`item-description-${index}`}
-                      value={item.description}
-                      onChange={(e) => {
-                        const newLineItems = [...jobForm.lineItems];
-                        newLineItems[index].description = e.target.value;
-                        setJobForm({ ...jobForm, lineItems: newLineItems });
-                      }}
-                      placeholder="Additional details..."
-                      rows={2}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-price-${index}`}>Price *</Label>
-                    <Input
-                      id={`item-price-${index}`}
-                      type="number"
-                      value={item.unit_price}
-                      onChange={(e) => {
-                        const newLineItems = [...jobForm.lineItems];
-                        newLineItems[index].unit_price = e.target.value;
-                        setJobForm({ ...jobForm, lineItems: newLineItems });
-                      }}
-                      placeholder="0.00"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                </div>
-              ))}
-
-              <div className="bg-secondary p-4 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">Total Estimate:</span>
-                  <span className="text-xl font-bold">
-                    ${jobForm.lineItems
-                      .filter(item => item.unit_price)
-                      .reduce((sum, item) => sum + parseFloat(item.unit_price || "0"), 0)
-                      .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-border pt-4 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="job-date">Scheduled Date</Label>
-                <Input
-                  id="job-date"
-                  type="date"
-                  value={jobForm.scheduled_date}
-                  onChange={(e) => setJobForm({ ...jobForm, scheduled_date: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="job-start-time">Start Time</Label>
-                  <Input
-                    id="job-start-time"
-                    type="time"
-                    value={jobForm.scheduled_time_start}
-                    onChange={(e) => setJobForm({ ...jobForm, scheduled_time_start: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="job-end-time">End Time</Label>
-                  <Input
-                    id="job-end-time"
-                    type="time"
-                    value={jobForm.scheduled_time_end}
-                    onChange={(e) => setJobForm({ ...jobForm, scheduled_time_end: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
-                {!jobForm.scheduled_date && "Status will be set to: Won"}
-                {jobForm.scheduled_date && new Date(jobForm.scheduled_date) > new Date() && "Status will be set to: Scheduled"}
-                {jobForm.scheduled_date && new Date(jobForm.scheduled_date) <= new Date() && "Status will be set to: In Progress"}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateJobDialogOpen(false)} disabled={creatingJob}>
-              Cancel
-            </Button>
-            <Button
-              onClick={createJob}
-              disabled={creatingJob || !jobForm.lineItems.some(item => item.name && item.unit_price)}
+      {/* Convert to Job Dialog */}
+      <AlertDialog open={convertJobDialogOpen} onOpenChange={setConvertJobDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Convert to Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to convert this lead to a job? The estimate is already created and will be attached to this job.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={convertingJob}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={convertToJob}
+              disabled={convertingJob}
             >
-              {creatingJob ? "Creating..." : "Create Job"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {convertingJob ? "Converting..." : "Convert to Job"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Lead Info Card */}
       <div className="px-4 py-4">
@@ -1065,16 +794,22 @@ export default function LeadDetail() {
 
           {/* Quick Actions */}
           <div className="flex gap-2 pt-2 border-t border-border">
-            <Button variant="outline" size="sm" className="flex-1" onClick={() => logCall("outbound")} disabled={creatingJob}>
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => logCall("outbound")}>
               <Phone className="h-4 w-4 mr-1" /> Call
             </Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={logText} disabled={creatingJob}>
+            <Button variant="outline" size="sm" className="flex-1" onClick={logText}>
               <MessageSquare className="h-4 w-4 mr-1" /> Text
             </Button>
-            {showConvertButton && (
-              <Button size="sm" className="flex-1" onClick={openCreateJobDialog} disabled={creatingJob}>
+            {showConvertButton && !hasEstimate && (
+              <Button size="sm" className="flex-1" onClick={() => setCreateEstimateDialogOpen(true)}>
+                <FileText className="h-4 w-4 mr-1" />
+                Create Estimate
+              </Button>
+            )}
+            {showConvertButton && hasEstimate && (
+              <Button size="sm" className="flex-1" onClick={() => setConvertJobDialogOpen(true)}>
                 <Briefcase className="h-4 w-4 mr-1" />
-                Create Job
+                Convert to Job
               </Button>
             )}
           </div>
