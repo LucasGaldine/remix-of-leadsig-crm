@@ -31,6 +31,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const [jobAddress, setJobAddress] = useState("");
   const [estimatedValue, setEstimatedValue] = useState("");
   const [description, setDescription] = useState("");
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const createJob = useCreateJob();
@@ -65,6 +67,28 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
       if (customerError) throw customerError;
 
+      let status: "scheduled" | "in_progress" | "won" = "won";
+      let scheduledDateTime: string | null = null;
+
+      if (scheduledDate) {
+        scheduledDateTime = scheduledTime
+          ? `${scheduledDate}T${scheduledTime}:00`
+          : `${scheduledDate}T09:00:00`;
+
+        const scheduledDateTimeObj = new Date(scheduledDateTime);
+        const now = new Date();
+
+        const timeDiffMinutes = (scheduledDateTimeObj.getTime() - now.getTime()) / (1000 * 60);
+
+        if (timeDiffMinutes > 60) {
+          status = "scheduled";
+        } else if (timeDiffMinutes >= -480) {
+          status = "in_progress";
+        } else {
+          status = "won";
+        }
+      }
+
       await createJob.mutateAsync({
         name: jobName,
         customer_id: customer.id,
@@ -74,7 +98,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         address: jobAddress || null,
         estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
         description: description || null,
-        status: "scheduled",
+        scheduled_date: scheduledDateTime,
+        status,
       });
 
       toast.success("Job created successfully!");
@@ -87,6 +112,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       setJobAddress("");
       setEstimatedValue("");
       setDescription("");
+      setScheduledDate("");
+      setScheduledTime("");
 
       onOpenChange(false);
     } catch (error) {
@@ -106,6 +133,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setJobAddress("");
     setEstimatedValue("");
     setDescription("");
+    setScheduledDate("");
+    setScheduledTime("");
     onOpenChange(false);
   };
 
@@ -226,6 +255,34 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 placeholder="5000"
                 className="h-12 text-base border-gray-300 rounded-lg"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="scheduledDate" className="text-base font-semibold text-gray-900">
+                  Scheduled Date
+                </Label>
+                <Input
+                  id="scheduledDate"
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  className="h-12 text-base border-gray-300 rounded-lg"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="scheduledTime" className="text-base font-semibold text-gray-900">
+                  Scheduled Time
+                </Label>
+                <Input
+                  id="scheduledTime"
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                  className="h-12 text-base border-gray-300 rounded-lg"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
