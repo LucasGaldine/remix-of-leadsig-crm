@@ -187,6 +187,7 @@ export default function EstimateDetail() {
         if (item.isNew) {
           const { error } = await supabase.from('estimate_line_items').insert({
             estimate_id: id,
+            account_id: estimate.account_id,
             name: item.name,
             description: item.description || null,
             quantity,
@@ -223,6 +224,7 @@ export default function EstimateDetail() {
 
             const { error } = await supabase.from('estimate_line_items').insert({
               estimate_id: id,
+              account_id: estimate.account_id,
               name: item.name,
               description: item.description || null,
               quantity,

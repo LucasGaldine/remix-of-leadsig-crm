@@ -213,6 +213,7 @@ export default function CreateEstimate() {
         .filter(item => item.name)
         .map((item, index) => ({
           estimate_id: estimate.id,
+          account_id: currentAccount.id,
           name: item.name,
           description: item.description || null,
           quantity: item.quantity,

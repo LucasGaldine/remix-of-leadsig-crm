@@ -510,6 +510,7 @@ export default function LeadDetail() {
       if (validLineItems.length > 0) {
         const lineItemsToInsert = validLineItems.map((item, index) => ({
           estimate_id: estimateData.id,
+          account_id: currentAccount.id,
           name: item.name,
           description: item.description || null,
           quantity: 1,
