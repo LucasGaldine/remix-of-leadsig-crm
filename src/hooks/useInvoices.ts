@@ -27,7 +27,7 @@ export interface InvoiceWithDetails extends Invoice {
 }
 
 export function useInvoices(filter?: { status?: InvoiceStatus; limit?: number }) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -54,14 +54,16 @@ export function useInvoices(filter?: { status?: InvoiceStatus; limit?: number })
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["invoices", filter],
+    queryKey: ["invoices", filter, currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       let query = supabase
         .from("invoices")
         .select(`
           *,
           customer:customers(id, name),
-          lead:leads(id, name),
+          job:leads!invoices_lead_id_fkey(id, name),
           line_items:invoice_line_items(
             id,
             name,
@@ -71,6 +73,7 @@ export function useInvoices(filter?: { status?: InvoiceStatus; limit?: number })
             total
           )
         `)
+        .eq("account_id", currentAccount.id)
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -86,7 +89,7 @@ export function useInvoices(filter?: { status?: InvoiceStatus; limit?: number })
       if (error) throw error;
       return data as InvoiceWithDetails[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
@@ -128,7 +131,7 @@ export function useInvoice(id: string | undefined) {
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          lead:leads(id, name),
+          job:leads!invoices_lead_id_fkey(id, name),
           line_items:invoice_line_items(
             id,
             name,

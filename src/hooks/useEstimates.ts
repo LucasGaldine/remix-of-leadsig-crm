@@ -27,7 +27,7 @@ export interface EstimateWithDetails extends Estimate {
 }
 
 export function useEstimates(filter?: { status?: EstimateStatus; limit?: number }) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -54,14 +54,16 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["estimates", filter],
+    queryKey: ["estimates", filter, currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       let query = supabase
         .from("estimates")
         .select(`
           *,
           customer:customers(id, name),
-          job:leads!job_id(id, name, status, scheduled_date),
+          job:leads!estimates_job_id_fkey(id, name, status, scheduled_date),
           line_items:estimate_line_items(
             id,
             name,
@@ -71,6 +73,7 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
             total
           )
         `)
+        .eq("account_id", currentAccount.id)
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -86,7 +89,7 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
       if (error) throw error;
       return data as EstimateWithDetails[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
@@ -128,7 +131,7 @@ export function useEstimate(id: string | undefined) {
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          job:leads!job_id(id, name, status, scheduled_date, address, service_type),
+          job:leads!estimates_job_id_fkey(id, name, status, scheduled_date, address, service_type),
           line_items:estimate_line_items(
             id,
             name,

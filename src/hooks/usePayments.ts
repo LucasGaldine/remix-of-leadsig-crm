@@ -23,7 +23,7 @@ export interface PaymentWithDetails extends Payment {
 }
 
 export function usePayments(filter?: { status?: PaymentStatus; limit?: number }) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -50,16 +50,19 @@ export function usePayments(filter?: { status?: PaymentStatus; limit?: number })
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["payments", filter],
+    queryKey: ["payments", filter, currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       let query = supabase
         .from("payments")
         .select(`
           *,
           customer:customers(id, name),
-          lead:leads(id, name),
+          job:leads(id, name),
           invoice:invoices(id, total)
         `)
+        .eq("account_id", currentAccount.id)
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -75,7 +78,7 @@ export function usePayments(filter?: { status?: PaymentStatus; limit?: number })
       if (error) throw error;
       return data as PaymentWithDetails[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
@@ -117,7 +120,7 @@ export function usePayment(id: string | undefined) {
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          lead:leads(id, name),
+          job:leads(id, name),
           invoice:invoices(id, total, balance_due)
         `)
         .eq("id", id)
