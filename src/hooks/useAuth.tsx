@@ -43,7 +43,13 @@ interface AuthContextType {
   accounts: AccountMembership[];
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, fullName: string, role: AppRole) => Promise<{ error: Error | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+    role: AppRole,
+    companyInfo: { companyCode?: string; companyName?: string }
+  ) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   isOwnerOrAdmin: () => boolean;
@@ -162,24 +168,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
-  const signUp = async (email: string, password: string, fullName: string, selectedRole: AppRole) => {
-    const redirectUrl = `${window.location.origin}/`;
+  const signUp = async (
+    email: string,
+    password: string,
+    fullName: string,
+    selectedRole: AppRole,
+    companyInfo: { companyCode?: string; companyName?: string }
+  ) => {
+    try {
+      let targetAccountId: string | null = null;
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-          role: selectedRole,
+      if (companyInfo.companyCode) {
+        const { data: accountData, error: accountError } = await supabase
+          .rpc('get_account_by_invite_code', { code: companyInfo.companyCode });
+
+        if (accountError || !accountData || accountData.length === 0) {
+          return { error: new Error('Invalid company code') };
+        }
+
+        targetAccountId = accountData[0].id;
+      }
+
+      const redirectUrl = `${window.location.origin}/`;
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: fullName,
+            role: selectedRole,
+            company_name: companyInfo.companyName,
+            target_account_id: targetAccountId,
+          },
         },
-      },
-    });
+      });
 
-    if (error) return { error };
+      if (signUpError) return { error: signUpError };
 
-    return { error: null };
+      if (signUpData.user && targetAccountId) {
+        const { error: memberError } = await supabase
+          .from('account_members')
+          .insert({
+            account_id: targetAccountId,
+            user_id: signUpData.user.id,
+            role: selectedRole,
+            is_active: true,
+          });
+
+        if (memberError) {
+          console.error('Error adding user to account:', memberError);
+        }
+      }
+
+      return { error: null };
+    } catch (err) {
+      return { error: err as Error };
+    }
   };
 
   const signOut = async () => {

@@ -33,7 +33,24 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [selectedRole, setSelectedRole] = useState<AppRole>('sales');
-  const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
+  const [companyCode, setCompanyCode] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [isCreatingCompany, setIsCreatingCompany] = useState(false);
+
+  useEffect(() => {
+    if (isCreatingCompany) {
+      setSelectedRole('owner');
+    } else {
+      setSelectedRole('sales');
+    }
+  }, [isCreatingCompany]);
+  const [errors, setErrors] = useState<{
+    email?: string;
+    password?: string;
+    fullName?: string;
+    companyCode?: string;
+    companyName?: string;
+  }>({});
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   
@@ -81,6 +98,20 @@ export default function Auth() {
       newErrors.fullName = 'Full name is required';
     }
 
+    if (isSignUp) {
+      if (isCreatingCompany) {
+        if (!companyName.trim()) {
+          newErrors.companyName = 'Company name is required';
+        }
+      } else {
+        if (!companyCode.trim()) {
+          newErrors.companyCode = 'Company code is required';
+        } else if (companyCode.trim().length < 6) {
+          newErrors.companyCode = 'Please enter a valid company code';
+        }
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -112,12 +143,21 @@ export default function Auth() {
     if (!validateForm(true)) return;
 
     setIsLoading(true);
-    const { error } = await signUp(email, password, fullName, selectedRole);
+    const { error } = await signUp(
+      email,
+      password,
+      fullName,
+      selectedRole,
+      isCreatingCompany ? { companyName } : { companyCode }
+    );
     setIsLoading(false);
 
     if (error) {
       if (error.message.includes('User already registered')) {
         toast.error('An account with this email already exists');
+      } else if (error.message.includes('Invalid company code')) {
+        setErrors({ ...errors, companyCode: 'Invalid company code' });
+        toast.error('Invalid company code. Please check and try again.');
       } else {
         toast.error(error.message);
       }
@@ -256,8 +296,74 @@ export default function Auth() {
                     <p className="text-sm text-destructive">{errors.password}</p>
                   )}
                 </div>
+
+                <div className="border-t pt-4">
+                  <div className="space-y-3">
+                    {!isCreatingCompany ? (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="company-code">Company Code</Label>
+                          <Input
+                            id="company-code"
+                            type="text"
+                            placeholder="Enter your company code"
+                            value={companyCode}
+                            onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
+                            disabled={isLoading}
+                            className="uppercase"
+                          />
+                          {errors.companyCode && (
+                            <p className="text-sm text-destructive">{errors.companyCode}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCreatingCompany(true);
+                            setCompanyCode('');
+                            setErrors({});
+                          }}
+                          className="text-sm text-primary hover:underline"
+                          disabled={isLoading}
+                        >
+                          Don't have a company code? Create a new company
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="company-name">Company Name</Label>
+                          <Input
+                            id="company-name"
+                            type="text"
+                            placeholder="Your Company Name"
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            disabled={isLoading}
+                          />
+                          {errors.companyName && (
+                            <p className="text-sm text-destructive">{errors.companyName}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCreatingCompany(false);
+                            setCompanyName('');
+                            setErrors({});
+                          }}
+                          className="text-sm text-primary hover:underline"
+                          disabled={isLoading}
+                        >
+                          Already have a company code? Join existing company
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="signup-role">Role</Label>
+                  <Label htmlFor="signup-role">Your Role</Label>
                   <Select
                     value={selectedRole}
                     onValueChange={(value) => setSelectedRole(value as AppRole)}
@@ -267,26 +373,33 @@ export default function Auth() {
                       <SelectValue placeholder="Select your role" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Only allow non-elevated roles for self-signup */}
-                      {(['sales', 'crew_lead'] as AppRole[]).map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {roleLabels[role]}
-                        </SelectItem>
-                      ))}
+                      {isCreatingCompany ? (
+                        <SelectItem value="owner">Owner</SelectItem>
+                      ) : (
+                        <>
+                          {(['sales', 'crew_lead'] as AppRole[]).map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {roleLabels[role]}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Owner and Admin roles require an invitation from an existing administrator.
-                  </p>
+                  {!isCreatingCompany && (
+                    <p className="text-xs text-muted-foreground">
+                      Owner and Admin roles require an invitation from an existing administrator.
+                    </p>
+                  )}
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating account...
+                      {isCreatingCompany ? 'Creating company...' : 'Creating account...'}
                     </>
                   ) : (
-                    'Create Account'
+                    isCreatingCompany ? 'Create Company & Account' : 'Join Company'
                   )}
                 </Button>
               </form>
