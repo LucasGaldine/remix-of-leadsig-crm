@@ -21,7 +21,6 @@ const TIMEZONES = [
 ];
 
 export default function SettingsProfile() {
-  const navigate = useNavigate();
   const { user, profile, refreshProfile } = useAuth();
 
   const [loading, setLoading] = useState(false);
