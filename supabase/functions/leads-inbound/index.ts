@@ -329,10 +329,11 @@ Deno.serve(async (req) => {
 
     console.log("leads-inbound: Lead created successfully", lead.id);
 
-    return new Response(
-      JSON.stringify({ success: true, lead }),
-      { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: true }), {
+  status: 200,
+  headers: { "Content-Type": "application/json" },
+});
+
   } catch (error) {
     console.error("leads-inbound: Unexpected error", error);
     return new Response(
