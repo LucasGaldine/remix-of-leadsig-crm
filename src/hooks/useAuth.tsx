@@ -48,7 +48,8 @@ interface AuthContextType {
     password: string,
     fullName: string,
     role: AppRole,
-    companyInfo: { companyCode?: string; companyName?: string }
+    companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
+    phone?: string
   ) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
@@ -173,7 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     selectedRole: AppRole,
-    companyInfo: { companyCode?: string; companyName?: string }
+    companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
+    phone?: string
   ) => {
     try {
       let targetAccountId: string | null = null;
@@ -198,8 +200,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           emailRedirectTo: redirectUrl,
           data: {
             full_name: fullName,
+            phone: phone || null,
             role: selectedRole,
             company_name: companyInfo.companyName,
+            company_phone: companyInfo.companyPhone || null,
+            company_address: companyInfo.companyAddress || null,
             target_account_id: targetAccountId,
           },
         },

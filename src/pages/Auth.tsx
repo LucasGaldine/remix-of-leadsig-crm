@@ -35,6 +35,9 @@ export default function Auth() {
   const [selectedRole, setSelectedRole] = useState<AppRole>('sales');
   const [companyCode, setCompanyCode] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [phone, setPhone] = useState('');
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
 
   useEffect(() => {
@@ -148,7 +151,10 @@ export default function Auth() {
       password,
       fullName,
       selectedRole,
-      isCreatingCompany ? { companyName } : { companyCode }
+      isCreatingCompany
+        ? { companyName, companyPhone, companyAddress }
+        : { companyCode },
+      phone
     );
     setIsLoading(false);
 
@@ -296,6 +302,17 @@ export default function Auth() {
                     <p className="text-sm text-destructive">{errors.password}</p>
                   )}
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-phone">Phone Number (Optional)</Label>
+                  <Input
+                    id="signup-phone"
+                    type="tel"
+                    placeholder="(555) 123-4567"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
 
                 <div className="border-t pt-4">
                   <div className="space-y-3">
@@ -345,11 +362,35 @@ export default function Auth() {
                             <p className="text-sm text-destructive">{errors.companyName}</p>
                           )}
                         </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="company-phone">Business Phone (Optional)</Label>
+                          <Input
+                            id="company-phone"
+                            type="tel"
+                            placeholder="(555) 123-4567"
+                            value={companyPhone}
+                            onChange={(e) => setCompanyPhone(e.target.value)}
+                            disabled={isLoading}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="company-address">Business Address (Optional)</Label>
+                          <Input
+                            id="company-address"
+                            type="text"
+                            placeholder="123 Main St, City, State 12345"
+                            value={companyAddress}
+                            onChange={(e) => setCompanyAddress(e.target.value)}
+                            disabled={isLoading}
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
                             setIsCreatingCompany(false);
                             setCompanyName('');
+                            setCompanyPhone('');
+                            setCompanyAddress('');
                             setErrors({});
                           }}
                           className="text-sm text-primary hover:underline"
