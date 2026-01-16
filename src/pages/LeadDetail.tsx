@@ -507,23 +507,26 @@ export default function LeadDetail() {
         throw new Error("Failed to create estimate");
       }
 
-      const lineItemsToInsert = validLineItems.map((item, index) => ({
-        estimate_id: estimateData.id,
-        name: item.name,
-        description: item.description || null,
-        quantity: 1,
-        unit: "item",
-        unit_price: parseFloat(item.unit_price),
-        total: parseFloat(item.unit_price),
-        sort_order: index,
-      }));
+      if (validLineItems.length > 0) {
+        const lineItemsToInsert = validLineItems.map((item, index) => ({
+          estimate_id: estimateData.id,
+          name: item.name,
+          description: item.description || null,
+          quantity: 1,
+          unit: "item",
+          unit_price: parseFloat(item.unit_price),
+          total: parseFloat(item.unit_price),
+          sort_order: index,
+        }));
 
-      const { error: lineItemsError } = await supabase
-        .from("estimate_line_items")
-        .insert(lineItemsToInsert);
+        const { error: lineItemsError } = await supabase
+          .from("estimate_line_items")
+          .insert(lineItemsToInsert);
 
-      if (lineItemsError) {
-        console.error("Error creating estimate line items:", lineItemsError);
+        if (lineItemsError) {
+          console.error("Error creating estimate line items:", lineItemsError);
+          throw new Error(`Failed to create line items: ${lineItemsError.message}`);
+        }
       }
 
       await supabase.from("interactions").insert({

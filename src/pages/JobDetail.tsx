@@ -451,7 +451,7 @@ export default function JobDetail() {
             {/* Estimate */}
             {estimate && (
               <button
-                onClick={() => navigate(`/estimate/${estimate.id}`)}
+                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
                 className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
               >
                 <div className="flex items-start gap-3">
