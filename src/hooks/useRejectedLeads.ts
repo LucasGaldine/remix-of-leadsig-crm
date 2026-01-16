@@ -20,7 +20,7 @@ interface RejectedLead {
 }
 
 export function useRejectedLeads() {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   // Set up real-time subscription for rejected leads
@@ -49,28 +49,32 @@ export function useRejectedLeads() {
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["rejected-leads"],
+    queryKey: ["rejected-leads", currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       const { data, error } = await supabase
         .from("leads")
         .select("id, name, phone, email, service_type, estimated_value, city, address, source, created_at, rejected_at, approval_status, approval_reason")
+        .eq("account_id", currentAccount.id)
         .eq("approval_status", "rejected")
         .order("rejected_at", { ascending: false });
 
       if (error) throw error;
       return data as RejectedLead[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
 export function useRestoreLead() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useMutation({
     mutationFn: async (leadId: string) => {
       if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
 
       // Restore lead to pending status
       const { data: lead, error: updateError } = await supabase
@@ -92,6 +96,7 @@ export function useRestoreLead() {
         .from("interactions")
         .insert({
           lead_id: leadId,
+          account_id: currentAccount.id,
           type: "status_change",
           summary: "Restored lead from rejected",
           direction: "na",

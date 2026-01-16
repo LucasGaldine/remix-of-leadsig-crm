@@ -21,7 +21,7 @@ interface PendingLead {
 }
 
 export function usePendingLeads() {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   // Set up real-time subscription for pending leads
@@ -51,36 +51,42 @@ export function usePendingLeads() {
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["pending-leads"],
+    queryKey: ["pending-leads", currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       const { data, error } = await supabase
         .from("leads")
         .select("id, name, phone, email, service_type, estimated_value, city, address, source, created_at, submitted_at, approval_status")
+        .eq("account_id", currentAccount.id)
         .eq("approval_status", "pending")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
       return data as PendingLead[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
 export function usePendingLeadsCount() {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useQuery({
-    queryKey: ["pending-leads-count"],
+    queryKey: ["pending-leads-count", currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return 0;
+
       const { count, error } = await supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
+        .eq("account_id", currentAccount.id)
         .eq("approval_status", "pending");
 
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 

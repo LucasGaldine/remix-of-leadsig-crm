@@ -10,7 +10,7 @@ type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 type LeadStatus = Database["public"]["Enums"]["unified_status"];
 
 export function useLeads(filter?: LeadStatus | "all") {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   // Set up real-time subscription
@@ -52,11 +52,14 @@ export function useLeads(filter?: LeadStatus | "all") {
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["leads", filter],
+    queryKey: ["leads", filter, currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       let query = supabase
         .from("leads")
         .select("*")
+        .eq("account_id", currentAccount.id)
         .eq("approval_status", "approved") // Only show approved leads in main pipeline
         .order("created_at", { ascending: false });
 
@@ -69,7 +72,7 @@ export function useLeads(filter?: LeadStatus | "all") {
       if (error) throw error;
       return data as Lead[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
@@ -171,14 +174,26 @@ export function useUpdateLead() {
 }
 
 export function useLeadCounts() {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useQuery({
-    queryKey: ["lead-counts"],
+    queryKey: ["lead-counts", currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return {
+        all: 0,
+        new: 0,
+        contacted: 0,
+        qualified: 0,
+        scheduled: 0,
+        in_progress: 0,
+        won: 0,
+        lost: 0,
+      };
+
       const { data, error } = await supabase
         .from("leads")
         .select("status")
+        .eq("account_id", currentAccount.id)
         .eq("approval_status", "approved"); // Only count approved leads
 
       if (error) throw error;
@@ -202,6 +217,6 @@ export function useLeadCounts() {
 
       return counts;
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
