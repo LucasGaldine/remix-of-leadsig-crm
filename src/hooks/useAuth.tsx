@@ -25,6 +25,7 @@ interface Account {
   website: string | null;
   logo_url: string | null;
   settings: Record<string, any> | null;
+  invite_code: string;
 }
 
 interface AccountMembership {
@@ -95,7 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           billing_email,
           website,
           logo_url,
-          settings
+          settings,
+          invite_code
         )
       `)
       .eq('user_id', userId)

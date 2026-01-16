@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, Loader2, ArrowLeft } from "lucide-react";
+import { Building2, Loader2, ArrowLeft, Copy, Check, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ export default function SettingsCompanyProfile() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const [companyName, setCompanyName] = useState("");
   const [companyEmail, setCompanyEmail] = useState("");
@@ -23,6 +24,7 @@ export default function SettingsCompanyProfile() {
   const [companyAddress, setCompanyAddress] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
   const [website, setWebsite] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
 
   useEffect(() => {
     if (currentAccount) {
@@ -32,8 +34,22 @@ export default function SettingsCompanyProfile() {
       setCompanyAddress(currentAccount.company_address || "");
       setBillingEmail(currentAccount.billing_email || "");
       setWebsite(currentAccount.website || "");
+      setInviteCode(currentAccount.invite_code || "");
     }
   }, [currentAccount]);
+
+  const handleCopyCode = async () => {
+    if (!inviteCode) return;
+
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setCopiedCode(true);
+      toast.success("Company code copied to clipboard");
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch (err) {
+      toast.error("Failed to copy code");
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +118,47 @@ export default function SettingsCompanyProfile() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Team
+            </CardTitle>
+            <CardDescription>
+              Share this code with team members to invite them to join your company
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="invite-code">Company Invite Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="invite-code"
+                  value={inviteCode}
+                  readOnly
+                  className="font-mono text-lg tracking-wider"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopyCode}
+                  disabled={!inviteCode}
+                >
+                  {copiedCode ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                New team members will need this code during signup to join your company
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
