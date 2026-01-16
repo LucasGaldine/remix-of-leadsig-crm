@@ -22,7 +22,7 @@ interface CreateJobDialogProps {
 }
 
 export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const [jobName, setJobName] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -42,6 +42,11 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       return;
     }
 
+    if (!currentAccount) {
+      toast.error("No account selected");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -53,6 +58,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           email: email || null,
           address: jobAddress || null,
           created_by: user.id,
+          account_id: currentAccount.id,
         })
         .select()
         .single();

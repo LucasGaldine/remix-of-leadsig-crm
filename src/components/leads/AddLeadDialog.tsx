@@ -29,7 +29,7 @@ const SERVICE_TYPES = [
 ];
 
 export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDialogProps) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const [saving, setSaving] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -61,6 +61,11 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
       return;
     }
 
+    if (!currentAccount) {
+      toast.error("No account selected");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -77,6 +82,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           source: formData.source || "Manual",
           notes: formData.notes.trim() || null,
           created_by: user.id,
+          account_id: currentAccount.id,
           status: "new",
           approval_status: "approved",
         }])
@@ -88,6 +94,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
       // Log interaction for lead creation
       await supabase.from("interactions").insert({
         lead_id: data.id,
+        account_id: currentAccount.id,
         type: "system",
         direction: "na",
         summary: "Lead created manually",

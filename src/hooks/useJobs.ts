@@ -15,7 +15,7 @@ type JobUpdate = LeadUpdate;
 type JobStatus = UnifiedStatus;
 
 export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: number; searchQuery?: string }) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -45,8 +45,10 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["jobs", filter],
+    queryKey: ["jobs", filter, currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       let query = supabase
         .from("leads")
         .select(`
@@ -54,6 +56,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
         `)
+        .eq("account_id", currentAccount.id)
         .in("status", ["scheduled", "in_progress", "completed", "won", "invoiced", "paid"])
         .order("created_at", { ascending: false });
 
@@ -80,7 +83,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
       if (error) throw error;
       return data as Job[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
@@ -198,14 +201,25 @@ export function useTodaysJobs() {
 }
 
 export function useJobCounts() {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useQuery({
-    queryKey: ["job-counts"],
+    queryKey: ["job-counts", currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return {
+        all: 0,
+        scheduled: 0,
+        in_progress: 0,
+        completed: 0,
+        won: 0,
+        invoiced: 0,
+        paid: 0,
+      };
+
       const { data, error } = await supabase
         .from("leads")
         .select("status")
+        .eq("account_id", currentAccount.id)
         .in("status", ["scheduled", "in_progress", "completed", "won", "invoiced", "paid"]);
 
       if (error) throw error;
@@ -228,16 +242,18 @@ export function useJobCounts() {
 
       return counts;
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
 
 export function useJobRevenue() {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useQuery({
-    queryKey: ["job-revenue"],
+    queryKey: ["job-revenue", currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return 0;
+
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
@@ -245,6 +261,7 @@ export function useJobRevenue() {
       const { data, error } = await supabase
         .from("leads")
         .select("actual_value")
+        .eq("account_id", currentAccount.id)
         .in("status", ["completed", "won", "invoiced", "paid"])
         .gte("updated_at", startOfMonth.toISOString());
 
@@ -256,6 +273,6 @@ export function useJobRevenue() {
 
       return total;
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 }
