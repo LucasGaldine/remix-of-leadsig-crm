@@ -197,7 +197,7 @@ export default function LeadDetail() {
       .from("lead_qualifications")
       .select("*")
       .eq("lead_id", id)
-      .single();
+      .maybeSingle();
 
     if (data) {
       setQualification(data as Qualification);
