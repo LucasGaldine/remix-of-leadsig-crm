@@ -195,6 +195,26 @@ export function useUpdateJob() {
   });
 }
 
+export function useDeleteJob() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("leads")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["job-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["job-revenue"] });
+    },
+  });
+}
+
 export function useTodaysJobs() {
   const today = new Date().toISOString().split("T")[0];
   return useJobs({ date: today });

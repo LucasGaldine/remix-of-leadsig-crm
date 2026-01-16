@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateJob } from "@/hooks/useJobs";
+import { useDeleteLead } from "@/hooks/useLeads";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
 
@@ -101,6 +102,7 @@ export default function LeadDetail() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
+  const deleteLeadMutation = useDeleteLead();
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
@@ -122,7 +124,6 @@ export default function LeadDetail() {
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   // Edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -545,24 +546,16 @@ export default function LeadDetail() {
   };
 
   const deleteLead = async () => {
-    if (!lead) return;
+    if (!lead?.id) return;
 
-    setDeleting(true);
     try {
-      const { error } = await supabase
-        .from("leads")
-        .delete()
-        .eq("id", lead.id);
-
-      if (error) throw error;
-
+      await deleteLeadMutation.mutateAsync(lead.id);
       toast.success("Lead deleted successfully");
       navigate("/leads");
     } catch (error) {
       console.error("Error deleting lead:", error);
       toast.error("Failed to delete lead");
     } finally {
-      setDeleting(false);
       setDeleteDialogOpen(false);
     }
   };
@@ -700,13 +693,13 @@ export default function LeadDetail() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteLeadMutation.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={deleteLead}
-              disabled={deleting}
+              disabled={deleteLeadMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "Deleting..." : "Delete"}
+              {deleteLeadMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

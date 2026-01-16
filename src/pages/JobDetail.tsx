@@ -14,19 +14,22 @@ import {
   ChevronRight,
   Calendar,
   Edit,
+  Trash2,
+  MoreVertical,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useJob, useUpdateJob } from "@/hooks/useJobs";
+import { useJob, useUpdateJob, useDeleteJob } from "@/hooks/useJobs";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,6 +41,7 @@ export default function JobDetail() {
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
     scheduled_date: "",
     scheduled_time_start: "",
@@ -55,6 +59,7 @@ export default function JobDetail() {
 
   const { data: job, isLoading, error } = useJob(id);
   const updateJobMutation = useUpdateJob();
+  const deleteJobMutation = useDeleteJob();
 
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
@@ -253,6 +258,21 @@ export default function JobDetail() {
     }
   };
 
+  const deleteJob = async () => {
+    if (!id) return;
+
+    try {
+      await deleteJobMutation.mutateAsync(id);
+      toast.success("Job deleted successfully");
+      navigate("/jobs");
+    } catch (error) {
+      console.error("Error deleting job:", error);
+      toast.error("Failed to delete job");
+    } finally {
+      setDeleteDialogOpen(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Job Details" showBack backTo="/jobs" showNotifications={false} />
@@ -265,14 +285,30 @@ export default function JobDetail() {
               <StatusBadge status={job.status} size="lg">
                 {job.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
               </StatusBadge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={openEditDialog}
-                className="ml-auto"
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={openEditDialog}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Job
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Job
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <h2 className="text-xl font-bold text-foreground">
               {job.customer?.name || "Unknown Client"}
@@ -702,6 +738,28 @@ export default function JobDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this job? This action cannot be undone and will remove all associated data including the estimate.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteJobMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteJob}
+              disabled={deleteJobMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteJobMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MobileNav />
     </div>
