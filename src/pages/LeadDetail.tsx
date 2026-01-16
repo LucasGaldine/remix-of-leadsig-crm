@@ -142,7 +142,7 @@ export default function LeadDetail() {
   // Create job dialog
   const [createJobDialogOpen, setCreateJobDialogOpen] = useState(false);
   const [jobForm, setJobForm] = useState({
-    price: "",
+    lineItems: [{ name: "", description: "", unit_price: "" }],
     scheduled_date: "",
     scheduled_time_start: "",
     scheduled_time_end: ""
@@ -366,8 +366,12 @@ export default function LeadDetail() {
   };
 
   const openCreateJobDialog = () => {
+    const initialLineItems = lead?.estimated_value
+      ? [{ name: lead.service_type || "Service", description: "", unit_price: lead.estimated_value.toString() }]
+      : [{ name: "", description: "", unit_price: "" }];
+
     setJobForm({
-      price: lead?.estimated_value?.toString() || "",
+      lineItems: initialLineItems,
       scheduled_date: "",
       scheduled_time_start: "",
       scheduled_time_end: ""
@@ -378,8 +382,9 @@ export default function LeadDetail() {
   const createJob = async () => {
     if (!lead || creatingJob) return;
 
-    if (!jobForm.price) {
-      toast.error("Estimate is required");
+    const validLineItems = jobForm.lineItems.filter(item => item.name && item.unit_price);
+    if (validLineItems.length === 0) {
+      toast.error("At least one line item is required");
       return;
     }
 
@@ -449,12 +454,14 @@ export default function LeadDetail() {
         }
       }
 
+      const estimateTotal = validLineItems.reduce((sum, item) => sum + parseFloat(item.unit_price), 0);
+
       const { data: jobData, error: updateError } = await supabase
         .from("leads")
         .update({
           customer_id: customerId,
           status: newStatus,
-          actual_value: parseFloat(jobForm.price),
+          actual_value: estimateTotal,
           scheduled_date: jobForm.scheduled_date || null,
           scheduled_time_start: jobForm.scheduled_time_start || null,
           scheduled_time_end: jobForm.scheduled_time_end || null,
@@ -478,22 +485,45 @@ export default function LeadDetail() {
         throw new Error("No account selected");
       }
 
-      const estimateTotal = parseFloat(jobForm.price);
-      const { error: estimateError } = await supabase.from("estimates").insert({
-        customer_id: customerId,
-        job_id: jobData.id,
-        subtotal: estimateTotal,
-        tax_rate: 0,
-        tax: 0,
-        discount: 0,
-        total: estimateTotal,
-        status: "draft",
-        created_by: user?.id,
-        account_id: currentAccount.id,
-      });
+      const { data: estimateData, error: estimateError } = await supabase
+        .from("estimates")
+        .insert({
+          customer_id: customerId,
+          job_id: jobData.id,
+          subtotal: estimateTotal,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          total: estimateTotal,
+          status: "draft",
+          created_by: user?.id,
+          account_id: currentAccount.id,
+        })
+        .select()
+        .single();
 
       if (estimateError) {
         console.error("Error creating estimate:", estimateError);
+        throw new Error("Failed to create estimate");
+      }
+
+      const lineItemsToInsert = validLineItems.map((item, index) => ({
+        estimate_id: estimateData.id,
+        name: item.name,
+        description: item.description || null,
+        quantity: 1,
+        unit: "item",
+        unit_price: parseFloat(item.unit_price),
+        total: parseFloat(item.unit_price),
+        sort_order: index,
+      }));
+
+      const { error: lineItemsError } = await supabase
+        .from("estimate_line_items")
+        .insert(lineItemsToInsert);
+
+      if (lineItemsError) {
+        console.error("Error creating estimate line items:", lineItemsError);
       }
 
       await supabase.from("interactions").insert({
@@ -833,66 +863,158 @@ export default function LeadDetail() {
 
       {/* Create Job Dialog */}
       <Dialog open={createJobDialogOpen} onOpenChange={setCreateJobDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Job</DialogTitle>
             <DialogDescription>
-              Set the price and schedule for this job. The status will be automatically set based on the schedule.
+              Add line items for this job. The total will be calculated automatically.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="job-price">Estimate *</Label>
-              <Input
-                id="job-price"
-                type="number"
-                value={jobForm.price}
-                onChange={(e) => setJobForm({ ...jobForm, price: e.target.value })}
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-              />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">Line Items *</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setJobForm({
+                      ...jobForm,
+                      lineItems: [...jobForm.lineItems, { name: "", description: "", unit_price: "" }]
+                    });
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Item
+                </Button>
+              </div>
+
+              {jobForm.lineItems.map((item, index) => (
+                <div key={index} className="p-4 border border-border rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+                    {jobForm.lineItems.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const newLineItems = jobForm.lineItems.filter((_, i) => i !== index);
+                          setJobForm({ ...jobForm, lineItems: newLineItems });
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor={`item-name-${index}`}>Title *</Label>
+                    <Input
+                      id={`item-name-${index}`}
+                      value={item.name}
+                      onChange={(e) => {
+                        const newLineItems = [...jobForm.lineItems];
+                        newLineItems[index].name = e.target.value;
+                        setJobForm({ ...jobForm, lineItems: newLineItems });
+                      }}
+                      placeholder="e.g., Paver Installation"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor={`item-description-${index}`}>Description</Label>
+                    <Textarea
+                      id={`item-description-${index}`}
+                      value={item.description}
+                      onChange={(e) => {
+                        const newLineItems = [...jobForm.lineItems];
+                        newLineItems[index].description = e.target.value;
+                        setJobForm({ ...jobForm, lineItems: newLineItems });
+                      }}
+                      placeholder="Additional details..."
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor={`item-price-${index}`}>Price *</Label>
+                    <Input
+                      id={`item-price-${index}`}
+                      type="number"
+                      value={item.unit_price}
+                      onChange={(e) => {
+                        const newLineItems = [...jobForm.lineItems];
+                        newLineItems[index].unit_price = e.target.value;
+                        setJobForm({ ...jobForm, lineItems: newLineItems });
+                      }}
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                </div>
+              ))}
+
+              <div className="bg-secondary p-4 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold">Total Estimate:</span>
+                  <span className="text-xl font-bold">
+                    ${jobForm.lineItems
+                      .filter(item => item.unit_price)
+                      .reduce((sum, item) => sum + parseFloat(item.unit_price || "0"), 0)
+                      .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="job-date">Scheduled Date</Label>
-              <Input
-                id="job-date"
-                type="date"
-                value={jobForm.scheduled_date}
-                onChange={(e) => setJobForm({ ...jobForm, scheduled_date: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="border-t border-border pt-4 space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="job-start-time">Start Time</Label>
+                <Label htmlFor="job-date">Scheduled Date</Label>
                 <Input
-                  id="job-start-time"
-                  type="time"
-                  value={jobForm.scheduled_time_start}
-                  onChange={(e) => setJobForm({ ...jobForm, scheduled_time_start: e.target.value })}
+                  id="job-date"
+                  type="date"
+                  value={jobForm.scheduled_date}
+                  onChange={(e) => setJobForm({ ...jobForm, scheduled_date: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="job-end-time">End Time</Label>
-                <Input
-                  id="job-end-time"
-                  type="time"
-                  value={jobForm.scheduled_time_end}
-                  onChange={(e) => setJobForm({ ...jobForm, scheduled_time_end: e.target.value })}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="job-start-time">Start Time</Label>
+                  <Input
+                    id="job-start-time"
+                    type="time"
+                    value={jobForm.scheduled_time_start}
+                    onChange={(e) => setJobForm({ ...jobForm, scheduled_time_start: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="job-end-time">End Time</Label>
+                  <Input
+                    id="job-end-time"
+                    type="time"
+                    value={jobForm.scheduled_time_end}
+                    onChange={(e) => setJobForm({ ...jobForm, scheduled_time_end: e.target.value })}
+                  />
+                </div>
               </div>
-            </div>
-            <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
-              {!jobForm.scheduled_date && "Status will be set to: Won"}
-              {jobForm.scheduled_date && new Date(jobForm.scheduled_date) > new Date() && "Status will be set to: Scheduled"}
-              {jobForm.scheduled_date && new Date(jobForm.scheduled_date) <= new Date() && "Status will be set to: In Progress"}
+              <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
+                {!jobForm.scheduled_date && "Status will be set to: Won"}
+                {jobForm.scheduled_date && new Date(jobForm.scheduled_date) > new Date() && "Status will be set to: Scheduled"}
+                {jobForm.scheduled_date && new Date(jobForm.scheduled_date) <= new Date() && "Status will be set to: In Progress"}
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateJobDialogOpen(false)} disabled={creatingJob}>
               Cancel
             </Button>
-            <Button onClick={createJob} disabled={creatingJob || !jobForm.price}>
+            <Button
+              onClick={createJob}
+              disabled={creatingJob || !jobForm.lineItems.some(item => item.name && item.unit_price)}
+            >
               {creatingJob ? "Creating..." : "Create Job"}
             </Button>
           </DialogFooter>
