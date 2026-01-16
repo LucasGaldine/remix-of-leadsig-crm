@@ -124,15 +124,16 @@ export function useLead(id: string | undefined) {
 
 export function useCreateLead() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useMutation({
-    mutationFn: async (lead: Omit<LeadInsert, "created_by">) => {
+    mutationFn: async (lead: Omit<LeadInsert, "created_by" | "account_id">) => {
       if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
 
       const { data, error } = await supabase
         .from("leads")
-        .insert({ ...lead, created_by: user.id })
+        .insert({ ...lead, created_by: user.id, account_id: currentAccount.id })
         .select()
         .single();
 

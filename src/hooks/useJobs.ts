@@ -138,17 +138,19 @@ export function useJob(id: string | undefined) {
 
 export function useCreateJob() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useMutation({
-    mutationFn: async (job: Omit<JobInsert, "created_by" | "approval_status">) => {
+    mutationFn: async (job: Omit<JobInsert, "created_by" | "approval_status" | "account_id">) => {
       if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
 
       const { data, error } = await supabase
         .from("leads")
         .insert({
           ...job,
           created_by: user.id,
+          account_id: currentAccount.id,
           approval_status: "approved",
           status: job.status || "scheduled"
         })

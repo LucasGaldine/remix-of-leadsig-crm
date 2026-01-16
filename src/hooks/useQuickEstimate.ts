@@ -96,7 +96,7 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
 };
 
 export function useQuickEstimate(leadId: string) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -222,12 +222,15 @@ export function useQuickEstimate(leadId: string) {
     setSaving(true);
 
     try {
+      if (!currentAccount) throw new Error("No account selected");
+
       // Save quick estimate
       const { data: estimate, error: estimateError } = await supabase
         .from("quick_estimates")
         .insert([{
           lead_id: leadId,
           created_by: user.id,
+          account_id: currentAccount.id,
           service_type: serviceType,
           measurements: JSON.parse(JSON.stringify(measurements)),
           labor_total: result.laborTotal,
@@ -245,6 +248,7 @@ export function useQuickEstimate(leadId: string) {
       // Log interaction
       await supabase.from("interactions").insert({
         lead_id: leadId,
+        account_id: currentAccount.id,
         type: "note",
         direction: "na",
         summary: "Quick estimate created",

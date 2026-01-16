@@ -15,11 +15,32 @@ interface Profile {
   notification_preferences: Record<string, any> | null;
 }
 
+interface Account {
+  id: string;
+  company_name: string;
+  company_email: string | null;
+  company_phone: string | null;
+  company_address: string | null;
+  billing_email: string | null;
+  website: string | null;
+  logo_url: string | null;
+  settings: Record<string, any> | null;
+}
+
+interface AccountMembership {
+  account_id: string;
+  role: AppRole;
+  is_active: boolean;
+  account: Account;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
   role: AppRole | null;
+  currentAccount: Account | null;
+  accounts: AccountMembership[];
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string, role: AppRole) => Promise<{ error: Error | null }>;
@@ -27,6 +48,7 @@ interface AuthContextType {
   hasRole: (role: AppRole) => boolean;
   isOwnerOrAdmin: () => boolean;
   refreshProfile: () => Promise<void>;
+  switchAccount: (accountId: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,31 +58,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
+  const [accounts, setAccounts] = useState<AccountMembership[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchUserData = async (userId: string) => {
-    // Fetch profile
     const { data: profileData } = await supabase
       .from('profiles')
       .select('*')
       .eq('user_id', userId)
-      .single();
-    
+      .maybeSingle();
+
     if (profileData) {
       setProfile(profileData as Profile);
     }
 
-    // Fetch role
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role')
+    const { data: membershipsData } = await supabase
+      .from('account_members')
+      .select(`
+        account_id,
+        role,
+        is_active,
+        accounts:account_id (
+          id,
+          company_name,
+          company_email,
+          company_phone,
+          company_address,
+          billing_email,
+          website,
+          logo_url,
+          settings
+        )
+      `)
       .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .single();
-    
-    if (roleData) {
-      setRole(roleData.role as AppRole);
+      .eq('is_active', true)
+      .order('created_at', { ascending: true });
+
+    if (membershipsData && membershipsData.length > 0) {
+      const formattedAccounts: AccountMembership[] = membershipsData.map((m: any) => ({
+        account_id: m.account_id,
+        role: m.role as AppRole,
+        is_active: m.is_active,
+        account: m.accounts
+      }));
+
+      setAccounts(formattedAccounts);
+
+      const storedAccountId = localStorage.getItem('currentAccountId');
+      const accountToSet = storedAccountId
+        ? formattedAccounts.find(a => a.account_id === storedAccountId)
+        : formattedAccounts[0];
+
+      if (accountToSet) {
+        setCurrentAccount(accountToSet.account);
+        setRole(accountToSet.role);
+        localStorage.setItem('currentAccountId', accountToSet.account_id);
+      }
     }
   };
 
@@ -134,6 +188,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setProfile(null);
     setRole(null);
+    setCurrentAccount(null);
+    setAccounts([]);
+    localStorage.removeItem('currentAccountId');
   };
 
   const hasRole = (checkRole: AppRole): boolean => {
@@ -151,6 +208,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const switchAccount = (accountId: string) => {
+    const membership = accounts.find(a => a.account_id === accountId);
+    if (membership) {
+      setCurrentAccount(membership.account);
+      setRole(membership.role);
+      localStorage.setItem('currentAccountId', accountId);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -158,6 +224,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         profile,
         role,
+        currentAccount,
+        accounts,
         isLoading,
         signIn,
         signUp,
@@ -165,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasRole,
         isOwnerOrAdmin,
         refreshProfile,
+        switchAccount,
       }}
     >
       {children}

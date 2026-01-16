@@ -86,11 +86,12 @@ export function usePendingLeadsCount() {
 
 export function useApproveLead() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useMutation({
     mutationFn: async (leadId: string) => {
       if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
 
       // Update lead approval status
       const { data: lead, error: updateError } = await supabase
@@ -112,6 +113,7 @@ export function useApproveLead() {
         .from("interactions")
         .insert({
           lead_id: leadId,
+          account_id: currentAccount.id,
           type: "status_change",
           summary: "Approved lead",
           direction: "na",
@@ -135,11 +137,12 @@ export function useApproveLead() {
 
 export function useRejectLead() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: RejectionReason }) => {
       if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
 
       // Update lead approval status
       const { data: lead, error: updateError } = await supabase
@@ -170,6 +173,7 @@ export function useRejectLead() {
         .from("interactions")
         .insert({
           lead_id: id,
+          account_id: currentAccount.id,
           type: "status_change",
           summary: `Rejected lead (${reasonLabels[reason]})`,
           direction: "na",
