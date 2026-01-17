@@ -111,6 +111,8 @@ export default function LeadDetail() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [hasEstimate, setHasEstimate] = useState(false);
+  const [estimate, setEstimate] = useState<any>(null);
+  const [estimateLineItems, setEstimateLineItems] = useState<any[]>([]);
 
   // New note state
   const [newNote, setNewNote] = useState("");
@@ -211,11 +213,27 @@ export default function LeadDetail() {
   const checkEstimate = async () => {
     const { data } = await supabase
       .from("estimates")
-      .select("id")
+      .select(`
+        *,
+        customer:customers(*)
+      `)
       .eq("job_id", id)
       .maybeSingle();
 
     setHasEstimate(!!data);
+    setEstimate(data);
+
+    if (data) {
+      const { data: lineItems } = await supabase
+        .from("estimate_line_items")
+        .select("*")
+        .eq("estimate_id", data.id)
+        .order("sort_order");
+
+      if (lineItems) {
+        setEstimateLineItems(lineItems);
+      }
+    }
   };
 
   const updateLeadStatus = async (newStatus: string) => {
@@ -915,8 +933,60 @@ export default function LeadDetail() {
         </div>
       )}
 
+      {/* Estimate Details */}
+      {hasEstimate && estimate && (
+        <div className="px-4 pb-4">
+          <div className="card-elevated rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium">Estimate</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate(`/payments`)}
+              >
+                View Full Estimate
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {estimateLineItems.map((item, index) => (
+                <div key={item.id} className="flex justify-between items-start pb-3 border-b border-border last:border-0">
+                  <div className="flex-1">
+                    <p className="font-medium">{item.name}</p>
+                    {item.description && (
+                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {item.quantity} {item.unit} × ${parseFloat(item.unit_price).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">${parseFloat(item.total).toFixed(2)}</p>
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex justify-between items-center pt-3 border-t-2 border-border">
+                <span className="font-semibold text-lg">Total</span>
+                <span className="font-bold text-xl text-primary">
+                  ${parseFloat(estimate.total).toFixed(2)}
+                </span>
+              </div>
+
+              {lead.status === "qualified" && (
+                <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg mt-3">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    You can edit this estimate without tracking changes until it becomes a job.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Quick Estimate Panel */}
-      {!["scheduled", "in_progress", "won"].includes(lead.status) && (
+      {!["scheduled", "in_progress", "won"].includes(lead.status) && !hasEstimate && (
         <div className="px-4 pb-4">
           <QuickEstimatePanel
             leadId={id!}

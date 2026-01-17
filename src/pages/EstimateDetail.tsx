@@ -157,6 +157,15 @@ export default function EstimateDetail() {
     try {
       setSaving(true);
 
+      // Check job status to determine if we should track changes
+      const { data: jobData } = await supabase
+        .from('leads')
+        .select('status')
+        .eq('id', estimate.job_id)
+        .single();
+
+      const isJob = jobData && ['won', 'scheduled', 'in_progress'].includes(jobData.status);
+
       const existingIds = new Set(
         estimate.line_items
           .filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted')
@@ -166,17 +175,31 @@ export default function EstimateDetail() {
       const currentIds = new Set(lineItems.filter((item) => item.id).map((item) => item.id));
       const deletedIds = Array.from(existingIds).filter((id) => !currentIds.has(id as string));
 
-      for (const deletedId of deletedIds) {
-        const { error } = await supabase
-          .from('estimate_line_items')
-          .update({
-            is_change_order: true,
-            change_order_type: 'deleted',
-            changed_at: new Date().toISOString(),
-          })
-          .eq('id', deletedId);
+      // Handle deleted items
+      if (isJob) {
+        // Track as change order
+        for (const deletedId of deletedIds) {
+          const { error } = await supabase
+            .from('estimate_line_items')
+            .update({
+              is_change_order: true,
+              change_order_type: 'deleted',
+              changed_at: new Date().toISOString(),
+            })
+            .eq('id', deletedId);
 
-        if (error) throw error;
+          if (error) throw error;
+        }
+      } else {
+        // Just delete the items
+        for (const deletedId of deletedIds) {
+          const { error } = await supabase
+            .from('estimate_line_items')
+            .delete()
+            .eq('id', deletedId);
+
+          if (error) throw error;
+        }
       }
 
       for (const item of lineItems) {
@@ -185,22 +208,41 @@ export default function EstimateDetail() {
         const total = quantity * unitPrice;
 
         if (item.isNew) {
-          const { error } = await supabase.from('estimate_line_items').insert({
-            estimate_id: id,
-            account_id: estimate.account_id,
-            name: item.name,
-            description: item.description || null,
-            quantity,
-            unit: item.unit,
-            unit_price: unitPrice,
-            total,
-            sort_order: lineItems.indexOf(item),
-            is_change_order: true,
-            change_order_type: 'added',
-            changed_at: new Date().toISOString(),
-          });
+          if (isJob) {
+            // Add as change order
+            const { error } = await supabase.from('estimate_line_items').insert({
+              estimate_id: id,
+              account_id: estimate.account_id,
+              name: item.name,
+              description: item.description || null,
+              quantity,
+              unit: item.unit,
+              unit_price: unitPrice,
+              total,
+              sort_order: lineItems.indexOf(item),
+              is_change_order: true,
+              change_order_type: 'added',
+              changed_at: new Date().toISOString(),
+            });
 
-          if (error) throw error;
+            if (error) throw error;
+          } else {
+            // Add as normal item
+            const { error } = await supabase.from('estimate_line_items').insert({
+              estimate_id: id,
+              account_id: estimate.account_id,
+              name: item.name,
+              description: item.description || null,
+              quantity,
+              unit: item.unit,
+              unit_price: unitPrice,
+              total,
+              sort_order: lineItems.indexOf(item),
+              is_change_order: false,
+            });
+
+            if (error) throw error;
+          }
         } else if (item.id) {
           const original = estimate.line_items.find((li: any) => li.id === item.id);
 
@@ -213,32 +255,51 @@ export default function EstimateDetail() {
               parseFloat(original.unit_price) !== unitPrice);
 
           if (hasChanged) {
-            await supabase
-              .from('estimate_line_items')
-              .update({
+            if (isJob) {
+              // Track as change order
+              await supabase
+                .from('estimate_line_items')
+                .update({
+                  is_change_order: true,
+                  change_order_type: 'deleted',
+                  changed_at: new Date().toISOString(),
+                })
+                .eq('id', item.id);
+
+              const { error } = await supabase.from('estimate_line_items').insert({
+                estimate_id: id,
+                account_id: estimate.account_id,
+                name: item.name,
+                description: item.description || null,
+                quantity,
+                unit: item.unit,
+                unit_price: unitPrice,
+                total,
+                sort_order: lineItems.indexOf(item),
                 is_change_order: true,
-                change_order_type: 'deleted',
+                change_order_type: 'edited',
+                original_line_item_id: item.id,
                 changed_at: new Date().toISOString(),
-              })
-              .eq('id', item.id);
+              });
 
-            const { error } = await supabase.from('estimate_line_items').insert({
-              estimate_id: id,
-              account_id: estimate.account_id,
-              name: item.name,
-              description: item.description || null,
-              quantity,
-              unit: item.unit,
-              unit_price: unitPrice,
-              total,
-              sort_order: lineItems.indexOf(item),
-              is_change_order: true,
-              change_order_type: 'edited',
-              original_line_item_id: item.id,
-              changed_at: new Date().toISOString(),
-            });
+              if (error) throw error;
+            } else {
+              // Just update the item
+              const { error } = await supabase
+                .from('estimate_line_items')
+                .update({
+                  name: item.name,
+                  description: item.description || null,
+                  quantity,
+                  unit: item.unit,
+                  unit_price: unitPrice,
+                  total,
+                  sort_order: lineItems.indexOf(item),
+                })
+                .eq('id', item.id);
 
-            if (error) throw error;
+              if (error) throw error;
+            }
           }
         }
       }
@@ -271,7 +332,11 @@ export default function EstimateDetail() {
       await queryClient.invalidateQueries({ queryKey: ['estimate', id] });
       await queryClient.invalidateQueries({ queryKey: ['estimates'] });
 
-      toast.success('Changes saved successfully');
+      if (isJob) {
+        toast.success('Changes saved and tracked as change orders');
+      } else {
+        toast.success('Changes saved successfully');
+      }
       setEditMode(false);
     } catch (error) {
       console.error('Error saving changes:', error);
