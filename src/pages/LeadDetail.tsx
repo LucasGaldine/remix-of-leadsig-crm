@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit } from "lucide-react";
+import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
@@ -112,7 +112,6 @@ export default function LeadDetail() {
   const [notFound, setNotFound] = useState(false);
   const [hasEstimate, setHasEstimate] = useState(false);
   const [estimate, setEstimate] = useState<any>(null);
-  const [estimateLineItems, setEstimateLineItems] = useState<any[]>([]);
 
   // New note state
   const [newNote, setNewNote] = useState("");
@@ -213,27 +212,12 @@ export default function LeadDetail() {
   const checkEstimate = async () => {
     const { data } = await supabase
       .from("estimates")
-      .select(`
-        *,
-        customer:customers(*)
-      `)
+      .select("id, total, status, line_items:estimate_line_items(id)")
       .eq("job_id", id)
       .maybeSingle();
 
     setHasEstimate(!!data);
     setEstimate(data);
-
-    if (data) {
-      const { data: lineItems } = await supabase
-        .from("estimate_line_items")
-        .select("*")
-        .eq("estimate_id", data.id)
-        .order("sort_order");
-
-      if (lineItems) {
-        setEstimateLineItems(lineItems);
-      }
-    }
   };
 
   const updateLeadStatus = async (newStatus: string) => {
@@ -933,55 +917,29 @@ export default function LeadDetail() {
         </div>
       )}
 
-      {/* Estimate Details */}
+      {/* Estimate */}
       {hasEstimate && estimate && (
         <div className="px-4 pb-4">
-          <div className="card-elevated rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium">Estimate</h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate(`/payments`)}
-              >
-                View Full Estimate
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              {estimateLineItems.map((item, index) => (
-                <div key={item.id} className="flex justify-between items-start pb-3 border-b border-border last:border-0">
-                  <div className="flex-1">
-                    <p className="font-medium">{item.name}</p>
-                    {item.description && (
-                      <p className="text-sm text-muted-foreground">{item.description}</p>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {item.quantity} {item.unit} × ${parseFloat(item.unit_price).toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">${parseFloat(item.total).toFixed(2)}</p>
-                  </div>
-                </div>
-              ))}
-
-              <div className="flex justify-between items-center pt-3 border-t-2 border-border">
-                <span className="font-semibold text-lg">Total</span>
-                <span className="font-bold text-xl text-primary">
-                  ${parseFloat(estimate.total).toFixed(2)}
-                </span>
+          <button
+            onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+            className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <DollarSign className="h-5 w-5 text-secondary-foreground" />
               </div>
-
-              {lead.status === "qualified" && (
-                <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg mt-3">
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
-                    You can edit this estimate without tracking changes until it becomes a job.
-                  </p>
-                </div>
-              )}
+              <div className="flex-1">
+                <p className="font-medium text-foreground">Estimate</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  ${Number(estimate.total).toLocaleString()} · {estimate.status}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {estimate.line_items?.length || 0} line items
+                </p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
-          </div>
+          </button>
         </div>
       )}
 
