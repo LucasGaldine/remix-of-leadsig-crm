@@ -155,6 +155,7 @@ export default function LeadSources() {
     step: "setup" | "mapping";
     testData: Record<string, any> | null;
     fieldMappings: Record<string, string>;
+    setupSessionId: string | null;
   }>({
     open: false,
     platform: null,
@@ -166,6 +167,7 @@ export default function LeadSources() {
     step: "setup",
     testData: null,
     fieldMappings: {},
+    setupSessionId: null,
   });
 
   // OAuth coming soon dialog
@@ -192,6 +194,32 @@ export default function LeadSources() {
   useEffect(() => {
     fetchData();
   }, [user, currentAccount]);
+
+  // Poll for test data when in mapping step
+  useEffect(() => {
+    if (!connectDialog.setupSessionId || connectDialog.step !== "mapping" || connectDialog.testData) {
+      return;
+    }
+
+    const pollInterval = setInterval(async () => {
+      const { data: session } = await supabase
+        .from("lead_source_setup_sessions")
+        .select("test_payload, received_at")
+        .eq("id", connectDialog.setupSessionId)
+        .single();
+
+      if (session?.test_payload) {
+        setConnectDialog(prev => ({
+          ...prev,
+          testData: session.test_payload,
+        }));
+        toast.success("Test data received! Configure field mapping below.");
+        clearInterval(pollInterval);
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [connectDialog.setupSessionId, connectDialog.step, connectDialog.testData]);
 
   const fetchData = async () => {
     if (!user || !currentAccount) return;
@@ -228,9 +256,15 @@ export default function LeadSources() {
     return connections.find((c) => c.platform === platform);
   };
 
-  const getWebhookUrl = () => {
+  const getWebhookUrl = (includeSetupSession = false) => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    return `${supabaseUrl}/functions/v1/leads-inbound`;
+    const baseUrl = `${supabaseUrl}/functions/v1/leads-inbound`;
+
+    if (includeSetupSession && connectDialog.setupSessionId && currentAccount) {
+      return `${baseUrl}?setup_session_id=${connectDialog.setupSessionId}&account_id=${currentAccount.id}`;
+    }
+
+    return baseUrl;
   };
 
   const generateApiKey = (): string => {
@@ -279,6 +313,7 @@ export default function LeadSources() {
       step: "setup",
       testData: null,
       fieldMappings: {},
+      setupSessionId: null,
     });
   };
 
@@ -289,6 +324,23 @@ export default function LeadSources() {
     const existingKey = apiKeys.find(key =>
       key.name === `${platform.name} Integration` && key.is_active
     );
+
+    // Create a setup session for secure test data collection
+    const { data: setupSession, error: sessionError } = await supabase
+      .from("lead_source_setup_sessions")
+      .insert({
+        account_id: currentAccount.id,
+        user_id: user.id,
+        platform: platform.id,
+      })
+      .select()
+      .single();
+
+    if (sessionError || !setupSession) {
+      console.error("Error creating setup session:", sessionError);
+      toast.error("Failed to initialize setup session");
+      return;
+    }
 
     setConnectDialog({
       open: true,
@@ -301,6 +353,7 @@ export default function LeadSources() {
       step: "setup",
       testData: null,
       fieldMappings: {},
+      setupSessionId: setupSession.id,
     });
   };
 
@@ -384,6 +437,7 @@ export default function LeadSources() {
       step: "setup",
       testData: null,
       fieldMappings: {},
+      setupSessionId: null,
     });
   };
 
@@ -436,6 +490,7 @@ export default function LeadSources() {
       step: "setup",
       testData: null,
       fieldMappings: {},
+      setupSessionId: null,
     });
     setSuccessOpen(true);
     fetchData();
@@ -516,6 +571,14 @@ export default function LeadSources() {
       }
     }
 
+    // Clean up the setup session
+    if (connectDialog.setupSessionId) {
+      await supabase
+        .from("lead_source_setup_sessions")
+        .delete()
+        .eq("id", connectDialog.setupSessionId);
+    }
+
     setConnectDialog({
       open: false,
       platform: null,
@@ -527,6 +590,7 @@ export default function LeadSources() {
       step: "setup",
       testData: null,
       fieldMappings: {},
+      setupSessionId: null,
     });
     setSuccessOpen(true);
     fetchData();
@@ -534,7 +598,8 @@ export default function LeadSources() {
 
   const handleCopyWebhookUrl = async () => {
     try {
-      await navigator.clipboard.writeText(getWebhookUrl());
+      const url = connectDialog.step === "setup" ? getWebhookUrl(true) : getWebhookUrl(false);
+      await navigator.clipboard.writeText(url);
       toast.success("Webhook URL copied!");
     } catch {
       toast.error("Failed to copy");
@@ -883,8 +948,16 @@ export default function LeadSources() {
       {/* Connect Dialog (Email Relay or Webhook) */}
       <Dialog
         open={connectDialog.open}
-        onOpenChange={(open) => {
+        onOpenChange={async (open) => {
           if (!open) {
+            // Clean up the setup session when closing
+            if (connectDialog.setupSessionId) {
+              await supabase
+                .from("lead_source_setup_sessions")
+                .delete()
+                .eq("id", connectDialog.setupSessionId);
+            }
+
             setConnectDialog({
               open: false,
               platform: null,
@@ -896,6 +969,7 @@ export default function LeadSources() {
               step: "setup",
               testData: null,
               fieldMappings: {},
+              setupSessionId: null,
             });
           }
         }}
@@ -926,46 +1000,78 @@ export default function LeadSources() {
               </div>
 
               {connectDialog.testData && (
-                <div className="space-y-3">
-                  <h4 className="font-medium">Available Fields from Google Ads</h4>
-                  <div className="space-y-2">
-                    {Object.keys(connectDialog.testData).map((field) => (
-                      <div key={field} className="flex items-center gap-3 p-3 border rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{field}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Example: {JSON.stringify(connectDialog.testData![field])}
-                          </p>
+                <>
+                  <div className="space-y-3">
+                    <h4 className="font-medium">Available Fields from Google Ads</h4>
+                    <div className="space-y-2">
+                      {Object.keys(connectDialog.testData).map((field) => (
+                        <div key={field} className="flex items-center gap-3 p-3 border rounded-lg">
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{field}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Example: {JSON.stringify(connectDialog.testData![field])}
+                            </p>
+                          </div>
+                          <div className="w-48">
+                            <select
+                              className="w-full px-3 py-2 border rounded-md text-sm"
+                              value={connectDialog.fieldMappings[field] || ""}
+                              onChange={(e) => {
+                                setConnectDialog(prev => ({
+                                  ...prev,
+                                  fieldMappings: {
+                                    ...prev.fieldMappings,
+                                    [field]: e.target.value,
+                                  },
+                                }));
+                              }}
+                            >
+                              <option value="">Don't map</option>
+                              <option value="name">Name</option>
+                              <option value="email">Email</option>
+                              <option value="phone">Phone</option>
+                              <option value="address">Address</option>
+                              <option value="city">City</option>
+                              <option value="service_type">Service Type</option>
+                              <option value="estimated_budget">Budget</option>
+                              <option value="notes">Notes</option>
+                            </select>
+                          </div>
                         </div>
-                        <div className="w-48">
-                          <select
-                            className="w-full px-3 py-2 border rounded-md text-sm"
-                            value={connectDialog.fieldMappings[field] || ""}
-                            onChange={(e) => {
-                              setConnectDialog(prev => ({
-                                ...prev,
-                                fieldMappings: {
-                                  ...prev.fieldMappings,
-                                  [field]: e.target.value,
-                                },
-                              }));
-                            }}
-                          >
-                            <option value="">Don't map</option>
-                            <option value="name">Name</option>
-                            <option value="email">Email</option>
-                            <option value="phone">Phone</option>
-                            <option value="address">Address</option>
-                            <option value="city">City</option>
-                            <option value="service_type">Service Type</option>
-                            <option value="estimated_budget">Budget</option>
-                            <option value="notes">Notes</option>
-                          </select>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
+
+                  <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <h4 className="font-medium mb-2 text-green-900 dark:text-green-100">Production Webhook URL</h4>
+                    <p className="text-sm text-green-800 dark:text-green-200 mb-3">
+                      After saving, update your Google Ads webhook to this production URL:
+                    </p>
+                    <div className="flex items-center gap-2 p-2 bg-background rounded border">
+                      <code className="flex-1 text-xs break-all">
+                        {getWebhookUrl(false)}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(getWebhookUrl(false));
+                            toast.success("Production URL copied!");
+                          } catch {
+                            toast.error("Failed to copy");
+                          }
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-green-700 dark:text-green-300 mt-2">
+                      This is your permanent webhook URL for receiving real leads (no expiration).
+                    </p>
+                  </div>
+                </>
               )}
 
               {!connectDialog.testData && (
@@ -1062,12 +1168,12 @@ export default function LeadSources() {
                     <div className="ml-6 mt-2 space-y-3">
                       <div>
                         <p className="text-xs font-medium mb-1 flex items-center gap-1">
-                          Webhook URL
-                          <span className="text-muted-foreground font-normal">(paste this in Google Ads)</span>
+                          Setup Webhook URL
+                          <span className="text-muted-foreground font-normal">(temporary, for receiving test data)</span>
                         </p>
                         <div className="flex items-center gap-2 p-2 bg-muted rounded border">
                           <code className="flex-1 text-xs break-all">
-                            {getWebhookUrl()}
+                            {getWebhookUrl(true)}
                           </code>
                           <Button
                             variant="ghost"
@@ -1078,6 +1184,9 @@ export default function LeadSources() {
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
+                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                          This URL includes a setup token and expires in 10 minutes. Use it only for receiving test data.
+                        </p>
                       </div>
                       {connectDialog.apiKey && (
                         <div>

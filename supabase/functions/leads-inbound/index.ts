@@ -205,9 +205,68 @@ Deno.serve(async (req) => {
     // Log all headers for debugging (helps identify Google's header names)
     console.log("leads-inbound: Request headers", Object.fromEntries(req.headers.entries()));
 
+    // Check if this is a setup session (test data collection)
+    const url = new URL(req.url);
+    const setupSessionId = url.searchParams.get("setup_session_id");
+    const accountIdParam = url.searchParams.get("account_id");
+
     // Parse request body first to check for Google Ads webhook
     const rawPayload = await req.json();
     console.log("leads-inbound: Raw payload received", JSON.stringify(rawPayload));
+
+    // Handle setup session - store test data only
+    if (setupSessionId && accountIdParam) {
+      console.log("leads-inbound: Setup session detected", setupSessionId);
+
+      // Verify the setup session exists and hasn't expired
+      const { data: session, error: sessionError } = await supabase
+        .from("lead_source_setup_sessions")
+        .select("id, account_id, expires_at")
+        .eq("id", setupSessionId)
+        .eq("account_id", accountIdParam)
+        .single();
+
+      if (sessionError || !session) {
+        console.log("leads-inbound: Invalid or expired setup session");
+        return new Response(
+          JSON.stringify({ error: "Invalid or expired setup session" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if session has expired
+      const expiresAt = new Date(session.expires_at);
+      if (expiresAt < new Date()) {
+        console.log("leads-inbound: Setup session expired");
+        return new Response(
+          JSON.stringify({ error: "Setup session expired" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Store the test payload
+      const { error: updateError } = await supabase
+        .from("lead_source_setup_sessions")
+        .update({
+          test_payload: rawPayload,
+          received_at: new Date().toISOString(),
+        })
+        .eq("id", setupSessionId);
+
+      if (updateError) {
+        console.error("leads-inbound: Failed to store test data", updateError);
+        return new Response(
+          JSON.stringify({ error: "Failed to store test data" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("leads-inbound: Test data stored successfully");
+      return new Response(
+        JSON.stringify({ success: true, message: "Test data received" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Validate API key - check multiple possible locations
     let apiKey: string | null = null;
