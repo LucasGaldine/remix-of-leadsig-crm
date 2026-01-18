@@ -8,6 +8,7 @@ const corsHeaders = {
 interface TestConnectionPayload {
   platform: string;
   userId: string;
+  accountId: string;
 }
 
 Deno.serve(async (req) => {
@@ -27,11 +28,11 @@ Deno.serve(async (req) => {
     const payload: TestConnectionPayload = await req.json();
     console.log("leads-test-connection: Payload received", JSON.stringify(payload));
 
-    const { platform, userId } = payload;
+    const { platform, userId, accountId } = payload;
 
-    if (!platform || !userId) {
+    if (!platform || !userId || !accountId) {
       return new Response(
-        JSON.stringify({ error: "Platform and userId are required" }),
+        JSON.stringify({ error: "Platform, userId, and accountId are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -40,7 +41,7 @@ Deno.serve(async (req) => {
     const { data: connection, error: connError } = await supabase
       .from("lead_source_connections")
       .select("id, status")
-      .eq("user_id", userId)
+      .eq("account_id", accountId)
       .eq("platform", platform)
       .single();
 
@@ -72,7 +73,8 @@ Deno.serve(async (req) => {
       external_payload: { test: true, platform, timestamp: new Date().toISOString() },
       status: "new",
       created_by: userId,
-      approval_status: "approved", // Auto-approve test leads
+      account_id: accountId,
+      approval_status: "approved",
       submitted_at: new Date().toISOString(),
     };
 

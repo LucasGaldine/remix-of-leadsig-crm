@@ -197,7 +197,7 @@ export default function LeadSources() {
 
   // Poll for test data during setup
   useEffect(() => {
-    if (!connectDialog.setupSessionId || connectDialog.testData || connectDialog.method !== "webhook" || !user || !connectDialog.platform || !connectDialog.apiKeyId) {
+    if (!connectDialog.setupSessionId || connectDialog.testData || connectDialog.method !== "webhook" || !user || !currentAccount || !connectDialog.platform || !connectDialog.apiKeyId) {
       return;
     }
 
@@ -214,6 +214,7 @@ export default function LeadSources() {
           .from("lead_source_connections")
           .upsert({
             user_id: user.id,
+            account_id: currentAccount.id,
             platform: connectDialog.platform.id,
             status: "connected",
             connected_at: new Date().toISOString(),
@@ -246,7 +247,7 @@ export default function LeadSources() {
     }, 2000);
 
     return () => clearInterval(pollInterval);
-  }, [connectDialog.setupSessionId, connectDialog.testData, connectDialog.method, user, connectDialog.platform, connectDialog.apiKeyId]);
+  }, [connectDialog.setupSessionId, connectDialog.testData, connectDialog.method, user, currentAccount, connectDialog.platform, connectDialog.apiKeyId]);
 
   const fetchData = async () => {
     if (!user || !currentAccount) return;
@@ -255,7 +256,7 @@ export default function LeadSources() {
       supabase
         .from("lead_source_connections")
         .select("*")
-        .eq("user_id", user.id),
+        .eq("account_id", currentAccount.id),
       supabase
         .from("api_keys")
         .select("id, name, key_prefix, is_active")
@@ -482,7 +483,7 @@ export default function LeadSources() {
   };
 
   const handleConfirmEmailRelayConnection = async () => {
-    if (!user || !connectDialog.platform) return;
+    if (!user || !currentAccount || !connectDialog.platform) return;
 
     const platform = connectDialog.platform;
 
@@ -491,6 +492,7 @@ export default function LeadSources() {
       .from("lead_source_connections")
       .upsert({
         user_id: user.id,
+        account_id: currentAccount.id,
         platform: platform.id,
         status: "connected",
         connected_at: new Date().toISOString(),
@@ -609,13 +611,13 @@ export default function LeadSources() {
   };
 
   const handleDisconnect = async () => {
-    if (!user || !disconnectDialog.platform) return;
+    if (!user || !currentAccount || !disconnectDialog.platform) return;
 
     // Update status to not_connected (don't delete to preserve history)
     const { error } = await supabase
       .from("lead_source_connections")
       .update({ status: "not_connected" })
-      .eq("user_id", user.id)
+      .eq("account_id", currentAccount.id)
       .eq("platform", disconnectDialog.platform.id);
 
     if (error) {
@@ -630,7 +632,7 @@ export default function LeadSources() {
   };
 
   const handleTestConnection = async (platform: PlatformInfo) => {
-    if (!user) return;
+    if (!user || !currentAccount) return;
 
     setTesting(platform.id);
 
@@ -640,6 +642,7 @@ export default function LeadSources() {
         body: {
           platform: platform.id,
           userId: user.id,
+          accountId: currentAccount.id,
         },
       });
 
@@ -663,7 +666,7 @@ export default function LeadSources() {
         await supabase
           .from("lead_source_connections")
           .update({ last_sync_at: new Date().toISOString() })
-          .eq("user_id", user.id)
+          .eq("account_id", currentAccount.id)
           .eq("platform", platform.id);
 
         fetchData();

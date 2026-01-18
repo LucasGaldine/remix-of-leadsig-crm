@@ -356,11 +356,11 @@ Deno.serve(async (req) => {
     if (isGoogleAdsWebhook(rawPayload)) {
       console.log("leads-inbound: Detected Google Ads webhook format");
 
-      // Fetch field mappings for this user's Google connection
+      // Fetch field mappings for this account's Google connection
       const { data: connection } = await supabase
         .from("lead_source_connections")
         .select("id")
-        .eq("user_id", userId)
+        .eq("account_id", accountId)
         .eq("platform", "google")
         .eq("status", "connected")
         .single();
