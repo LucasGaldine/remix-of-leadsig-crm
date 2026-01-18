@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Check, Copy, ChevronDown, ChevronUp, Loader2, RefreshCw, Mail, Webhook, ExternalLink } from "lucide-react";
+import { ArrowLeft, Check, Copy, ChevronDown, ChevronUp, Loader2, RefreshCw, Mail, Webhook, ExternalLink, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -276,6 +276,46 @@ export default function LeadSources() {
   const handleConnectWebhook = async (platform: PlatformInfo) => {
     if (!user || !currentAccount) return;
 
+    // Check if there's an existing API key for this platform
+    const existingKey = apiKeys.find(key =>
+      key.name === `${platform.name} Integration` && key.is_active
+    );
+
+    setConnectDialog({
+      open: true,
+      platform,
+      method: "webhook",
+      inboundEmail: "",
+      apiKey: null,
+      apiKeyId: existingKey?.id || null,
+      copied: null,
+    });
+  };
+
+  const handleGenerateNewApiKey = async () => {
+    if (!user || !currentAccount || !connectDialog.platform) return;
+
+    const platform = connectDialog.platform;
+
+    // Delete any existing API keys for this platform integration
+    const existingKeys = apiKeys.filter(key =>
+      key.name === `${platform.name} Integration`
+    );
+
+    if (existingKeys.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("api_keys")
+        .delete()
+        .in("id", existingKeys.map(k => k.id));
+
+      if (deleteError) {
+        console.error("Error deleting old API keys:", deleteError);
+        toast.error("Failed to delete old API keys");
+        return;
+      }
+    }
+
+    // Generate new API key
     const newApiKey = generateApiKey();
     const keyHash = await hashApiKey(newApiKey);
     const keyPrefix = newApiKey.slice(0, 12);
@@ -300,18 +340,19 @@ export default function LeadSources() {
     }
 
     sessionStorage.setItem('leadsig_debug_api_key', newApiKey);
+    toast.success("New API key generated");
 
-    setConnectDialog({
-      open: true,
-      platform,
-      method: "webhook",
-      inboundEmail: "",
+    setConnectDialog(prev => ({
+      ...prev,
       apiKey: newApiKey,
       apiKeyId: createdKey.id,
-      copied: null,
-    });
+    }));
 
-    setApiKeys([createdKey, ...apiKeys]);
+    // Update the apiKeys list
+    const updatedKeys = apiKeys.filter(key =>
+      key.name !== `${platform.name} Integration`
+    );
+    setApiKeys([createdKey, ...updatedKeys]);
   };
 
   const handleConnectViaEmailRelay = async (platform: PlatformInfo) => {
@@ -384,6 +425,11 @@ export default function LeadSources() {
 
   const handleConfirmWebhookConnection = async () => {
     if (!user || !connectDialog.platform) return;
+
+    if (!connectDialog.apiKeyId) {
+      toast.error("Please generate an API key first");
+      return;
+    }
 
     const platform = connectDialog.platform;
 
@@ -798,32 +844,56 @@ export default function LeadSources() {
                 </p>
               </div>
 
-              {connectDialog.apiKey && (
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <h4 className="font-medium mb-2 text-yellow-900 dark:text-yellow-100 flex items-center gap-2">
-                    <span className="text-lg">⚠️</span> Your API Key
-                  </h4>
-                  <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
-                    Copy this key and paste it into Google Ads. This key is visible during your current browser session for debugging.
-                  </p>
-                  <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
-                    <code className="flex-1 text-sm break-all font-mono">
-                      {connectDialog.apiKey}
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleCopyApiKey}
-                    >
-                      {connectDialog.copied === "key" ? (
-                        <Check className="h-4 w-4 text-status-confirmed" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
+              {/* API Key Generation Section */}
+              <div className="p-4 border border-border rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium">API Key</h4>
+                  <Button
+                    size="sm"
+                    onClick={handleGenerateNewApiKey}
+                    variant={connectDialog.apiKey ? "outline" : "default"}
+                  >
+                    <Key className="h-4 w-4 mr-1" />
+                    {connectDialog.apiKey ? "Generate New Key" : "Generate API Key"}
+                  </Button>
                 </div>
-              )}
+                {connectDialog.apiKey ? (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                      <h4 className="font-medium mb-2 text-yellow-900 dark:text-yellow-100 flex items-center gap-2">
+                        <span className="text-lg">⚠️</span> Copy Your API Key
+                      </h4>
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
+                        Copy this key now and paste it into Google Ads. You won't be able to see it again.
+                      </p>
+                      <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
+                        <code className="flex-1 text-sm break-all font-mono">
+                          {connectDialog.apiKey}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={handleCopyApiKey}
+                        >
+                          {connectDialog.copied === "key" ? (
+                            <Check className="h-4 w-4 text-status-confirmed" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : connectDialog.apiKeyId ? (
+                  <p className="text-sm text-muted-foreground">
+                    You have an existing API key. Generate a new one to see and copy it.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Click "Generate API Key" to create a key for this integration.
+                  </p>
+                )}
+              </div>
 
               <div className="space-y-3">
                 <h4 className="font-medium">Setup Instructions</h4>
