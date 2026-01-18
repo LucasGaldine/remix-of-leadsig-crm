@@ -241,10 +241,12 @@ export default function EstimateDetail() {
         } else if (item.id) {
           const original = estimate.line_items.find((li: any) => li.id === item.id);
 
+          const normalizeValue = (val: any) => (val === null || val === undefined || val === '') ? null : val;
+
           const hasChanged =
             original &&
             (original.name !== item.name ||
-              original.description !== item.description ||
+              normalizeValue(original.description) !== normalizeValue(item.description) ||
               parseFloat(original.quantity) !== quantity ||
               original.unit !== item.unit ||
               parseFloat(original.unit_price) !== unitPrice);
@@ -347,7 +349,7 @@ export default function EstimateDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-32">
+    <div className="min-h-screen bg-surface-sunken pb-48">
       <PageHeader title="Estimate" showBack backTo="/payments" showNotifications={false} />
 
       {estimate.is_finalized && (
