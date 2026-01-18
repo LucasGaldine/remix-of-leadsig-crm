@@ -195,9 +195,9 @@ export default function LeadSources() {
     fetchData();
   }, [user, currentAccount]);
 
-  // Poll for test data when in mapping step
+  // Poll for test data during setup
   useEffect(() => {
-    if (!connectDialog.setupSessionId || connectDialog.step !== "mapping" || connectDialog.testData) {
+    if (!connectDialog.setupSessionId || connectDialog.testData || connectDialog.method !== "webhook" || !user || !connectDialog.platform || !connectDialog.apiKeyId) {
       return;
     }
 
@@ -209,17 +209,44 @@ export default function LeadSources() {
         .single();
 
       if (session?.test_payload) {
+        // Create the connection record
+        const { error: connectionError } = await supabase
+          .from("lead_source_connections")
+          .upsert({
+            user_id: user.id,
+            platform: connectDialog.platform.id,
+            status: "connected",
+            connected_at: new Date().toISOString(),
+            api_key_id: connectDialog.apiKeyId,
+            connection_method: "webhook",
+          }, {
+            onConflict: "user_id,platform",
+          });
+
+        if (connectionError) {
+          console.error("Error creating connection:", connectionError);
+          toast.error("Failed to connect");
+          clearInterval(pollInterval);
+          return;
+        }
+
+        // Transition to mapping step with test data
         setConnectDialog(prev => ({
           ...prev,
           testData: session.test_payload,
+          step: "mapping",
         }));
         toast.success("Test data received! Configure field mapping below.");
+
+        // Refresh connections list
+        fetchData();
+
         clearInterval(pollInterval);
       }
     }, 2000);
 
     return () => clearInterval(pollInterval);
-  }, [connectDialog.setupSessionId, connectDialog.step, connectDialog.testData]);
+  }, [connectDialog.setupSessionId, connectDialog.testData, connectDialog.method, user, connectDialog.platform, connectDialog.apiKeyId]);
 
   const fetchData = async () => {
     if (!user || !currentAccount) return;
@@ -494,45 +521,6 @@ export default function LeadSources() {
     });
     setSuccessOpen(true);
     fetchData();
-  };
-
-  const handleContinueToMapping = async () => {
-    if (!user || !connectDialog.platform) return;
-
-    if (!connectDialog.apiKeyId) {
-      toast.error("Please generate an API key first");
-      return;
-    }
-
-    const platform = connectDialog.platform;
-
-    // Create the connection record
-    const { error } = await supabase
-      .from("lead_source_connections")
-      .upsert({
-        user_id: user.id,
-        platform: platform.id,
-        status: "connected",
-        connected_at: new Date().toISOString(),
-        api_key_id: connectDialog.apiKeyId,
-        connection_method: "webhook",
-      }, {
-        onConflict: "user_id,platform",
-      });
-
-    if (error) {
-      console.error("Error creating connection:", error);
-      toast.error("Failed to connect");
-      return;
-    }
-
-    // Move to mapping step
-    setConnectDialog(prev => ({
-      ...prev,
-      step: "mapping",
-    }));
-
-    toast.success("Ready to configure field mapping");
   };
 
   const handleSaveFieldMappings = async () => {
@@ -1219,7 +1207,10 @@ export default function LeadSources() {
                     </div>
                   </li>
                   <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Click "Send test data" in Google Ads to verify the connection</span>
+                    <span className="font-medium text-foreground">Click "Send test data" in Google Ads</span>
+                    <p className="text-xs ml-6 mt-1 text-blue-600 dark:text-blue-400">
+                      We'll automatically proceed to field mapping when test data is received
+                    </p>
                   </li>
                   <li className="text-muted-foreground">
                     <span className="font-medium text-foreground">Save your lead form settings</span>
@@ -1364,9 +1355,11 @@ export default function LeadSources() {
                 >
                   Cancel
                 </Button>
-                <Button onClick={connectDialog.method === "webhook" ? handleContinueToMapping : handleConfirmEmailRelayConnection}>
-                  {connectDialog.method === "webhook" ? "Continue to Field Mapping" : "I've Set Up Forwarding"}
-                </Button>
+                {connectDialog.method === "email_relay" && (
+                  <Button onClick={handleConfirmEmailRelayConnection}>
+                    I've Set Up Forwarding
+                  </Button>
+                )}
               </>
             )}
           </DialogFooter>
