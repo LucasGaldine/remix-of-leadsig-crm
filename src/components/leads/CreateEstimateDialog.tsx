@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,6 +30,8 @@ interface CreateEstimateDialogProps {
 interface LineItem {
   name: string;
   description: string;
+  quantity: string;
+  unit: string;
   unit_price: string;
 }
 
@@ -37,14 +40,14 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
   const queryClient = useQueryClient();
 
   const initialLineItems: LineItem[] = lead.estimated_value
-    ? [{ name: lead.service_type || "Service", description: "", unit_price: lead.estimated_value.toString() }]
-    : [{ name: "", description: "", unit_price: "" }];
+    ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString() }]
+    : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "" }];
 
   const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
   const [creating, setCreating] = useState(false);
 
   const addLineItem = () => {
-    setLineItems([...lineItems, { name: "", description: "", unit_price: "" }]);
+    setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
   };
 
   const removeLineItem = (index: number) => {
@@ -59,8 +62,12 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
   const calculateTotal = () => {
     return lineItems
-      .filter(item => item.unit_price)
-      .reduce((sum, item) => sum + parseFloat(item.unit_price || "0"), 0);
+      .filter(item => item.unit_price && item.quantity)
+      .reduce((sum, item) => {
+        const quantity = parseFloat(item.quantity || "0");
+        const unitPrice = parseFloat(item.unit_price || "0");
+        return sum + (quantity * unitPrice);
+      }, 0);
   };
 
   const handleCreate = async () => {
@@ -112,7 +119,11 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
         customerId = newCustomer.id;
       }
 
-      const estimateTotal = validLineItems.reduce((sum, item) => sum + parseFloat(item.unit_price), 0);
+      const estimateTotal = validLineItems.reduce((sum, item) => {
+        const quantity = parseFloat(item.quantity || "1");
+        const unitPrice = parseFloat(item.unit_price);
+        return sum + (quantity * unitPrice);
+      }, 0);
 
       const { error: updateError } = await supabase
         .from("leads")
@@ -143,17 +154,23 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
       if (estimateError) throw new Error("Failed to create estimate");
 
-      const lineItemsToInsert = validLineItems.map((item, index) => ({
-        estimate_id: estimateData.id,
-        account_id: currentAccount.id,
-        name: item.name,
-        description: item.description || null,
-        quantity: 1,
-        unit: "item",
-        unit_price: parseFloat(item.unit_price),
-        total: parseFloat(item.unit_price),
-        sort_order: index,
-      }));
+      const lineItemsToInsert = validLineItems.map((item, index) => {
+        const quantity = parseFloat(item.quantity || "1");
+        const unitPrice = parseFloat(item.unit_price);
+        const total = quantity * unitPrice;
+
+        return {
+          estimate_id: estimateData.id,
+          account_id: currentAccount.id,
+          name: item.name,
+          description: item.description || null,
+          quantity,
+          unit: item.unit,
+          unit_price: unitPrice,
+          total,
+          sort_order: index,
+        };
+      });
 
       const { error: lineItemsError } = await supabase
         .from("estimate_line_items")
@@ -250,8 +267,43 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor={`item-quantity-${index}`}>Quantity *</Label>
+                    <Input
+                      id={`item-quantity-${index}`}
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => updateLineItem(index, "quantity", e.target.value)}
+                      placeholder="1"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor={`item-unit-${index}`}>Unit</Label>
+                    <Select
+                      value={item.unit}
+                      onValueChange={(value) => updateLineItem(index, "unit", value)}
+                    >
+                      <SelectTrigger id={`item-unit-${index}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="item">Item</SelectItem>
+                        <SelectItem value="each">Each</SelectItem>
+                        <SelectItem value="hour">Hour</SelectItem>
+                        <SelectItem value="sq ft">Sq Ft</SelectItem>
+                        <SelectItem value="linear ft">Linear Ft</SelectItem>
+                        <SelectItem value="day">Day</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor={`item-price-${index}`}>Price *</Label>
+                  <Label htmlFor={`item-price-${index}`}>Unit Price *</Label>
                   <Input
                     id={`item-price-${index}`}
                     type="number"
@@ -261,6 +313,15 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
                     min="0"
                     step="0.01"
                   />
+                </div>
+
+                <div className="pt-2 border-t border-border">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Line Total:</span>
+                    <span className="font-semibold">
+                      ${((parseFloat(item.quantity || "0") * parseFloat(item.unit_price || "0")).toFixed(2))}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
