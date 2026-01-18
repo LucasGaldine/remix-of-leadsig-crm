@@ -356,6 +356,9 @@ Deno.serve(async (req) => {
     if (isGoogleAdsWebhook(rawPayload)) {
       console.log("leads-inbound: Detected Google Ads webhook format");
 
+      const formId = rawPayload.form_id || null;
+      console.log("leads-inbound: Form ID", formId);
+
       // Fetch field mappings for this account's Google connection
       const { data: connection } = await supabase
         .from("lead_source_connections")
@@ -368,16 +371,39 @@ Deno.serve(async (req) => {
       let fieldMappings: Record<string, string> = {};
 
       if (connection) {
-        const { data: mappings } = await supabase
+        // Look up mappings for this specific form_id, or fall back to null form_id
+        let mappingsQuery = supabase
           .from("lead_source_field_mappings")
-          .select("source_field, target_field")
+          .select("source_field, target_field, form_id")
           .eq("lead_source_connection_id", connection.id);
+
+        if (formId) {
+          mappingsQuery = mappingsQuery.eq("form_id", formId);
+        } else {
+          mappingsQuery = mappingsQuery.is("form_id", null);
+        }
+
+        const { data: mappings } = await mappingsQuery;
 
         if (mappings && mappings.length > 0) {
           fieldMappings = Object.fromEntries(
             mappings.map(m => [m.source_field.toUpperCase(), m.target_field])
           );
-          console.log("leads-inbound: Using custom field mappings", fieldMappings);
+          console.log("leads-inbound: Using custom field mappings for form", formId, fieldMappings);
+        } else if (formId) {
+          // If no form-specific mappings found, try fallback to null form_id
+          const { data: fallbackMappings } = await supabase
+            .from("lead_source_field_mappings")
+            .select("source_field, target_field")
+            .eq("lead_source_connection_id", connection.id)
+            .is("form_id", null);
+
+          if (fallbackMappings && fallbackMappings.length > 0) {
+            fieldMappings = Object.fromEntries(
+              fallbackMappings.map(m => [m.source_field.toUpperCase(), m.target_field])
+            );
+            console.log("leads-inbound: Using fallback (default) field mappings", fieldMappings);
+          }
         }
       }
 

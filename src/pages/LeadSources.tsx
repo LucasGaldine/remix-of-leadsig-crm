@@ -156,6 +156,7 @@ export default function LeadSources() {
     testData: Record<string, any> | null;
     fieldMappings: Record<string, string>;
     setupSessionId: string | null;
+    formId: string | null;
   }>({
     open: false,
     platform: null,
@@ -168,6 +169,7 @@ export default function LeadSources() {
     testData: null,
     fieldMappings: {},
     setupSessionId: null,
+    formId: null,
   });
 
   // OAuth coming soon dialog
@@ -209,6 +211,9 @@ export default function LeadSources() {
         .single();
 
       if (session?.test_payload) {
+        // Extract form_id from Google Ads webhook payload
+        const formId = session.test_payload.form_id || null;
+
         // Create the connection record
         const { error: connectionError } = await supabase
           .from("lead_source_connections")
@@ -220,6 +225,7 @@ export default function LeadSources() {
             connected_at: new Date().toISOString(),
             api_key_id: connectDialog.apiKeyId,
             connection_method: "webhook",
+            form_id: formId,
           }, {
             onConflict: "user_id,platform",
           });
@@ -235,6 +241,7 @@ export default function LeadSources() {
         setConnectDialog(prev => ({
           ...prev,
           testData: session.test_payload,
+          formId: formId,
           step: "mapping",
         }));
         toast.success("Test data received! Configure field mapping below.");
@@ -535,11 +542,19 @@ export default function LeadSources() {
       return;
     }
 
-    // Delete existing mappings and insert new ones
-    await supabase
+    // Delete existing mappings for this connection and form_id
+    const deleteQuery = supabase
       .from("lead_source_field_mappings")
       .delete()
       .eq("lead_source_connection_id", connection.id);
+
+    if (connectDialog.formId) {
+      deleteQuery.eq("form_id", connectDialog.formId);
+    } else {
+      deleteQuery.is("form_id", null);
+    }
+
+    await deleteQuery;
 
     const mappingsToInsert = Object.entries(connectDialog.fieldMappings)
       .filter(([_, targetField]) => targetField && targetField !== "")
@@ -547,6 +562,7 @@ export default function LeadSources() {
         lead_source_connection_id: connection.id,
         source_field: sourceField,
         target_field: targetField,
+        form_id: connectDialog.formId,
       }));
 
     if (mappingsToInsert.length > 0) {
@@ -581,6 +597,7 @@ export default function LeadSources() {
       testData: null,
       fieldMappings: {},
       setupSessionId: null,
+      formId: null,
     });
     setSuccessOpen(true);
     fetchData();
@@ -982,12 +999,17 @@ export default function LeadSources() {
           </DialogHeader>
 
           {connectDialog.method === "webhook" && connectDialog.step === "mapping" ? (
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
               <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Field Mapping</h4>
                 <p className="text-sm text-blue-800 dark:text-blue-200">
                   Map the fields from your Google Ads lead form to your LeadSig database. Fields you don't map will be stored in the notes.
                 </p>
+                {connectDialog.formId && (
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-2 font-mono">
+                    Form ID: {connectDialog.formId}
+                  </p>
+                )}
               </div>
 
               {connectDialog.testData && (
@@ -995,41 +1017,48 @@ export default function LeadSources() {
                   <div className="space-y-3">
                     <h4 className="font-medium">Available Fields from Google Ads</h4>
                     <div className="space-y-2">
-                      {Object.keys(connectDialog.testData).map((field) => (
-                        <div key={field} className="flex items-center gap-3 p-3 border rounded-lg">
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{field}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Example: {JSON.stringify(connectDialog.testData![field])}
-                            </p>
-                          </div>
-                          <div className="w-48">
-                            <select
-                              className="w-full px-3 py-2 border rounded-md text-sm"
-                              value={connectDialog.fieldMappings[field] || ""}
-                              onChange={(e) => {
-                                setConnectDialog(prev => ({
-                                  ...prev,
-                                  fieldMappings: {
-                                    ...prev.fieldMappings,
-                                    [field]: e.target.value,
-                                  },
-                                }));
-                              }}
-                            >
-                              <option value="">Don't map</option>
-                              <option value="name">Name</option>
-                              <option value="email">Email</option>
-                              <option value="phone">Phone</option>
-                              <option value="address">Address</option>
-                              <option value="city">City</option>
-                              <option value="service_type">Service Type</option>
-                              <option value="estimated_budget">Budget</option>
-                              <option value="notes">Notes</option>
-                            </select>
-                          </div>
-                        </div>
-                      ))}
+                      {(() => {
+                        const userColumnData = connectDialog.testData.user_column_data || [];
+                        return userColumnData.map((column: any, index: number) => {
+                          const columnId = column.column_id || column.column_name || `field_${index}`;
+                          const value = column.string_value || String(column.boolean_value || "");
+                          return (
+                            <div key={columnId} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 border rounded-lg">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm break-words">{columnId}</p>
+                                <p className="text-xs text-muted-foreground break-words">
+                                  Example: {value || "(empty)"}
+                                </p>
+                              </div>
+                              <div className="w-full sm:w-48 flex-shrink-0">
+                                <select
+                                  className="w-full px-3 py-2 border rounded-md text-sm"
+                                  value={connectDialog.fieldMappings[columnId] || ""}
+                                  onChange={(e) => {
+                                    setConnectDialog(prev => ({
+                                      ...prev,
+                                      fieldMappings: {
+                                        ...prev.fieldMappings,
+                                        [columnId]: e.target.value,
+                                      },
+                                    }));
+                                  }}
+                                >
+                                  <option value="">Don't map</option>
+                                  <option value="name">Name</option>
+                                  <option value="email">Email</option>
+                                  <option value="phone">Phone</option>
+                                  <option value="address">Address</option>
+                                  <option value="city">City</option>
+                                  <option value="service_type">Service Type</option>
+                                  <option value="estimated_budget">Budget</option>
+                                  <option value="notes">Notes</option>
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
 
