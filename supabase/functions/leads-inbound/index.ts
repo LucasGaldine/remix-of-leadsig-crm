@@ -49,85 +49,129 @@ interface GoogleAdsWebhookPayload {
   }>;
 }
 
-// Helper function to parse Google Ads webhook
-function parseGoogleAdsWebhook(payload: GoogleAdsWebhookPayload): InboundLeadPayload {
+// Helper function to parse Google Ads webhook with custom field mappings
+function parseGoogleAdsWebhook(
+  payload: GoogleAdsWebhookPayload,
+  fieldMappings?: Record<string, string>
+): InboundLeadPayload {
   const leadData: InboundLeadPayload = {
     source: "google",
     externalSourceId: payload.lead_id,
     raw: payload as unknown as Record<string, unknown>,
   };
 
-  // Parse user_column_data using column_id (standardized field names)
+  // Parse user_column_data
   for (const column of payload.user_column_data) {
     const columnId = (column.column_id || column.column_name || "").toUpperCase();
     const value = column.string_value || String(column.boolean_value || "");
 
     if (!value) continue;
 
-    switch (columnId) {
-      case "EMAIL":
-        leadData.email = value;
-        break;
-      case "PHONE_NUMBER":
-      case "PHONE":
-        leadData.phone = value;
-        break;
-      case "FULL_NAME":
-      case "FIRST_NAME":
-      case "NAME":
-        leadData.name = value;
-        break;
-      case "LAST_NAME":
-        if (leadData.name) {
-          leadData.name = `${leadData.name} ${value}`;
-        } else {
-          leadData.name = value;
-        }
-        break;
-      case "CITY":
-      case "LOCATION":
-        leadData.location = value;
-        break;
-      case "REGION":
-      case "STATE":
-        if (leadData.location) {
-          leadData.location = `${leadData.location}, ${value}`;
-        } else {
-          leadData.location = value;
-        }
-        break;
-      case "ADDRESS":
-      case "STREET_ADDRESS":
-        leadData.address = value;
-        break;
-      case "ZIP_CODE":
-      case "POSTAL_CODE":
-        if (leadData.location) {
-          leadData.location = `${leadData.location}, ${value}`;
-        } else {
-          leadData.location = value;
-        }
-        break;
-      case "MESSAGE":
-      case "COMMENTS":
-      case "DESCRIPTION":
-        leadData.message = value;
-        break;
-      case "SERVICE_TYPE":
-      case "SERVICE":
-        leadData.serviceType = value;
-        break;
-      case "BUDGET":
-        leadData.budget = parseFloat(value) || undefined;
-        break;
-      default:
-        // Store custom form fields in the message
-        if (column.column_id && !column.column_id.match(/^[A-Z_]+$/)) {
-          const customFieldText = `${column.column_id}: ${value}`;
+    // Check if there's a custom field mapping for this column
+    let targetField = fieldMappings?.[columnId];
+
+    // If no custom mapping, use default mapping logic
+    if (!targetField) {
+      switch (columnId) {
+        case "EMAIL":
+          targetField = "email";
+          break;
+        case "PHONE_NUMBER":
+        case "PHONE":
+          targetField = "phone";
+          break;
+        case "FULL_NAME":
+        case "FIRST_NAME":
+        case "NAME":
+          targetField = "name";
+          break;
+        case "LAST_NAME":
+          if (leadData.name) {
+            leadData.name = `${leadData.name} ${value}`;
+            continue;
+          } else {
+            targetField = "name";
+          }
+          break;
+        case "CITY":
+        case "LOCATION":
+          targetField = "location";
+          break;
+        case "REGION":
+        case "STATE":
+          if (leadData.location) {
+            leadData.location = `${leadData.location}, ${value}`;
+            continue;
+          } else {
+            targetField = "location";
+          }
+          break;
+        case "ADDRESS":
+        case "STREET_ADDRESS":
+          targetField = "address";
+          break;
+        case "ZIP_CODE":
+        case "POSTAL_CODE":
+          if (leadData.location) {
+            leadData.location = `${leadData.location}, ${value}`;
+            continue;
+          } else {
+            targetField = "location";
+          }
+          break;
+        case "MESSAGE":
+        case "COMMENTS":
+        case "DESCRIPTION":
+          targetField = "message";
+          break;
+        case "SERVICE_TYPE":
+        case "SERVICE":
+          targetField = "serviceType";
+          break;
+        case "BUDGET":
+          targetField = "budget";
+          break;
+        default:
+          // Store unmapped fields in message
+          const customFieldText = `${columnId}: ${value}`;
           leadData.message = leadData.message
             ? `${leadData.message}\n${customFieldText}`
             : customFieldText;
-        }
+          continue;
+      }
+    }
+
+    // Apply the mapping
+    switch (targetField) {
+      case "name":
+        leadData.name = value;
+        break;
+      case "email":
+        leadData.email = value;
+        break;
+      case "phone":
+        leadData.phone = value;
+        break;
+      case "address":
+        leadData.address = value;
+        break;
+      case "city":
+      case "location":
+        leadData.location = value;
+        break;
+      case "service_type":
+      case "serviceType":
+        leadData.serviceType = value;
+        break;
+      case "estimated_budget":
+      case "budget":
+        leadData.budget = parseFloat(value) || undefined;
+        break;
+      case "notes":
+      case "message":
+        leadData.message = leadData.message
+          ? `${leadData.message}\n${value}`
+          : value;
         break;
     }
   }
@@ -252,7 +296,33 @@ Deno.serve(async (req) => {
     let payload: InboundLeadPayload;
     if (isGoogleAdsWebhook(rawPayload)) {
       console.log("leads-inbound: Detected Google Ads webhook format");
-      payload = parseGoogleAdsWebhook(rawPayload);
+
+      // Fetch field mappings for this user's Google connection
+      const { data: connection } = await supabase
+        .from("lead_source_connections")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("platform", "google")
+        .eq("status", "connected")
+        .single();
+
+      let fieldMappings: Record<string, string> = {};
+
+      if (connection) {
+        const { data: mappings } = await supabase
+          .from("lead_source_field_mappings")
+          .select("source_field, target_field")
+          .eq("lead_source_connection_id", connection.id);
+
+        if (mappings && mappings.length > 0) {
+          fieldMappings = Object.fromEntries(
+            mappings.map(m => [m.source_field.toUpperCase(), m.target_field])
+          );
+          console.log("leads-inbound: Using custom field mappings", fieldMappings);
+        }
+      }
+
+      payload = parseGoogleAdsWebhook(rawPayload, fieldMappings);
       console.log("leads-inbound: Parsed payload", JSON.stringify(payload));
     } else {
       // Standard format

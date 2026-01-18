@@ -152,6 +152,9 @@ export default function LeadSources() {
     apiKey: string | null;
     apiKeyId: string | null;
     copied: "email" | "key" | null;
+    step: "setup" | "mapping";
+    testData: Record<string, any> | null;
+    fieldMappings: Record<string, string>;
   }>({
     open: false,
     platform: null,
@@ -160,6 +163,9 @@ export default function LeadSources() {
     apiKey: null,
     apiKeyId: null,
     copied: null,
+    step: "setup",
+    testData: null,
+    fieldMappings: {},
   });
 
   // OAuth coming soon dialog
@@ -270,6 +276,9 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: null,
       copied: null,
+      step: "setup",
+      testData: null,
+      fieldMappings: {},
     });
   };
 
@@ -289,6 +298,9 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: existingKey?.id || null,
       copied: null,
+      step: "setup",
+      testData: null,
+      fieldMappings: {},
     });
   };
 
@@ -357,9 +369,9 @@ export default function LeadSources() {
 
   const handleConnectViaEmailRelay = async (platform: PlatformInfo) => {
     if (!user) return;
-    
+
     const inboundEmail = generateInboundEmail(user.id);
-    
+
     setOauthComingSoonDialog({ open: false, platform: null });
     setConnectDialog({
       open: true,
@@ -369,6 +381,9 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: null,
       copied: null,
+      step: "setup",
+      testData: null,
+      fieldMappings: {},
     });
   };
 
@@ -417,13 +432,16 @@ export default function LeadSources() {
       inboundEmail: "",
       apiKey: null,
       apiKeyId: null,
-      copied: null
+      copied: null,
+      step: "setup",
+      testData: null,
+      fieldMappings: {},
     });
     setSuccessOpen(true);
     fetchData();
   };
 
-  const handleConfirmWebhookConnection = async () => {
+  const handleContinueToMapping = async () => {
     if (!user || !connectDialog.platform) return;
 
     if (!connectDialog.apiKeyId) {
@@ -433,7 +451,7 @@ export default function LeadSources() {
 
     const platform = connectDialog.platform;
 
-    // Upsert the connection with webhook settings
+    // Create the connection record
     const { error } = await supabase
       .from("lead_source_connections")
       .upsert({
@@ -453,6 +471,51 @@ export default function LeadSources() {
       return;
     }
 
+    // Move to mapping step
+    setConnectDialog(prev => ({
+      ...prev,
+      step: "mapping",
+    }));
+
+    toast.success("Ready to configure field mapping");
+  };
+
+  const handleSaveFieldMappings = async () => {
+    if (!user || !connectDialog.platform) return;
+
+    // Get the connection ID
+    const connection = connections.find(c => c.platform === connectDialog.platform!.id);
+    if (!connection) {
+      toast.error("Connection not found");
+      return;
+    }
+
+    // Delete existing mappings and insert new ones
+    await supabase
+      .from("lead_source_field_mappings")
+      .delete()
+      .eq("lead_source_connection_id", connection.id);
+
+    const mappingsToInsert = Object.entries(connectDialog.fieldMappings)
+      .filter(([_, targetField]) => targetField && targetField !== "")
+      .map(([sourceField, targetField]) => ({
+        lead_source_connection_id: connection.id,
+        source_field: sourceField,
+        target_field: targetField,
+      }));
+
+    if (mappingsToInsert.length > 0) {
+      const { error } = await supabase
+        .from("lead_source_field_mappings")
+        .insert(mappingsToInsert);
+
+      if (error) {
+        console.error("Error saving field mappings:", error);
+        toast.error("Failed to save field mappings");
+        return;
+      }
+    }
+
     setConnectDialog({
       open: false,
       platform: null,
@@ -460,7 +523,10 @@ export default function LeadSources() {
       inboundEmail: "",
       apiKey: null,
       apiKeyId: null,
-      copied: null
+      copied: null,
+      step: "setup",
+      testData: null,
+      fieldMappings: {},
     });
     setSuccessOpen(true);
     fetchData();
@@ -528,15 +594,25 @@ export default function LeadSources() {
         console.error("Test connection error:", error);
         toast.error("Test failed: " + (error.message || "Unknown error"));
       } else if (data?.success) {
-        toast.success("Test successful! Check your Leads tab for the test lead.");
-        
+        // If we have test data and the modal is open, populate it for mapping
+        if (data.testData && connectDialog.open && connectDialog.platform?.id === platform.id) {
+          setConnectDialog(prev => ({
+            ...prev,
+            testData: data.testData,
+            step: "mapping",
+          }));
+          toast.success("Test data received! Configure field mapping below.");
+        } else {
+          toast.success("Test successful! Check your Leads tab for the test lead.");
+        }
+
         // Update last_sync_at
         await supabase
           .from("lead_source_connections")
           .update({ last_sync_at: new Date().toISOString() })
           .eq("user_id", user.id)
           .eq("platform", platform.id);
-        
+
         fetchData();
       } else {
         toast.error("Test failed: " + (data?.error || "Unknown error"));
@@ -816,7 +892,10 @@ export default function LeadSources() {
               inboundEmail: "",
               apiKey: null,
               apiKeyId: null,
-              copied: null
+              copied: null,
+              step: "setup",
+              testData: null,
+              fieldMappings: {},
             });
           }
         }}
@@ -829,13 +908,84 @@ export default function LeadSources() {
             </DialogTitle>
             <DialogDescription>
               {connectDialog.method === "webhook"
-                ? "Set up webhook integration for Google Ads lead forms"
+                ? connectDialog.step === "mapping"
+                  ? "Map Google Ads form fields to your lead database"
+                  : "Set up webhook integration for Google Ads lead forms"
                 : "Set up email forwarding to receive leads automatically"
               }
             </DialogDescription>
           </DialogHeader>
 
-          {connectDialog.method === "webhook" ? (
+          {connectDialog.method === "webhook" && connectDialog.step === "mapping" ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Field Mapping</h4>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  Map the fields from your Google Ads lead form to your LeadSig database. Fields you don't map will be stored in the notes.
+                </p>
+              </div>
+
+              {connectDialog.testData && (
+                <div className="space-y-3">
+                  <h4 className="font-medium">Available Fields from Google Ads</h4>
+                  <div className="space-y-2">
+                    {Object.keys(connectDialog.testData).map((field) => (
+                      <div key={field} className="flex items-center gap-3 p-3 border rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{field}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Example: {JSON.stringify(connectDialog.testData![field])}
+                          </p>
+                        </div>
+                        <div className="w-48">
+                          <select
+                            className="w-full px-3 py-2 border rounded-md text-sm"
+                            value={connectDialog.fieldMappings[field] || ""}
+                            onChange={(e) => {
+                              setConnectDialog(prev => ({
+                                ...prev,
+                                fieldMappings: {
+                                  ...prev.fieldMappings,
+                                  [field]: e.target.value,
+                                },
+                              }));
+                            }}
+                          >
+                            <option value="">Don't map</option>
+                            <option value="name">Name</option>
+                            <option value="email">Email</option>
+                            <option value="phone">Phone</option>
+                            <option value="address">Address</option>
+                            <option value="city">City</option>
+                            <option value="service_type">Service Type</option>
+                            <option value="estimated_budget">Budget</option>
+                            <option value="notes">Notes</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!connectDialog.testData && (
+                <div className="p-4 bg-muted/50 rounded-lg text-center">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Waiting for test data from Google Ads. Click "Send test data" in your Google Ads lead form settings.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setConnectDialog(prev => ({ ...prev, step: "setup" }));
+                    }}
+                  >
+                    Back to Setup
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : connectDialog.method === "webhook" ? (
             <div className="space-y-4">
               <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Google Ads Lead Forms</h4>
@@ -1082,15 +1232,34 @@ export default function LeadSources() {
           )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setConnectDialog(prev => ({ ...prev, open: false }))}
-            >
-              Cancel
-            </Button>
-            <Button onClick={connectDialog.method === "webhook" ? handleConfirmWebhookConnection : handleConfirmEmailRelayConnection}>
-              {connectDialog.method === "webhook" ? "I've Configured Google Ads" : "I've Set Up Forwarding"}
-            </Button>
+            {connectDialog.method === "webhook" && connectDialog.step === "mapping" ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setConnectDialog(prev => ({ ...prev, step: "setup" }))}
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleSaveFieldMappings}
+                  disabled={!connectDialog.testData}
+                >
+                  Save Mapping & Complete
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setConnectDialog(prev => ({ ...prev, open: false }))}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={connectDialog.method === "webhook" ? handleContinueToMapping : handleConfirmEmailRelayConnection}>
+                  {connectDialog.method === "webhook" ? "Continue to Field Mapping" : "I've Set Up Forwarding"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
