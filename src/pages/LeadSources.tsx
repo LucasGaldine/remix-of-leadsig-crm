@@ -276,61 +276,42 @@ export default function LeadSources() {
   const handleConnectWebhook = async (platform: PlatformInfo) => {
     if (!user || !currentAccount) return;
 
-    // For debugging: Check if we have a recently created API key in session storage
-    const debugApiKey = sessionStorage.getItem('leadsig_debug_api_key');
+    const newApiKey = generateApiKey();
+    const keyHash = await hashApiKey(newApiKey);
+    const keyPrefix = newApiKey.slice(0, 12);
 
-    // Check if user has an API key
-    if (apiKeys.length === 0) {
-      // Create a new API key for this user
-      const newApiKey = generateApiKey();
-      const keyHash = await hashApiKey(newApiKey);
-      const keyPrefix = newApiKey.slice(0, 12);
+    const { data: createdKey, error } = await supabase
+      .from("api_keys")
+      .insert({
+        user_id: user.id,
+        account_id: currentAccount.id,
+        name: `${platform.name} Integration`,
+        key_hash: keyHash,
+        key_prefix: keyPrefix,
+        is_active: true,
+      })
+      .select("id, name, key_prefix, is_active")
+      .single();
 
-      const { data: createdKey, error } = await supabase
-        .from("api_keys")
-        .insert({
-          user_id: user.id,
-          account_id: currentAccount.id,
-          name: `${platform.name} Integration`,
-          key_hash: keyHash,
-          key_prefix: keyPrefix,
-          is_active: true,
-        })
-        .select("id, name, key_prefix, is_active")
-        .single();
-
-      if (error) {
-        console.error("Error creating API key:", error);
-        toast.error("Failed to create API key");
-        return;
-      }
-
-      // Store in session storage for debugging purposes
-      sessionStorage.setItem('leadsig_debug_api_key', newApiKey);
-
-      setConnectDialog({
-        open: true,
-        platform,
-        method: "webhook",
-        inboundEmail: "",
-        apiKey: newApiKey,
-        apiKeyId: createdKey.id,
-        copied: null,
-      });
-
-      setApiKeys([createdKey, ...apiKeys]);
-    } else {
-      // Use existing API key - show the debug key if available
-      setConnectDialog({
-        open: true,
-        platform,
-        method: "webhook",
-        inboundEmail: "",
-        apiKey: debugApiKey,
-        apiKeyId: apiKeys[0].id,
-        copied: null,
-      });
+    if (error) {
+      console.error("Error creating API key:", error);
+      toast.error("Failed to create API key");
+      return;
     }
+
+    sessionStorage.setItem('leadsig_debug_api_key', newApiKey);
+
+    setConnectDialog({
+      open: true,
+      platform,
+      method: "webhook",
+      inboundEmail: "",
+      apiKey: newApiKey,
+      apiKeyId: createdKey.id,
+      copied: null,
+    });
+
+    setApiKeys([createdKey, ...apiKeys]);
   };
 
   const handleConnectViaEmailRelay = async (platform: PlatformInfo) => {
