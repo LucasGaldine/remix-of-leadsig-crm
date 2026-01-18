@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   Send,
   ArrowRightLeft,
-  Copy,
   Trash2,
   User,
   Calendar,
@@ -96,10 +95,6 @@ export default function EstimateDetail() {
       return;
     }
     navigate("/payments/invoices/new", { state: { fromEstimate: estimate } });
-  };
-
-  const handleDuplicate = () => {
-    navigate("/payments/estimates/new", { state: { duplicate: estimate } });
   };
 
   const handleDelete = async () => {
@@ -455,7 +450,11 @@ export default function EstimateDetail() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-medium text-foreground">{item.name}</p>
-                          {item.is_change_order && (
+                          {item.is_change_order && item.changed_at && (() => {
+                            const changedDate = new Date(item.changed_at);
+                            const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
+                            return hoursSinceChange < 24;
+                          })() && (
                             <Badge
                               variant={
                                 item.change_order_type === 'added' ? 'default' :
@@ -640,16 +639,27 @@ export default function EstimateDetail() {
         </div>
       </div>
 
-      {hasChangeOrders && !editMode && (
-        <div className="px-4 mt-4">
-          <Alert>
-            <History className="h-4 w-4" />
-            <AlertDescription>
-              This estimate has been modified. Change orders are marked with badges on the line items above.
-            </AlertDescription>
-          </Alert>
-        </div>
-      )}
+      {hasChangeOrders && !editMode && (() => {
+        const recentChanges = estimate.line_items.some((item: any) => {
+          if (!item.is_change_order || !item.changed_at) return false;
+          const changedDate = new Date(item.changed_at);
+          const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
+          return hoursSinceChange < 24;
+        });
+
+        if (!recentChanges) return null;
+
+        return (
+          <div className="px-4 mt-4">
+            <Alert>
+              <History className="h-4 w-4" />
+              <AlertDescription>
+                This estimate has been modified. Recent changes are marked with badges on the line items above.
+              </AlertDescription>
+            </Alert>
+          </div>
+        );
+      })()}
 
       {estimate.notes && (
         <div className="px-4 mt-4">
@@ -664,17 +674,14 @@ export default function EstimateDetail() {
         <>
           <div className="px-4 mt-4">
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={handleDuplicate}>
-                <Copy className="h-4 w-4" />
-                Duplicate
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 text-destructive"
+                className="gap-2 text-destructive w-full"
                 onClick={handleDelete}
               >
                 <Trash2 className="h-4 w-4" />
+                Delete
               </Button>
             </div>
           </div>
