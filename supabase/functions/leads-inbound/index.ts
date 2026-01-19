@@ -5,188 +5,75 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-leadsig-api-key",
 };
 
-// Zapier-friendly payload structure
-interface InboundLeadPayload {
-  // Required
-  source: string; // facebook | google | angi | yelp | thumbtack | custom
+// Relevance AI Configuration
+const RELEVANCE_AI_STUDIO_ID = "8e06c9";
+const RELEVANCE_AI_PROJECT_ID = "c87d8ae1e6db-40dc-84e3-3c341920ca89";
 
-  // Lead info
-  name?: string;
-  phone?: string;
+// Relevance AI Response Structure
+interface RelevanceAIResponse {
+  full_name?: string;
   email?: string;
-  serviceType?: string;
+  phone_number?: string;
   budget?: number;
-  location?: string;
+  service_type?: string;
   address?: string;
-  message?: string;
-
-  // External reference
-  externalLeadId?: string; // Alias for externalSourceId
-  externalSourceId?: string;
-
-  // Raw data passthrough
-  raw?: Record<string, unknown>;
-  externalPayload?: Record<string, unknown>; // Legacy support
+  city?: string;
+  notes?: string;
+  is_budget_confirmed?: boolean;
+  is_in_service_area?: boolean;
+  is_decision_maker?: boolean;
 }
 
-// Google Ads webhook format
-interface GoogleAdsWebhookPayload {
-  lead_id: string;
-  form_id: string;
-  campaign_id?: string;
-  adgroup_id?: string;
-  creative_id?: string;
-  google_key?: string;
-  gcl_id?: string;
-  api_version?: string;
-  is_test?: boolean;
-  create_time?: string;
-  user_column_data: Array<{
-    column_name?: string;
-    column_id?: string;
-    string_value?: string;
-    boolean_value?: boolean;
-  }>;
-}
-
-// Helper function to parse Google Ads webhook with custom field mappings
-function parseGoogleAdsWebhook(
-  payload: GoogleAdsWebhookPayload,
-  fieldMappings?: Record<string, string>
-): InboundLeadPayload {
-  const leadData: InboundLeadPayload = {
-    source: "google",
-    externalSourceId: payload.lead_id,
-    raw: payload as unknown as Record<string, unknown>,
-  };
-
-  // Parse user_column_data
-  for (const column of payload.user_column_data) {
-    const columnId = (column.column_id || column.column_name || "").toUpperCase();
-    const value = column.string_value || String(column.boolean_value || "");
-
-    if (!value) continue;
-
-    // Check if there's a custom field mapping for this column
-    let targetField = fieldMappings?.[columnId];
-
-    // If no custom mapping, use default mapping logic
-    if (!targetField) {
-      switch (columnId) {
-        case "EMAIL":
-          targetField = "email";
-          break;
-        case "PHONE_NUMBER":
-        case "PHONE":
-          targetField = "phone";
-          break;
-        case "FULL_NAME":
-        case "FIRST_NAME":
-        case "NAME":
-          targetField = "name";
-          break;
-        case "LAST_NAME":
-          if (leadData.name) {
-            leadData.name = `${leadData.name} ${value}`;
-            continue;
-          } else {
-            targetField = "name";
-          }
-          break;
-        case "CITY":
-        case "LOCATION":
-          targetField = "location";
-          break;
-        case "REGION":
-        case "STATE":
-          if (leadData.location) {
-            leadData.location = `${leadData.location}, ${value}`;
-            continue;
-          } else {
-            targetField = "location";
-          }
-          break;
-        case "ADDRESS":
-        case "STREET_ADDRESS":
-          targetField = "address";
-          break;
-        case "ZIP_CODE":
-        case "POSTAL_CODE":
-          if (leadData.location) {
-            leadData.location = `${leadData.location}, ${value}`;
-            continue;
-          } else {
-            targetField = "location";
-          }
-          break;
-        case "MESSAGE":
-        case "COMMENTS":
-        case "DESCRIPTION":
-          targetField = "message";
-          break;
-        case "SERVICE_TYPE":
-        case "SERVICE":
-          targetField = "serviceType";
-          break;
-        case "BUDGET":
-          targetField = "budget";
-          break;
-        default:
-          // Store unmapped fields in message
-          const customFieldText = `${columnId}: ${value}`;
-          leadData.message = leadData.message
-            ? `${leadData.message}\n${customFieldText}`
-            : customFieldText;
-          continue;
-      }
-    }
-
-    // Apply the mapping
-    switch (targetField) {
-      case "name":
-        leadData.name = value;
-        break;
-      case "email":
-        leadData.email = value;
-        break;
-      case "phone":
-        leadData.phone = value;
-        break;
-      case "address":
-        leadData.address = value;
-        break;
-      case "city":
-      case "location":
-        leadData.location = value;
-        break;
-      case "service_type":
-      case "serviceType":
-        leadData.serviceType = value;
-        break;
-      case "estimated_budget":
-      case "budget":
-        leadData.budget = parseFloat(value) || undefined;
-        break;
-      case "notes":
-      case "message":
-        leadData.message = leadData.message
-          ? `${leadData.message}\n${value}`
-          : value;
-        break;
-    }
+// Call Relevance AI API to parse lead data
+async function parseLeadWithAI(
+  rawPayload: unknown,
+  retryCount = 0
+): Promise<RelevanceAIResponse> {
+  const apiKey = Deno.env.get("RELEVANCE_AI_API_KEY");
+  if (!apiKey) {
+    throw new Error("RELEVANCE_AI_API_KEY not configured");
   }
 
-  return leadData;
-}
+  const endpoint = `https://api-d7b62b.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_limited`;
 
-// Helper to detect if payload is Google Ads format
-function isGoogleAdsWebhook(payload: unknown): payload is GoogleAdsWebhookPayload {
-  return (
-    typeof payload === "object" &&
-    payload !== null &&
-    "user_column_data" in payload &&
-    Array.isArray((payload as GoogleAdsWebhookPayload).user_column_data)
-  );
+  try {
+    console.log("Calling Relevance AI API...", { retryCount });
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": apiKey,
+      },
+      body: JSON.stringify({
+        params: {
+          lead_payload: rawPayload,
+        },
+        project: RELEVANCE_AI_PROJECT_ID,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Relevance AI API error:", response.status, errorText);
+      throw new Error(`AI API returned ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log("Relevance AI response:", JSON.stringify(result));
+
+    return result.output || result;
+  } catch (error) {
+    console.error("Relevance AI API call failed:", error);
+
+    // Retry once on failure
+    if (retryCount === 0) {
+      console.log("Retrying Relevance AI API call...");
+      return parseLeadWithAI(rawPayload, 1);
+    }
+
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -202,81 +89,22 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Log all headers for debugging (helps identify Google's header names)
+    // Log all headers for debugging
     console.log("leads-inbound: Request headers", Object.fromEntries(req.headers.entries()));
 
-    // Check if this is a setup session (test data collection)
-    const url = new URL(req.url);
-    const setupSessionId = url.searchParams.get("setup_session_id");
-    const accountIdParam = url.searchParams.get("account_id");
-
-    // Parse request body first to check for Google Ads webhook
+    // Parse request body
     const rawPayload = await req.json();
     console.log("leads-inbound: Raw payload received", JSON.stringify(rawPayload));
-
-    // Handle setup session - store test data only
-    if (setupSessionId && accountIdParam) {
-      console.log("leads-inbound: Setup session detected", setupSessionId);
-
-      // Verify the setup session exists and hasn't expired
-      const { data: session, error: sessionError } = await supabase
-        .from("lead_source_setup_sessions")
-        .select("id, account_id, expires_at")
-        .eq("id", setupSessionId)
-        .eq("account_id", accountIdParam)
-        .single();
-
-      if (sessionError || !session) {
-        console.log("leads-inbound: Invalid or expired setup session");
-        return new Response(
-          JSON.stringify({ error: "Invalid or expired setup session" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Check if session has expired
-      const expiresAt = new Date(session.expires_at);
-      if (expiresAt < new Date()) {
-        console.log("leads-inbound: Setup session expired");
-        return new Response(
-          JSON.stringify({ error: "Setup session expired" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Store the test payload
-      const { error: updateError } = await supabase
-        .from("lead_source_setup_sessions")
-        .update({
-          test_payload: rawPayload,
-          received_at: new Date().toISOString(),
-        })
-        .eq("id", setupSessionId);
-
-      if (updateError) {
-        console.error("leads-inbound: Failed to store test data", updateError);
-        return new Response(
-          JSON.stringify({ error: "Failed to store test data" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      console.log("leads-inbound: Test data stored successfully");
-      return new Response(
-        JSON.stringify({ success: true, message: "Test data received" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     // Validate API key - check multiple possible locations
     let apiKey: string | null = null;
 
-    // Check if this is a Google Ads webhook (has google_key in body)
-    if (isGoogleAdsWebhook(rawPayload) && rawPayload.google_key) {
-      apiKey = rawPayload.google_key;
+    // Check if this is a Google Ads webhook with google_key in body
+    if (typeof rawPayload === "object" && rawPayload !== null && "google_key" in rawPayload) {
+      apiKey = String(rawPayload.google_key);
       console.log("leads-inbound: Using google_key from webhook payload");
     } else {
-      // Check common Google header names first, then custom headers
+      // Check common header names
       apiKey =
         req.headers.get("x-goog-webhook-key") ||
         req.headers.get("x-goog-api-key") ||
@@ -351,115 +179,89 @@ Deno.serve(async (req) => {
       .update({ last_used_at: new Date().toISOString() })
       .eq("key_hash", keyHash);
 
-    // Process the payload (already parsed above)
-    let payload: InboundLeadPayload;
-    if (isGoogleAdsWebhook(rawPayload)) {
-      console.log("leads-inbound: Detected Google Ads webhook format");
+    // Parse the lead with AI
+    let aiParsedData: RelevanceAIResponse;
+    try {
+      aiParsedData = await parseLeadWithAI(rawPayload);
+    } catch (aiError) {
+      console.error("leads-inbound: AI parsing failed after retry", aiError);
 
-      const formId = rawPayload.form_id || null;
-      console.log("leads-inbound: Form ID", formId);
-
-      // Fetch field mappings for this account's Google connection
-      const { data: connection } = await supabase
-        .from("lead_source_connections")
-        .select("id")
-        .eq("account_id", accountId)
-        .eq("platform", "google")
-        .eq("status", "connected")
+      // Create a minimal lead record with error note
+      const { data: lead, error: leadError } = await supabase
+        .from("leads")
+        .insert({
+          name: "AI Processing Failed",
+          phone: null,
+          email: null,
+          source: "unknown",
+          external_payload: rawPayload,
+          notes: "Lead processing failed - AI service unavailable. Please review raw payload.",
+          status: "new",
+          created_by: userId,
+          account_id: accountId,
+          approval_status: "pending",
+          submitted_at: new Date().toISOString(),
+        })
+        .select()
         .single();
 
-      let fieldMappings: Record<string, string> = {};
-
-      if (connection) {
-        // Look up mappings for this specific form_id, or fall back to null form_id
-        let mappingsQuery = supabase
-          .from("lead_source_field_mappings")
-          .select("source_field, target_field, form_id")
-          .eq("lead_source_connection_id", connection.id);
-
-        if (formId) {
-          mappingsQuery = mappingsQuery.eq("form_id", formId);
-        } else {
-          mappingsQuery = mappingsQuery.is("form_id", null);
-        }
-
-        const { data: mappings } = await mappingsQuery;
-
-        if (mappings && mappings.length > 0) {
-          fieldMappings = Object.fromEntries(
-            mappings.map(m => [m.source_field.toUpperCase(), m.target_field])
-          );
-          console.log("leads-inbound: Using custom field mappings for form", formId, fieldMappings);
-        } else if (formId) {
-          // If no form-specific mappings found, try fallback to null form_id
-          const { data: fallbackMappings } = await supabase
-            .from("lead_source_field_mappings")
-            .select("source_field, target_field")
-            .eq("lead_source_connection_id", connection.id)
-            .is("form_id", null);
-
-          if (fallbackMappings && fallbackMappings.length > 0) {
-            fieldMappings = Object.fromEntries(
-              fallbackMappings.map(m => [m.source_field.toUpperCase(), m.target_field])
-            );
-            console.log("leads-inbound: Using fallback (default) field mappings", fieldMappings);
-          }
-        }
+      if (!leadError && lead) {
+        // Log error interaction
+        await supabase.from("interactions").insert({
+          lead_id: lead.id,
+          type: "system",
+          direction: "na",
+          summary: "Lead processing failed - AI service unavailable",
+          metadata: { error: String(aiError) },
+        });
       }
 
-      payload = parseGoogleAdsWebhook(rawPayload, fieldMappings);
-      console.log("leads-inbound: Parsed payload", JSON.stringify(payload));
-    } else {
-      // Standard format
-      payload = rawPayload as InboundLeadPayload;
+      return new Response(
+        JSON.stringify({
+          error: "Lead processing failed - AI service unavailable",
+          details: String(aiError)
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Validate required fields
-    if (!payload.name && !payload.phone && !payload.email) {
+    // Validate that we got at least some identifying information
+    if (!aiParsedData.full_name && !aiParsedData.phone_number && !aiParsedData.email) {
+      console.error("leads-inbound: AI returned no identifying information");
       return new Response(
-        JSON.stringify({ error: "At least one of name, phone, or email is required" }),
+        JSON.stringify({ error: "Unable to extract identifying information from lead data" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (!payload.source) {
-      return new Response(
-        JSON.stringify({ error: "Source is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Detect source from payload structure
+    let source = "unknown";
+    if (typeof rawPayload === "object" && rawPayload !== null) {
+      if ("user_column_data" in rawPayload && "lead_id" in rawPayload) {
+        source = "google";
+      } else if ("form_id" in rawPayload || "campaign_id" in rawPayload) {
+        source = "facebook";
+      }
     }
 
-    // Normalize external ID (support both naming conventions)
-    const externalId = payload.externalLeadId || payload.externalSourceId;
-
-    // Normalize external payload (support both naming conventions)
-    const externalPayload = payload.raw || payload.externalPayload || {};
-
-    // Create notes from message + raw payload if provided
-    let leadNotes = "";
-    if (payload.message) {
-      leadNotes = payload.message;
-    }
-
-    // Create the lead - inbound leads default to pending approval
+    // Create the lead record
     const { data: lead, error: leadError } = await supabase
       .from("leads")
       .insert({
-        name: payload.name || "Unknown",
-        phone: payload.phone,
-        email: payload.email,
-        service_type: payload.serviceType,
-        estimated_budget: payload.budget,
-        city: payload.location,
-        address: payload.address,
-        source: payload.source,
-        external_source_id: externalId,
-        external_payload: externalPayload,
-        notes: leadNotes || null,
+        name: aiParsedData.full_name || "Unknown",
+        phone: aiParsedData.phone_number || null,
+        email: aiParsedData.email || null,
+        service_type: aiParsedData.service_type || null,
+        estimated_budget: aiParsedData.budget || null,
+        city: aiParsedData.city || null,
+        address: aiParsedData.address || null,
+        source: source,
+        external_payload: rawPayload,
+        notes: aiParsedData.notes || null,
         status: "new",
         created_by: userId,
         account_id: accountId,
-        approval_status: "pending", // Inbound leads require approval
+        approval_status: "pending",
         submitted_at: new Date().toISOString(),
       })
       .select()
@@ -473,21 +275,61 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Calculate fit score based on AI qualifications
+    let fitScore = 0;
+    const qualifications = [
+      aiParsedData.is_budget_confirmed,
+      aiParsedData.is_in_service_area,
+      aiParsedData.is_decision_maker,
+    ];
+    const confirmedCount = qualifications.filter(Boolean).length;
+    fitScore = Math.round((confirmedCount / qualifications.length) * 100);
+
+    // Create lead qualification record
+    const { error: qualificationError } = await supabase
+      .from("lead_qualifications")
+      .insert({
+        lead_id: lead.id,
+        is_budget_confirmed: aiParsedData.is_budget_confirmed || false,
+        is_in_service_area: aiParsedData.is_in_service_area || false,
+        is_decision_maker: aiParsedData.is_decision_maker || false,
+      });
+
+    if (qualificationError) {
+      console.error("leads-inbound: Failed to create qualification", qualificationError);
+    }
+
     // Log a system interaction
     await supabase.from("interactions").insert({
       lead_id: lead.id,
       type: "system",
       direction: "na",
-      summary: `Lead created via API from ${payload.source}`,
-      metadata: { source: payload.source, externalSourceId: payload.externalSourceId },
+      summary: `Lead created via API from ${source} (AI-parsed, fit score: ${fitScore}%)`,
+      metadata: {
+        source,
+        ai_parsed: true,
+        fit_score: fitScore,
+        qualifications: {
+          budget_confirmed: aiParsedData.is_budget_confirmed,
+          in_service_area: aiParsedData.is_in_service_area,
+          decision_maker: aiParsedData.is_decision_maker,
+        }
+      },
     });
 
     console.log("leads-inbound: Lead created successfully", lead.id);
 
-    return new Response(JSON.stringify({ success: true }), {
-  status: 200,
-  headers: { "Content-Type": "application/json" },
-});
+    return new Response(
+      JSON.stringify({
+        success: true,
+        lead_id: lead.id,
+        fit_score: fitScore
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
 
   } catch (error) {
     console.error("leads-inbound: Unexpected error", error);

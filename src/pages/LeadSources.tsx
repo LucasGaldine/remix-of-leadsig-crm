@@ -57,7 +57,7 @@ interface PlatformInfo {
   name: string;
   description: string;
   icon: React.ReactNode;
-  connectionMethod: ConnectionMethod; // Default connection method
+  connectionMethod: ConnectionMethod;
   oauthSupported: boolean;
 }
 
@@ -127,7 +127,6 @@ const platforms: PlatformInfo[] = [
   },
 ];
 
-// Generate unique inbound email for a user
 const generateInboundEmail = (userId: string): string => {
   const shortId = userId.slice(0, 8);
   return `leads+${shortId}@inbound.leadsig.ai`;
@@ -143,7 +142,6 @@ export default function LeadSources() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [testing, setTesting] = useState<Platform | null>(null);
 
-  // Connect dialog state
   const [connectDialog, setConnectDialog] = useState<{
     open: boolean;
     platform: PlatformInfo | null;
@@ -152,11 +150,6 @@ export default function LeadSources() {
     apiKey: string | null;
     apiKeyId: string | null;
     copied: "email" | "key" | null;
-    step: "setup" | "mapping";
-    testData: Record<string, any> | null;
-    fieldMappings: Record<string, string>;
-    setupSessionId: string | null;
-    formId: string | null;
   }>({
     open: false,
     platform: null,
@@ -165,14 +158,8 @@ export default function LeadSources() {
     apiKey: null,
     apiKeyId: null,
     copied: null,
-    step: "setup",
-    testData: null,
-    fieldMappings: {},
-    setupSessionId: null,
-    formId: null,
   });
 
-  // OAuth coming soon dialog
   const [oauthComingSoonDialog, setOauthComingSoonDialog] = useState<{
     open: boolean;
     platform: PlatformInfo | null;
@@ -181,7 +168,6 @@ export default function LeadSources() {
     platform: null,
   });
 
-  // Disconnect confirmation
   const [disconnectDialog, setDisconnectDialog] = useState<{
     open: boolean;
     platform: PlatformInfo | null;
@@ -190,71 +176,11 @@ export default function LeadSources() {
     platform: null,
   });
 
-  // Success dialog
   const [successOpen, setSuccessOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, [user, currentAccount]);
-
-  // Poll for test data during setup
-  useEffect(() => {
-    if (!connectDialog.setupSessionId || connectDialog.testData || connectDialog.method !== "webhook" || !user || !currentAccount || !connectDialog.platform || !connectDialog.apiKeyId) {
-      return;
-    }
-
-    const pollInterval = setInterval(async () => {
-      const { data: session } = await supabase
-        .from("lead_source_setup_sessions")
-        .select("test_payload, received_at")
-        .eq("id", connectDialog.setupSessionId)
-        .single();
-
-      if (session?.test_payload) {
-        // Extract form_id from Google Ads webhook payload
-        const formId = session.test_payload.form_id || null;
-
-        // Create the connection record
-        const { error: connectionError } = await supabase
-          .from("lead_source_connections")
-          .upsert({
-            user_id: user.id,
-            account_id: currentAccount.id,
-            platform: connectDialog.platform.id,
-            status: "connected",
-            connected_at: new Date().toISOString(),
-            api_key_id: connectDialog.apiKeyId,
-            connection_method: "webhook",
-            form_id: formId,
-          }, {
-            onConflict: "user_id,platform",
-          });
-
-        if (connectionError) {
-          console.error("Error creating connection:", connectionError);
-          toast.error("Failed to connect");
-          clearInterval(pollInterval);
-          return;
-        }
-
-        // Transition to mapping step with test data
-        setConnectDialog(prev => ({
-          ...prev,
-          testData: session.test_payload,
-          formId: formId,
-          step: "mapping",
-        }));
-        toast.success("Test data received! Configure field mapping below.");
-
-        // Refresh connections list
-        fetchData();
-
-        clearInterval(pollInterval);
-      }
-    }, 2000);
-
-    return () => clearInterval(pollInterval);
-  }, [connectDialog.setupSessionId, connectDialog.testData, connectDialog.method, user, currentAccount, connectDialog.platform, connectDialog.apiKeyId]);
 
   const fetchData = async () => {
     if (!user || !currentAccount) return;
@@ -291,15 +217,9 @@ export default function LeadSources() {
     return connections.find((c) => c.platform === platform);
   };
 
-  const getWebhookUrl = (includeSetupSession = false) => {
+  const getWebhookUrl = () => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const baseUrl = `${supabaseUrl}/functions/v1/leads-inbound`;
-
-    if (includeSetupSession && connectDialog.setupSessionId && currentAccount) {
-      return `${baseUrl}?setup_session_id=${connectDialog.setupSessionId}&account_id=${currentAccount.id}`;
-    }
-
-    return baseUrl;
+    return `${supabaseUrl}/functions/v1/leads-inbound`;
   };
 
   const generateApiKey = (): string => {
@@ -322,19 +242,16 @@ export default function LeadSources() {
   const handleConnect = async (platform: PlatformInfo) => {
     if (!user) return;
 
-    // For Google, show webhook setup (for Google Ads lead forms)
     if (platform.id === "google") {
       await handleConnectWebhook(platform);
       return;
     }
 
-    // For other OAuth-supported platforms, show coming soon
     if (platform.oauthSupported) {
       setOauthComingSoonDialog({ open: true, platform });
       return;
     }
 
-    // For email relay platforms, open the simple connect flow
     const inboundEmail = generateInboundEmail(user.id);
 
     setConnectDialog({
@@ -345,37 +262,15 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: null,
       copied: null,
-      step: "setup",
-      testData: null,
-      fieldMappings: {},
-      setupSessionId: null,
     });
   };
 
   const handleConnectWebhook = async (platform: PlatformInfo) => {
     if (!user || !currentAccount) return;
 
-    // Check if there's an existing API key for this platform
     const existingKey = apiKeys.find(key =>
       key.name === `${platform.name} Integration` && key.is_active
     );
-
-    // Create a setup session for secure test data collection
-    const { data: setupSession, error: sessionError } = await supabase
-      .from("lead_source_setup_sessions")
-      .insert({
-        account_id: currentAccount.id,
-        user_id: user.id,
-        platform: platform.id,
-      })
-      .select()
-      .single();
-
-    if (sessionError || !setupSession) {
-      console.error("Error creating setup session:", sessionError);
-      toast.error("Failed to initialize setup session");
-      return;
-    }
 
     setConnectDialog({
       open: true,
@@ -385,10 +280,6 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: existingKey?.id || null,
       copied: null,
-      step: "setup",
-      testData: null,
-      fieldMappings: {},
-      setupSessionId: setupSession.id,
     });
   };
 
@@ -397,7 +288,6 @@ export default function LeadSources() {
 
     const platform = connectDialog.platform;
 
-    // Delete any existing API keys for this platform integration
     const existingKeys = apiKeys.filter(key =>
       key.name === `${platform.name} Integration`
     );
@@ -415,7 +305,6 @@ export default function LeadSources() {
       }
     }
 
-    // Generate new API key
     const newApiKey = generateApiKey();
     const keyHash = await hashApiKey(newApiKey);
     const keyPrefix = newApiKey.slice(0, 12);
@@ -448,7 +337,6 @@ export default function LeadSources() {
       apiKeyId: createdKey.id,
     }));
 
-    // Update the apiKeys list
     const updatedKeys = apiKeys.filter(key =>
       key.name !== `${platform.name} Integration`
     );
@@ -469,10 +357,6 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: null,
       copied: null,
-      step: "setup",
-      testData: null,
-      fieldMappings: {},
-      setupSessionId: null,
     });
   };
 
@@ -494,7 +378,6 @@ export default function LeadSources() {
 
     const platform = connectDialog.platform;
 
-    // Upsert the connection with email relay settings
     const { error } = await supabase
       .from("lead_source_connections")
       .upsert({
@@ -523,66 +406,34 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: null,
       copied: null,
-      step: "setup",
-      testData: null,
-      fieldMappings: {},
-      setupSessionId: null,
     });
     setSuccessOpen(true);
     fetchData();
   };
 
-  const handleSaveFieldMappings = async () => {
-    if (!user || !connectDialog.platform) return;
+  const handleConfirmWebhookConnection = async () => {
+    if (!user || !currentAccount || !connectDialog.platform || !connectDialog.apiKeyId) return;
 
-    // Get the connection ID
-    const connection = connections.find(c => c.platform === connectDialog.platform!.id);
-    if (!connection) {
-      toast.error("Connection not found");
+    const platform = connectDialog.platform;
+
+    const { error } = await supabase
+      .from("lead_source_connections")
+      .upsert({
+        user_id: user.id,
+        account_id: currentAccount.id,
+        platform: platform.id,
+        status: "connected",
+        connected_at: new Date().toISOString(),
+        api_key_id: connectDialog.apiKeyId,
+        connection_method: "webhook",
+      }, {
+        onConflict: "user_id,platform",
+      });
+
+    if (error) {
+      console.error("Error creating connection:", error);
+      toast.error("Failed to connect");
       return;
-    }
-
-    // Delete existing mappings for this connection and form_id
-    const deleteQuery = supabase
-      .from("lead_source_field_mappings")
-      .delete()
-      .eq("lead_source_connection_id", connection.id);
-
-    if (connectDialog.formId) {
-      deleteQuery.eq("form_id", connectDialog.formId);
-    } else {
-      deleteQuery.is("form_id", null);
-    }
-
-    await deleteQuery;
-
-    const mappingsToInsert = Object.entries(connectDialog.fieldMappings)
-      .filter(([_, targetField]) => targetField && targetField !== "")
-      .map(([sourceField, targetField]) => ({
-        lead_source_connection_id: connection.id,
-        source_field: sourceField,
-        target_field: targetField,
-        form_id: connectDialog.formId,
-      }));
-
-    if (mappingsToInsert.length > 0) {
-      const { error } = await supabase
-        .from("lead_source_field_mappings")
-        .insert(mappingsToInsert);
-
-      if (error) {
-        console.error("Error saving field mappings:", error);
-        toast.error("Failed to save field mappings");
-        return;
-      }
-    }
-
-    // Clean up the setup session
-    if (connectDialog.setupSessionId) {
-      await supabase
-        .from("lead_source_setup_sessions")
-        .delete()
-        .eq("id", connectDialog.setupSessionId);
     }
 
     setConnectDialog({
@@ -593,11 +444,6 @@ export default function LeadSources() {
       apiKey: null,
       apiKeyId: null,
       copied: null,
-      step: "setup",
-      testData: null,
-      fieldMappings: {},
-      setupSessionId: null,
-      formId: null,
     });
     setSuccessOpen(true);
     fetchData();
@@ -605,8 +451,7 @@ export default function LeadSources() {
 
   const handleCopyWebhookUrl = async () => {
     try {
-      const url = connectDialog.step === "setup" ? getWebhookUrl(true) : getWebhookUrl(false);
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(getWebhookUrl());
       toast.success("Webhook URL copied!");
     } catch {
       toast.error("Failed to copy");
@@ -630,7 +475,6 @@ export default function LeadSources() {
   const handleDisconnect = async () => {
     if (!user || !currentAccount || !disconnectDialog.platform) return;
 
-    // Update status to not_connected (don't delete to preserve history)
     const { error } = await supabase
       .from("lead_source_connections")
       .update({ status: "not_connected" })
@@ -654,7 +498,6 @@ export default function LeadSources() {
     setTesting(platform.id);
 
     try {
-      // Call the test endpoint
       const { data, error } = await supabase.functions.invoke("leads-test-connection", {
         body: {
           platform: platform.id,
@@ -667,19 +510,8 @@ export default function LeadSources() {
         console.error("Test connection error:", error);
         toast.error("Test failed: " + (error.message || "Unknown error"));
       } else if (data?.success) {
-        // If we have test data and the modal is open, populate it for mapping
-        if (data.testData && connectDialog.open && connectDialog.platform?.id === platform.id) {
-          setConnectDialog(prev => ({
-            ...prev,
-            testData: data.testData,
-            step: "mapping",
-          }));
-          toast.success("Test data received! Configure field mapping below.");
-        } else {
-          toast.success("Test successful! Check your Leads tab for the test lead.");
-        }
+        toast.success("Test successful! Check your Leads tab for the test lead.");
 
-        // Update last_sync_at
         await supabase
           .from("lead_source_connections")
           .update({ last_sync_at: new Date().toISOString() })
@@ -733,7 +565,6 @@ export default function LeadSources() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      {/* Header */}
       <header className="sticky top-0 z-10 bg-card border-b border-border">
         <div className="px-4 py-3 flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
@@ -747,7 +578,6 @@ export default function LeadSources() {
       </header>
 
       <main className="px-4 py-4">
-        {/* Platform List */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -778,7 +608,6 @@ export default function LeadSources() {
                     </div>
                   </div>
 
-                  {/* Actions row */}
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                     {isConnected ? (
                       <>
@@ -829,7 +658,6 @@ export default function LeadSources() {
           </div>
         )}
 
-        {/* Developer Settings (Collapsed) */}
         <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="mt-6">
           <CollapsibleTrigger asChild>
             <Button variant="ghost" className="w-full justify-between text-muted-foreground">
@@ -895,7 +723,6 @@ export default function LeadSources() {
         </Collapsible>
       </main>
 
-      {/* OAuth Coming Soon Dialog (for Facebook/Google) */}
       <Dialog
         open={oauthComingSoonDialog.open}
         onOpenChange={(open) => {
@@ -919,7 +746,7 @@ export default function LeadSources() {
             <div className="p-4 bg-muted/50 rounded-lg">
               <h4 className="font-medium mb-2">Direct connection coming soon</h4>
               <p className="text-sm text-muted-foreground">
-                We're working on a native {oauthComingSoonDialog.platform?.name} integration. 
+                We're working on a native {oauthComingSoonDialog.platform?.name} integration.
                 In the meantime, you can connect using email forwarding.
               </p>
             </div>
@@ -930,10 +757,10 @@ export default function LeadSources() {
                 Use Email Relay
               </h4>
               <p className="text-sm text-muted-foreground mb-3">
-                Forward lead notification emails from {oauthComingSoonDialog.platform?.name} to LeadSig. 
+                Forward lead notification emails from {oauthComingSoonDialog.platform?.name} to LeadSig.
                 Works with any email provider.
               </p>
-              <Button 
+              <Button
                 className="w-full"
                 onClick={() => handleConnectViaEmailRelay(oauthComingSoonDialog.platform!)}
               >
@@ -953,19 +780,10 @@ export default function LeadSources() {
         </DialogContent>
       </Dialog>
 
-      {/* Connect Dialog (Email Relay or Webhook) */}
       <Dialog
         open={connectDialog.open}
-        onOpenChange={async (open) => {
+        onOpenChange={(open) => {
           if (!open) {
-            // Clean up the setup session when closing
-            if (connectDialog.setupSessionId) {
-              await supabase
-                .from("lead_source_setup_sessions")
-                .delete()
-                .eq("id", connectDialog.setupSessionId);
-            }
-
             setConnectDialog({
               open: false,
               platform: null,
@@ -974,10 +792,6 @@ export default function LeadSources() {
               apiKey: null,
               apiKeyId: null,
               copied: null,
-              step: "setup",
-              testData: null,
-              fieldMappings: {},
-              setupSessionId: null,
             });
           }
         }}
@@ -990,137 +804,21 @@ export default function LeadSources() {
             </DialogTitle>
             <DialogDescription>
               {connectDialog.method === "webhook"
-                ? connectDialog.step === "mapping"
-                  ? "Map Google Ads form fields to your lead database"
-                  : "Set up webhook integration for Google Ads lead forms"
+                ? "Set up webhook integration for Google Ads lead forms"
                 : "Set up email forwarding to receive leads automatically"
               }
             </DialogDescription>
           </DialogHeader>
 
-          {connectDialog.method === "webhook" && connectDialog.step === "mapping" ? (
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Field Mapping</h4>
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                  Map the fields from your Google Ads lead form to your LeadSig database. Fields you don't map will be stored in the notes.
-                </p>
-                {connectDialog.formId && (
-                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-2 font-mono">
-                    Form ID: {connectDialog.formId}
-                  </p>
-                )}
-              </div>
-
-              {connectDialog.testData && (
-                <>
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Available Fields from Google Ads</h4>
-                    <div className="space-y-2">
-                      {(() => {
-                        const userColumnData = connectDialog.testData.user_column_data || [];
-                        return userColumnData.map((column: any, index: number) => {
-                          const columnId = column.column_id || column.column_name || `field_${index}`;
-                          const value = column.string_value || String(column.boolean_value || "");
-                          return (
-                            <div key={columnId} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 border rounded-lg">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm break-words">{columnId}</p>
-                                <p className="text-xs text-muted-foreground break-words">
-                                  Example: {value || "(empty)"}
-                                </p>
-                              </div>
-                              <div className="w-full sm:w-48 flex-shrink-0">
-                                <select
-                                  className="w-full px-3 py-2 border rounded-md text-sm"
-                                  value={connectDialog.fieldMappings[columnId] || ""}
-                                  onChange={(e) => {
-                                    setConnectDialog(prev => ({
-                                      ...prev,
-                                      fieldMappings: {
-                                        ...prev.fieldMappings,
-                                        [columnId]: e.target.value,
-                                      },
-                                    }));
-                                  }}
-                                >
-                                  <option value="">Don't map</option>
-                                  <option value="name">Name</option>
-                                  <option value="email">Email</option>
-                                  <option value="phone">Phone</option>
-                                  <option value="address">Address</option>
-                                  <option value="city">City</option>
-                                  <option value="service_type">Service Type</option>
-                                  <option value="estimated_budget">Budget</option>
-                                  <option value="notes">Notes</option>
-                                </select>
-                              </div>
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
-                    <h4 className="font-medium mb-2 text-green-900 dark:text-green-100">Production Webhook URL</h4>
-                    <p className="text-sm text-green-800 dark:text-green-200 mb-3">
-                      After saving, update your Google Ads webhook to this production URL:
-                    </p>
-                    <div className="flex items-center gap-2 p-2 bg-background rounded border">
-                      <code className="flex-1 text-xs break-all">
-                        {getWebhookUrl(false)}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(getWebhookUrl(false));
-                            toast.success("Production URL copied!");
-                          } catch {
-                            toast.error("Failed to copy");
-                          }
-                        }}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <p className="text-xs text-green-700 dark:text-green-300 mt-2">
-                      This is your permanent webhook URL for receiving real leads (no expiration).
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {!connectDialog.testData && (
-                <div className="p-4 bg-muted/50 rounded-lg text-center">
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Waiting for test data from Google Ads. Click "Send test data" in your Google Ads lead form settings.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setConnectDialog(prev => ({ ...prev, step: "setup" }));
-                    }}
-                  >
-                    Back to Setup
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : connectDialog.method === "webhook" ? (
+          {connectDialog.method === "webhook" ? (
             <div className="space-y-4">
               <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Google Ads Lead Forms</h4>
+                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">AI-Powered Lead Intelligence</h4>
                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                  This integration works with Google Ads lead form extensions. Follow the steps below to automatically send leads from your Google Ads campaigns to LeadSig.
+                  Our AI automatically extracts and qualifies all information from your Google Ads leads. No field mapping needed!
                 </p>
               </div>
 
-              {/* API Key Generation Section */}
               <div className="p-4 border border-border rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-medium">API Key</h4>
@@ -1187,13 +885,10 @@ export default function LeadSources() {
                     <span className="font-medium text-foreground">Enter your webhook details:</span>
                     <div className="ml-6 mt-2 space-y-3">
                       <div>
-                        <p className="text-xs font-medium mb-1 flex items-center gap-1">
-                          Setup Webhook URL
-                          <span className="text-muted-foreground font-normal">(temporary, for receiving test data)</span>
-                        </p>
+                        <p className="text-xs font-medium mb-1">Webhook URL</p>
                         <div className="flex items-center gap-2 p-2 bg-muted rounded border">
                           <code className="flex-1 text-xs break-all">
-                            {getWebhookUrl(true)}
+                            {getWebhookUrl()}
                           </code>
                           <Button
                             variant="ghost"
@@ -1204,16 +899,10 @@ export default function LeadSources() {
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
-                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
-                          This URL includes a setup token and expires in 10 minutes. Use it only for receiving test data.
-                        </p>
                       </div>
                       {connectDialog.apiKey && (
                         <div>
-                          <p className="text-xs font-medium mb-1 flex items-center gap-1">
-                            Key
-                            <span className="text-muted-foreground font-normal">(paste this in the Key field)</span>
-                          </p>
+                          <p className="text-xs font-medium mb-1">Key</p>
                           <div className="flex items-center gap-2 p-2 bg-muted rounded border">
                             <code className="flex-1 text-xs break-all">
                               {connectDialog.apiKey}
@@ -1231,26 +920,17 @@ export default function LeadSources() {
                               )}
                             </Button>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            The key field in Google Ads has a 50 character limit. Your full API key will work correctly.
-                          </p>
                         </div>
                       )}
                     </div>
                   </li>
                   <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Click "Send test data" in Google Ads</span>
-                    <p className="text-xs ml-6 mt-1 text-blue-600 dark:text-blue-400">
-                      We'll automatically proceed to field mapping when test data is received
-                    </p>
-                  </li>
-                  <li className="text-muted-foreground">
                     <span className="font-medium text-foreground">Save your lead form settings</span>
                   </li>
                 </ol>
-                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <p className="text-xs text-blue-800 dark:text-blue-200">
-                    <span className="font-medium">Note:</span> Google will automatically send all lead form fields to LeadSig. Our system intelligently maps common fields like name, email, phone, and address.
+                <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <p className="text-xs text-green-800 dark:text-green-200">
+                    <span className="font-medium">✨ AI Magic:</span> Our AI automatically extracts names, emails, phone numbers, budgets, service types, and more from any form format. Leads are qualified instantly!
                   </p>
                 </div>
               </div>
@@ -1282,22 +962,6 @@ export default function LeadSources() {
                   </div>
                 </CollapsibleContent>
               </Collapsible>
-
-              {!connectDialog.apiKey && (
-                <div className="p-3 bg-muted rounded-lg text-sm">
-                  <p className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Already have an API key?</span> You can manage your API keys in{" "}
-                    <button
-                      onClick={() => {
-                        navigate("/settings/api-keys");
-                      }}
-                      className="text-primary hover:underline"
-                    >
-                      Settings → API Keys
-                    </button>
-                  </p>
-                </div>
-              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -1364,41 +1028,28 @@ export default function LeadSources() {
           )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            {connectDialog.method === "webhook" && connectDialog.step === "mapping" ? (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => setConnectDialog(prev => ({ ...prev, step: "setup" }))}
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleSaveFieldMappings}
-                  disabled={!connectDialog.testData}
-                >
-                  Save Mapping & Complete
-                </Button>
-              </>
+            <Button
+              variant="outline"
+              onClick={() => setConnectDialog(prev => ({ ...prev, open: false }))}
+            >
+              Cancel
+            </Button>
+            {connectDialog.method === "email_relay" ? (
+              <Button onClick={handleConfirmEmailRelayConnection}>
+                I've Set Up Forwarding
+              </Button>
             ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => setConnectDialog(prev => ({ ...prev, open: false }))}
-                >
-                  Cancel
-                </Button>
-                {connectDialog.method === "email_relay" && (
-                  <Button onClick={handleConfirmEmailRelayConnection}>
-                    I've Set Up Forwarding
-                  </Button>
-                )}
-              </>
+              <Button
+                onClick={handleConfirmWebhookConnection}
+                disabled={!connectDialog.apiKeyId}
+              >
+                Complete Setup
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Success Dialog */}
       <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
         <DialogContent>
           <DialogHeader>
@@ -1423,7 +1074,6 @@ export default function LeadSources() {
         </DialogContent>
       </Dialog>
 
-      {/* Disconnect Confirmation */}
       <AlertDialog
         open={disconnectDialog.open}
         onOpenChange={(open) => setDisconnectDialog({ open, platform: disconnectDialog.platform })}
@@ -1432,7 +1082,7 @@ export default function LeadSources() {
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect {disconnectDialog.platform?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              You'll stop receiving leads from this source. Your existing leads won't be affected. 
+              You'll stop receiving leads from this source. Your existing leads won't be affected.
               You can reconnect anytime.
             </AlertDialogDescription>
           </AlertDialogHeader>
