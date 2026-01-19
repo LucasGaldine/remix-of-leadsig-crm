@@ -65,7 +65,7 @@ interface Qualification {
   service_area_fit: boolean;
   decision_maker_confirmed: boolean;
   timeline: TimelinePeriod | null;
-  fit_score: number;
+  fit_score?: number;
   disqualify_reason: DisqualifyReason | null;
   notes: string | null;
 }
@@ -332,40 +332,67 @@ export default function LeadDetail() {
     }
   };
 
-  const updateQualification = async (updates: Partial<Qualification>) => {
-    setSavingQual(true);
-
-    // Calculate fit score based on toggles
-    const budgetConfirmed = updates.budget_confirmed ?? qualification?.budget_confirmed ?? false;
-    const serviceAreaFit = updates.service_area_fit ?? qualification?.service_area_fit ?? false;
-    const decisionMakerConfirmed = updates.decision_maker_confirmed ?? qualification?.decision_maker_confirmed ?? false;
-    const timeline = 'timeline' in updates ? updates.timeline : qualification?.timeline;
+  const calculateFitScore = (qual: Qualification | null): number => {
+    if (!qual) return 0;
 
     let fitScore = 0;
-    if (budgetConfirmed) fitScore += 30;
-    if (serviceAreaFit) fitScore += 30;
-    if (decisionMakerConfirmed) fitScore += 25;
-    if (timeline && (timeline === "asap" || timeline === "1_2_weeks")) fitScore += 15;
-    else if (timeline && timeline === "2_4_weeks") fitScore += 10;
-    else if (timeline && timeline === "1_3_months") fitScore += 5;
+    if (qual.budget_confirmed) fitScore += 30;
+    if (qual.service_area_fit) fitScore += 30;
+    if (qual.decision_maker_confirmed) fitScore += 25;
+    if (qual.timeline === "asap" || qual.timeline === "1_2_weeks") fitScore += 15;
+    else if (qual.timeline === "2_4_weeks") fitScore += 10;
+    else if (qual.timeline === "1_3_months") fitScore += 5;
+
+    return fitScore;
+  };
+
+  const updateQualification = async (updates: Partial<Qualification>) => {
+    if (!currentAccount) {
+      toast.error("Account not found");
+      return;
+    }
+
+    setSavingQual(true);
 
     const payload = {
       ...updates,
-      fit_score: fitScore,
       lead_id: id,
+      account_id: currentAccount.id,
     };
 
-    if (qualification) {
-      await supabase
-        .from("lead_qualifications")
-        .update(payload)
-        .eq("id", qualification.id);
-    } else {
-      await supabase.from("lead_qualifications").insert(payload);
-    }
+    try {
+      if (qualification) {
+        const { error } = await supabase
+          .from("lead_qualifications")
+          .update(payload)
+          .eq("id", qualification.id);
 
-    fetchQualification();
-    setSavingQual(false);
+        if (error) {
+          console.error("Error updating qualification:", error);
+          toast.error("Failed to update qualification");
+          setSavingQual(false);
+          return;
+        }
+      } else {
+        const { error } = await supabase
+          .from("lead_qualifications")
+          .insert(payload);
+
+        if (error) {
+          console.error("Error creating qualification:", error);
+          toast.error("Failed to create qualification");
+          setSavingQual(false);
+          return;
+        }
+      }
+
+      await fetchQualification();
+      setSavingQual(false);
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      toast.error("An error occurred");
+      setSavingQual(false);
+    }
   };
 
   const markQualified = async () => {
@@ -1023,15 +1050,15 @@ export default function LeadDetail() {
                 />
               </div>
 
-              {qualification?.fit_score !== undefined && (
+              {qualification && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Fit Score:</span>
                   <span className={cn(
                     "font-semibold",
-                    qualification.fit_score >= 70 ? "text-status-confirmed" :
-                    qualification.fit_score >= 40 ? "text-status-pending" : "text-status-attention"
+                    calculateFitScore(qualification) >= 70 ? "text-status-confirmed" :
+                    calculateFitScore(qualification) >= 40 ? "text-status-pending" : "text-status-attention"
                   )}>
-                    {qualification.fit_score}/100
+                    {calculateFitScore(qualification)}/100
                   </span>
                 </div>
               )}
