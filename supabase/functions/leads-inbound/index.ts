@@ -205,7 +205,18 @@ Deno.serve(async (req) => {
         .select()
         .single();
 
-      if (!leadError && lead) {
+      if (leadError) {
+        console.error("leads-inbound: Failed to create fallback lead", leadError);
+        return new Response(
+          JSON.stringify({
+            error: "Failed to create lead",
+            details: leadError.message
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (lead) {
         // Log error interaction
         await supabase.from("interactions").insert({
           lead_id: lead.id,
@@ -216,12 +227,15 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Return 200 OK to webhook sender (Google) even though AI failed
+      // The lead was still created for manual review
       return new Response(
         JSON.stringify({
-          error: "Lead processing failed - AI service unavailable",
-          details: String(aiError)
+          success: true,
+          lead_id: lead?.id,
+          warning: "AI processing unavailable - lead created for manual review"
         }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
