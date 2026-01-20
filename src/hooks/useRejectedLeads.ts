@@ -117,3 +117,58 @@ export function useRestoreLead() {
     },
   });
 }
+
+export function useDeleteRejectedLead() {
+  const queryClient = useQueryClient();
+  const { user, currentAccount } = useAuth();
+
+  return useMutation({
+    mutationFn: async (leadId: string) => {
+      if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
+
+      const { error } = await supabase
+        .from("leads")
+        .delete()
+        .eq("id", leadId)
+        .eq("account_id", currentAccount.id)
+        .eq("approval_status", "rejected");
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rejected-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+    },
+  });
+}
+
+export function useDeleteAllRejectedLeads() {
+  const queryClient = useQueryClient();
+  const { user, currentAccount } = useAuth();
+
+  return useMutation({
+    mutationFn: async (leadIds?: string[]) => {
+      if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
+
+      let query = supabase
+        .from("leads")
+        .delete()
+        .eq("account_id", currentAccount.id)
+        .eq("approval_status", "rejected");
+
+      if (leadIds && leadIds.length > 0) {
+        query = query.in("id", leadIds);
+      }
+
+      const { error } = await query;
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rejected-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+    },
+  });
+}
