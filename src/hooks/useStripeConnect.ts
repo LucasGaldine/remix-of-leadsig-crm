@@ -9,6 +9,8 @@ export interface StripeConnectStatus {
   payouts_enabled: boolean;
   details_submitted: boolean;
   requirements?: string[];
+  account_email?: string;
+  stripe_user_id?: string;
 }
 
 export function useStripeConnect() {
@@ -20,7 +22,7 @@ export function useStripeConnect() {
     try {
       setLoading(true);
       const { data, error } = await supabase.functions.invoke("stripe-connect-status");
-      
+
       if (error) {
         console.error("Error checking Stripe status:", error);
         setStatus({
@@ -44,30 +46,47 @@ export function useStripeConnect() {
   const startOnboarding = useCallback(async () => {
     try {
       setConnecting(true);
-      const { data, error } = await supabase.functions.invoke("stripe-connect-onboard");
-      
+      const { data, error } = await supabase.functions.invoke("stripe-oauth-connect");
+
       if (error) {
-        toast.error("Failed to start Stripe onboarding");
-        console.error("Onboarding error:", error);
+        toast.error("Failed to start Stripe connection");
+        console.error("OAuth error:", error);
         return;
       }
 
       if (data?.url) {
-        window.open(data.url, "_blank");
-        toast.success("Opening Stripe onboarding...");
+        window.location.href = data.url;
       }
     } catch (err) {
-      console.error("Error starting onboarding:", err);
-      toast.error("Failed to start Stripe onboarding");
+      console.error("Error starting OAuth:", err);
+      toast.error("Failed to start Stripe connection");
     } finally {
       setConnecting(false);
     }
   }, []);
 
+  const disconnect = useCallback(async () => {
+    try {
+      const { error } = await supabase.functions.invoke("stripe-oauth-disconnect");
+
+      if (error) {
+        toast.error("Failed to disconnect Stripe");
+        console.error("Disconnect error:", error);
+        return;
+      }
+
+      toast.success("Stripe account disconnected");
+      checkStatus();
+    } catch (err) {
+      console.error("Error disconnecting:", err);
+      toast.error("Failed to disconnect Stripe");
+    }
+  }, [checkStatus]);
+
   const openDashboard = useCallback(async () => {
     try {
       const { data, error } = await supabase.functions.invoke("stripe-connect-dashboard");
-      
+
       if (error) {
         toast.error("Failed to open Stripe dashboard");
         console.error("Dashboard error:", error);
@@ -96,7 +115,7 @@ export function useStripeConnect() {
       const { data, error } = await supabase.functions.invoke("stripe-connect-payment", {
         body: params,
       });
-      
+
       if (error) {
         const errorMsg = error.message || "Failed to create payment session";
         toast.error(errorMsg);
@@ -116,30 +135,13 @@ export function useStripeConnect() {
     checkStatus();
   }, [checkStatus]);
 
-  // Refresh status when returning from Stripe
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("stripe_connected") === "true" || params.get("stripe_refresh") === "true") {
-      // Clean up URL
-      const url = new URL(window.location.href);
-      url.searchParams.delete("stripe_connected");
-      url.searchParams.delete("stripe_refresh");
-      window.history.replaceState({}, "", url.toString());
-      
-      // Refresh status
-      checkStatus();
-      if (params.get("stripe_connected") === "true") {
-        toast.success("Stripe account connected!");
-      }
-    }
-  }, [checkStatus]);
-
   return {
     status,
     loading,
     connecting,
     checkStatus,
     startOnboarding,
+    disconnect,
     openDashboard,
     createPaymentSession,
     isReady: status?.connected && status?.charges_enabled,

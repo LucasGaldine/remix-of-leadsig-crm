@@ -18,6 +18,20 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const stripeClientId = Deno.env.get("STRIPE_CLIENT_ID");
+
+    if (!stripeClientId) {
+      return new Response(
+        JSON.stringify({
+          error: "Stripe OAuth is not configured. Please add STRIPE_CLIENT_ID to your environment variables.",
+          setup_required: true,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
 
     const authHeader = req.headers.get("Authorization")!;
     const token = authHeader.replace("Bearer ", "");
@@ -41,19 +55,29 @@ Deno.serve(async (req: Request) => {
       throw new Error("No active account found");
     }
 
-    const { data: stripeAccount } = await supabase
-      .from("stripe_connect_accounts")
-      .select("*")
-      .eq("account_id", membership.account_id)
-      .maybeSingle();
+    const origin = req.headers.get("origin") || Deno.env.get("SITE_URL") || "http://localhost:5173";
+    const redirectUri = `${origin}/stripe-callback`;
 
-    if (!stripeAccount || !stripeAccount.stripe_user_id) {
-      throw new Error("No Stripe account connected");
-    }
+    const state = btoa(JSON.stringify({
+      account_id: membership.account_id,
+      user_id: user.id,
+      timestamp: Date.now(),
+    }));
+
+    const scopes = [
+      "read_write",
+    ].join(" ");
+
+    const authUrl = new URL("https://connect.stripe.com/oauth/authorize");
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("client_id", stripeClientId);
+    authUrl.searchParams.set("scope", scopes);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("state", state);
 
     return new Response(
       JSON.stringify({
-        url: "https://dashboard.stripe.com",
+        url: authUrl.toString(),
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -61,7 +85,7 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error("Error opening dashboard:", error);
+    console.error("Error creating OAuth URL:", error);
     return new Response(
       JSON.stringify({
         error: error.message,

@@ -41,6 +41,7 @@ import SettingsNotifications from "./pages/SettingsNotifications";
 import SettingsPricingRules from "./pages/SettingsPricingRules";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import StripeCallback from "./pages/StripeCallback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/stripe-callback" element={<ProtectedRoute><StripeCallback /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
             <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />

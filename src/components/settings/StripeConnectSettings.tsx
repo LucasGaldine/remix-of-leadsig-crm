@@ -1,24 +1,38 @@
-import { 
-  CreditCard, 
-  Check, 
-  AlertTriangle, 
-  ExternalLink, 
+import {
+  CreditCard,
+  Check,
+  AlertTriangle,
+  ExternalLink,
   RefreshCw,
-  Loader2 
+  Loader2,
+  Unplug
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export function StripeConnectSettings() {
-  const { 
-    status, 
-    loading, 
-    connecting, 
-    startOnboarding, 
-    openDashboard, 
-    checkStatus 
+  const {
+    status,
+    loading,
+    connecting,
+    startOnboarding,
+    openDashboard,
+    checkStatus,
+    disconnect
   } = useStripeConnect();
+  const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
 
   const getStatusDisplay = () => {
     if (loading) {
@@ -35,7 +49,7 @@ export function StripeConnectSettings() {
         icon: <CreditCard className="h-5 w-5" />,
         label: "Not Connected",
         className: "bg-secondary text-secondary-foreground",
-        description: "Connect your Stripe account to accept card payments",
+        description: "Connect your Stripe account to accept payments and create invoices",
       };
     }
 
@@ -45,7 +59,7 @@ export function StripeConnectSettings() {
           icon: <Check className="h-5 w-5" />,
           label: "Connected",
           className: "bg-[hsl(var(--status-confirmed-bg))] text-[hsl(var(--status-confirmed))]",
-          description: "Your Stripe account is ready to accept payments",
+          description: "Your Stripe account is connected and ready",
         };
       case "action_required":
         return {
@@ -73,9 +87,13 @@ export function StripeConnectSettings() {
 
   const statusDisplay = getStatusDisplay();
 
+  const handleDisconnect = async () => {
+    await disconnect();
+    setShowDisconnectDialog(false);
+  };
+
   return (
     <div className="space-y-4">
-      {/* Status Card */}
       <div className="card-elevated rounded-lg p-4">
         <div className="flex items-start gap-3">
           <div className={cn("p-2 rounded-lg", statusDisplay.className)}>
@@ -83,7 +101,7 @@ export function StripeConnectSettings() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="font-semibold text-foreground">Stripe Payments</p>
+              <p className="font-semibold text-foreground">Stripe Account</p>
               <span className={cn("text-2xs px-2 py-0.5 rounded-full", statusDisplay.className)}>
                 {statusDisplay.label}
               </span>
@@ -91,10 +109,14 @@ export function StripeConnectSettings() {
             <p className="text-sm text-muted-foreground mt-1">
               {statusDisplay.description}
             </p>
+            {status?.account_email && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Connected as: {status.account_email}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Action Requirements */}
         {status?.status === "action_required" && status.requirements && status.requirements.length > 0 && (
           <div className="mt-3 p-3 rounded-lg bg-[hsl(var(--status-attention-bg))]">
             <p className="text-sm font-medium text-[hsl(var(--status-attention))]">
@@ -112,11 +134,10 @@ export function StripeConnectSettings() {
         )}
       </div>
 
-      {/* Actions */}
       <div className="space-y-2">
         {!status?.connected ? (
-          <Button 
-            className="w-full gap-2" 
+          <Button
+            className="w-full gap-2"
             onClick={startOnboarding}
             disabled={connecting}
           >
@@ -125,50 +146,65 @@ export function StripeConnectSettings() {
             ) : (
               <CreditCard className="h-4 w-4" />
             )}
-            Connect Stripe Account
+            Connect Your Stripe Account
           </Button>
-        ) : status.status === "action_required" ? (
-          <Button 
-            className="w-full gap-2" 
-            onClick={startOnboarding}
-            disabled={connecting}
-          >
-            {connecting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <AlertTriangle className="h-4 w-4" />
-            )}
-            Complete Stripe Setup
-          </Button>
-        ) : status.status === "active" && (
-          <Button 
-            variant="outline" 
-            className="w-full gap-2" 
-            onClick={openDashboard}
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open Stripe Dashboard
-          </Button>
-        )}
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              onClick={openDashboard}
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open Stripe Dashboard
+            </Button>
 
-        {status?.connected && (
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="w-full gap-2" 
-            onClick={checkStatus}
-            disabled={loading}
-          >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            Refresh Status
-          </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 gap-2"
+                onClick={checkStatus}
+                disabled={loading}
+              >
+                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                Refresh Status
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 gap-2 text-destructive hover:text-destructive"
+                onClick={() => setShowDisconnectDialog(true)}
+              >
+                <Unplug className="h-4 w-4" />
+                Disconnect
+              </Button>
+            </div>
+          </>
         )}
       </div>
 
-      {/* Info Text */}
       <p className="text-xs text-muted-foreground text-center">
-        Payments go directly to your Stripe account. LeadSig never holds your funds.
+        Payments and invoices are processed through your own Stripe account. LeadSig never holds your funds.
       </p>
+
+      <AlertDialog open={showDisconnectDialog} onOpenChange={setShowDisconnectDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Stripe Account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will disconnect your Stripe account from LeadSig. You will no longer be able to create invoices or accept payments until you reconnect.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDisconnect} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

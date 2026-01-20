@@ -18,6 +18,20 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const stripeClientId = Deno.env.get("STRIPE_CLIENT_ID");
+    const stripeClientSecret = Deno.env.get("STRIPE_CLIENT_SECRET");
+
+    if (!stripeClientId || !stripeClientSecret) {
+      return new Response(
+        JSON.stringify({
+          error: "Stripe OAuth is not configured",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
 
     const authHeader = req.headers.get("Authorization")!;
     const token = authHeader.replace("Bearer ", "");
@@ -47,13 +61,45 @@ Deno.serve(async (req: Request) => {
       .eq("account_id", membership.account_id)
       .maybeSingle();
 
-    if (!stripeAccount || !stripeAccount.stripe_user_id) {
-      throw new Error("No Stripe account connected");
+    if (!stripeAccount) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "No Stripe account connected",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
     }
+
+    if (stripeAccount.stripe_user_id) {
+      try {
+        await fetch("https://connect.stripe.com/oauth/deauthorize", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            client_id: stripeClientId,
+            stripe_user_id: stripeAccount.stripe_user_id,
+          }).toString(),
+        });
+      } catch (error) {
+        console.error("Error revoking Stripe OAuth:", error);
+      }
+    }
+
+    await supabase
+      .from("stripe_connect_accounts")
+      .delete()
+      .eq("id", stripeAccount.id);
 
     return new Response(
       JSON.stringify({
-        url: "https://dashboard.stripe.com",
+        success: true,
+        message: "Stripe account disconnected",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -61,7 +107,7 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error("Error opening dashboard:", error);
+    console.error("Error disconnecting Stripe:", error);
     return new Response(
       JSON.stringify({
         error: error.message,
