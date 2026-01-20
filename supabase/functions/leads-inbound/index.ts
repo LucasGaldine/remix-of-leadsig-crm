@@ -26,8 +26,7 @@ interface RelevanceAIResponse {
 
 // Call Relevance AI API to parse lead data
 async function parseLeadWithAI(
-  rawPayload: unknown,
-  retryCount = 0
+  rawPayload: unknown
 ): Promise<RelevanceAIResponse> {
   const apiKey = Deno.env.get("RELEVANCE_AI_API_KEY");
   if (!apiKey) {
@@ -36,51 +35,39 @@ async function parseLeadWithAI(
 
   const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook?project=${RELEVANCE_AI_PROJECT_ID}`;
 
-  try {
-    console.log("Calling Relevance AI API...", { retryCount });
+  console.log("Calling Relevance AI API...");
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": apiKey,
-      },
-      body: JSON.stringify({
-        lead_data: rawPayload,
-      }),
-    });
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": apiKey,
+    },
+    body: JSON.stringify({
+      lead_data: rawPayload,
+    }),
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Relevance AI API error:", response.status, errorText);
-      throw new Error(`AI API returned ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log("Relevance AI response:", JSON.stringify(result));
-
-    // Parse the answer field which contains stringified JSON
-    if (result.answer) {
-      try {
-        return JSON.parse(result.answer);
-      } catch (parseError) {
-        console.error("Failed to parse answer field:", parseError);
-        throw new Error("AI returned invalid JSON format");
-      }
-    }
-
-    return result.output || result;
-  } catch (error) {
-    console.error("Relevance AI API call failed:", error);
-
-    // Retry once on failure
-    if (retryCount === 0) {
-      console.log("Retrying Relevance AI API call...");
-      return parseLeadWithAI(rawPayload, 1);
-    }
-
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Relevance AI API error:", response.status, errorText);
+    throw new Error(`AI API returned ${response.status}: ${errorText}`);
   }
+
+  const result = await response.json();
+  console.log("Relevance AI response:", JSON.stringify(result));
+
+  // Parse the answer field which contains stringified JSON
+  if (result.answer) {
+    try {
+      return JSON.parse(result.answer);
+    } catch (parseError) {
+      console.error("Failed to parse answer field:", parseError);
+      throw new Error("AI returned invalid JSON format");
+    }
+  }
+
+  return result.output || result;
 }
 
 Deno.serve(async (req) => {
