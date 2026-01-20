@@ -38,7 +38,7 @@ async function parseLeadWithAI(
   console.log("Calling Relevance AI API...");
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 9000);
 
   try {
     const response = await fetch(endpoint, {
@@ -77,7 +77,7 @@ async function parseLeadWithAI(
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error("Relevance AI API timeout after 8 seconds");
+      throw new Error("Relevance AI API timeout after 9 seconds");
     }
     throw error;
   }
