@@ -24,7 +24,7 @@ interface RelevanceAIResponse {
   is_decision_maker?: boolean;
 }
 
-// Call Relevance AI API to parse lead data
+// Call Relevance AI API to parse lead data with timeout
 async function parseLeadWithAI(
   rawPayload: unknown
 ): Promise<RelevanceAIResponse> {
@@ -37,37 +37,50 @@ async function parseLeadWithAI(
 
   console.log("Calling Relevance AI API...");
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": apiKey,
-    },
-    body: JSON.stringify({
-      lead_data: rawPayload,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Relevance AI API error:", response.status, errorText);
-    throw new Error(`AI API returned ${response.status}: ${errorText}`);
-  }
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": apiKey,
+      },
+      body: JSON.stringify({
+        lead_data: rawPayload,
+      }),
+      signal: controller.signal,
+    });
 
-  const result = await response.json();
-  console.log("Relevance AI response:", JSON.stringify(result));
+    clearTimeout(timeoutId);
 
-  // Parse the answer field which contains stringified JSON
-  if (result.answer) {
-    try {
-      return JSON.parse(result.answer);
-    } catch (parseError) {
-      console.error("Failed to parse answer field:", parseError);
-      throw new Error("AI returned invalid JSON format");
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Relevance AI API error:", response.status, errorText);
+      throw new Error(`AI API returned ${response.status}: ${errorText}`);
     }
-  }
 
-  return result.output || result;
+    const result = await response.json();
+    console.log("Relevance AI response:", JSON.stringify(result));
+
+    if (result.answer) {
+      try {
+        return JSON.parse(result.answer);
+      } catch (parseError) {
+        console.error("Failed to parse answer field:", parseError);
+        throw new Error("AI returned invalid JSON format");
+      }
+    }
+
+    return result.output || result;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error("Relevance AI API timeout after 8 seconds");
+    }
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
