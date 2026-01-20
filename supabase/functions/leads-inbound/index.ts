@@ -34,7 +34,7 @@ async function parseLeadWithAI(
     throw new Error("RELEVANCE_AI_API_KEY not configured");
   }
 
-  const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook`;
+  const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook?project=${RELEVANCE_AI_PROJECT_ID}`;
 
   try {
     console.log("Calling Relevance AI API...", { retryCount });
@@ -49,7 +49,6 @@ async function parseLeadWithAI(
         params: {
           lead_payload: rawPayload,
         },
-        project: RELEVANCE_AI_PROJECT_ID,
       }),
     });
 
