@@ -46,9 +46,7 @@ async function parseLeadWithAI(
         "Authorization": apiKey,
       },
       body: JSON.stringify({
-        params: {
-          lead_payload: rawPayload,
-        },
+        lead_data: rawPayload,
       }),
     });
 
