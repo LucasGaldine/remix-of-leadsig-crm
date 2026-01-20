@@ -273,7 +273,7 @@ Deno.serve(async (req) => {
         phone: aiParsedData.phone_number || null,
         email: aiParsedData.email || null,
         service_type: aiParsedData.service_type || null,
-        estimated_budget: aiParsedData.budget || null,
+        estimated_value: aiParsedData.budget || null,
         city: aiParsedData.city || null,
         address: aiParsedData.address || null,
         source: source,
