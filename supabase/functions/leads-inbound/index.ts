@@ -59,6 +59,16 @@ async function parseLeadWithAI(
     const result = await response.json();
     console.log("Relevance AI response:", JSON.stringify(result));
 
+    // Parse the answer field which contains stringified JSON
+    if (result.answer) {
+      try {
+        return JSON.parse(result.answer);
+      } catch (parseError) {
+        console.error("Failed to parse answer field:", parseError);
+        throw new Error("AI returned invalid JSON format");
+      }
+    }
+
     return result.output || result;
   } catch (error) {
     console.error("Relevance AI API call failed:", error);
