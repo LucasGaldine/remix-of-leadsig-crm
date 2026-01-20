@@ -200,3 +200,57 @@ export function useRejectLead() {
     },
   });
 }
+
+export function useRejectAndDeleteLead() {
+  const queryClient = useQueryClient();
+  const { user, currentAccount } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: RejectionReason }) => {
+      if (!user) throw new Error("Not authenticated");
+      if (!currentAccount) throw new Error("No account selected");
+
+      const reasonLabels: Record<RejectionReason, string> = {
+        low_budget: "Low Budget",
+        outside_service_area: "Outside Service Area",
+        not_ready: "Not Ready",
+        spam: "Spam",
+        duplicate: "Duplicate",
+        other: "Other",
+      };
+
+      // Log the rejection as an interaction before deleting
+      const { error: interactionError } = await supabase
+        .from("interactions")
+        .insert({
+          lead_id: id,
+          account_id: currentAccount.id,
+          type: "status_change",
+          summary: `Rejected and deleted lead (${reasonLabels[reason]})`,
+          direction: "na",
+          created_by: user.id,
+        });
+
+      if (interactionError) {
+        console.error("Failed to log interaction:", interactionError);
+      }
+
+      // Delete the lead
+      const { error: deleteError } = await supabase
+        .from("leads")
+        .delete()
+        .eq("id", id);
+
+      if (deleteError) throw deleteError;
+
+      return { id };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pending-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-leads-count"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["lead-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["rejected-leads"] });
+    },
+  });
+}

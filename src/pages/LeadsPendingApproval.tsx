@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { usePendingLeads, useApproveLead, useRejectLead } from "@/hooks/usePendingLeads";
+import { usePendingLeads, useApproveLead, useRejectLead, useRejectAndDeleteLead } from "@/hooks/usePendingLeads";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,7 @@ export default function LeadsPendingApproval() {
   const { data: pendingLeads, isLoading } = usePendingLeads();
   const approveMutation = useApproveLead();
   const rejectMutation = useRejectLead();
+  const rejectAndDeleteMutation = useRejectAndDeleteLead();
   
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -114,13 +115,13 @@ export default function LeadsPendingApproval() {
 
   const handleRejectAll = async () => {
     if (!rejectionReason) return;
-    
-    const leadsToReject = selectedLeads.size > 0 
-      ? Array.from(selectedLeads) 
+
+    const leadsToReject = selectedLeads.size > 0
+      ? Array.from(selectedLeads)
       : leads.map((l) => l.id);
-    
+
     try {
-      await Promise.all(leadsToReject.map((id) => 
+      await Promise.all(leadsToReject.map((id) =>
         rejectMutation.mutateAsync({ id, reason: rejectionReason })
       ));
       toast.success(`${leadsToReject.length} leads rejected`, {
@@ -131,6 +132,28 @@ export default function LeadsPendingApproval() {
       setSelectedLeads(new Set());
     } catch (error) {
       toast.error("Failed to reject some leads");
+    }
+  };
+
+  const handleRejectAndDeleteAll = async () => {
+    if (!rejectionReason) return;
+
+    const leadsToReject = selectedLeads.size > 0
+      ? Array.from(selectedLeads)
+      : leads.map((l) => l.id);
+
+    try {
+      await Promise.all(leadsToReject.map((id) =>
+        rejectAndDeleteMutation.mutateAsync({ id, reason: rejectionReason })
+      ));
+      toast.success(`${leadsToReject.length} leads rejected and deleted`, {
+        description: "All selected leads have been permanently removed.",
+      });
+      setBulkRejectDialogOpen(false);
+      setRejectionReason("");
+      setSelectedLeads(new Set());
+    } catch (error) {
+      toast.error("Failed to reject and delete some leads");
     }
   };
 
@@ -342,7 +365,7 @@ export default function LeadsPendingApproval() {
           <DialogHeader>
             <DialogTitle>Reject {selectedLeads.size > 0 ? selectedLeads.size : leads.length} Leads</DialogTitle>
             <DialogDescription>
-              Please select a reason for rejecting these leads.
+              Please select a reason for rejecting these leads. You can either mark them as rejected or permanently delete them.
             </DialogDescription>
           </DialogHeader>
           <Select value={rejectionReason} onValueChange={(v) => setRejectionReason(v as RejectionReason)}>
@@ -357,16 +380,29 @@ export default function LeadsPendingApproval() {
               ))}
             </SelectContent>
           </Select>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkRejectDialogOpen(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkRejectDialogOpen(false)}
+              className="w-full sm:w-auto"
+            >
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={handleRejectAll}
               disabled={!rejectionReason || rejectMutation.isPending}
+              className="w-full sm:w-auto"
             >
-              Reject All
+              Reject Only
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRejectAndDeleteAll}
+              disabled={!rejectionReason || rejectAndDeleteMutation.isPending}
+              className="w-full sm:w-auto bg-destructive/80 hover:bg-destructive"
+            >
+              Reject & Delete
             </Button>
           </DialogFooter>
         </DialogContent>
