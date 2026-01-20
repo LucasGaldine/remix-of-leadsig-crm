@@ -311,9 +311,10 @@ Deno.serve(async (req) => {
       .from("lead_qualifications")
       .insert({
         lead_id: lead.id,
-        is_budget_confirmed: aiParsedData.is_budget_confirmed || false,
-        is_in_service_area: aiParsedData.is_in_service_area || false,
-        is_decision_maker: aiParsedData.is_decision_maker || false,
+        account_id: accountId,
+        budget_confirmed: aiParsedData.is_budget_confirmed || false,
+        service_area_fit: aiParsedData.is_in_service_area || false,
+        decision_maker_confirmed: aiParsedData.is_decision_maker || false,
       });
 
     if (qualificationError) {
