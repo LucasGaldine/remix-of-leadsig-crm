@@ -38,7 +38,7 @@ async function parseLeadWithAI(
   console.log("Calling Relevance AI API...");
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 9000);
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
 
   try {
     const response = await fetch(endpoint, {
@@ -77,10 +77,185 @@ async function parseLeadWithAI(
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error("Relevance AI API timeout after 9 seconds");
+      throw new Error("Relevance AI API timeout after 20 seconds");
     }
     throw error;
   }
+}
+
+// Background processing function
+async function processLeadInBackground(
+  rawPayload: unknown,
+  userId: string,
+  accountId: string,
+  supabaseUrl: string,
+  supabaseServiceKey: string
+) {
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Detect source from payload structure
+  let source = "unknown";
+  if (typeof rawPayload === "object" && rawPayload !== null) {
+    if ("user_column_data" in rawPayload && "lead_id" in rawPayload) {
+      source = "google";
+    } else if ("form_id" in rawPayload || "campaign_id" in rawPayload) {
+      source = "facebook";
+    }
+  }
+
+  // Parse the lead with AI
+  let aiParsedData: RelevanceAIResponse;
+  try {
+    aiParsedData = await parseLeadWithAI(rawPayload);
+  } catch (aiError) {
+    console.error("leads-inbound: AI parsing failed after retry", aiError);
+
+    // Create a minimal lead record with error note
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .insert({
+        name: "AI Processing Failed",
+        phone: null,
+        email: null,
+        source: source,
+        external_payload: rawPayload,
+        notes: "Lead processing failed - AI service unavailable. Please review raw payload.",
+        status: "new",
+        created_by: userId,
+        account_id: accountId,
+        approval_status: "pending",
+        submitted_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (leadError) {
+      console.error("leads-inbound: Failed to create fallback lead", leadError);
+      return;
+    }
+
+    if (lead) {
+      // Log error interaction
+      await supabase.from("interactions").insert({
+        lead_id: lead.id,
+        type: "system",
+        direction: "na",
+        summary: "Lead processing failed - AI service unavailable",
+        metadata: { error: String(aiError) },
+      });
+    }
+
+    return;
+  }
+
+  // Validate that we got at least some identifying information
+  if (!aiParsedData.full_name && !aiParsedData.phone_number && !aiParsedData.email) {
+    console.error("leads-inbound: AI returned no identifying information");
+
+    // Create fallback lead
+    const { data: lead } = await supabase
+      .from("leads")
+      .insert({
+        name: "Missing Information",
+        phone: null,
+        email: null,
+        source: source,
+        external_payload: rawPayload,
+        notes: "AI could not extract identifying information. Please review raw payload.",
+        status: "new",
+        created_by: userId,
+        account_id: accountId,
+        approval_status: "pending",
+        submitted_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (lead) {
+      await supabase.from("interactions").insert({
+        lead_id: lead.id,
+        type: "system",
+        direction: "na",
+        summary: "Lead created with missing information",
+        metadata: { error: "No identifying information extracted" },
+      });
+    }
+
+    return;
+  }
+
+  // Create the lead record
+  const { data: lead, error: leadError } = await supabase
+    .from("leads")
+    .insert({
+      name: aiParsedData.full_name || "Unknown",
+      phone: aiParsedData.phone_number || null,
+      email: aiParsedData.email || null,
+      service_type: aiParsedData.service_type || null,
+      estimated_value: aiParsedData.budget || null,
+      city: aiParsedData.city || null,
+      address: aiParsedData.address || null,
+      source: source,
+      external_payload: rawPayload,
+      notes: aiParsedData.notes || null,
+      status: "new",
+      created_by: userId,
+      account_id: accountId,
+      approval_status: "pending",
+      submitted_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (leadError) {
+    console.error("leads-inbound: Failed to create lead", leadError);
+    return;
+  }
+
+  // Calculate fit score based on AI qualifications
+  let fitScore = 0;
+  const qualifications = [
+    aiParsedData.is_budget_confirmed,
+    aiParsedData.is_in_service_area,
+    aiParsedData.is_decision_maker,
+  ];
+  const confirmedCount = qualifications.filter(Boolean).length;
+  fitScore = Math.round((confirmedCount / qualifications.length) * 100);
+
+  // Create lead qualification record
+  const { error: qualificationError } = await supabase
+    .from("lead_qualifications")
+    .insert({
+      lead_id: lead.id,
+      account_id: accountId,
+      budget_confirmed: aiParsedData.is_budget_confirmed || false,
+      service_area_fit: aiParsedData.is_in_service_area || false,
+      decision_maker_confirmed: aiParsedData.is_decision_maker || false,
+    });
+
+  if (qualificationError) {
+    console.error("leads-inbound: Failed to create qualification", qualificationError);
+  }
+
+  // Log a system interaction
+  await supabase.from("interactions").insert({
+    lead_id: lead.id,
+    type: "system",
+    direction: "na",
+    summary: `Lead created via API from ${source} (AI-parsed, fit score: ${fitScore}%)`,
+    metadata: {
+      source,
+      ai_parsed: true,
+      fit_score: fitScore,
+      qualifications: {
+        budget_confirmed: aiParsedData.is_budget_confirmed,
+        in_service_area: aiParsedData.is_in_service_area,
+        decision_maker: aiParsedData.is_decision_maker,
+      }
+    },
+  });
+
+  console.log("leads-inbound: Lead created successfully", lead.id);
 }
 
 Deno.serve(async (req) => {
@@ -186,166 +361,21 @@ Deno.serve(async (req) => {
       .update({ last_used_at: new Date().toISOString() })
       .eq("key_hash", keyHash);
 
-    // Parse the lead with AI
-    let aiParsedData: RelevanceAIResponse;
-    try {
-      aiParsedData = await parseLeadWithAI(rawPayload);
-    } catch (aiError) {
-      console.error("leads-inbound: AI parsing failed after retry", aiError);
+    // Process lead in background - return success immediately to Google
+    console.log("leads-inbound: Starting background processing");
 
-      // Create a minimal lead record with error note
-      const { data: lead, error: leadError } = await supabase
-        .from("leads")
-        .insert({
-          name: "AI Processing Failed",
-          phone: null,
-          email: null,
-          source: "unknown",
-          external_payload: rawPayload,
-          notes: "Lead processing failed - AI service unavailable. Please review raw payload.",
-          status: "new",
-          created_by: userId,
-          account_id: accountId,
-          approval_status: "pending",
-          submitted_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (leadError) {
-        console.error("leads-inbound: Failed to create fallback lead", leadError);
-        return new Response(
-          JSON.stringify({
-            error: "Failed to create lead",
-            details: leadError.message
-          }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      if (lead) {
-        // Log error interaction
-        await supabase.from("interactions").insert({
-          lead_id: lead.id,
-          type: "system",
-          direction: "na",
-          summary: "Lead processing failed - AI service unavailable",
-          metadata: { error: String(aiError) },
-        });
-      }
-
-      // Return 200 OK to webhook sender (Google) even though AI failed
-      // The lead was still created for manual review
-      return new Response(
-        JSON.stringify({
-          success: true,
-          lead_id: lead?.id,
-          warning: "AI processing unavailable - lead created for manual review"
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Validate that we got at least some identifying information
-    if (!aiParsedData.full_name && !aiParsedData.phone_number && !aiParsedData.email) {
-      console.error("leads-inbound: AI returned no identifying information");
-      return new Response(
-        JSON.stringify({ error: "Unable to extract identifying information from lead data" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Detect source from payload structure
-    let source = "unknown";
-    if (typeof rawPayload === "object" && rawPayload !== null) {
-      if ("user_column_data" in rawPayload && "lead_id" in rawPayload) {
-        source = "google";
-      } else if ("form_id" in rawPayload || "campaign_id" in rawPayload) {
-        source = "facebook";
-      }
-    }
-
-    // Create the lead record
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
-      .insert({
-        name: aiParsedData.full_name || "Unknown",
-        phone: aiParsedData.phone_number || null,
-        email: aiParsedData.email || null,
-        service_type: aiParsedData.service_type || null,
-        estimated_value: aiParsedData.budget || null,
-        city: aiParsedData.city || null,
-        address: aiParsedData.address || null,
-        source: source,
-        external_payload: rawPayload,
-        notes: aiParsedData.notes || null,
-        status: "new",
-        created_by: userId,
-        account_id: accountId,
-        approval_status: "pending",
-        submitted_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (leadError) {
-      console.error("leads-inbound: Failed to create lead", leadError);
-      return new Response(
-        JSON.stringify({ error: "Failed to create lead", details: leadError.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Calculate fit score based on AI qualifications
-    let fitScore = 0;
-    const qualifications = [
-      aiParsedData.is_budget_confirmed,
-      aiParsedData.is_in_service_area,
-      aiParsedData.is_decision_maker,
-    ];
-    const confirmedCount = qualifications.filter(Boolean).length;
-    fitScore = Math.round((confirmedCount / qualifications.length) * 100);
-
-    // Create lead qualification record
-    const { error: qualificationError } = await supabase
-      .from("lead_qualifications")
-      .insert({
-        lead_id: lead.id,
-        account_id: accountId,
-        budget_confirmed: aiParsedData.is_budget_confirmed || false,
-        service_area_fit: aiParsedData.is_in_service_area || false,
-        decision_maker_confirmed: aiParsedData.is_decision_maker || false,
+    // Process in background (fire and forget)
+    processLeadInBackground(rawPayload, userId, accountId, supabaseUrl, supabaseServiceKey)
+      .catch(error => {
+        console.error("leads-inbound: Background processing error", error);
       });
 
-    if (qualificationError) {
-      console.error("leads-inbound: Failed to create qualification", qualificationError);
-    }
-
-    // Log a system interaction
-    await supabase.from("interactions").insert({
-      lead_id: lead.id,
-      type: "system",
-      direction: "na",
-      summary: `Lead created via API from ${source} (AI-parsed, fit score: ${fitScore}%)`,
-      metadata: {
-        source,
-        ai_parsed: true,
-        fit_score: fitScore,
-        qualifications: {
-          budget_confirmed: aiParsedData.is_budget_confirmed,
-          in_service_area: aiParsedData.is_in_service_area,
-          decision_maker: aiParsedData.is_decision_maker,
-        }
-      },
-    });
-
-    console.log("leads-inbound: Lead created successfully", lead.id);
-
+    // Return success immediately to Google
+    console.log("leads-inbound: Returning immediate success to webhook sender");
     return new Response(
       JSON.stringify({
         success: true,
-        lead_id: lead.id,
-        fit_score: fitScore
+        message: "Lead received and is being processed"
       }),
       {
         status: 200,
