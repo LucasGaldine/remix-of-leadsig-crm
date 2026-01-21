@@ -16,7 +16,7 @@ type JobStatus = Database["public"]["Enums"]["unified_status"];
 
 export default function Jobs() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isManager } = useAuth();
   const [selectedStatus, setSelectedStatus] = useState<JobStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
