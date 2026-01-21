@@ -114,7 +114,6 @@ export default function Settings() {
           icon: <Users className="h-5 w-5" />,
           label: "Crew Management",
           description: "Teams and assignments",
-          comingSoon: true,
           onClick: () => navigate("/settings/crew"),
         },
       ],
