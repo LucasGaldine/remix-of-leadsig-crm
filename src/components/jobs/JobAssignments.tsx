@@ -302,7 +302,7 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
                       id={schedule.id}
                       checked={selectedSchedules.includes(schedule.id)}
                       onCheckedChange={() => toggleSchedule(schedule.id)}
-                      className="p-2"
+                      className="p-10"
                     />
                     <label
                       htmlFor={schedule.id}
