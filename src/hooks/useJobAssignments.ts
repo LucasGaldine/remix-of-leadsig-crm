@@ -33,7 +33,7 @@ export function useJobAssignments(leadId: string | undefined) {
           assigned_by,
           assigned_at,
           notes,
-          profiles:user_id (
+          profiles!job_assignments_user_id_fkey (
             full_name,
             email,
             phone

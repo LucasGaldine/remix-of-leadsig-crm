@@ -56,14 +56,13 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
         .select(`
           user_id,
           role,
-          profiles:user_id (
+          profiles!account_members_user_id_fkey (
             full_name,
             email
           )
         `)
         .eq('account_id', currentAccount.id)
         .eq('is_active', true)
-        .in('role', ['crew_member', 'crew_lead'])
         .order('role', { ascending: false });
 
       if (error) throw error;
@@ -114,7 +113,7 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
                   unassignedMembers?.map((member) => (
                     <SelectItem key={member.user_id} value={member.user_id}>
                       {member.profiles?.full_name || 'Unknown'} -{' '}
-                      {member.role === 'crew_lead' ? 'Crew Lead' : 'Crew Member'}
+                      {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                     </SelectItem>
                   ))
                 )}
