@@ -2,10 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-interface JobAssignment {
+export interface JobAssignment {
   id: string;
   lead_id: string;
   user_id: string;
+  job_schedule_id: string | null;
   assigned_by: string;
   assigned_at: string;
   notes: string | null;
@@ -26,7 +27,7 @@ export function useJobAssignments(leadId: string | undefined) {
 
       const { data: assignmentsData, error: assignmentsError } = await supabase
         .from('job_assignments')
-        .select('id, lead_id, user_id, assigned_by, assigned_at, notes')
+        .select('id, lead_id, user_id, job_schedule_id, assigned_by, assigned_at, notes')
         .eq('lead_id', leadId)
         .order('assigned_at', { ascending: false });
 
@@ -52,7 +53,17 @@ export function useJobAssignments(leadId: string | undefined) {
   });
 
   const assignCrewMutation = useMutation({
-    mutationFn: async ({ userId, notes }: { userId: string; notes?: string }) => {
+    mutationFn: async ({
+      userId,
+      scheduleId,
+      scheduleIds,
+      notes
+    }: {
+      userId: string;
+      scheduleId?: string;
+      scheduleIds?: string[];
+      notes?: string
+    }) => {
       if (!leadId) throw new Error('No lead ID provided');
 
       const { data: { user } } = await supabase.auth.getUser();
@@ -66,17 +77,31 @@ export function useJobAssignments(leadId: string | undefined) {
 
       if (!lead) throw new Error('Job not found');
 
+      const schedules = scheduleIds || (scheduleId ? [scheduleId] : []);
+
+      if (schedules.length === 0) {
+        throw new Error('At least one schedule must be selected');
+      }
+
+      const assignments = schedules.map(sId => ({
+        lead_id: leadId,
+        user_id: userId,
+        job_schedule_id: sId,
+        account_id: lead.account_id,
+        assigned_by: user.id,
+        notes: notes || null,
+      }));
+
       const { error } = await supabase
         .from('job_assignments')
-        .insert({
-          lead_id: leadId,
-          user_id: userId,
-          account_id: lead.account_id,
-          assigned_by: user.id,
-          notes: notes || null,
-        });
+        .insert(assignments);
 
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('overlap')) {
+          throw new Error('This crew member already has an overlapping assignment');
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-assignments', leadId] });

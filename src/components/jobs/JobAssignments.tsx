@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
+import { useJobSchedules } from '@/hooks/useJobSchedules';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -13,6 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,8 +33,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Users, UserPlus, X, Mail } from 'lucide-react';
+import { Users, UserPlus, X, Mail, Calendar, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
 
 interface JobAssignmentsProps {
   leadId: string;
@@ -43,7 +54,10 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
   const { currentAccount, isManager } = useAuth();
   const { assignments, isLoading, assignCrew, unassignCrew, isAssigning, isUnassigning } =
     useJobAssignments(leadId);
+  const { data: schedules, isLoading: schedulesLoading } = useJobSchedules(leadId);
   const [selectedMember, setSelectedMember] = useState<string>('');
+  const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assignmentToRemove, setAssignmentToRemove] = useState<string | null>(null);
 
   const { data: availableMembers } = useQuery({
@@ -72,14 +86,38 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
     enabled: !!currentAccount && isManager(),
   });
 
-  const unassignedMembers = availableMembers?.filter(
-    (member) => !assignments?.some((assignment) => assignment.user_id === member.user_id)
-  );
+  const getScheduleAssignments = (scheduleId: string) => {
+    return assignments?.filter(a => a.job_schedule_id === scheduleId) || [];
+  };
+
+  const toggleSchedule = (scheduleId: string) => {
+    setSelectedSchedules(prev =>
+      prev.includes(scheduleId)
+        ? prev.filter(id => id !== scheduleId)
+        : [...prev, scheduleId]
+    );
+  };
+
+  const toggleAllSchedules = () => {
+    if (!schedules) return;
+    if (selectedSchedules.length === schedules.length) {
+      setSelectedSchedules([]);
+    } else {
+      setSelectedSchedules(schedules.map(s => s.id));
+    }
+  };
+
+  const openAssignDialog = () => {
+    setSelectedSchedules([]);
+    setShowAssignDialog(true);
+  };
 
   const handleAssign = () => {
-    if (selectedMember) {
-      assignCrew({ userId: selectedMember });
+    if (selectedMember && selectedSchedules.length > 0) {
+      assignCrew({ userId: selectedMember, scheduleIds: selectedSchedules });
       setSelectedMember('');
+      setSelectedSchedules([]);
+      setShowAssignDialog(false);
     }
   };
 
@@ -90,101 +128,220 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
     }
   };
 
+  if (schedulesLoading || isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Assigned Crew
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-20 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!schedules || schedules.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Assigned Crew
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <Calendar className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+            <p className="text-muted-foreground">No schedules created yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Create job schedules first to assign crew members
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          Assigned Crew ({assignments?.length || 0})
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Assigned Crew
+          </CardTitle>
+          {isManager() && (
+            <Button onClick={openAssignDialog} size="sm">
+              <UserPlus className="h-4 w-4 mr-2" />
+              Assign Crew
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isManager() && (
-          <div className="flex gap-2">
-            <Select value={selectedMember} onValueChange={setSelectedMember}>
-              <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Select crew member" />
-              </SelectTrigger>
-              <SelectContent>
-                {unassignedMembers?.length === 0 ? (
-                  <div className="p-2 text-sm text-muted-foreground text-center">
-                    All crew members assigned
+        {schedules.map((schedule) => {
+          const scheduleAssignments = getScheduleAssignments(schedule.id);
+          return (
+            <div key={schedule.id} className="border rounded-lg p-4 space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 font-medium">
+                    <Calendar className="h-4 w-4" />
+                    {format(new Date(schedule.scheduled_date), 'EEEE, MMMM d, yyyy')}
                   </div>
-                ) : (
-                  unassignedMembers?.map((member) => (
-                    <SelectItem key={member.user_id} value={member.user_id}>
-                      {member.profiles?.full_name || 'Unknown'} -{' '}
-                      {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+                  {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                      <Clock className="h-3 w-3" />
+                      {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                    </div>
+                  )}
+                </div>
+                <Badge variant="outline">
+                  {scheduleAssignments.length} assigned
+                </Badge>
+              </div>
+
+              {scheduleAssignments.length > 0 ? (
+                <div className="space-y-2">
+                  {scheduleAssignments.map((assignment) => (
+                    <div
+                      key={assignment.id}
+                      className="flex items-center justify-between p-2 bg-muted rounded"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium">
+                          {assignment.profiles?.full_name || 'Unknown'}
+                        </div>
+                        {assignment.profiles?.email && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Mail className="h-3 w-3" />
+                            {assignment.profiles.email}
+                          </div>
+                        )}
+                      </div>
+                      {isManager() && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAssignmentToRemove(assignment.id)}
+                          disabled={isUnassigning}
+                        >
+                          <X className="h-3 w-3 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-2">
+                  No crew assigned to this schedule
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </CardContent>
+
+      <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Crew Member</DialogTitle>
+            <DialogDescription>
+              Select a crew member and the schedule(s) to assign them to
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Crew Member</label>
+              <Select value={selectedMember} onValueChange={setSelectedMember}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select crew member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMembers?.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground text-center">
+                      No crew members available
+                    </div>
+                  ) : (
+                    availableMembers?.map((member) => (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        {member.profiles?.full_name || 'Unknown'} -{' '}
+                        {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium">Schedules</label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleAllSchedules}
+                  type="button"
+                >
+                  {selectedSchedules.length === schedules?.length ? 'Deselect All' : 'Select All'}
+                </Button>
+              </div>
+              <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
+                {schedules?.map((schedule) => (
+                  <div key={schedule.id} className="flex items-start gap-2">
+                    <Checkbox
+                      id={schedule.id}
+                      checked={selectedSchedules.includes(schedule.id)}
+                      onCheckedChange={() => toggleSchedule(schedule.id)}
+                    />
+                    <label
+                      htmlFor={schedule.id}
+                      className="text-sm flex-1 cursor-pointer"
+                    >
+                      <div className="font-medium">
+                        {format(new Date(schedule.scheduled_date), 'EEEE, MMM d')}
+                      </div>
+                      {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                        <div className="text-xs text-muted-foreground">
+                          {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAssignDialog(false);
+                setSelectedMember('');
+                setSelectedSchedules([]);
+              }}
+            >
+              Cancel
+            </Button>
             <Button
               onClick={handleAssign}
-              disabled={!selectedMember || isAssigning}
-              className="shrink-0"
+              disabled={!selectedMember || selectedSchedules.length === 0 || isAssigning}
             >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Assign
+              Assign to {selectedSchedules.length} schedule{selectedSchedules.length !== 1 ? 's' : ''}
             </Button>
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="space-y-2">
-            {[1, 2].map((i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : !assignments || assignments.length === 0 ? (
-          <div className="text-center py-8">
-            <Users className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-            <p className="text-muted-foreground">No crew assigned yet</p>
-            {isManager() && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Assign crew members to this job using the dropdown above
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {assignments.map((assignment) => (
-              <div
-                key={assignment.id}
-                className="flex items-center justify-between p-3 bg-muted rounded-lg"
-              >
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {assignment.profiles?.full_name || 'Unknown'}
-                    </div>
-                    {assignment.profiles?.email && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
-                        <Mail className="h-3 w-3" />
-                        {assignment.profiles.email}
-                      </div>
-                    )}
-                  </div>
-                  <Badge variant="secondary">
-                    {new Date(assignment.assigned_at).toLocaleDateString()}
-                  </Badge>
-                </div>
-                {isManager() && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setAssignmentToRemove(assignment.id)}
-                    disabled={isUnassigning}
-                  >
-                    <X className="h-4 w-4 text-destructive" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={!!assignmentToRemove}
