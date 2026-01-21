@@ -52,21 +52,22 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
       if (!currentAccount) return [];
 
       const { data, error } = await supabase
-        .from('account_members')
-        .select(`
-          user_id,
-          role,
-          profiles!account_members_user_id_fkey (
-            full_name,
-            email
-          )
-        `)
+        .from('account_members_with_profiles')
+        .select('user_id, role, full_name, email')
         .eq('account_id', currentAccount.id)
         .eq('is_active', true)
         .order('role', { ascending: false });
 
       if (error) throw error;
-      return data as CrewMember[];
+
+      return data.map(member => ({
+        user_id: member.user_id,
+        role: member.role,
+        profiles: {
+          full_name: member.full_name,
+          email: member.email
+        }
+      })) as CrewMember[];
     },
     enabled: !!currentAccount && isManager(),
   });

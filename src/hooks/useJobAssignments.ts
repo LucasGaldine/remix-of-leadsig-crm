@@ -24,26 +24,29 @@ export function useJobAssignments(leadId: string | undefined) {
     queryFn: async () => {
       if (!leadId) return [];
 
-      const { data, error } = await supabase
+      const { data: assignmentsData, error: assignmentsError } = await supabase
         .from('job_assignments')
-        .select(`
-          id,
-          lead_id,
-          user_id,
-          assigned_by,
-          assigned_at,
-          notes,
-          profiles!job_assignments_user_id_fkey (
-            full_name,
-            email,
-            phone
-          )
-        `)
+        .select('id, lead_id, user_id, assigned_by, assigned_at, notes')
         .eq('lead_id', leadId)
         .order('assigned_at', { ascending: false });
 
-      if (error) throw error;
-      return data as JobAssignment[];
+      if (assignmentsError) throw assignmentsError;
+      if (!assignmentsData || assignmentsData.length === 0) return [];
+
+      const userIds = assignmentsData.map(a => a.user_id);
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email, phone')
+        .in('user_id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+
+      return assignmentsData.map(assignment => ({
+        ...assignment,
+        profiles: profilesMap.get(assignment.user_id) || { full_name: null, email: null, phone: null }
+      })) as JobAssignment[];
     },
     enabled: !!leadId,
   });
