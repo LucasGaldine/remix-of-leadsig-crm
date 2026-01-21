@@ -216,21 +216,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (signUpError) return { error: signUpError };
 
-      if (signUpData.user && targetAccountId) {
-        const { error: memberError } = await supabase
-          .from('account_members')
-          .insert({
-            account_id: targetAccountId,
-            user_id: signUpData.user.id,
-            role: selectedRole,
-            is_active: true,
-          });
-
-        if (memberError) {
-          console.error('Error adding user to account:', memberError);
-        }
-      }
-
       return { error: null };
     } catch (err) {
       return { error: err as Error };
