@@ -37,10 +37,10 @@ export default function Schedule() {
         title="Schedule"
         subtitle={format(selectedDate, "MMMM yyyy")}
         actions={
-        {isManager() && (<Button size="sm" className="gap-1" onClick={() => navigate("/jobs")}>
+        <Button size="sm" className="gap-1" onClick={() => navigate("/jobs")}>
             <Plus className="h-4 w-4" />
             Add
-          </Button>)}
+          </Button>
         }
         
       />
