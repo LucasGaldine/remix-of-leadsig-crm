@@ -179,7 +179,11 @@ export default function SettingsProfile() {
         throw new Error(error.error || 'Failed to delete account');
       }
 
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch {
+      }
+
       toast.success("Account deleted successfully");
       navigate("/auth");
     } catch (error) {
