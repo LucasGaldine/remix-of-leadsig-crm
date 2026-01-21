@@ -15,7 +15,7 @@ export default function Schedule() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
   const weekEnd = addDays(weekStart, 6);
-  const {isManager} = useAuth();
+  const { isManager } = useAuth();
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
