@@ -49,13 +49,22 @@ export function useStripeConnect() {
       const { data, error } = await supabase.functions.invoke("stripe-oauth-connect");
 
       if (error) {
-        toast.error("Failed to start Stripe connection");
         console.error("OAuth error:", error);
+        const errorMessage = error.message || "Failed to start Stripe connection";
+        toast.error(errorMessage);
+        return;
+      }
+
+      if (data?.setup_required) {
+        toast.error(data.error || "Stripe OAuth is not configured");
+        console.error("Setup required:", data.error);
         return;
       }
 
       if (data?.url) {
         window.location.href = data.url;
+      } else {
+        toast.error("No OAuth URL received from server");
       }
     } catch (err) {
       console.error("Error starting OAuth:", err);
