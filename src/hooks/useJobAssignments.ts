@@ -101,29 +101,39 @@ export function useJobAssignments(leadId: string | undefined) {
 
       const userName = userProfile?.full_name || 'This crew member';
 
-      for (const targetSchedule of targetSchedules) {
-        const { data: existingAssignments, error: checkError } = await supabase
-          .from('job_assignments')
-          .select(`
-            id,
-            job_schedule_id,
-            job_schedules!inner (
-              scheduled_date,
-              scheduled_time_start,
-              scheduled_time_end,
-              leads!inner (
-                title
-              )
-            )
-          `)
-          .eq('user_id', userId)
-          .eq('account_id', lead.account_id);
+      const { data: existingAssignments, error: checkError } = await supabase
+        .from('job_assignments')
+        .select(`
+          id,
+          job_schedule_id,
+          job_schedules!inner (
+            scheduled_date,
+            scheduled_time_start,
+            scheduled_time_end,
+            lead_id
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('account_id', lead.account_id);
 
-        if (checkError) throw checkError;
+      if (checkError) throw checkError;
 
-        if (existingAssignments) {
+      if (existingAssignments && existingAssignments.length > 0) {
+        const leadIds = existingAssignments
+          .map(a => a.job_schedules?.lead_id)
+          .filter((id): id is string => !!id);
+
+        const { data: leadsData } = await supabase
+          .from('leads')
+          .select('id, title')
+          .in('id', leadIds);
+
+        const leadsMap = new Map(leadsData?.map(l => [l.id, l.title]) || []);
+
+        for (const targetSchedule of targetSchedules) {
           for (const existing of existingAssignments) {
             const existingSchedule = existing.job_schedules;
+            if (!existingSchedule) continue;
 
             if (existingSchedule.scheduled_date === targetSchedule.scheduled_date) {
               const hasTimeOverlap =
@@ -147,7 +157,7 @@ export function useJobAssignments(leadId: string | undefined) {
                   ? ` from ${existingSchedule.scheduled_time_start} - ${existingSchedule.scheduled_time_end}`
                   : '';
 
-                const jobTitle = existingSchedule.leads?.title || 'another job';
+                const jobTitle = leadsMap.get(existingSchedule.lead_id) || 'another job';
 
                 throw new Error(
                   `${userName} is already assigned to "${jobTitle}" on ${dateStr}${timeStr}`
