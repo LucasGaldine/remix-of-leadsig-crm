@@ -440,7 +440,9 @@ export default function JobDetail() {
                 </div>
               ) : null}
 
-              <Button
+
+              
+              {isManager() && (<Button
                 variant="outline"
                 size="sm"
                 onClick={openScheduleDialog}
@@ -448,7 +450,8 @@ export default function JobDetail() {
               >
                 <Plus className="h-4 w-4" />
                 Add Schedule Date
-              </Button>
+              </Button>)}
+              
             </div>
 
             {/* Crew Assignments */}
