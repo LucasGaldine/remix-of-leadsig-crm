@@ -55,6 +55,9 @@ export function useJobAssignments(leadId: string | undefined) {
     mutationFn: async ({ userId, notes }: { userId: string; notes?: string }) => {
       if (!leadId) throw new Error('No lead ID provided');
 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
       const { data: lead } = await supabase
         .from('leads')
         .select('account_id')
@@ -69,6 +72,7 @@ export function useJobAssignments(leadId: string | undefined) {
           lead_id: leadId,
           user_id: userId,
           account_id: lead.account_id,
+          assigned_by: user.id,
           notes: notes || null,
         });
 
