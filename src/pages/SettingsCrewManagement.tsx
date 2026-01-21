@@ -36,11 +36,9 @@ interface AccountMember {
   user_id: string;
   role: AppRole;
   joined_at: string;
-  profiles: {
-    full_name: string | null;
-    email: string | null;
-    phone: string | null;
-  };
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
 }
 
 const roleLabels: Record<AppRole, string> = {
@@ -72,17 +70,15 @@ export default function SettingsCrewManagement() {
       if (!currentAccount) return [];
 
       const { data, error } = await supabase
-        .from('account_members')
+        .from('account_members_with_profiles')
         .select(`
           id,
           user_id,
           role,
           joined_at,
-          profiles:user_id (
-            full_name,
-            email,
-            phone
-          )
+          full_name,
+          email,
+          phone
         `)
         .eq('account_id', currentAccount.id)
         .eq('is_active', true)
@@ -232,19 +228,19 @@ export default function SettingsCrewManagement() {
                     {members.map((member) => (
                       <TableRow key={member.id}>
                         <TableCell className="font-medium">
-                          {member.profiles?.full_name || 'Unknown'}
+                          {member.full_name || 'Unknown'}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Mail className="h-4 w-4 text-muted-foreground" />
-                            {member.profiles?.email || 'No email'}
+                            {member.email || 'No email'}
                           </div>
                         </TableCell>
                         <TableCell>
-                          {member.profiles?.phone ? (
+                          {member.phone ? (
                             <div className="flex items-center gap-2">
                               <Phone className="h-4 w-4 text-muted-foreground" />
-                              {member.profiles.phone}
+                              {member.phone}
                             </div>
                           ) : (
                             <span className="text-muted-foreground">-</span>
@@ -286,7 +282,7 @@ export default function SettingsCrewManagement() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove {memberToRemove?.profiles?.full_name} from your company?
+              Are you sure you want to remove {memberToRemove?.full_name} from your company?
               They will lose access to all company data.
             </AlertDialogDescription>
           </AlertDialogHeader>
