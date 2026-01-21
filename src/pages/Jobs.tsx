@@ -113,7 +113,8 @@ export default function Jobs() {
           </div>
         )}
       </main>
-
+      
+    {isManager() &&  (
       <FloatingActionButton
         actions={[
           {
@@ -125,8 +126,9 @@ export default function Jobs() {
         ]}
       />
 
-     {isManager() &&  (<CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />)}
-
+     <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
+)}
+      
       <MobileNav />
     </div>
   );
