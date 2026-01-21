@@ -60,6 +60,7 @@ export default function Settings() {
   const settingSections: SettingSection[] = [
     {
       title: "Business",
+      roles: ["owner"],
       items: [
         {
           icon: <Building2 className="h-5 w-5" />,
