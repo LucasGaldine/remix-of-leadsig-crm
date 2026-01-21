@@ -59,6 +59,13 @@ export default function Jobs() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+
+      <PageHeader
+        
+        title="Jobs"
+        subtitle= {`${revenue.toLocaleString()} collected this month`}
+      />
+      
       <header className="bg-white border-b border-gray-200 px-4 py-4">
         <div className="flex items-start justify-between mb-1">
           <div>
