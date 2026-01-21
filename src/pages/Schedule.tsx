@@ -40,7 +40,7 @@ export default function Schedule() {
         <Button size="sm" className="gap-1" onClick={() => navigate("/jobs")}>
             <Plus className="h-4 w-4" />
             Add
-          </Button>)
+          </Button>
         }
         
       />
