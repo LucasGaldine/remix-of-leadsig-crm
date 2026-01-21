@@ -146,7 +146,7 @@ export default function CrewDashboard() {
         {upcomingSchedules.length > 0 && (
           <section>
             <SectionHeader
-              title="Upcoming Schedules"
+              title="Upcoming Jobs"
               count={upcomingSchedules.length}
               action={{ label: "View calendar", onClick: () => navigate("/schedule") }}
               className="mb-3"
@@ -187,53 +187,7 @@ export default function CrewDashboard() {
           </section>
         )}
 
-        <section>
-          <SectionHeader
-            title="My Assigned Jobs"
-            count={assignedJobs.length}
-            action={{ label: "View all", onClick: () => navigate("/jobs") }}
-            className="mb-3"
-          />
-
-          {isLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : assignedJobs.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">No jobs assigned yet</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Your manager will assign jobs to you
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {assignedJobs.map((job: any) => (
-                <JobCard
-                  key={job.id}
-                  job={{
-                    id: job.id,
-                    clientName: job.customers?.name || job.name || "Unknown Client",
-                    serviceType: job.service_type || "Unknown Service",
-                    status: job.status,
-                    scheduledDate: job.scheduled_date,
-                    scheduledTime: job.scheduled_time_start,
-                    address: job.address,
-                    city: job.city,
-                    state: job.state,
-                    estimatedValue: Number(job.estimated_value) || 0,
-                    createdAt: formatDistanceToNow(new Date(job.created_at), { addSuffix: true }),
-                    notes: job.notes,
-                  }}
-                  onClick={() => navigate(`/jobs/${job.id}`)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+      
       </main>
 
       <MobileNav />
