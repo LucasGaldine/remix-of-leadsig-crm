@@ -427,14 +427,14 @@ export default function JobDetail() {
                           </p>
                         )}
                       </div>
-                      <Button
+                      {isManager() && (<Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteSchedule(schedule.id)}
                         className="h-7 w-7 p-0"
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      </Button>)}
                     </div>
                   ))}
                 </div>
