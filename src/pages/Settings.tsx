@@ -42,8 +42,9 @@ interface SettingSection {
 
 export default function Settings() {
   const [show2FASetup, setShow2FASetup] = useState(false);
-  const { signOut, profile } = useAuth();
+  const { signOut, profile, role } = useAuth();
   const navigate = useNavigate();
+  
 
   const handleSignOut = async () => {
     await signOut();
@@ -139,6 +140,7 @@ export default function Settings() {
     },
     {
       title: "Integrations",
+      role: ["owner"],
       items: [
         {
           icon: <Plug className="h-5 w-5" />,
@@ -184,6 +186,10 @@ export default function Settings() {
       ],
     },
   ];
+
+  const visibleSections = settingSections.filter(section =>
+  section.roles == null || section.roles.includes(role)
+  );
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
