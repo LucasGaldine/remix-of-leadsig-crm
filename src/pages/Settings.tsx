@@ -140,7 +140,7 @@ export default function Settings() {
     },
     {
       title: "Integrations",
-      role: ["owner"],
+      roles: ["owner"],
       items: [
         {
           icon: <Plug className="h-5 w-5" />,
