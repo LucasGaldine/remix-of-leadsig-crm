@@ -196,7 +196,7 @@ export default function Settings() {
       <PageHeader title="Settings" showNotifications={false} />
 
       <main className="py-4">
-        {settingSections.map((section) => (
+        {visibleSections.map((section) => (
           <div key={section.title} className="mb-6">
             <h2 className="px-4 mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               {section.title}
