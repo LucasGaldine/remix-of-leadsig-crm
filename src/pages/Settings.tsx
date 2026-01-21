@@ -92,6 +92,7 @@ export default function Settings() {
     },
     {
       title: "Payments",
+      roles: ["owner"],
       items: [
         {
           icon: <DollarSign className="h-5 w-5" />,
