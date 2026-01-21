@@ -161,17 +161,22 @@ export default function SettingsProfile() {
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-account`;
       const { data: { session } } = await supabase.auth.getSession();
 
+      if (!session?.access_token) {
+        throw new Error('No valid session found. Please sign in again.');
+      }
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           'Content-Type': 'application/json',
         },
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Failed to delete account');
+        throw new Error(error.error || 'Failed to delete account');
       }
 
       await supabase.auth.signOut();
