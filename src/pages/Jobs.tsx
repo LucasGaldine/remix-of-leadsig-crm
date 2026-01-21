@@ -125,9 +125,10 @@ export default function Jobs() {
           },
         ]}
       />
-
-     <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
 )}
+      
+     <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
+
       
       <MobileNav />
     </div>
