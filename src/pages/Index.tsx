@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { Clock, UserCheck, CheckCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -12,10 +13,11 @@ import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@/hooks/useDashboardLeads";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
+import CrewDashboard from "./CrewDashboard";
 
 export default function Index() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isCrewMember } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
@@ -48,6 +50,10 @@ export default function Index() {
     estimateValue: Number(estimate.total_amount) || 0,
     sentAt: formatDistanceToNow(new Date(estimate.created_at), { addSuffix: true }),
   }));
+
+  if (isCrewMember()) {
+    return <CrewDashboard />;
+  }
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">

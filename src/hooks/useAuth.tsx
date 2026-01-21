@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-export type AppRole = 'owner' | 'admin' | 'sales' | 'crew_lead';
+export type AppRole = 'owner' | 'admin' | 'sales' | 'crew_lead' | 'crew_member';
 
 interface Profile {
   id: string;
@@ -55,6 +55,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
   isOwnerOrAdmin: () => boolean;
+  isManager: () => boolean;
+  isCrewMember: () => boolean;
   refreshProfile: () => Promise<void>;
   switchAccount: (accountId: string) => void;
 }
@@ -255,6 +257,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return role === 'owner' || role === 'admin';
   };
 
+  const isManager = (): boolean => {
+    return role === 'owner' || role === 'admin' || role === 'crew_lead';
+  };
+
+  const isCrewMember = (): boolean => {
+    return role === 'crew_member';
+  };
+
   const refreshProfile = async () => {
     if (user) {
       await fetchUserData(user.id);
@@ -285,6 +295,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         hasRole,
         isOwnerOrAdmin,
+        isManager,
+        isCrewMember,
         refreshProfile,
         switchAccount,
       }}

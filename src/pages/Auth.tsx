@@ -22,6 +22,7 @@ const roleLabels: Record<AppRole, string> = {
   admin: 'Admin',
   sales: 'Sales',
   crew_lead: 'Crew Lead',
+  crew_member: 'Crew Member',
 };
 
 export default function Auth() {
@@ -418,7 +419,7 @@ export default function Auth() {
                         <SelectItem value="owner">Owner</SelectItem>
                       ) : (
                         <>
-                          {(['sales', 'crew_lead'] as AppRole[]).map((role) => (
+                          {(['sales', 'crew_lead', 'crew_member'] as AppRole[]).map((role) => (
                             <SelectItem key={role} value={role}>
                               {roleLabels[role]}
                             </SelectItem>

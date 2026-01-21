@@ -32,6 +32,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { useJob, useUpdateJob, useDeleteJob } from "@/hooks/useJobs";
 import { useJobSchedules, useAddJobSchedule, useUpdateJobSchedule, useDeleteJobSchedule } from "@/hooks/useJobSchedules";
+import { useAuth } from "@/hooks/useAuth";
+import { JobAssignments } from "@/components/jobs/JobAssignments";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +41,7 @@ import { supabase } from "@/integrations/supabase/client";
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isManager } = useAuth();
   const [activeTab, setActiveTab] = useState<"details" | "checklist" | "photos" | "notes">("details");
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
@@ -447,6 +450,9 @@ export default function JobDetail() {
                 Add Schedule Date
               </Button>
             </div>
+
+            {/* Crew Assignments */}
+            {id && <JobAssignments leadId={id} />}
 
             {/* Estimate */}
             {estimate && (

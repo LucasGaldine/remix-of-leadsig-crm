@@ -1,6 +1,7 @@
 import { LayoutDashboard, Users, FileText, Calendar, DollarSign, Package, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 
 interface NavItem {
@@ -8,26 +9,35 @@ interface NavItem {
   label: string;
   path: string;
   badgeKey?: string;
+  requiredRole?: 'manager' | 'all';
 }
 
 const navItems: NavItem[] = [
-  { icon: <LayoutDashboard className="h-4 w-4" />, label: "Dashboard", path: "/" },
-  { icon: <Users className="h-4 w-4" />, label: "Leads", path: "/leads", badgeKey: "pendingLeads" },
-  { icon: <FileText className="h-4 w-4" />, label: "Jobs", path: "/jobs" },
-  { icon: <Calendar className="h-4 w-4" />, label: "Calendar", path: "/schedule" },
-  { icon: <DollarSign className="h-4 w-4" />, label: "Payments", path: "/payments" },
-  { icon: <Package className="h-4 w-4" />, label: "Materials", path: "/materials" },
-  { icon: <Settings className="h-4 w-4" />, label: "Settings", path: "/settings" },
+  { icon: <LayoutDashboard className="h-4 w-4" />, label: "Dashboard", path: "/", requiredRole: 'all' },
+  { icon: <Users className="h-4 w-4" />, label: "Leads", path: "/leads", badgeKey: "pendingLeads", requiredRole: 'manager' },
+  { icon: <FileText className="h-4 w-4" />, label: "Jobs", path: "/jobs", requiredRole: 'all' },
+  { icon: <Calendar className="h-4 w-4" />, label: "Calendar", path: "/schedule", requiredRole: 'all' },
+  { icon: <DollarSign className="h-4 w-4" />, label: "Payments", path: "/payments", requiredRole: 'manager' },
+  { icon: <Package className="h-4 w-4" />, label: "Materials", path: "/materials", requiredRole: 'manager' },
+  { icon: <Settings className="h-4 w-4" />, label: "Settings", path: "/settings", requiredRole: 'all' },
 ];
 
 export function MobileNav() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isCrewMember } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
 
   const badges: Record<string, number> = {
     pendingLeads: pendingLeadsCount,
   };
+
+  // Filter nav items based on role
+  const visibleNavItems = navItems.filter(item => {
+    if (!item.requiredRole || item.requiredRole === 'all') return true;
+    if (item.requiredRole === 'manager') return !isCrewMember();
+    return true;
+  });
 
   // Check if current path starts with the nav item path (for nested routes)
   const isActiveRoute = (path: string) => {
@@ -38,7 +48,7 @@ export function MobileNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom">
       <div className="flex items-stretch overflow-x-auto scrollbar-hide">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = isActiveRoute(item.path);
           const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
           
