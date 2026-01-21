@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useJobs, useJobCounts, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { Database } from "@/integrations/supabase/types";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 
@@ -61,7 +62,6 @@ export default function Jobs() {
     <div className="min-h-screen bg-gray-50 pb-24">
 
       <PageHeader
-        
         title="Jobs"
         subtitle= {`${revenue.toLocaleString()} collected this month`}
       />
