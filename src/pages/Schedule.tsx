@@ -138,7 +138,7 @@ export default function Schedule() {
           <div className="text-center py-12">
             <p className="text-muted-foreground">No jobs scheduled for this day</p>
 
-            {isManager && (
+            {isManager() && (
             <Button
               className="mt-4 gap-2"
               onClick={() => navigate("/jobs")}
