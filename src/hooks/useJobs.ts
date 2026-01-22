@@ -54,7 +54,8 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
         .select(`
           *,
           customer:customers!customer_id(id, name, email, phone, address),
-          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
+          job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("account_id", currentAccount.id)
         .in("status", ["scheduled", "in_progress", "completed", "won", "invoiced", "paid"])
@@ -81,7 +82,27 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
       const { data, error } = await query;
 
       if (error) throw error;
-      return data as Job[];
+
+      return (data || []).map((job: any) => {
+        const schedules = job.job_schedules || [];
+        const earliestSchedule = schedules.length > 0
+          ? schedules.sort((a: any, b: any) => {
+              const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+              if (dateCompare !== 0) return dateCompare;
+              if (!a.scheduled_time_start) return 1;
+              if (!b.scheduled_time_start) return -1;
+              return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
+            })[0]
+          : null;
+
+        return {
+          ...job,
+          scheduled_date: earliestSchedule?.scheduled_date,
+          scheduled_time_start: earliestSchedule?.scheduled_time_start,
+          scheduled_time_end: earliestSchedule?.scheduled_time_end,
+          job_schedules: undefined,
+        };
+      });
     },
     enabled: !!user && !!currentAccount,
   });
@@ -125,13 +146,34 @@ export function useJob(id: string | undefined) {
         .select(`
           *,
           customer:customers!customer_id(id, name, email, phone, address),
-          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
+          job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("id", id)
         .maybeSingle();
 
       if (error) throw error;
-      return data as Job | null;
+
+      if (!data) return null;
+
+      const schedules = (data as any).job_schedules || [];
+      const earliestSchedule = schedules.length > 0
+        ? schedules.sort((a: any, b: any) => {
+            const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+            if (dateCompare !== 0) return dateCompare;
+            if (!a.scheduled_time_start) return 1;
+            if (!b.scheduled_time_start) return -1;
+            return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
+          })[0]
+        : null;
+
+      return {
+        ...data,
+        scheduled_date: earliestSchedule?.scheduled_date,
+        scheduled_time_start: earliestSchedule?.scheduled_time_start,
+        scheduled_time_end: earliestSchedule?.scheduled_time_end,
+        job_schedules: undefined,
+      } as Job;
     },
     enabled: !!user && !!id,
     retry: 3,
