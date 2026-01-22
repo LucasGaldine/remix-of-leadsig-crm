@@ -329,7 +329,7 @@ export default function EstimateDetail() {
       await queryClient.invalidateQueries({ queryKey: ['estimate', id] });
       await queryClient.invalidateQueries({ queryKey: ['estimates'] });
 
-      if (isJob) {
+      if (shouldTrackChanges) {
         toast.success('Changes saved and tracked as change orders');
       } else {
         toast.success('Changes saved successfully');
