@@ -78,7 +78,7 @@ export default function Jobs() {
 
       <PageHeader
         title="Jobs"
-        subtitle= {`${revenue.toLocaleString()} collected this month`}
+        subtitle= {`$${revenue.toLocaleString()} collected this month`}
       />
 
       <main className="px-4 py-4 space-y-4">
