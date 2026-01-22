@@ -74,10 +74,6 @@ const PIPELINE_STAGES: { value: string; label: string; color: string }[] = [
   { value: "new", label: "New", color: "bg-blue-500" },
   { value: "contacted", label: "Contacted", color: "bg-yellow-500" },
   { value: "qualified", label: "Qualified", color: "bg-primary" },
-  { value: "scheduled", label: "Scheduled", color: "bg-purple-500" },
-  { value: "in_progress", label: "In Progress", color: "bg-orange-500" },
-  { value: "won", label: "Won", color: "bg-green-500" },
-  { value: "lost", label: "Lost", color: "bg-red-500" },
 ];
 
 const TIMELINE_OPTIONS: { value: TimelinePeriod; label: string }[] = [
@@ -233,9 +229,9 @@ export default function LeadDetail() {
       return;
     }
 
-    if (newStatus === "won") {
+    if (newStatus === "job") {
       if (lead.status !== "qualified") {
-        toast.error("Lead must be qualified before converting to Won");
+        toast.error("Lead must be qualified before converting to Job");
         return;
       }
       if (!hasEstimate) {
@@ -407,7 +403,6 @@ export default function LeadDetail() {
     }
 
     await updateQualification({ disqualify_reason: disqualifyReason });
-    await updateLeadStatus("lost");
     setDisqualifyOpen(false);
     toast.success("Lead disqualified");
   };
@@ -427,28 +422,10 @@ export default function LeadDetail() {
     const loadingToast = toast.loading("Converting to job...");
 
     try {
-      let newStatus: LeadStatus = "won";
-
-      if (jobSchedule.scheduled_date) {
-        const scheduledDate = new Date(jobSchedule.scheduled_date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        scheduledDate.setHours(0, 0, 0, 0);
-
-        if (scheduledDate <= today) {
-          newStatus = "in_progress";
-        } else {
-          newStatus = "scheduled";
-        }
-      }
-
       const { error: updateError } = await supabase
         .from("leads")
         .update({
-          status: newStatus,
-          scheduled_date: jobSchedule.scheduled_date || null,
-          scheduled_time_start: jobSchedule.scheduled_time_start || null,
-          scheduled_time_end: jobSchedule.scheduled_time_end || null,
+          status: "job",
         })
         .eq("id", lead.id);
 
@@ -556,15 +533,13 @@ export default function LeadDetail() {
   const getStatusBadgeStatus = (status: LeadStatus) => {
     switch (status) {
       case "qualified":
-      case "scheduled":
-      case "won":
+      case "job":
         return "confirmed";
       case "new":
       case "contacted":
-      case "in_progress":
         return "pending";
-      case "lost":
-        return "attention";
+      case "paid":
+        return "confirmed";
       default:
         return "pending";
     }
@@ -922,7 +897,7 @@ export default function LeadDetail() {
       </div>
 
       {/* Pipeline Stage Selector */}
-      {!["scheduled", "in_progress", "won"].includes(lead.status) && (
+      {!["job", "paid"].includes(lead.status) && (
         <div className="px-4 pb-4">
           <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
           <div className="flex flex-wrap gap-2">
@@ -971,7 +946,7 @@ export default function LeadDetail() {
       )}
 
       {/* Quick Estimate Panel */}
-      {!["scheduled", "in_progress", "won"].includes(lead.status) && !hasEstimate && (
+      {!["job", "paid"].includes(lead.status) && !hasEstimate && (
         <div className="px-4 pb-4">
           <QuickEstimatePanel
             leadId={id!}
@@ -985,7 +960,7 @@ export default function LeadDetail() {
       )}
 
       {/* Qualification Panel */}
-      {!["scheduled", "in_progress", "won"].includes(lead.status) && (
+      {!["job", "paid"].includes(lead.status) && (
         <div className="px-4 pb-4">
           <div className="card-elevated rounded-lg p-4">
             <h3 className="font-medium mb-3">Qualification</h3>

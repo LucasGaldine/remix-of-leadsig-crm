@@ -60,7 +60,8 @@ export function useLeads(filter?: LeadStatus | "all") {
         .from("leads")
         .select("*")
         .eq("account_id", currentAccount.id)
-        .eq("approval_status", "approved") // Only show approved leads in main pipeline
+        .eq("approval_status", "approved")
+        .in("status", ["new", "contacted", "qualified"])
         .order("created_at", { ascending: false });
 
       if (filter && filter !== "all") {
@@ -203,17 +204,14 @@ export function useLeadCounts() {
         new: 0,
         contacted: 0,
         qualified: 0,
-        scheduled: 0,
-        in_progress: 0,
-        won: 0,
-        lost: 0,
       };
 
       const { data, error } = await supabase
         .from("leads")
         .select("status")
         .eq("account_id", currentAccount.id)
-        .eq("approval_status", "approved"); // Only count approved leads
+        .eq("approval_status", "approved")
+        .in("status", ["new", "contacted", "qualified"]);
 
       if (error) throw error;
 
@@ -222,10 +220,6 @@ export function useLeadCounts() {
         new: 0,
         contacted: 0,
         qualified: 0,
-        scheduled: 0,
-        in_progress: 0,
-        won: 0,
-        lost: 0,
       };
 
       data.forEach((lead) => {

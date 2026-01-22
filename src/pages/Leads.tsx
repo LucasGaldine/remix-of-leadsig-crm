@@ -21,10 +21,6 @@ const filterOptions: { value: FilterStatus; label: string }[] = [
   { value: "new", label: "New" },
   { value: "contacted", label: "Contacted" },
   { value: "qualified", label: "Qualified" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "won", label: "Won" },
-  { value: "lost", label: "Lost" },
 ];
 
 export default function Leads() {
@@ -54,11 +50,6 @@ export default function Leads() {
   }));
 
   const filteredLeads = allLeads.filter((lead) => {
-    const excludedStatuses: LeadStatus[] = ["completed", "invoiced", "paid"];
-    if (excludedStatuses.includes(lead.status)) {
-      return false;
-    }
-
     const matchesSearch =
       lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.serviceType.toLowerCase().includes(searchQuery.toLowerCase()) ||

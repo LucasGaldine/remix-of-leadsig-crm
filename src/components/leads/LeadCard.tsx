@@ -2,7 +2,7 @@ import { Phone, MessageSquare, Calendar, ChevronRight, DollarSign } from "lucide
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 
-export type LeadStatus = "new" | "contacted" | "qualified" | "scheduled" | "in_progress" | "completed" | "won" | "lost" | "unqualified" | "converted" | "rejected" | "on_hold" | "invoiced" | "paid";
+export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid";
 
 export interface Lead {
   id: string;
@@ -29,22 +29,12 @@ export function LeadCard({ lead, onClick, onCall, onMessage, className }: LeadCa
   const getStatusBadgeStatus = (status: LeadStatus) => {
     switch (status) {
       case "qualified":
-      case "scheduled":
-      case "completed":
-      case "won":
-      case "converted":
-      case "invoiced":
+      case "job":
       case "paid":
         return "confirmed";
       case "new":
       case "contacted":
-      case "in_progress":
-      case "on_hold":
         return "pending";
-      case "rejected":
-      case "lost":
-      case "unqualified":
-        return "attention";
       default:
         return "pending";
     }
@@ -54,16 +44,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, className }: LeadCa
     new: "New",
     contacted: "Contacted",
     qualified: "Qualified",
-    scheduled: "Scheduled",
-    in_progress: "In Progress",
-    completed: "Completed",
-    won: "Won",
-    lost: "Lost",
-    unqualified: "Unqualified",
-    converted: "Converted",
-    rejected: "Rejected",
-    on_hold: "On Hold",
-    invoiced: "Invoiced",
+    job: "Job",
     paid: "Paid",
   };
 
