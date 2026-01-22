@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScheduledJobs, useScheduledJobsForWeek } from "@/hooks/useScheduledJobs";
 import { useAuth } from "@/hooks/useAuth";
+import { useDaysOff } from "@/hooks/useDaysOff";
 
 export default function Schedule() {
   const navigate = useNavigate();
@@ -22,6 +23,17 @@ export default function Schedule() {
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
   const { data: todaysJobs = [], isLoading } = useScheduledJobs(selectedDateStr);
   const { data: jobDates = new Set() } = useScheduledJobsForWeek(weekStart, weekEnd);
+  const { daysOff = [] } = useDaysOff();
+
+  const daysOffMap = useMemo(() => {
+    const map = new Map<string, { reason: string | null }>();
+    daysOff.forEach((dayOff) => {
+      map.set(dayOff.date, { reason: dayOff.reason });
+    });
+    return map;
+  }, [daysOff]);
+
+  const selectedDayOff = daysOffMap.get(selectedDateStr);
 
   const goToPreviousWeek = () => {
     setSelectedDate((prev) => addDays(prev, -7));
@@ -69,6 +81,9 @@ export default function Schedule() {
           {weekDays.map((day) => {
             const isSelected = isSameDay(day, selectedDate);
             const isToday = isSameDay(day, new Date());
+            const dayStr = format(day, "yyyy-MM-dd");
+            const hasJobs = jobDates.has(dayStr);
+            const isDayOff = daysOffMap.has(dayStr);
 
             return (
               <button
@@ -103,17 +118,25 @@ export default function Schedule() {
                 >
                   {format(day, "d")}
                 </span>
-                {/* Job indicator dot */}
-                {jobDates.has(format(day, "yyyy-MM-dd")) && (
-                  <div className="flex gap-0.5 mt-1">
+                {/* Job and day off indicators */}
+                <div className="flex gap-0.5 mt-1 min-h-[6px]">
+                  {hasJobs && (
                     <span
                       className={cn(
                         "h-1.5 w-1.5 rounded-full",
                         isSelected ? "bg-primary-foreground/60" : "bg-primary"
                       )}
                     />
-                  </div>
-                )}
+                  )}
+                  {isDayOff && (
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        isSelected ? "bg-primary-foreground/60" : "bg-destructive"
+                      )}
+                    />
+                  )}
+                </div>
               </button>
             );
           })}
@@ -130,6 +153,15 @@ export default function Schedule() {
             {todaysJobs.length} {todaysJobs.length === 1 ? "job" : "jobs"}
           </span>
         </div>
+
+        {selectedDayOff && (
+          <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <p className="text-sm font-medium text-destructive">Day Off</p>
+            {selectedDayOff.reason && (
+              <p className="text-sm text-muted-foreground mt-1">{selectedDayOff.reason}</p>
+            )}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex justify-center py-12">

@@ -191,7 +191,8 @@ export default function JobDetail() {
       setScheduleDialogOpen(false);
     } catch (error) {
       console.error("Error adding schedule:", error);
-      toast.error("Failed to add schedule");
+      const errorMessage = error instanceof Error ? error.message : "Failed to add schedule";
+      toast.error(errorMessage);
     }
   };
 
