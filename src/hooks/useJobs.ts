@@ -58,7 +58,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["scheduled", "in_progress", "completed", "won", "invoiced", "paid"])
+        .in("status", ["scheduled", "won", "invoiced", "paid"])
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -85,21 +85,38 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
 
       return (data || []).map((job: any) => {
         const schedules = job.job_schedules || [];
-        const earliestSchedule = schedules.length > 0
+        const sortedSchedules = schedules.length > 0
           ? schedules.sort((a: any, b: any) => {
               const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
               if (dateCompare !== 0) return dateCompare;
               if (!a.scheduled_time_start) return 1;
               if (!b.scheduled_time_start) return -1;
               return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
-            })[0]
-          : null;
+            })
+          : [];
+
+        const earliestSchedule = sortedSchedules[0] || null;
+        const latestSchedule = sortedSchedules[sortedSchedules.length - 1] || null;
+
+        let computedStatus = job.status;
+        if (job.status === 'scheduled' && sortedSchedules.length > 0) {
+          const now = new Date();
+          const firstDateTime = new Date(`${earliestSchedule.scheduled_date}T${earliestSchedule.scheduled_time_start || '00:00:00'}`);
+          const lastDateTime = new Date(`${latestSchedule.scheduled_date}T${latestSchedule.scheduled_time_end || '23:59:59'}`);
+
+          if (now > lastDateTime) {
+            computedStatus = 'completed';
+          } else if (now >= firstDateTime && now <= lastDateTime) {
+            computedStatus = 'in_progress';
+          }
+        }
 
         return {
           ...job,
           scheduled_date: earliestSchedule?.scheduled_date,
           scheduled_time_start: earliestSchedule?.scheduled_time_start,
           scheduled_time_end: earliestSchedule?.scheduled_time_end,
+          display_status: computedStatus,
           job_schedules: undefined,
         };
       });
@@ -157,21 +174,38 @@ export function useJob(id: string | undefined) {
       if (!data) return null;
 
       const schedules = (data as any).job_schedules || [];
-      const earliestSchedule = schedules.length > 0
+      const sortedSchedules = schedules.length > 0
         ? schedules.sort((a: any, b: any) => {
             const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
             if (dateCompare !== 0) return dateCompare;
             if (!a.scheduled_time_start) return 1;
             if (!b.scheduled_time_start) return -1;
             return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
-          })[0]
-        : null;
+          })
+        : [];
+
+      const earliestSchedule = sortedSchedules[0] || null;
+      const latestSchedule = sortedSchedules[sortedSchedules.length - 1] || null;
+
+      let computedStatus = data.status;
+      if (data.status === 'scheduled' && sortedSchedules.length > 0) {
+        const now = new Date();
+        const firstDateTime = new Date(`${earliestSchedule.scheduled_date}T${earliestSchedule.scheduled_time_start || '00:00:00'}`);
+        const lastDateTime = new Date(`${latestSchedule.scheduled_date}T${latestSchedule.scheduled_time_end || '23:59:59'}`);
+
+        if (now > lastDateTime) {
+          computedStatus = 'completed';
+        } else if (now >= firstDateTime && now <= lastDateTime) {
+          computedStatus = 'in_progress';
+        }
+      }
 
       return {
         ...data,
         scheduled_date: earliestSchedule?.scheduled_date,
         scheduled_time_start: earliestSchedule?.scheduled_time_start,
         scheduled_time_end: earliestSchedule?.scheduled_time_end,
+        display_status: computedStatus,
         job_schedules: undefined,
       } as Job;
     },
@@ -280,9 +314,12 @@ export function useJobCounts() {
 
       const { data, error } = await supabase
         .from("leads")
-        .select("status")
+        .select(`
+          status,
+          job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
+        `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["scheduled", "in_progress", "completed", "won", "invoiced", "paid"]);
+        .in("status", ["scheduled", "won", "invoiced", "paid"]);
 
       if (error) throw error;
 
@@ -296,9 +333,34 @@ export function useJobCounts() {
         paid: 0,
       };
 
-      data.forEach((lead) => {
-        if (lead.status && counts[lead.status] !== undefined) {
-          counts[lead.status]++;
+      data.forEach((lead: any) => {
+        const schedules = lead.job_schedules || [];
+        let displayStatus = lead.status;
+
+        if (lead.status === 'scheduled' && schedules.length > 0) {
+          const sortedSchedules = schedules.sort((a: any, b: any) => {
+            const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+            if (dateCompare !== 0) return dateCompare;
+            if (!a.scheduled_time_start) return 1;
+            if (!b.scheduled_time_start) return -1;
+            return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
+          });
+
+          const earliestSchedule = sortedSchedules[0];
+          const latestSchedule = sortedSchedules[sortedSchedules.length - 1];
+          const now = new Date();
+          const firstDateTime = new Date(`${earliestSchedule.scheduled_date}T${earliestSchedule.scheduled_time_start || '00:00:00'}`);
+          const lastDateTime = new Date(`${latestSchedule.scheduled_date}T${latestSchedule.scheduled_time_end || '23:59:59'}`);
+
+          if (now > lastDateTime) {
+            displayStatus = 'completed';
+          } else if (now >= firstDateTime && now <= lastDateTime) {
+            displayStatus = 'in_progress';
+          }
+        }
+
+        if (counts[displayStatus] !== undefined) {
+          counts[displayStatus]++;
         }
       });
 

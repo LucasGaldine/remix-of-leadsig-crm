@@ -22,23 +22,40 @@ export default function Jobs() {
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
 
   const filter = useMemo(() => ({
-    status: selectedStatus !== "all" ? selectedStatus : undefined,
     searchQuery: searchQuery,
-  }), [selectedStatus, searchQuery]);
+  }), [searchQuery]);
 
-  const { data: jobs = [], isLoading } = useJobs(filter);
-  const { data: counts } = useJobCounts();
+  const { data: allJobs = [], isLoading } = useJobs(filter);
   const { data: revenue = 0 } = useJobRevenue();
 
-  const statusCounts = counts || {
-    all: 0,
-    scheduled: 0,
-    in_progress: 0,
-    completed: 0,
-    won: 0,
-    invoiced: 0,
-    paid: 0,
-  };
+  const jobs = useMemo(() => {
+    if (selectedStatus === "all") return allJobs;
+    return allJobs.filter((job: any) => {
+      const displayStatus = job.display_status || job.status;
+      return displayStatus === selectedStatus;
+    });
+  }, [allJobs, selectedStatus]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: allJobs.length,
+      scheduled: 0,
+      in_progress: 0,
+      completed: 0,
+      won: 0,
+      invoiced: 0,
+      paid: 0,
+    };
+
+    allJobs.forEach((job: any) => {
+      const displayStatus = job.display_status || job.status;
+      if (counts[displayStatus] !== undefined) {
+        counts[displayStatus]++;
+      }
+    });
+
+    return counts;
+  }, [allJobs]);
 
   const statusTabs: { value: JobStatus | "all"; label: string }[] = [
     { value: "all", label: "All" },

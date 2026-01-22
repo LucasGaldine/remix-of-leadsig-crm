@@ -153,7 +153,7 @@ export default function JobDetail() {
     try {
       await updateJobMutation.mutateAsync({
         id,
-        status: "completed"
+        status: "won"
       });
       toast.success("Job marked as complete!");
       setCompleteDialogOpen(false);
@@ -592,9 +592,9 @@ export default function JobDetail() {
         <Button
           className="w-full h-14 text-base font-semibold"
           onClick={() => setCompleteDialogOpen(true)}
-          disabled={job.status === "completed"}
+          disabled={job.status === "won" || job.status === "invoiced" || job.status === "paid"}
         >
-          {job.status === "completed" ? "Job Completed" : "Mark as Complete"}
+          {(job.status === "won" || job.status === "invoiced" || job.status === "paid") ? "Job Completed" : "Mark as Complete"}
         </Button>
       </div>
 

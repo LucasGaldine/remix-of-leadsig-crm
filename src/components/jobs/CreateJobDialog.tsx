@@ -66,7 +66,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
       if (customerError) throw customerError;
 
-      let status: "scheduled" | "in_progress" | "won" = "won";
+      let status: "scheduled" | "won" = "won";
       let scheduledDateTime: string | null = null;
 
       if (scheduledDate) {
@@ -74,18 +74,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           ? `${scheduledDate}T${scheduledTime}:00`
           : `${scheduledDate}T09:00:00`;
 
-        const scheduledDateTimeObj = new Date(scheduledDateTime);
-        const now = new Date();
-
-        const timeDiffMinutes = (scheduledDateTimeObj.getTime() - now.getTime()) / (1000 * 60);
-
-        if (timeDiffMinutes > 60) {
-          status = "scheduled";
-        } else if (timeDiffMinutes >= -480) {
-          status = "in_progress";
-        } else {
-          status = "won";
-        }
+        status = "scheduled";
       }
 
       await createJob.mutateAsync({

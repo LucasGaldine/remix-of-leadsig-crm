@@ -23,6 +23,7 @@ export interface Job extends DbJob {
     full_name?: string | null;
   } | null;
   scheduled_date?: string;
+  display_status?: string;
 }
 
 interface JobCardProps {
@@ -72,7 +73,7 @@ function formatScheduledDateTime(
 export function JobCard({ job, onClick, className }: JobCardProps) {
   const { businessHours } = useBusinessHours();
 
-  const statusLabels: Record<JobStatus, string> = {
+  const statusLabels: Record<string, string> = {
     new: "New",
     contacted: "Contacted",
     qualified: "Qualified",
@@ -81,11 +82,13 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
     completed: "Completed",
     won: "Won",
     lost: "Lost",
-    cancelled: "Cancelled",
     on_hold: "On Hold",
     unqualified: "Unqualified",
+    invoiced: "Invoiced",
+    paid: "Paid",
   };
 
+  const displayStatus = (job.display_status || job.status) as string;
   const scheduledDateTime = formatScheduledDateTime(job.scheduled_date, job.scheduled_time_start, job.scheduled_time_end);
   const address = job.address || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
@@ -112,8 +115,8 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <StatusBadge status={job.status}>
-              {statusLabels[job.status]}
+            <StatusBadge status={displayStatus as JobStatus}>
+              {statusLabels[displayStatus] || displayStatus}
             </StatusBadge>
             {outsideHours && (
               <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
