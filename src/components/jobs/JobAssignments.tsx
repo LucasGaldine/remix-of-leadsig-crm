@@ -297,7 +297,7 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
               </div>
               <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
                 {schedules?.map((schedule) => (
-                  <div key={schedule.id} className="flex h-4 items-center gap-2">
+                  <div key={schedule.id} className="flex items-center gap-2">
                     <Checkbox
                       id={schedule.id}
                       checked={selectedSchedules.includes(schedule.id)}
