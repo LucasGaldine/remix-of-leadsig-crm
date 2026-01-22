@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Database } from "@/integrations/supabase/types";
 import { useBusinessHours } from "@/hooks/useBusinessHours";
 import { isOutsideBusinessHours } from "@/lib/businessHours";
+import { format } from "date-fns";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 type DbJob = Database["public"]["Tables"]["leads"]["Row"];
@@ -41,21 +42,31 @@ function formatTime(time: string | null): string {
   return `${displayHour}:${minutes} ${ampm}`;
 }
 
-function formatScheduledTime(timeStart: string | null, timeEnd: string | null): string {
-  if (!timeStart && !timeEnd) return "Not scheduled";
+function formatScheduledDateTime(
+  date: string | null | undefined,
+  timeStart: string | null | undefined,
+  timeEnd: string | null | undefined
+): string {
+  if (!date) return "Not scheduled";
+
+  const dateFormatted = format(new Date(date + "T00:00:00"), "EEE, MMM d");
+
+  if (!timeStart && !timeEnd) {
+    return dateFormatted;
+  }
 
   const startFormatted = formatTime(timeStart);
   const endFormatted = formatTime(timeEnd);
 
   if (startFormatted && endFormatted) {
-    return `${startFormatted} - ${endFormatted}`;
+    return `${dateFormatted} at ${startFormatted} - ${endFormatted}`;
   } else if (startFormatted) {
-    return startFormatted;
+    return `${dateFormatted} at ${startFormatted}`;
   } else if (endFormatted) {
-    return endFormatted;
+    return `${dateFormatted} until ${endFormatted}`;
   }
 
-  return "Not scheduled";
+  return dateFormatted;
 }
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
@@ -75,7 +86,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
     unqualified: "Unqualified",
   };
 
-  const scheduledTime = formatScheduledTime(job.scheduled_time_start, job.scheduled_time_end);
+  const scheduledDateTime = formatScheduledDateTime(job.scheduled_date, job.scheduled_time_start, job.scheduled_time_end);
   const address = job.address || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
 
@@ -127,7 +138,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4 flex-shrink-0" />
-              <span>{scheduledTime}</span>
+              <span>{scheduledDateTime}</span>
             </div>
 
             {job.crew_lead?.full_name && (
