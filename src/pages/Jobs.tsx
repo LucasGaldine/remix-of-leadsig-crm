@@ -17,7 +17,7 @@ type JobStatus = Database["public"]["Enums"]["unified_status"];
 export default function Jobs() {
   const navigate = useNavigate();
   const { user, isManager } = useAuth();
-  const [selectedStatus, setSelectedStatus] = useState<JobStatus | "all">("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
 
@@ -39,11 +39,10 @@ export default function Jobs() {
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {
       all: allJobs.length,
+      unscheduled: 0,
       scheduled: 0,
       in_progress: 0,
       completed: 0,
-      won: 0,
-      invoiced: 0,
       paid: 0,
     };
 
@@ -57,13 +56,12 @@ export default function Jobs() {
     return counts;
   }, [allJobs]);
 
-  const statusTabs: { value: JobStatus | "all"; label: string }[] = [
+  const statusTabs: { value: string; label: string }[] = [
     { value: "all", label: "All" },
+    { value: "unscheduled", label: "Unscheduled" },
     { value: "scheduled", label: "Scheduled" },
     { value: "in_progress", label: "In Progress" },
     { value: "completed", label: "Completed" },
-    { value: "won", label: "Won" },
-    { value: "invoiced", label: "Invoiced" },
     { value: "paid", label: "Paid" },
   ];
 

@@ -147,19 +147,19 @@ export default function JobDetail() {
     }
   };
 
-  const handleMarkComplete = async () => {
+  const handleReceivedPayment = async () => {
     if (!id) return;
 
     try {
       await updateJobMutation.mutateAsync({
         id,
-        status: "won"
+        status: "paid"
       });
-      toast.success("Job marked as complete!");
+      toast.success("Payment recorded successfully!");
       setCompleteDialogOpen(false);
     } catch (error) {
-      console.error("Error marking job as complete:", error);
-      toast.error("Failed to mark job as complete");
+      console.error("Error recording payment:", error);
+      toast.error("Failed to record payment");
     }
   };
 
@@ -592,25 +592,29 @@ export default function JobDetail() {
         <Button
           className="w-full h-14 text-base font-semibold"
           onClick={() => setCompleteDialogOpen(true)}
-          disabled={job.status === "won" || job.status === "invoiced" || job.status === "paid"}
+          disabled={job.status === "paid"}
         >
-          {(job.status === "won" || job.status === "invoiced" || job.status === "paid") ? "Job Completed" : "Mark as Complete"}
+          {job.status === "paid" ? "Payment Received" : ((job as any).display_status === "completed" ? "Received Payment" : "Mark as Complete")}
         </Button>
       </div>
 
-      {/* Complete Confirmation Dialog */}
+      {/* Payment/Complete Confirmation Dialog */}
       <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark Job as Complete</AlertDialogTitle>
+            <AlertDialogTitle>
+              {(job as any).display_status === "completed" ? "Record Payment" : "Mark Job as Complete"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to mark this job as complete? This will update the job status.
+              {(job as any).display_status === "completed"
+                ? "Have you received payment for this job? This will mark the job as paid."
+                : "Are you sure you want to mark this job as complete? This will update the job status."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleMarkComplete}>
-              Mark Complete
+            <AlertDialogAction onClick={handleReceivedPayment}>
+              {(job as any).display_status === "completed" ? "Confirm Payment" : "Mark Complete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

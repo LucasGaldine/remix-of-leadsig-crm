@@ -10,12 +10,12 @@ const statusBadgeVariants = cva(
         pending: "status-pending",
         attention: "status-attention",
         paid: "status-paid",
+        unscheduled: "status-attention",
         scheduled: "status-confirmed",
         "in-progress": "status-progress",
         in_progress: "status-progress",
         completed: "status-paid",
-        invoiced: "status-pending",
-        won: "status-won",
+        job: "status-confirmed",
       },
       size: {
         sm: "text-2xs px-2 py-0.5",
@@ -61,11 +61,11 @@ export function StatusBadge({
           status === "pending" && "bg-status-pending",
           status === "in-progress" && "bg-status-progress",
           status === "in_progress" && "bg-status-progress",
-          status === "invoiced" && "bg-status-pending",
           status === "attention" && "bg-status-attention",
+          status === "unscheduled" && "bg-status-attention",
           status === "paid" && "bg-status-paid",
           status === "completed" && "bg-status-paid",
-          status === "won" && "bg-status-won"
+          status === "job" && "bg-status-confirmed"
         )}
       />
       {children}

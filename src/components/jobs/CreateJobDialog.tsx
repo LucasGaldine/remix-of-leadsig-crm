@@ -66,15 +66,12 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
       if (customerError) throw customerError;
 
-      let status: "scheduled" | "won" = "won";
       let scheduledDateTime: string | null = null;
 
       if (scheduledDate) {
         scheduledDateTime = scheduledTime
           ? `${scheduledDate}T${scheduledTime}:00`
           : `${scheduledDate}T09:00:00`;
-
-        status = "scheduled";
       }
 
       await createJob.mutateAsync({
@@ -86,7 +83,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         address: jobAddress || null,
         description: description || null,
         scheduled_date: scheduledDateTime,
-        status,
+        status: "job",
       });
 
       toast.success("Job and estimate created successfully!");

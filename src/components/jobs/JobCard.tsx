@@ -77,14 +77,11 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
     new: "New",
     contacted: "Contacted",
     qualified: "Qualified",
+    job: "Job",
+    unscheduled: "Unscheduled",
     scheduled: "Scheduled",
     in_progress: "In Progress",
     completed: "Completed",
-    won: "Won",
-    lost: "Lost",
-    on_hold: "On Hold",
-    unqualified: "Unqualified",
-    invoiced: "Invoiced",
     paid: "Paid",
   };
 
