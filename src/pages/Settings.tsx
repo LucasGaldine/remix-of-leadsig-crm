@@ -110,7 +110,6 @@ export default function Settings() {
           icon: <Calendar className="h-5 w-5" />,
           label: "Availability",
           description: "Working hours and blocked dates",
-          comingSoon: true,
           onClick: () => navigate("/settings/availability"),
         },
         {
