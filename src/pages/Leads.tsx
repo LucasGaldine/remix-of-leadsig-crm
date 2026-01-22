@@ -13,6 +13,7 @@ import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 import { useRejectedLeads } from "@/hooks/useRejectedLeads";
 import { formatDistanceToNow } from "date-fns";
 import { UserPlus } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 type FilterStatus = "all" | LeadStatus;
 
@@ -25,6 +26,7 @@ const filterOptions: { value: FilterStatus; label: string }[] = [
 
 export default function Leads() {
   const navigate = useNavigate();
+  const { isManager } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
   const [showAddLead, setShowAddLead] = useState(false);
@@ -181,16 +183,18 @@ export default function Leads() {
         )}
       </main>
 
-      <FloatingActionButton
-        actions={[
-          {
-            icon: <UserPlus className="h-5 w-5" />,
-            label: "Add Lead",
-            onClick: () => setShowAddLead(true),
-            primary: true,
-          },
-        ]}
-      />
+      {isManager() && (
+        <FloatingActionButton
+          actions={[
+            {
+              icon: <UserPlus className="h-5 w-5" />,
+              label: "Add Lead",
+              onClick: () => setShowAddLead(true),
+              primary: true,
+            },
+          ]}
+        />
+      )}
 
       <AddLeadDialog
         open={showAddLead}
