@@ -1,7 +1,10 @@
 import { MapPin, Clock, User, ChevronRight } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Database } from "@/integrations/supabase/types";
+import { useBusinessHours } from "@/hooks/useBusinessHours";
+import { isOutsideBusinessHours } from "@/lib/businessHours";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 type DbJob = Database["public"]["Tables"]["leads"]["Row"];
@@ -18,6 +21,7 @@ export interface Job extends DbJob {
     id: string;
     full_name?: string | null;
   } | null;
+  scheduled_date?: string;
 }
 
 interface JobCardProps {
@@ -55,6 +59,8 @@ function formatScheduledTime(timeStart: string | null, timeEnd: string | null): 
 }
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
+  const { businessHours } = useBusinessHours();
+
   const statusLabels: Record<JobStatus, string> = {
     new: "New",
     contacted: "Contacted",
@@ -73,6 +79,15 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
   const address = job.address || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
 
+  const outsideHours = job.scheduled_date
+    ? isOutsideBusinessHours(
+        businessHours,
+        job.scheduled_date,
+        job.scheduled_time_start,
+        job.scheduled_time_end
+      )
+    : false;
+
   return (
     <button
       onClick={onClick}
@@ -85,10 +100,15 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <StatusBadge status={job.status}>
               {statusLabels[job.status]}
             </StatusBadge>
+            {outsideHours && (
+              <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
+                Outside normal hours
+              </Badge>
+            )}
           </div>
 
           <h3 className="font-semibold text-foreground truncate text-lg">

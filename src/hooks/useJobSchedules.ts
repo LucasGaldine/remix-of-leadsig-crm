@@ -58,6 +58,22 @@ export function useAddJobSchedule() {
 
       if (!accountMember) throw new Error("No active account found");
 
+      const { data: dayOffCheck, error: dayOffError } = await supabase
+        .from("days_off")
+        .select("date, reason")
+        .eq("account_id", accountMember.account_id)
+        .eq("date", schedule.scheduled_date)
+        .maybeSingle();
+
+      if (dayOffError) throw dayOffError;
+
+      if (dayOffCheck) {
+        const reason = dayOffCheck.reason ? ` (${dayOffCheck.reason})` : "";
+        throw new Error(
+          `Cannot schedule job on ${new Date(schedule.scheduled_date + "T00:00:00").toLocaleDateString()}${reason}. This date is marked as a day off.`
+        );
+      }
+
       const { data, error } = await supabase
         .from("job_schedules")
         .insert({
@@ -85,6 +101,32 @@ export function useUpdateJobSchedule() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<JobSchedule> & { id: string }) => {
+      if (updates.scheduled_date) {
+        const { data: existingSchedule } = await supabase
+          .from("job_schedules")
+          .select("account_id")
+          .eq("id", id)
+          .single();
+
+        if (existingSchedule) {
+          const { data: dayOffCheck, error: dayOffError } = await supabase
+            .from("days_off")
+            .select("date, reason")
+            .eq("account_id", existingSchedule.account_id)
+            .eq("date", updates.scheduled_date)
+            .maybeSingle();
+
+          if (dayOffError) throw dayOffError;
+
+          if (dayOffCheck) {
+            const reason = dayOffCheck.reason ? ` (${dayOffCheck.reason})` : "";
+            throw new Error(
+              `Cannot schedule job on ${new Date(updates.scheduled_date + "T00:00:00").toLocaleDateString()}${reason}. This date is marked as a day off.`
+            );
+          }
+        }
+      }
+
       const { data, error } = await supabase
         .from("job_schedules")
         .update({

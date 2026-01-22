@@ -37,6 +37,9 @@ import { JobAssignments } from "@/components/jobs/JobAssignments";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useBusinessHours } from "@/hooks/useBusinessHours";
+import { isOutsideBusinessHours } from "@/lib/businessHours";
+import { Badge } from "@/components/ui/badge";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -64,6 +67,7 @@ export default function JobDetail() {
 
   const { data: job, isLoading, error } = useJob(id);
   const { data: schedules = [], isLoading: schedulesLoading } = useJobSchedules(id);
+  const { businessHours } = useBusinessHours();
   const addScheduleMutation = useAddJobSchedule();
   const updateScheduleMutation = useUpdateJobSchedule();
   const deleteScheduleMutation = useDeleteJobSchedule();
@@ -415,28 +419,44 @@ export default function JobDetail() {
                 </div>
               ) : hasSchedules ? (
                 <div className="space-y-2 mb-3">
-                  {schedules.map((schedule) => (
-                    <div key={schedule.id} className="flex items-center justify-between p-2 bg-secondary/50 rounded-md">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d, yyyy")}
-                        </p>
-                        {schedule.scheduled_time_start && schedule.scheduled_time_end && (
-                          <p className="text-xs text-muted-foreground">
-                            {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
-                          </p>
-                        )}
+                  {schedules.map((schedule) => {
+                    const outsideHours = isOutsideBusinessHours(
+                      businessHours,
+                      schedule.scheduled_date,
+                      schedule.scheduled_time_start,
+                      schedule.scheduled_time_end
+                    );
+
+                    return (
+                      <div key={schedule.id} className="flex items-center justify-between p-2 bg-secondary/50 rounded-md">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-foreground">
+                              {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d, yyyy")}
+                            </p>
+                            {outsideHours && (
+                              <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
+                                Outside normal hours
+                              </Badge>
+                            )}
+                          </div>
+                          {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                            <p className="text-xs text-muted-foreground">
+                              {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                            </p>
+                          )}
+                        </div>
+                        {isManager() && (<Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteSchedule(schedule.id)}
+                          className="h-7 w-7 p-0"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>)}
                       </div>
-                      {isManager() && (<Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteSchedule(schedule.id)}
-                        className="h-7 w-7 p-0"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>)}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : null}
 
