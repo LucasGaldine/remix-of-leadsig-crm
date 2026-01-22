@@ -18,7 +18,7 @@ const navItems: NavItem[] = [
   { icon: <FileText className="h-4 w-4" />, label: "Jobs", path: "/jobs", requiredRole: 'all' },
   { icon: <Calendar className="h-4 w-4" />, label: "Calendar", path: "/schedule", requiredRole: 'all' },
   { icon: <DollarSign className="h-4 w-4" />, label: "Payments", path: "/payments", requiredRole: 'manager' },
-  //{ icon: <Package className="h-4 w-4" />, label: "Materials", path: "/materials", requiredRole: 'manager' },
+  { icon: <Package className="h-4 w-4" />, label: "Materials", path: "/materials", requiredRole: 'manager' },
   { icon: <Settings className="h-4 w-4" />, label: "Settings", path: "/settings", requiredRole: 'all' },
 ];
 
