@@ -15,21 +15,24 @@ export interface BusinessHours {
 }
 
 export function useBusinessHours() {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: businessHours, isLoading } = useQuery({
-    queryKey: ['business-hours', user?.id],
+    queryKey: ['business-hours', currentAccount?.id],
     queryFn: async () => {
+      if (!currentAccount) return [];
+
       const { data, error } = await supabase
         .from('business_hours')
         .select('*')
+        .eq('account_id', currentAccount.id)
         .order('day_of_week');
 
       if (error) throw error;
       return data as BusinessHours[];
     },
-    enabled: !!user,
+    enabled: !!user && !!currentAccount,
   });
 
   const upsertBusinessHours = useMutation({
