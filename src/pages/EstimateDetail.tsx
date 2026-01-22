@@ -159,7 +159,7 @@ export default function EstimateDetail() {
         .eq('id', estimate.job_id)
         .single();
 
-      const isJob = jobData && ['won', 'scheduled', 'in_progress'].includes(jobData.status);
+      const shouldTrackChanges = jobData && ['job', 'paid'].includes(jobData.status);
 
       const existingIds = new Set(
         estimate.line_items
@@ -171,7 +171,7 @@ export default function EstimateDetail() {
       const deletedIds = Array.from(existingIds).filter((id) => !currentIds.has(id as string));
 
       // Handle deleted items
-      if (isJob) {
+      if (shouldTrackChanges) {
         // Track as change order
         for (const deletedId of deletedIds) {
           const { error } = await supabase
@@ -203,7 +203,7 @@ export default function EstimateDetail() {
         const total = quantity * unitPrice;
 
         if (item.isNew) {
-          if (isJob) {
+          if (shouldTrackChanges) {
             // Add as change order
             const { error } = await supabase.from('estimate_line_items').insert({
               estimate_id: id,
@@ -252,7 +252,7 @@ export default function EstimateDetail() {
               parseFloat(original.unit_price) !== unitPrice);
 
           if (hasChanged) {
-            if (isJob) {
+            if (shouldTrackChanges) {
               // Track as change order
               await supabase
                 .from('estimate_line_items')
