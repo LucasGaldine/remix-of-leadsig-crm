@@ -39,6 +39,8 @@ export function useBusinessHours() {
         .upsert({
           ...hours,
           updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'account_id,day_of_week',
         })
         .select()
         .maybeSingle();
