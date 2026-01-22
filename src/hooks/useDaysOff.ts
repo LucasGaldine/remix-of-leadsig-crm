@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 export interface DayOff {
   id: string;
@@ -66,17 +66,10 @@ export function useDaysOff() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['days-off'] });
-      toast({
-        title: 'Success',
-        description: 'Day off added',
-      });
+      toast.success('Day off added');
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
+      toast.error(error.message);
     },
   });
 
@@ -94,17 +87,10 @@ export function useDaysOff() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['days-off'] });
-      toast({
-        title: 'Success',
-        description: 'Day off updated',
-      });
+      toast.success('Day off updated');
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
+      toast.error(error.message);
     },
   });
 
@@ -119,17 +105,10 @@ export function useDaysOff() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['days-off'] });
-      toast({
-        title: 'Success',
-        description: 'Day off removed',
-      });
+      toast.success('Day off removed');
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
+      toast.error(error.message);
     },
   });
 

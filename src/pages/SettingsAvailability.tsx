@@ -32,7 +32,7 @@ const DAYS = [
 
 export default function SettingsAvailability() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { currentAccount } = useAuth();
   const { businessHours, upsertBusinessHours } = useBusinessHours();
   const { daysOff, addDayOff, updateDayOff, deleteDayOff } = useDaysOff();
 
@@ -48,13 +48,13 @@ export default function SettingsAvailability() {
     field: 'start_time' | 'end_time' | 'is_closed',
     value: string | boolean
   ) => {
-    if (!profile?.account_id) return;
+    if (!currentAccount?.id) return;
 
     const existing = getBusinessHoursForDay(dayOfWeek);
     const isClosed = field === 'is_closed' ? (value as boolean) : existing?.is_closed || false;
 
     upsertBusinessHours({
-      account_id: profile.account_id,
+      account_id: currentAccount.id,
       day_of_week: dayOfWeek,
       start_time: isClosed ? null : field === 'start_time' ? (value as string) : existing?.start_time || '09:00',
       end_time: isClosed ? null : field === 'end_time' ? (value as string) : existing?.end_time || '17:00',
@@ -63,10 +63,10 @@ export default function SettingsAvailability() {
   };
 
   const handleAddDayOff = () => {
-    if (!profile?.account_id || !newDayOff.date) return;
+    if (!currentAccount?.id || !newDayOff.date) return;
 
     addDayOff({
-      account_id: profile.account_id,
+      account_id: currentAccount.id,
       date: newDayOff.date,
       reason: newDayOff.reason || undefined,
     });

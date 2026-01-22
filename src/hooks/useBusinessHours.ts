@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 export interface BusinessHours {
   id: string;
@@ -36,28 +36,22 @@ export function useBusinessHours() {
     mutationFn: async (hours: Omit<BusinessHours, 'id' | 'created_at' | 'updated_at'>) => {
       const { data, error } = await supabase
         .from('business_hours')
-        .upsert(hours, {
-          onConflict: 'account_id,day_of_week',
+        .upsert({
+          ...hours,
+          updated_at: new Date().toISOString(),
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['business-hours'] });
-      toast({
-        title: 'Success',
-        description: 'Business hours updated',
-      });
+      toast.success('Business hours updated');
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
+      toast.error(error.message);
     },
   });
 
@@ -72,17 +66,10 @@ export function useBusinessHours() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['business-hours'] });
-      toast({
-        title: 'Success',
-        description: 'Business hours deleted',
-      });
+      toast.success('Business hours deleted');
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
+      toast.error(error.message);
     },
   });
 
