@@ -243,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const isManager = (): boolean => {
-    return role === 'owner' || role === 'admin' || role === 'sales' || role === 'crew_lead';
+    return role === 'owner' || role === 'admin' || role === 'crew_lead';
   };
 
   const isCrewMember = (): boolean => {
