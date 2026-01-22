@@ -43,16 +43,35 @@ export function useActiveJobs() {
         .select(`
           *,
           customer:customers!customer_id(id, name, email, phone, address),
-          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name)
+          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
+          job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("account_id", currentAccount.id)
         .eq("approval_status", "approved")
-        .in("status", ["scheduled", "in_progress"])
-        .eq("scheduled_date", today)
-        .order("scheduled_time_start", { ascending: true, nullsFirst: false });
+        .eq("status", "job");
 
       if (error) throw error;
-      return data;
+
+      const jobsWithSchedulesToday = (data || []).filter((job: any) => {
+        const schedules = job.job_schedules || [];
+        return schedules.some((schedule: any) => schedule.scheduled_date === today);
+      }).map((job: any) => {
+        const schedules = job.job_schedules || [];
+        const todaySchedule = schedules.find((s: any) => s.scheduled_date === today);
+        return {
+          ...job,
+          scheduled_date: todaySchedule?.scheduled_date,
+          scheduled_time_start: todaySchedule?.scheduled_time_start,
+          scheduled_time_end: todaySchedule?.scheduled_time_end,
+          job_schedules: undefined,
+        };
+      }).sort((a: any, b: any) => {
+        if (!a.scheduled_time_start) return 1;
+        if (!b.scheduled_time_start) return -1;
+        return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
+      });
+
+      return jobsWithSchedulesToday;
     },
     enabled: !!user && !!currentAccount,
   });
