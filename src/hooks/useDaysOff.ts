@@ -35,7 +35,7 @@ export function useDaysOff() {
     mutationFn: async (dayOff: { account_id: string; date: string; reason?: string }) => {
       const { data: scheduledJobs, error: checkError } = await supabase
         .from('job_schedules')
-        .select('id, leads!inner(title)')
+        .select('id, leads!inner(name, service_type)')
         .eq('account_id', dayOff.account_id)
         .eq('scheduled_date', dayOff.date);
 
@@ -43,7 +43,9 @@ export function useDaysOff() {
 
       if (scheduledJobs && scheduledJobs.length > 0) {
         const jobTitles = scheduledJobs
-          .map((job: { leads: { title: string } }) => job.leads.title)
+          .map((job: { leads: { name: string; service_type: string } }) =>
+            `${job.leads.name} - ${job.leads.service_type}`
+          )
           .join(', ');
         throw new Error(
           `Cannot add day off: ${scheduledJobs.length} job(s) already scheduled on this date (${jobTitles})`
