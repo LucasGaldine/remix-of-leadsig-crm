@@ -435,7 +435,7 @@ export default function LeadDetail() {
         lead_id: lead.id,
         type: "status_change" as InteractionType,
         direction: "na" as InteractionDirection,
-        summary: `Converted to job with status: ${newStatus}`,
+        summary: "Converted to job",
         created_by: user?.id,
       });
 
