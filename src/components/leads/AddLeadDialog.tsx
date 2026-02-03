@@ -9,24 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { SERVICE_TYPES } from "@/constants/serviceTypes";
 
 interface AddLeadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onLeadCreated?: (leadId: string) => void;
 }
-
-const SERVICE_TYPES = [
-  "Pavers / Patio",
-  "Concrete",
-  "Sod / Lawn",
-  "Deck",
-  "Fencing",
-  "Retaining Wall",
-  "Landscaping",
-  "Hardscaping",
-  "Other",
-];
 
 export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDialogProps) {
   const { user, currentAccount } = useAuth();

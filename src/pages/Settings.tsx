@@ -60,7 +60,7 @@ export default function Settings() {
   const settingSections: SettingSection[] = [
     {
       title: "Business",
-      roles: ["owner"],
+      roles: ["owner","sales"],
       items: [
         {
           icon: <Building2 className="h-5 w-5" />,
@@ -72,7 +72,6 @@ export default function Settings() {
           icon: <MapPin className="h-5 w-5" />,
           label: "Service Area",
           description: "Define where you work",
-          comingSoon: true,
           onClick: () => navigate("/settings/service-area"),
         },
         {
@@ -85,8 +84,6 @@ export default function Settings() {
           icon: <DollarSign className="h-5 w-5" />,
           label: "Minimum Job Size",
           description: "Set your floor",
-          value: "$2,500",
-          comingSoon: true,
           onClick: () => navigate("/settings/min-job-size"),
         },
       ],

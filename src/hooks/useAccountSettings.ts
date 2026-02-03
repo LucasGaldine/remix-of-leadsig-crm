@@ -5,6 +5,13 @@ import { toast } from 'sonner';
 
 export type AccountSettings = {
   daily_job_limit?: number | null;
+  min_job_size?: Record<string, number> | null;
+  service_areas?: Array<{
+    location: string;
+    radius_miles: number;
+    lat?: number | null;
+    lng?: number | null;
+  }> | null;
 } | null;
 
 export function useAccountSettings() {
@@ -58,7 +65,7 @@ export function useAccountSettings() {
     settings,
     isLoading,
     updateSettings: updateSettings.mutate,
+    updateSettingsAsync: updateSettings.mutateAsync,
     isSaving: updateSettings.isPending,
   };
 }
-
