@@ -58,6 +58,32 @@ export function useAddJobSchedule() {
 
       if (!accountMember) throw new Error("No active account found");
 
+      // Enforce daily job limit from account settings
+      const { data: accountSettingsRow, error: settingsError } = await supabase
+        .from("accounts")
+        .select("settings")
+        .eq("id", accountMember.account_id)
+        .single();
+
+      if (settingsError) throw settingsError;
+
+      const dailyLimit = Number(accountSettingsRow?.settings?.daily_job_limit);
+      if (dailyLimit && Number.isFinite(dailyLimit) && dailyLimit > 0) {
+        const { count, error: countError } = await supabase
+          .from("job_schedules")
+          .select("id", { count: "exact", head: true })
+          .eq("account_id", accountMember.account_id)
+          .eq("scheduled_date", schedule.scheduled_date);
+
+        if (countError) throw countError;
+
+        if ((count ?? 0) >= dailyLimit) {
+          throw new Error(
+            `Daily job limit reached (${dailyLimit}) for ${new Date(schedule.scheduled_date + "T00:00:00").toLocaleDateString()}`
+          );
+        }
+      }
+
       const { data: dayOffCheck, error: dayOffError } = await supabase
         .from("days_off")
         .select("date, reason")
@@ -109,6 +135,7 @@ export function useUpdateJobSchedule() {
           .single();
 
         if (existingSchedule) {
+          // Day off guard
           const { data: dayOffCheck, error: dayOffError } = await supabase
             .from("days_off")
             .select("date, reason")
@@ -123,6 +150,33 @@ export function useUpdateJobSchedule() {
             throw new Error(
               `Cannot schedule job on ${new Date(updates.scheduled_date + "T00:00:00").toLocaleDateString()}${reason}. This date is marked as a day off.`
             );
+          }
+
+          // Daily limit guard
+          const { data: accountSettingsRow, error: settingsError } = await supabase
+            .from("accounts")
+            .select("settings")
+            .eq("id", existingSchedule.account_id)
+            .single();
+
+          if (settingsError) throw settingsError;
+
+          const dailyLimit = Number(accountSettingsRow?.settings?.daily_job_limit);
+          if (dailyLimit && Number.isFinite(dailyLimit) && dailyLimit > 0) {
+            const { count, error: countError } = await supabase
+              .from("job_schedules")
+              .select("id", { count: "exact", head: true })
+              .eq("account_id", existingSchedule.account_id)
+              .eq("scheduled_date", updates.scheduled_date)
+              .neq("id", id);
+
+            if (countError) throw countError;
+
+            if ((count ?? 0) >= dailyLimit) {
+              throw new Error(
+                `Daily job limit reached (${dailyLimit}) for ${new Date(updates.scheduled_date + "T00:00:00").toLocaleDateString()}`
+              );
+            }
           }
         }
       }

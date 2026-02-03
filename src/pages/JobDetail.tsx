@@ -31,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useJob, useUpdateJob, useDeleteJob } from "@/hooks/useJobs";
-import { useJobSchedules, useAddJobSchedule, useUpdateJobSchedule, useDeleteJobSchedule } from "@/hooks/useJobSchedules";
+import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useAuth } from "@/hooks/useAuth";
 import { JobAssignments } from "@/components/jobs/JobAssignments";
 import { format } from "date-fns";
@@ -40,6 +40,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useBusinessHours } from "@/hooks/useBusinessHours";
 import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
+import { useScheduleJob } from "@/hooks/useScheduleJob";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -68,9 +69,7 @@ export default function JobDetail() {
   const { data: job, isLoading, error } = useJob(id);
   const { data: schedules = [], isLoading: schedulesLoading } = useJobSchedules(id);
   const { businessHours } = useBusinessHours();
-  const addScheduleMutation = useAddJobSchedule();
-  const updateScheduleMutation = useUpdateJobSchedule();
-  const deleteScheduleMutation = useDeleteJobSchedule();
+  const { scheduleJob, deleteSchedule, isScheduling } = useScheduleJob();
   const updateJobMutation = useUpdateJob();
   const deleteJobMutation = useDeleteJob();
 
@@ -173,26 +172,17 @@ export default function JobDetail() {
   };
 
   const handleSchedule = async () => {
-    if (!id || !scheduleForm.scheduled_date) {
-      toast.error("Please select a date");
-      return;
-    }
+    if (!id) return;
+    const result = await scheduleJob({
+      leadId: id,
+      scheduledDate: scheduleForm.scheduled_date,
+      startTime: scheduleForm.scheduled_time_start,
+      endTime: scheduleForm.scheduled_time_end,
+    });
 
-    try {
-      await addScheduleMutation.mutateAsync({
-        lead_id: id,
-        scheduled_date: scheduleForm.scheduled_date,
-        scheduled_time_start: scheduleForm.scheduled_time_start || undefined,
-        scheduled_time_end: scheduleForm.scheduled_time_end || undefined,
-      });
-
-      toast.success("Schedule added successfully!");
+    if (result.ok) {
       setScheduleForm({ scheduled_date: "", scheduled_time_start: "", scheduled_time_end: "" });
       setScheduleDialogOpen(false);
-    } catch (error) {
-      console.error("Error adding schedule:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to add schedule";
-      toast.error(errorMessage);
     }
   };
 
@@ -200,7 +190,7 @@ export default function JobDetail() {
     if (!id) return;
 
     try {
-      await deleteScheduleMutation.mutateAsync({
+      await deleteSchedule.mutateAsync({
         id: scheduleId,
         lead_id: id,
       });

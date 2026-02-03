@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { useBusinessHours } from '@/hooks/useBusinessHours';
 import { useDaysOff } from '@/hooks/useDaysOff';
 import { useAuth } from '@/hooks/useAuth';
+import { useAccountSettings } from '@/hooks/useAccountSettings';
+import { toast } from 'sonner';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,9 +37,19 @@ export default function SettingsAvailability() {
   const { currentAccount } = useAuth();
   const { businessHours, upsertBusinessHours } = useBusinessHours();
   const { daysOff, addDayOff, updateDayOff, deleteDayOff } = useDaysOff();
+  const { settings, updateSettings, isSaving: isSavingSettings } = useAccountSettings();
 
   const [newDayOff, setNewDayOff] = useState({ date: '', reason: '' });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [maxJobsPerDay, setMaxJobsPerDay] = useState<string>('');
+
+  useEffect(() => {
+    if (settings && settings.daily_job_limit != null) {
+      setMaxJobsPerDay(String(settings.daily_job_limit));
+    } else {
+      setMaxJobsPerDay('');
+    }
+  }, [settings]);
 
   const getBusinessHoursForDay = (dayOfWeek: number) => {
     return businessHours?.find((bh) => bh.day_of_week === dayOfWeek) || null;
@@ -104,6 +116,54 @@ export default function SettingsAvailability() {
             </p>
           </div>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5" />
+              Daily Job Limit
+            </CardTitle>
+            <CardDescription>
+              Set the maximum number of jobs you can accept per day
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-4">
+              <div className="flex-1 max-w-xs">
+                <Label htmlFor="max-jobs">Maximum Jobs Per Day</Label>
+                <Input
+                  id="max-jobs"
+                  type="number"
+                  min="1"
+                  placeholder="Enter maximum number"
+                  value={maxJobsPerDay}
+                  onChange={(e) => setMaxJobsPerDay(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+              <Button
+                onClick={() => {
+                  if (!currentAccount?.id) return;
+                  if (maxJobsPerDay.trim() === '') {
+                    toast.error('Please enter a number before saving');
+                    return;
+                  }
+
+                  const parsed = Number(maxJobsPerDay);
+                  if (Number.isNaN(parsed) || parsed < 1) {
+                    toast.error('Daily job limit must be at least 1');
+                    return;
+                  }
+
+                  updateSettings({ daily_job_limit: parsed });
+                }}
+                disabled={isSavingSettings}
+              >
+                {isSavingSettings ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

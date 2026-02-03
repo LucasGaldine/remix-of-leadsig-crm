@@ -22,6 +22,7 @@ import { useCreateJob } from "@/hooks/useJobs";
 import { useDeleteLead } from "@/hooks/useLeads";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
+import { useScheduleJob } from "@/hooks/useScheduleJob";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -100,6 +101,7 @@ export default function LeadDetail() {
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
   const deleteLeadMutation = useDeleteLead();
+  const { scheduleJob, isScheduling } = useScheduleJob();
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
@@ -422,6 +424,22 @@ export default function LeadDetail() {
     const loadingToast = toast.loading("Converting to job...");
 
     try {
+      // If a schedule date is provided, try scheduling first. If it fails, abort conversion.
+      if (jobSchedule.scheduled_date) {
+        const scheduled = await scheduleJob({
+          leadId: lead.id,
+          scheduledDate: jobSchedule.scheduled_date,
+          startTime: jobSchedule.scheduled_time_start,
+          endTime: jobSchedule.scheduled_time_end,
+        });
+
+        if (!scheduled.ok) {
+          toast.dismiss(loadingToast);
+          setConvertingJob(false);
+          return;
+        }
+      }
+
       const { error: updateError } = await supabase
         .from("leads")
         .update({
@@ -826,9 +844,9 @@ export default function LeadDetail() {
             </Button>
             <Button
               onClick={convertToJob}
-              disabled={convertingJob}
+              disabled={convertingJob || isScheduling}
             >
-              {convertingJob ? "Converting..." : "Convert to Job"}
+              {convertingJob || isScheduling ? "Converting..." : "Convert to Job"}
             </Button>
           </DialogFooter>
         </DialogContent>
