@@ -99,8 +99,8 @@ Deno.serve(async (req: Request) => {
       stripeAccountId = stripeAccount.stripe_account_id;
     }
 
-    const returnUrl = `${req.headers.get("origin") || "https://your-domain.com"}/settings/payments?stripe_connected=true`;
-    const refreshUrl = `${req.headers.get("origin") || "https://your-domain.com"}/settings/payments?stripe_refresh=true`;
+    const returnUrl = `${req.headers.get("origin") || "https://your-domain.com"}/settings/stripe?stripe_connected=true`;
+    const refreshUrl = `${req.headers.get("origin") || "https://your-domain.com"}/settings/stripe?stripe_refresh=true`;
 
     const accountLink = await stripe.accountLinks.create({
       account: stripeAccountId,

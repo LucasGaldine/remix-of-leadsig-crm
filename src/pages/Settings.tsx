@@ -131,7 +131,6 @@ export default function Settings() {
           icon: <Bell className="h-5 w-5" />,
           label: "Notifications",
           description: "Push and SMS settings",
-          comingSoon: true,
           onClick: () => navigate("/settings/notifications"),
         },
       ],

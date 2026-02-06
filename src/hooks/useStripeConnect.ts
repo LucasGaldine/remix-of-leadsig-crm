@@ -18,6 +18,24 @@ export function useStripeConnect() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
 
+  const extractFunctionError = (error: any) => {
+    if (!error) return null;
+    // Supabase functions errors sometimes carry a body/context with more detail
+    const body = error.context?.body ?? error.body;
+    if (body) {
+      try {
+        const parsed = typeof body === "string" ? JSON.parse(body) : body;
+        if (parsed?.error) return parsed.error;
+        if (parsed?.message) return parsed.message;
+      } catch {
+        // fall through to message below
+      }
+      if (typeof body === "string") return body;
+    }
+    if (error.message) return error.message;
+    return null;
+  };
+
   const checkStatus = useCallback(async () => {
     try {
       setLoading(true);
@@ -50,7 +68,7 @@ export function useStripeConnect() {
 
       if (error) {
         console.error("OAuth error:", error);
-        const errorMessage = error.message || "Failed to start Stripe connection";
+        const errorMessage = extractFunctionError(error) || "Failed to start Stripe connection";
         toast.error(errorMessage);
         return;
       }

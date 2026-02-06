@@ -48,7 +48,7 @@ export default function StripeCallback() {
         setStatus("success");
 
         setTimeout(() => {
-          navigate("/settings/payments?stripe_connected=true");
+          navigate("/settings/stripe?stripe_connected=true");
         }, 2000);
       } catch (err) {
         console.error("OAuth callback error:", err);
@@ -98,7 +98,7 @@ export default function StripeCallback() {
                 </p>
               </div>
               <Button
-                onClick={() => navigate("/settings/payments")}
+                onClick={() => navigate("/settings/stripe")}
                 className="w-full"
               >
                 Return to Settings
