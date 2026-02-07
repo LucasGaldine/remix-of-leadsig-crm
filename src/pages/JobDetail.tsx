@@ -456,7 +456,7 @@ export default function JobDetail() {
       </div>
 
       {/* Next Step Guidance */}
-      {job.status !== "paid" && isManager && (
+      {job.status !== "paid" && isManager() && (
         <div className="px-4 pt-4">
           <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
