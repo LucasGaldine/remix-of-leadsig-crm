@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Calculator, Save, RotateCcw, Loader2 } from "lucide-react";
+import { Calculator, RotateCcw, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { StickyActionBar } from "@/components/settings/StickyActionBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MobileNav } from "@/components/layout/MobileNav";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -162,28 +164,14 @@ export default function SettingsPricingRules() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-card border-b border-border">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-semibold text-lg">Pricing Rules</h1>
-            <p className="text-sm text-muted-foreground">Configure estimate calculations</p>
-          </div>
-          <Button onClick={saveRules} disabled={saving}>
-            {saving ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-1" />
-            )}
-            Save
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        title="Pricing Rules"
+        showBack
+        backTo="/settings"
+        showNotifications={false}
+      />
 
-      <div className="px-4 py-4">
+      <main className="px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -368,7 +356,9 @@ export default function SettingsPricingRules() {
             </Tabs>
           </div>
         )}
-      </div>
+
+        <StickyActionBar onSave={saveRules} isSaving={saving} />
+      </main>
 
       <MobileNav />
     </div>

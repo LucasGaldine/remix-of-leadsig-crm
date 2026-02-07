@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { StickyActionBar } from "@/components/settings/StickyActionBar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -383,11 +384,7 @@ export default function SettingsNotifications() {
           </CardContent>
         </Card>
 
-        <div className="sticky bottom-20 bg-surface-sunken/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur px-1 pt-2 pb-4">
-          <Button onClick={handleSave} className="w-full" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save preferences"}
-          </Button>
-        </div>
+        <StickyActionBar onSave={handleSave} isSaving={isSaving} label="Save preferences" />
       </main>
 
       <MobileNav />

@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, Loader2, ArrowLeft, Copy, Check, Users } from "lucide-react";
+import { Building2, Loader2, Copy, Check, Users } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { StickyActionBar } from "@/components/settings/StickyActionBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,25 +102,21 @@ export default function SettingsCompanyProfile() {
     );
   }
 
-  return (
-    <div className="space-y-6 max-w-4xl mx-auto p-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/settings")}
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Company Profile</h1>
-          <p className="text-muted-foreground">
-            Manage your business information for estimates and invoices
-          </p>
-        </div>
-      </div>
+  const handleSubmitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSave(e);
+  };
 
-      <form onSubmit={handleSave} className="space-y-6">
+  return (
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader
+        title="Company Profile"
+        showBack
+        backTo="/settings"
+        showNotifications={false}
+      />
+
+      <form onSubmit={handleSubmitForm} className="px-4 py-6 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -256,27 +255,19 @@ export default function SettingsCompanyProfile() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => navigate("/settings")}
-            disabled={isSaving}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save Changes"
-            )}
-          </Button>
-        </div>
+        <StickyActionBar
+          onSave={() => {
+            if (!companyName.trim()) {
+              toast.error("Company name is required");
+              return;
+            }
+            handleSave({ preventDefault: () => {} } as React.FormEvent);
+          }}
+          isSaving={isSaving}
+        />
       </form>
+
+      <MobileNav />
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Camera, Save, Trash2, AlertTriangle } from "lucide-react";
+import { User, Camera, Trash2, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { StickyActionBar } from "@/components/settings/StickyActionBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -395,23 +396,6 @@ export default function SettingsProfile() {
           </div>
         </div>
 
-        {/* Save Button */}
-        <Button
-          onClick={handleSaveProfile}
-          disabled={loading}
-          className="w-full"
-          size="lg"
-        >
-          {loading ? (
-            "Saving..."
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
-            </>
-          )}
-        </Button>
-
         {/* Change Password */}
         <div className="card-elevated rounded-lg p-6">
           <h3 className="font-semibold text-lg mb-4">Change Password</h3>
@@ -474,6 +458,7 @@ export default function SettingsProfile() {
             Delete Account
           </Button>
         </div>
+        <StickyActionBar onSave={handleSaveProfile} isSaving={loading} />
       </main>
 
       <MobileNav />

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, DollarSign } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { DollarSign } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { StickyActionBar } from "@/components/settings/StickyActionBar";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -68,43 +70,24 @@ export default function SettingsMinJobSize() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="container max-w-4xl mx-auto p-6 space-y-6">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/settings")}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              Minimum Job Size
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400">
-              Set a floor amount for each service type
-            </p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader
+        title="Minimum Job Size"
+        showBack
+        backTo="/settings"
+        showNotifications={false}
+      />
 
+      <main className="px-4 py-6 space-y-6">
         <Card>
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Service Type Minimums
-              </CardTitle>
-              <CardDescription className="mt-1">
-                Jobs can’t be created or scheduled below these amounts for their service type.
-              </CardDescription>
-            </div>
-            <div className="sm:ml-auto">
-              <Button onClick={handleSave} size="sm" disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-            </div>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Service Type Minimums
+            </CardTitle>
+            <CardDescription>
+              Jobs can't be created or scheduled below these amounts for their service type.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {SERVICE_TYPES.map((type) => (
@@ -134,15 +117,10 @@ export default function SettingsMinJobSize() {
           </CardContent>
         </Card>
 
-        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-          <Button onClick={handleSave} className="flex-1">
-            Save Changes
-          </Button>
-          <Button variant="outline" onClick={() => navigate("/settings")} className="flex-1">
-            Cancel
-          </Button>
-        </div>
-      </div>
+        <StickyActionBar onSave={handleSave} isSaving={isSaving} />
+      </main>
+
+      <MobileNav />
     </div>
   );
 }
