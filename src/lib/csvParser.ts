@@ -74,6 +74,11 @@ export function autoMapColumns(headers: string[]): ColumnMapping {
     "contact name": "name",
     first_name: "name",
     firstname: "name",
+    "first name": "name",
+    last_name: "name",
+    lastname: "name",
+    "last name": "name",
+    surname: "name",
     email: "email",
     "email address": "email",
     phone: "phone",
@@ -108,12 +113,13 @@ export function autoMapColumns(headers: string[]): ColumnMapping {
     price: "estimated_value",
   };
 
+  const COMBINABLE_FIELDS: Set<LeadFieldKey> = new Set(["name", "address", "notes"]);
   const usedFields = new Set<LeadFieldKey>();
 
   for (const header of headers) {
     const normalized = header.toLowerCase().trim();
     const match = aliases[normalized];
-    if (match && !usedFields.has(match)) {
+    if (match && (!usedFields.has(match) || COMBINABLE_FIELDS.has(match))) {
       mapping[header] = match;
       usedFields.add(match);
     } else {

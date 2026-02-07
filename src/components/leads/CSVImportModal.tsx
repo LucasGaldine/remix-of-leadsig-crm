@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import { Upload, FileSpreadsheet, AlertCircle, Check, Loader2, ArrowRight, X } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, Check, Loader2, ArrowRight, X, Link2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,6 +18,17 @@ interface CSVImportModalProps {
 type Step = "upload" | "mapping" | "importing" | "done";
 
 const SKIP_VALUE = "__skip__";
+
+function getCombineInfo(mapping: ColumnMapping, headers: string[]) {
+  const fieldToHeaders: Partial<Record<LeadFieldKey, string[]>> = {};
+  for (const header of headers) {
+    const field = mapping[header];
+    if (!field) continue;
+    if (!fieldToHeaders[field]) fieldToHeaders[field] = [];
+    fieldToHeaders[field]!.push(header);
+  }
+  return fieldToHeaders;
+}
 
 export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImportModalProps) {
   const { user, currentAccount } = useAuth();
@@ -97,7 +108,7 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
 
   const hasNameMapping = Object.values(mapping).includes("name");
 
-  const usedFields = new Set(Object.values(mapping).filter(Boolean));
+  const combineInfo = csv ? getCombineInfo(mapping, csv.headers) : {};
 
   const handleImport = async () => {
     if (!csv || !user?.id || !currentAccount) return;
@@ -109,10 +120,13 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
 
     setStep("importing");
 
-    const reverseMapping: Record<string, string> = {};
-    for (const [header, field] of Object.entries(mapping)) {
-      if (field) reverseMapping[field] = header;
-    }
+    const fieldToHeaderIndices: Partial<Record<LeadFieldKey, number[]>> = {};
+    csv.headers.forEach((header, idx) => {
+      const field = mapping[header];
+      if (!field) return;
+      if (!fieldToHeaderIndices[field]) fieldToHeaderIndices[field] = [];
+      fieldToHeaderIndices[field]!.push(idx);
+    });
 
     let success = 0;
     let failed = 0;
@@ -123,13 +137,12 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
       const batch = csv.rows.slice(i, i + BATCH_SIZE);
       const records = batch.map((row, batchIdx) => {
         const rowIdx = i + batchIdx + 2;
-        const getValue = (field: string) => {
-          const header = reverseMapping[field];
-          if (!header) return null;
-          const colIdx = csv.headers.indexOf(header);
-          if (colIdx === -1) return null;
-          const val = row[colIdx]?.trim();
-          return val || null;
+
+        const getValue = (field: LeadFieldKey) => {
+          const indices = fieldToHeaderIndices[field];
+          if (!indices || indices.length === 0) return null;
+          const parts = indices.map((idx) => row[idx]?.trim()).filter(Boolean);
+          return parts.length > 0 ? parts.join(" ") : null;
         };
 
         const name = getValue("name");
@@ -197,7 +210,7 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Upload a CSV file containing your leads data."}
-            {step === "mapping" && "Match each CSV column to the corresponding lead field."}
+            {step === "mapping" && "Match each CSV column to a lead field. Map multiple columns to the same field to combine them (e.g. First Name + Last Name)."}
             {step === "importing" && "Please wait while your leads are being imported."}
             {step === "done" && `Processed ${importResult.success + importResult.failed} rows.`}
           </DialogDescription>
@@ -241,41 +254,55 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
               </span>
             </div>
 
-            <ScrollArea className="h-[340px] pr-3">
-              <div className="space-y-3">
+            <ScrollArea className="h-[340px]">
+              <div className="space-y-3 px-1 py-1">
                 {csv.headers.map((header) => {
                   const currentValue = mapping[header] || "";
+                  const fieldHeaders = currentValue ? combineInfo[currentValue] : undefined;
+                  const isCombined = fieldHeaders && fieldHeaders.length > 1;
+                  const combineIndex = isCombined ? fieldHeaders.indexOf(header) + 1 : 0;
+                  const fieldLabel = currentValue
+                    ? LEAD_FIELDS.find((f) => f.key === currentValue)?.label
+                    : "";
+
                   return (
-                    <div key={header} className="flex items-center gap-3">
+                    <div key={header} className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{header}</p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {csv.rows[0]?.[csv.headers.indexOf(header)] || "—"}
+                          {csv.rows[0]?.[csv.headers.indexOf(header)] || "\u2014"}
                         </p>
                       </div>
                       <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <Select
-                        value={currentValue || SKIP_VALUE}
-                        onValueChange={(v) => handleMappingChange(header, v)}
-                      >
-                        <SelectTrigger className="w-[160px] shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={SKIP_VALUE}>
-                            <span className="text-muted-foreground">Skip column</span>
-                          </SelectItem>
-                          {LEAD_FIELDS.map((field) => {
-                            const taken = usedFields.has(field.key) && currentValue !== field.key;
-                            return (
-                              <SelectItem key={field.key} value={field.key} disabled={taken}>
+                      <div className="shrink-0 w-[160px]">
+                        <Select
+                          value={currentValue || SKIP_VALUE}
+                          onValueChange={(v) => handleMappingChange(header, v)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={SKIP_VALUE}>
+                              <span className="text-muted-foreground">Skip column</span>
+                            </SelectItem>
+                            {LEAD_FIELDS.map((field) => (
+                              <SelectItem key={field.key} value={field.key}>
                                 {field.label}
                                 {field.required && " *"}
                               </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {isCombined && (
+                          <div className="flex items-center gap-1 mt-1 text-xs text-primary">
+                            <Link2 className="h-3 w-3" />
+                            <span>
+                              {fieldLabel} {combineIndex} of {fieldHeaders.length}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
