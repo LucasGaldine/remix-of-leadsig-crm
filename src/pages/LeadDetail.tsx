@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Navigation, Mail } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Mail } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
@@ -724,17 +724,28 @@ export default function LeadDetail() {
             <MessageSquare className="h-4 w-4" />
             Text
           </Button>
-          <Button
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={() => {
-              const address = lead.address || lead.city;
-              if (address) window.open(`https://maps.google.com/?q=${encodeURIComponent(address)}`);
-            }}
-          >
-            <Navigation className="h-4 w-4" />
-            Navigate
-          </Button>
+          {showConvertButton && !hasEstimate && (
+            <Button
+              size="sm"
+              className="flex-1 gap-2"
+              disabled={!hasAddress}
+              onClick={() => setCreateEstimateDialogOpen(true)}
+            >
+              <FileText className="h-4 w-4" />
+              Schedule Estimate
+            </Button>
+          )}
+          {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
+            <Button
+              size="sm"
+              className="flex-1 gap-2"
+              disabled={!hasAddress}
+              onClick={() => setConvertJobDialogOpen(true)}
+            >
+              <Briefcase className="h-4 w-4" />
+              Convert to Job
+            </Button>
+          )}
         </div>
       </div>
       
@@ -982,43 +993,6 @@ export default function LeadDetail() {
                   {lead.status === "qualified" && hasEstimate && isEstimateApproved && requiresPhotos && beforePhotoCount === 0 && "The estimate is approved. Add at least one before photo to convert this lead to a job."}
                   {lead.status === "qualified" && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && "The estimate is approved. Convert this lead to a job to get started."}
                 </p>
-              </div>
-            </div>
-          )}
-
-          {/* Lead Actions */}
-          {showConvertButton && (!hasEstimate || (hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0))) && (
-            <div className="px-4 py-4">
-              <div className="card-elevated rounded-lg p-4 space-y-3">
-                <div className="flex gap-2">
-                  {!hasEstimate && (
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      disabled={!hasAddress}
-                      onClick={() => setCreateEstimateDialogOpen(true)}
-                    >
-                      <FileText className="h-4 w-4 mr-1" />
-                      Schedule Estimate
-                    </Button>
-                  )}
-                  {hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      disabled={!hasAddress}
-                      onClick={() => setConvertJobDialogOpen(true)}
-                    >
-                      <Briefcase className="h-4 w-4 mr-1" />
-                      Convert to Job
-                    </Button>
-                  )}
-                </div>
-                {!hasAddress && (
-                  <p className="text-xs text-amber-600 mt-2">
-                    Add an address to schedule or create an estimate.
-                  </p>
-                )}
               </div>
             </div>
           )}
