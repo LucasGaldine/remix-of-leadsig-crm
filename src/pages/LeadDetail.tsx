@@ -855,7 +855,7 @@ export default function LeadDetail() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-value">Estimated Value</Label>
+              <Label htmlFor="edit-value">Budget</Label>
               <Input
                 id="edit-value"
                 type="number"
