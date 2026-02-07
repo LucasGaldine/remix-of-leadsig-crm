@@ -945,16 +945,23 @@ export default function LeadDetail() {
             className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
           >
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-secondary">
-                <DollarSign className="h-5 w-5 text-secondary-foreground" />
+              <div className={cn("p-2 rounded-lg", estimate.status === "accepted" ? "bg-emerald-100" : "bg-secondary")}>
+                <DollarSign className={cn("h-5 w-5", estimate.status === "accepted" ? "text-emerald-700" : "text-secondary-foreground")} />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-foreground">Estimate</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-foreground">Estimate</p>
+                  <span className={cn(
+                    "text-xs font-medium px-2 py-0.5 rounded-full",
+                    estimate.status === "accepted"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-amber-100 text-amber-700"
+                  )}>
+                    {estimate.status === "accepted" ? "Approved" : "Not Approved"}
+                  </span>
+                </div>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  ${Number(estimate.total).toLocaleString()} · {estimate.status}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {estimate.line_items?.length || 0} line items
+                  ${Number(estimate.total).toLocaleString()} · {estimate.line_items?.length || 0} line items
                 </p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
