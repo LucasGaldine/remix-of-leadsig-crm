@@ -200,6 +200,17 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
             </Select>
           </div>
 
+          <div>
+            <Label htmlFor="address">Address</Label>
+            <Input
+              id="address"
+              value={formData.address}
+              onChange={(e) => handleChange("address", e.target.value)}
+              placeholder="123 Main St"
+              className="mt-1.5"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="city">City</Label>
@@ -222,17 +233,6 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
                 className="mt-1.5"
               />
             </div>
-          </div>
-
-          <div>
-            <Label htmlFor="address">Address</Label>
-            <Input
-              id="address"
-              value={formData.address}
-              onChange={(e) => handleChange("address", e.target.value)}
-              placeholder="123 Main St"
-              className="mt-1.5"
-            />
           </div>
 
           <div>
