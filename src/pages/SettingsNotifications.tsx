@@ -17,6 +17,7 @@ import {
   Loader2,
   UserCheck,
   Sun,
+  RotateCcw,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -118,8 +119,8 @@ export default function SettingsNotifications() {
     () => ({
       channels: { push: false, email: false, sms: false },
       alerts: isCrew
-        ? { job_assignments: true, schedule_changes: true, same_day_reminders: true, tasks: true }
-        : { new_leads: true, lead_updates: true, payments: true, schedule_changes: true, tasks: false },
+        ? { job_assignments: true, schedule_changes: true, same_day_reminders: true, tasks: true, new_leads: false, lead_updates: false, payments: false }
+        : { new_leads: true, lead_updates: true, payments: true, schedule_changes: true, tasks: false, job_assignments: false, same_day_reminders: false },
       quiet_hours: { enabled: false, start: "21:00", end: "07:00" },
       digest: { frequency: isCrew ? "off" : "daily" },
     }),
@@ -133,6 +134,7 @@ export default function SettingsNotifications() {
   const [quietEnd, setQuietEnd] = useState(defaultPrefs.quiet_hours.end);
   const [digestFrequency, setDigestFrequency] = useState<"off" | "daily" | "weekly">(defaultPrefs.digest.frequency);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isSendingEmailTest, setIsSendingEmailTest] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -337,6 +339,37 @@ export default function SettingsNotifications() {
     setIsSaving(false);
   };
 
+  const handleReset = async () => {
+    if (!user) {
+      toast.error("You need to be signed in to reset preferences.");
+      return;
+    }
+
+    setIsResetting(true);
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ notification_preferences: defaultPrefs })
+      .eq("user_id", user.id);
+
+    if (error) {
+      toast.error("Failed to reset notification preferences.");
+      setIsResetting(false);
+      return;
+    }
+
+    setChannels(defaultPrefs.channels);
+    setAlerts(defaultPrefs.alerts);
+    setQuietHoursEnabled(defaultPrefs.quiet_hours.enabled);
+    setQuietStart(defaultPrefs.quiet_hours.start);
+    setQuietEnd(defaultPrefs.quiet_hours.end);
+    setDigestFrequency(defaultPrefs.digest.frequency);
+    setIsDirty(false);
+    toast.success("Notification preferences reset to defaults");
+    await refreshProfile();
+    setIsResetting(false);
+  };
+
   return (
     <PlanGate
       requiredPlan="basic"
@@ -411,10 +444,26 @@ export default function SettingsNotifications() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Alerts
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Alerts
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReset}
+                disabled={isResetting || isSaving}
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
+              >
+                {isResetting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
+                Reset to defaults
+              </Button>
+            </div>
             <CardDescription>Pick the events that should trigger notifications.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
