@@ -1,16 +1,12 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-leadsig-api-key",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, x-leadsig-api-key",
 };
 
-// Relevance AI Configuration
-const RELEVANCE_AI_STUDIO_ID = "d50e7c9d-7933-47c5-b284-9295b3faf020";
-const RELEVANCE_AI_PROJECT_ID = "a8f61433-8567-40b3-a274-8c65d6d9a062";
-
-// Relevance AI Response Structure
-interface RelevanceAIResponse {
+interface ParsedLead {
   full_name?: string;
   email?: string;
   phone_number?: string;
@@ -18,16 +14,123 @@ interface RelevanceAIResponse {
   service_type?: string;
   address?: string;
   city?: string;
+  state?: string;
   notes?: string;
-  is_budget_confirmed?: boolean;
-  is_in_service_area?: boolean;
-  is_decision_maker?: boolean;
 }
 
-// Call Relevance AI API to parse lead data with timeout
-async function parseLeadWithAI(
-  rawPayload: unknown
-): Promise<RelevanceAIResponse> {
+interface GoogleColumnData {
+  column_id: string;
+  string_value: string;
+  column_name?: string;
+}
+
+function parseGoogleLead(payload: Record<string, unknown>): ParsedLead | null {
+  const columns = payload.user_column_data as GoogleColumnData[] | undefined;
+  if (!Array.isArray(columns)) return null;
+
+  const lead: ParsedLead = {};
+  const nameParts: string[] = [];
+
+  for (const col of columns) {
+    const id = (col.column_id || "").toUpperCase();
+    const name = (col.column_name || "").toLowerCase();
+    const val = (col.string_value || "").trim();
+    if (!val) continue;
+
+    if (id === "FULL_NAME" || name.includes("full name")) {
+      lead.full_name = val;
+    } else if (id === "FIRST_NAME" || name.includes("first name")) {
+      nameParts[0] = val;
+    } else if (id === "LAST_NAME" || name.includes("last name")) {
+      nameParts[1] = val;
+    } else if (id === "EMAIL" || name.includes("email")) {
+      lead.email = val;
+    } else if (id === "PHONE_NUMBER" || name.includes("phone")) {
+      lead.phone_number = val;
+    } else if (id === "STREET_ADDRESS" || name.includes("address") || name.includes("street")) {
+      lead.address = val;
+    } else if (id === "CITY" || name === "city") {
+      lead.city = val;
+    } else if (id === "REGION" || id === "STATE" || name === "state" || name === "region") {
+      lead.state = val;
+    } else if (name.includes("budget") || name.includes("value") || name.includes("price")) {
+      const cleaned = val.replace(/[$,]/g, "");
+      const parsed = parseFloat(cleaned);
+      if (!isNaN(parsed)) lead.budget = parsed;
+    } else if (name.includes("service") || name.includes("type") || id === "COMPANY_NAME") {
+      lead.service_type = val;
+    } else {
+      lead.notes = lead.notes ? `${lead.notes}; ${col.column_name || col.column_id}: ${val}` : `${col.column_name || col.column_id}: ${val}`;
+    }
+  }
+
+  if (!lead.full_name && nameParts.length > 0) {
+    lead.full_name = nameParts.filter(Boolean).join(" ");
+  }
+
+  return lead;
+}
+
+function parseFacebookLead(payload: Record<string, unknown>): ParsedLead | null {
+  const fieldData = payload.field_data as Array<{ name: string; values: string[] }> | undefined;
+  if (!Array.isArray(fieldData)) return null;
+
+  const lead: ParsedLead = {};
+  const nameParts: string[] = [];
+
+  for (const field of fieldData) {
+    const name = (field.name || "").toLowerCase();
+    const val = (field.values?.[0] || "").trim();
+    if (!val) continue;
+
+    if (name === "full_name" || name.includes("full name")) {
+      lead.full_name = val;
+    } else if (name === "first_name" || name.includes("first")) {
+      nameParts[0] = val;
+    } else if (name === "last_name" || name.includes("last")) {
+      nameParts[1] = val;
+    } else if (name.includes("email")) {
+      lead.email = val;
+    } else if (name.includes("phone")) {
+      lead.phone_number = val;
+    } else if (name.includes("city")) {
+      lead.city = val;
+    } else if (name.includes("state") || name.includes("region")) {
+      lead.state = val;
+    } else if (name.includes("address") || name.includes("street")) {
+      lead.address = val;
+    } else if (name.includes("budget") || name.includes("value")) {
+      const cleaned = val.replace(/[$,]/g, "");
+      const parsed = parseFloat(cleaned);
+      if (!isNaN(parsed)) lead.budget = parsed;
+    } else {
+      lead.notes = lead.notes ? `${lead.notes}; ${field.name}: ${val}` : `${field.name}: ${val}`;
+    }
+  }
+
+  if (!lead.full_name && nameParts.length > 0) {
+    lead.full_name = nameParts.filter(Boolean).join(" ");
+  }
+
+  return lead;
+}
+
+function detectSourceAndParse(rawPayload: Record<string, unknown>): { source: string; parsed: ParsedLead | null } {
+  if ("user_column_data" in rawPayload && "lead_id" in rawPayload) {
+    return { source: "google", parsed: parseGoogleLead(rawPayload) };
+  }
+
+  if ("field_data" in rawPayload || ("form_id" in rawPayload && "leadgen_id" in rawPayload)) {
+    return { source: "facebook", parsed: parseFacebookLead(rawPayload) };
+  }
+
+  return { source: "unknown", parsed: null };
+}
+
+const RELEVANCE_AI_STUDIO_ID = "d50e7c9d-7933-47c5-b284-9295b3faf020";
+const RELEVANCE_AI_PROJECT_ID = "a8f61433-8567-40b3-a274-8c65d6d9a062";
+
+async function parseLeadWithAI(rawPayload: unknown): Promise<ParsedLead> {
   const apiKey = Deno.env.get("RELEVANCE_AI_API_KEY");
   if (!apiKey) {
     throw new Error("RELEVANCE_AI_API_KEY not configured");
@@ -35,10 +138,8 @@ async function parseLeadWithAI(
 
   const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook?project=${RELEVANCE_AI_PROJECT_ID}`;
 
-  console.log("Calling Relevance AI API...");
-
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
 
   try {
     const response = await fetch(endpoint, {
@@ -47,9 +148,7 @@ async function parseLeadWithAI(
         "Content-Type": "application/json",
         "Authorization": apiKey,
       },
-      body: JSON.stringify({
-        lead_data: rawPayload,
-      }),
+      body: JSON.stringify({ lead_data: rawPayload }),
       signal: controller.signal,
     });
 
@@ -57,18 +156,15 @@ async function parseLeadWithAI(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Relevance AI API error:", response.status, errorText);
       throw new Error(`AI API returned ${response.status}: ${errorText}`);
     }
 
     const result = await response.json();
-    console.log("Relevance AI response:", JSON.stringify(result));
 
     if (result.answer) {
       try {
         return JSON.parse(result.answer);
-      } catch (parseError) {
-        console.error("Failed to parse answer field:", parseError);
+      } catch {
         throw new Error("AI returned invalid JSON format");
       }
     }
@@ -76,16 +172,15 @@ async function parseLeadWithAI(
     return result.output || result;
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error("Relevance AI API timeout after 20 seconds");
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Relevance AI API timeout after 45 seconds");
     }
     throw error;
   }
 }
 
-// Background processing function
 async function processLeadInBackground(
-  rawPayload: unknown,
+  rawPayload: Record<string, unknown>,
   userId: string,
   accountId: string,
   supabaseUrl: string,
@@ -93,75 +188,29 @@ async function processLeadInBackground(
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // Detect source from payload structure
-  let source = "unknown";
-  if (typeof rawPayload === "object" && rawPayload !== null) {
-    if ("user_column_data" in rawPayload && "lead_id" in rawPayload) {
-      source = "google";
-    } else if ("form_id" in rawPayload || "campaign_id" in rawPayload) {
-      source = "facebook";
+  const { source, parsed: directParsed } = detectSourceAndParse(rawPayload);
+  console.log(`leads-inbound: Source detected as '${source}', direct parse result:`, directParsed ? "success" : "null");
+
+  let leadData: ParsedLead | null = directParsed;
+
+  if (!leadData) {
+    try {
+      leadData = await parseLeadWithAI(rawPayload);
+    } catch (aiError) {
+      console.error("leads-inbound: AI parsing failed", aiError);
     }
   }
 
-  // Parse the lead with AI
-  let aiParsedData: RelevanceAIResponse;
-  try {
-    aiParsedData = await parseLeadWithAI(rawPayload);
-  } catch (aiError) {
-    console.error("leads-inbound: AI parsing failed after retry", aiError);
-
-    // Create a minimal lead record with error note
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
-      .insert({
-        name: "AI Processing Failed",
-        phone: null,
-        email: null,
-        source: source,
-        external_payload: rawPayload,
-        notes: "Lead processing failed - AI service unavailable. Please review raw payload.",
-        status: "new",
-        created_by: userId,
-        account_id: accountId,
-        approval_status: "pending",
-        submitted_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (leadError) {
-      console.error("leads-inbound: Failed to create fallback lead", leadError);
-      return;
-    }
-
-    if (lead) {
-      // Log error interaction
-      await supabase.from("interactions").insert({
-        lead_id: lead.id,
-        type: "system",
-        direction: "na",
-        summary: "Lead processing failed - AI service unavailable",
-        metadata: { error: String(aiError) },
-      });
-    }
-
-    return;
-  }
-
-  // Validate that we got at least some identifying information
-  if (!aiParsedData.full_name && !aiParsedData.phone_number && !aiParsedData.email) {
-    console.error("leads-inbound: AI returned no identifying information");
-
-    // Create fallback lead
+  if (!leadData || (!leadData.full_name && !leadData.phone_number && !leadData.email)) {
     const { data: lead } = await supabase
       .from("leads")
       .insert({
-        name: "Missing Information",
-        phone: null,
-        email: null,
-        source: source,
+        name: leadData?.full_name || "Needs Review",
+        phone: leadData?.phone_number || null,
+        email: leadData?.email || null,
+        source,
         external_payload: rawPayload,
-        notes: "AI could not extract identifying information. Please review raw payload.",
+        notes: leadData?.notes || "Could not fully parse lead data. Please review raw payload.",
         status: "new",
         created_by: userId,
         account_id: accountId,
@@ -169,35 +218,34 @@ async function processLeadInBackground(
         submitted_at: new Date().toISOString(),
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (lead) {
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "system",
         direction: "na",
-        summary: "Lead created with missing information",
-        metadata: { error: "No identifying information extracted" },
+        summary: "Lead created with incomplete data - needs review",
+        metadata: { source, parsing_method: directParsed ? "direct" : "failed" },
       });
     }
-
     return;
   }
 
-  // Create the lead record
   const { data: lead, error: leadError } = await supabase
     .from("leads")
     .insert({
-      name: aiParsedData.full_name || "Unknown",
-      phone: aiParsedData.phone_number || null,
-      email: aiParsedData.email || null,
-      service_type: aiParsedData.service_type || null,
-      estimated_value: aiParsedData.budget || null,
-      city: aiParsedData.city || null,
-      address: aiParsedData.address || null,
-      source: source,
+      name: leadData.full_name || "Unknown",
+      phone: leadData.phone_number || null,
+      email: leadData.email || null,
+      service_type: leadData.service_type || null,
+      estimated_value: leadData.budget || null,
+      city: leadData.city || null,
+      state: leadData.state || null,
+      address: leadData.address || null,
+      source,
       external_payload: rawPayload,
-      notes: aiParsedData.notes || null,
+      notes: leadData.notes || null,
       status: "new",
       created_by: userId,
       account_id: accountId,
@@ -205,65 +253,29 @@ async function processLeadInBackground(
       submitted_at: new Date().toISOString(),
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (leadError) {
     console.error("leads-inbound: Failed to create lead", leadError);
     return;
   }
 
-  // Calculate fit score based on AI qualifications
-  let fitScore = 0;
-  const qualifications = [
-    aiParsedData.is_budget_confirmed,
-    aiParsedData.is_in_service_area,
-    aiParsedData.is_decision_maker,
-  ];
-  const confirmedCount = qualifications.filter(Boolean).length;
-  fitScore = Math.round((confirmedCount / qualifications.length) * 100);
-
-  // Create lead qualification record
-  const { error: qualificationError } = await supabase
-    .from("lead_qualifications")
-    .insert({
+  if (lead) {
+    await supabase.from("interactions").insert({
       lead_id: lead.id,
-      account_id: accountId,
-      budget_confirmed: aiParsedData.is_budget_confirmed || false,
-      service_area_fit: aiParsedData.is_in_service_area || false,
-      decision_maker_confirmed: aiParsedData.is_decision_maker || false,
+      type: "system",
+      direction: "na",
+      summary: `Lead created via ${source} (parsed directly)`,
+      metadata: { source, parsing_method: directParsed ? "direct" : "ai" },
     });
-
-  if (qualificationError) {
-    console.error("leads-inbound: Failed to create qualification", qualificationError);
   }
 
-  // Log a system interaction
-  await supabase.from("interactions").insert({
-    lead_id: lead.id,
-    type: "system",
-    direction: "na",
-    summary: `Lead created via API from ${source} (AI-parsed, fit score: ${fitScore}%)`,
-    metadata: {
-      source,
-      ai_parsed: true,
-      fit_score: fitScore,
-      qualifications: {
-        budget_confirmed: aiParsedData.is_budget_confirmed,
-        in_service_area: aiParsedData.is_in_service_area,
-        decision_maker: aiParsedData.is_decision_maker,
-      }
-    },
-  });
-
-  console.log("leads-inbound: Lead created successfully", lead.id);
+  console.log("leads-inbound: Lead created successfully", lead?.id);
 }
 
 Deno.serve(async (req) => {
-  console.log("leads-inbound: Request received", req.method);
-
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -271,22 +283,14 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Log all headers for debugging
-    console.log("leads-inbound: Request headers", Object.fromEntries(req.headers.entries()));
-
-    // Parse request body
     const rawPayload = await req.json();
-    console.log("leads-inbound: Raw payload received", JSON.stringify(rawPayload));
+    console.log("leads-inbound: Payload received", JSON.stringify(rawPayload));
 
-    // Validate API key - check multiple possible locations
     let apiKey: string | null = null;
 
-    // Check if this is a Google Ads webhook with google_key in body
     if (typeof rawPayload === "object" && rawPayload !== null && "google_key" in rawPayload) {
       apiKey = String(rawPayload.google_key);
-      console.log("leads-inbound: Using google_key from webhook payload");
     } else {
-      // Check common header names
       apiKey =
         req.headers.get("x-goog-webhook-key") ||
         req.headers.get("x-goog-api-key") ||
@@ -296,40 +300,31 @@ Deno.serve(async (req) => {
         req.headers.get("x-leadsig-api-key");
 
       if (!apiKey) {
-        // Check query parameters
         const url = new URL(req.url);
         apiKey = url.searchParams.get("key") || url.searchParams.get("api_key");
-      }
-
-      if (apiKey) {
-        console.log("leads-inbound: API key found in headers or query params");
       }
     }
 
     if (!apiKey) {
-      console.log("leads-inbound: Missing API key");
       return new Response(
-        JSON.stringify({ error: "Missing API key. Provide via google_key in body, headers (x-goog-webhook-key, x-goog-api-key, authorization, x-leadsig-api-key), or 'key' query parameter" }),
+        JSON.stringify({ error: "Missing API key" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Hash the API key to compare with stored hash
     const encoder = new TextEncoder();
     const data = encoder.encode(apiKey);
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const keyHash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
-    // Look up the API key
     const { data: apiKeyRecord, error: keyError } = await supabase
       .from("api_keys")
       .select("user_id, account_id, is_active")
       .eq("key_hash", keyHash)
-      .single();
+      .maybeSingle();
 
     if (keyError || !apiKeyRecord) {
-      console.log("leads-inbound: Invalid API key", keyError);
       return new Response(
         JSON.stringify({ error: "Invalid API key" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -337,7 +332,6 @@ Deno.serve(async (req) => {
     }
 
     if (!apiKeyRecord.is_active) {
-      console.log("leads-inbound: API key is inactive");
       return new Response(
         JSON.stringify({ error: "API key is inactive" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -345,7 +339,6 @@ Deno.serve(async (req) => {
     }
 
     if (!apiKeyRecord.account_id) {
-      console.log("leads-inbound: API key has no account_id");
       return new Response(
         JSON.stringify({ error: "API key is not associated with an account" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -355,34 +348,20 @@ Deno.serve(async (req) => {
     const userId = apiKeyRecord.user_id;
     const accountId = apiKeyRecord.account_id;
 
-    // Update last_used_at
     await supabase
       .from("api_keys")
       .update({ last_used_at: new Date().toISOString() })
       .eq("key_hash", keyHash);
 
-    // Process lead in background - return success immediately to Google
-    console.log("leads-inbound: Starting background processing");
-
-    // Process in background (fire and forget)
-    processLeadInBackground(rawPayload, userId, accountId, supabaseUrl, supabaseServiceKey)
-      .catch(error => {
-        console.error("leads-inbound: Background processing error", error);
-      });
-
-    // Return success immediately to Google
-    console.log("leads-inbound: Returning immediate success to webhook sender");
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "Lead received and is being processed"
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+    EdgeRuntime.waitUntil(
+      processLeadInBackground(rawPayload, userId, accountId, supabaseUrl, supabaseServiceKey)
+        .catch((error) => console.error("leads-inbound: Background processing error", error))
     );
 
+    return new Response(
+      JSON.stringify({ success: true, message: "Lead received and is being processed" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("leads-inbound: Unexpected error", error);
     return new Response(
