@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Check, X, Crown, Zap, Leaf } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -5,9 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type PlanKey = "free" | "basic" | "premium";
+
+const planOrder: Record<PlanKey, number> = { free: 0, basic: 1, premium: 2 };
 
 interface PlanFeature {
   label: string;
@@ -85,13 +99,17 @@ const plans: Plan[] = [
 function PlanCard({
   plan,
   isCurrent,
+  currentPlan,
+  onChangePlan,
+  isUpdating,
 }: {
   plan: Plan;
   isCurrent: boolean;
+  currentPlan: PlanKey;
+  onChangePlan: (newPlan: PlanKey) => void;
+  isUpdating: boolean;
 }) {
-  const handleUpgrade = () => {
-    toast.info("Contact support@leadsig.ai to change your plan.");
-  };
+  const isDowngrade = planOrder[plan.key] < planOrder[currentPlan];
 
   return (
     <div
@@ -99,8 +117,6 @@ function PlanCard({
         "relative flex flex-col rounded-xl border bg-card p-6 transition-shadow",
         isCurrent
           ? "border-primary shadow-lg ring-1 ring-primary/20"
-          : plan.highlighted && !isCurrent
-          ? "border-border shadow-sm"
           : "border-border shadow-sm"
       )}
     >
@@ -171,11 +187,12 @@ function PlanCard({
         </Button>
       ) : (
         <Button
-          variant="default"
-          className={cn("w-full", plan.highlighted && "shadow-sm")}
-          onClick={handleUpgrade}
+          variant={isDowngrade ? "outline" : "default"}
+          className={cn("w-full", plan.highlighted && !isDowngrade && "shadow-sm")}
+          onClick={() => onChangePlan(plan.key)}
+          disabled={isUpdating}
         >
-          {plan.key === "free" ? "Downgrade" : `Upgrade to ${plan.name}`}
+          {isDowngrade ? `Downgrade to ${plan.name}` : `Upgrade to ${plan.name}`}
         </Button>
       )}
     </div>
@@ -183,8 +200,35 @@ function PlanCard({
 }
 
 export default function SettingsPricing() {
-  const { currentAccount } = useAuth();
+  const { currentAccount, refreshProfile } = useAuth();
   const currentPlan: PlanKey = currentAccount?.pricing_plan ?? "free";
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<PlanKey | null>(null);
+
+  const isDowngrade = pendingPlan ? planOrder[pendingPlan] < planOrder[currentPlan] : false;
+  const pendingPlanName = pendingPlan
+    ? plans.find((p) => p.key === pendingPlan)?.name
+    : "";
+
+  const handleChangePlan = async () => {
+    if (!pendingPlan || !currentAccount) return;
+
+    setIsUpdating(true);
+    const { error } = await supabase
+      .from("accounts")
+      .update({ pricing_plan: pendingPlan })
+      .eq("id", currentAccount.id);
+
+    if (error) {
+      toast.error("Failed to update plan. Please try again.");
+    } else {
+      toast.success(`Plan updated to ${pendingPlanName}.`);
+      await refreshProfile();
+    }
+
+    setIsUpdating(false);
+    setPendingPlan(null);
+  };
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -209,6 +253,9 @@ export default function SettingsPricing() {
                 key={plan.key}
                 plan={plan}
                 isCurrent={plan.key === currentPlan}
+                currentPlan={currentPlan}
+                onChangePlan={setPendingPlan}
+                isUpdating={isUpdating}
               />
             ))}
           </div>
@@ -226,6 +273,27 @@ export default function SettingsPricing() {
           </div>
         </div>
       </main>
+
+      <AlertDialog open={!!pendingPlan} onOpenChange={() => setPendingPlan(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isDowngrade ? "Downgrade" : "Upgrade"} to {pendingPlanName}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isDowngrade
+                ? `Your company will be moved to the ${pendingPlanName} plan. Some features may no longer be available.`
+                : `Your company will be upgraded to the ${pendingPlanName} plan with access to additional features.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUpdating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleChangePlan} disabled={isUpdating}>
+              {isUpdating ? "Updating..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MobileNav />
     </div>
