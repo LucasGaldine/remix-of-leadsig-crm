@@ -986,26 +986,11 @@ export default function LeadDetail() {
             </div>
           )}
 
-          {/* Lead Info & Actions */}
-          <div className="px-4 py-4">
-            <div className="card-elevated rounded-lg p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                {lead.phone && (
-                  <div>
-                    <span className="text-muted-foreground">Phone</span>
-                    <p className="font-medium">{lead.phone}</p>
-                  </div>
-                )}
-                {lead.email && (
-                  <div>
-                    <span className="text-muted-foreground">Email</span>
-                    <p className="font-medium truncate">{lead.email}</p>
-                  </div>
-                )}
-              </div>
-
-              {showConvertButton && (
-                <div className="flex gap-2 pt-2 border-t border-border">
+          {/* Lead Actions */}
+          {showConvertButton && (
+            <div className="px-4 py-4">
+              <div className="card-elevated rounded-lg p-4 space-y-3">
+                <div className="flex gap-2">
                   {!hasEstimate && (
                     <Button
                       size="sm"
@@ -1029,14 +1014,14 @@ export default function LeadDetail() {
                     </Button>
                   )}
                 </div>
-              )}
-              {!hasAddress && showConvertButton && (
-                <p className="text-xs text-amber-600 mt-2">
-                  Add an address to schedule or create an estimate.
-                </p>
-              )}
+                {!hasAddress && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    Add an address to schedule or create an estimate.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Pipeline Stage Selector */}
           {!["job", "paid"].includes(lead.status) && (
