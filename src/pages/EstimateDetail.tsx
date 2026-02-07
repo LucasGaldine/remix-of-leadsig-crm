@@ -180,7 +180,19 @@ export default function EstimateDetail() {
   };
 
   const handleDelete = async () => {
-    toast.info("Delete functionality coming soon!");
+    try {
+      const { error } = await supabase
+        .from("estimates")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      toast.success("Estimate deleted");
+      navigate("/payments");
+    } catch {
+      toast.error("Failed to delete estimate");
+    }
     setShowDeleteDialog(false);
   };
 
@@ -777,19 +789,21 @@ export default function EstimateDetail() {
 
       {!editMode && (
         <>
-          <div className="px-4 mt-4">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 text-destructive w-full"
-                onClick={() => setShowDeleteDialog(true)}
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </Button>
+          {estimate.status !== "accepted" && !estimate.is_finalized && (
+            <div className="px-4 mt-4">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-destructive w-full"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
             {approvalLink && (
