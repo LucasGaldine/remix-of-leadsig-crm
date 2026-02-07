@@ -492,59 +492,6 @@ export default function EstimateDetail() {
         </button>
       </div>
 
-      {estimate.status !== "accepted" && !estimate.is_finalized && (
-        <div className="px-4">
-          <div className="card-elevated rounded-lg p-4 space-y-3">
-            <h3 className="font-semibold text-foreground">Customer Approval</h3>
-            <p className="text-sm text-muted-foreground">
-              Approve this estimate manually or generate a link to send to the customer.
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1 gap-2"
-                onClick={handleManualApprove}
-                disabled={manualApproving}
-              >
-                <Check className="h-4 w-4" />
-                {manualApproving ? "Approving..." : "Manual Approve"}
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1 gap-2"
-                onClick={handleGenerateLink}
-                disabled={generatingLink}
-              >
-                <Link2 className="h-4 w-4" />
-                {generatingLink ? "Generating..." : "Get Approval Link"}
-              </Button>
-            </div>
-            {approvalLink && (
-              <div className="flex items-center gap-2 bg-secondary rounded-lg p-3">
-                <input
-                  type="text"
-                  readOnly
-                  value={approvalLink}
-                  className="flex-1 bg-transparent text-sm text-foreground outline-none truncate"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCopyLink}
-                  className="shrink-0"
-                >
-                  {copied ? (
-                    <CheckCheck className="h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {estimate.status === "accepted" && (
         <div className="px-4">
           <div className="card-elevated rounded-lg p-4 border-l-4 border-l-emerald-500">
@@ -834,8 +781,51 @@ export default function EstimateDetail() {
           </div>
 
           <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
+            {approvalLink && (
+              <div className="flex items-center gap-2 bg-card border border-border rounded-xl p-3 mb-3 shadow-sm">
+                <input
+                  type="text"
+                  readOnly
+                  value={approvalLink}
+                  className="flex-1 bg-transparent text-sm text-foreground outline-none truncate"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCopyLink}
+                  className="shrink-0"
+                >
+                  {copied ? (
+                    <CheckCheck className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            )}
             <div className="flex gap-3">
-              {!estimate.is_finalized && (
+              {!estimate.is_finalized && estimate.status !== "accepted" && (
+                <>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-14 gap-2"
+                    onClick={handleGenerateLink}
+                    disabled={generatingLink}
+                  >
+                    <Link2 className="h-4 w-4" />
+                    {generatingLink ? "Generating..." : "Approval Link"}
+                  </Button>
+                  <Button
+                    className="flex-1 h-14 gap-2"
+                    onClick={handleManualApprove}
+                    disabled={manualApproving}
+                  >
+                    <Check className="h-4 w-4" />
+                    {manualApproving ? "Approving..." : "Approve"}
+                  </Button>
+                </>
+              )}
+              {!estimate.is_finalized && estimate.status === "accepted" && (
                 <>
                   <Button variant="outline" className="flex-1 h-14 gap-2" onClick={handleSend}>
                     <Send className="h-4 w-4" />
