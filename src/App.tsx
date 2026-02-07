@@ -48,6 +48,7 @@ import FacebookCallback from "./pages/FacebookCallback";
 import NotFound from "./pages/NotFound";
 import CrewDashboard from "./pages/CrewDashboard";
 import EstimateApproval from "./pages/EstimateApproval";
+import ClientJobPortal from "./pages/ClientJobPortal";
 
 const queryClient = new QueryClient();
 
@@ -76,6 +77,7 @@ const router = createBrowserRouter([
       { path: "/auth", element: <Auth /> },
       { path: "/reset-password", element: <ResetPassword /> },
       { path: "/approve-estimate", element: <EstimateApproval /> },
+      { path: "/client/job", element: <ClientJobPortal /> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
       { path: "/facebook-callback", element: <Protected><FacebookCallback /></Protected> },
       { path: "/", element: <Protected><Index /></Protected> },

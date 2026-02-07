@@ -42,6 +42,7 @@ import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { PhotoSection } from "@/components/photos/PhotoSection";
+import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -661,6 +662,14 @@ export default function JobDetail() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Client Share Link */}
+            {!job.is_estimate_visit && isManager() && id && (
+              <ClientShareLink
+                jobId={id}
+                existingToken={(job as any).client_share_token}
+              />
             )}
           </div>
         )}
