@@ -72,7 +72,7 @@ export default function EstimateDetail() {
   const [saving, setSaving] = useState(false);
   const [lineItems, setLineItems] = useState<LineItemForm[]>([]);
   const [generatingLink, setGeneratingLink] = useState(false);
-  const [approvalLink, setApprovalLink] = useState<string | null>(null);
+  const [portalLink, setPortalLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
@@ -132,36 +132,40 @@ export default function EstimateDetail() {
     }
   };
 
-  const handleGenerateLink = async () => {
+  const handleGeneratePortalLink = async () => {
     setGeneratingLink(true);
     try {
-      const existingToken = (estimate as any).approval_token;
-      let token = existingToken;
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("client_share_token")
+        .eq("id", estimate.job_id)
+        .maybeSingle();
+
+      let token = lead?.client_share_token;
 
       if (!token) {
         token = crypto.randomUUID();
         const { error } = await supabase
-          .from("estimates")
-          .update({ approval_token: token })
-          .eq("id", id);
+          .from("leads")
+          .update({ client_share_token: token })
+          .eq("id", estimate.job_id);
 
         if (error) throw error;
-        await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
       }
 
-      const link = `${window.location.origin}/approve-estimate?token=${token}`;
-      setApprovalLink(link);
+      const link = `${window.location.origin}/client/job?token=${token}`;
+      setPortalLink(link);
     } catch {
-      toast.error("Failed to generate approval link");
+      toast.error("Failed to generate client portal link");
     } finally {
       setGeneratingLink(false);
     }
   };
 
   const handleCopyLink = async () => {
-    if (!approvalLink) return;
+    if (!portalLink) return;
     try {
-      await navigator.clipboard.writeText(approvalLink);
+      await navigator.clipboard.writeText(portalLink);
       setCopied(true);
       toast.success("Link copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
@@ -833,12 +837,12 @@ export default function EstimateDetail() {
           )}
 
           <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-            {approvalLink && (
+            {portalLink && (
               <div className="flex items-center gap-2 bg-card border border-border rounded-xl p-3 mb-3 shadow-sm">
                 <input
                   type="text"
                   readOnly
-                  value={approvalLink}
+                  value={portalLink}
                   className="flex-1 bg-transparent text-sm text-foreground outline-none truncate"
                 />
                 <Button
@@ -869,11 +873,11 @@ export default function EstimateDetail() {
                   </Button>
                   <Button
                     className="flex-1 h-14 gap-2"
-                    onClick={handleGenerateLink}
+                    onClick={handleGeneratePortalLink}
                     disabled={generatingLink}
                   >
                     <Link2 className="h-4 w-4" />
-                    {generatingLink ? "Generating..." : "Approval Link"}
+                    {generatingLink ? "Generating..." : "Client Portal"}
                   </Button>
                 </>
               )}
