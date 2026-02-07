@@ -347,9 +347,9 @@ export default function JobDetail() {
             <h2 className="text-xl font-bold text-foreground">
               {job.customer?.name || "Unknown Client"}
             </h2>
-            {job.service_type && (
-              <p className="text-sm text-muted-foreground mt-0.5">{job.service_type}</p>
-            )}
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {job.service_type || "No service type"}{job.name?.endsWith(", Estimate") ? ", Estimate" : ""}
+            </p>
             {clientAddress && (
               <button onClick={openAddressDialog} className="flex items-center gap-1 text-sm text-muted-foreground mt-1 hover:text-foreground transition-colors">
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
