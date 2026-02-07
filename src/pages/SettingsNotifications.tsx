@@ -48,7 +48,7 @@ type NotificationPreferences = {
 const channelMeta: Record<Channel, { label: string; icon: React.ReactNode; helper: string; badge?: string }> = {
   push: { label: "Push", icon: <Smartphone className="h-4 w-4" />, helper: "App & desktop" },
   email: { label: "Email", icon: <Mail className="h-4 w-4" />, helper: "Detailed updates" },
-  sms: { label: "SMS", icon: <MessageSquare className="h-4 w-4" />, helper: "Via Twilio", badge: "Twilio" },
+  sms: { label: "SMS", icon: <MessageSquare className="h-4 w-4" />, helper: "Text messages" },
 };
 
 const alertMeta: Record<AlertKey, { label: string; description: string; icon: React.ReactNode }> = {
@@ -457,7 +457,7 @@ export default function SettingsNotifications() {
               <Send className="h-5 w-5" />
               Test SMS
             </CardTitle>
-            <CardDescription>Send yourself a test SMS to confirm Twilio is configured correctly.</CardDescription>
+            <CardDescription>Send yourself a test SMS to confirm SMS notifications are working correctly.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
