@@ -169,7 +169,7 @@ export default function Settings() {
     {
       title: "Account",
       items: [
-        ...(role !== "crew" ? [{
+        ...(role !== "crew_member" ? [{
           icon: <LayoutDashboard className="h-5 w-5" />,
           label: "Dashboard",
           description: "Customize your stat cards",
