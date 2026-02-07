@@ -31,10 +31,12 @@ export function PageHeader({
   const { unreadCount } = useNotifications();
 
   const handleBack = () => {
-    if (backTo) {
+    if (window.history.state?.idx > 0) {
+      navigate(-1);
+    } else if (backTo) {
       navigate(backTo);
     } else {
-      navigate(-1);
+      navigate("/");
     }
   };
 
