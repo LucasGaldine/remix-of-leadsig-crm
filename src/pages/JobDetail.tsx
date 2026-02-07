@@ -300,9 +300,8 @@ export default function JobDetail() {
               </DropdownMenu>
             </div>
             <h2 className="text-xl font-bold text-foreground">
-              {job.customer?.name || "Unknown Client"}
+              {job.customer?.name || "Unknown Client"}{job.service_type ? `, ${job.service_type}` : ""}
             </h2>
-            <p className="text-muted-foreground">{job.service_type || job.name}</p>
           </div>
           <div className="text-right ml-4">
             <p className="text-2xl font-bold text-foreground">
