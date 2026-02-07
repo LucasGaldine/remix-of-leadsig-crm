@@ -273,6 +273,7 @@ export default function LeadDetail() {
     // Log interaction for status change
     await supabase.from("interactions").insert({
       lead_id: lead.id,
+      account_id: currentAccount?.id,
       type: "status_change" as InteractionType,
       direction: "na" as InteractionDirection,
       summary: `Status changed to ${newStatus}`,
@@ -290,6 +291,7 @@ export default function LeadDetail() {
     setAddingNote(true);
     const { error } = await supabase.from("interactions").insert({
       lead_id: lead.id,
+      account_id: currentAccount?.id,
       type: "note" as InteractionType,
       direction: "na" as InteractionDirection,
       body: newNote,
@@ -312,6 +314,7 @@ export default function LeadDetail() {
 
     await supabase.from("interactions").insert({
       lead_id: lead.id,
+      account_id: currentAccount?.id,
       type: "call" as InteractionType,
       direction: direction as InteractionDirection,
       summary: `${direction === "outbound" ? "Outgoing" : "Incoming"} call`,
@@ -331,6 +334,7 @@ export default function LeadDetail() {
 
     await supabase.from("interactions").insert({
       lead_id: lead.id,
+      account_id: currentAccount?.id,
       type: "text" as InteractionType,
       direction: "outbound" as InteractionDirection,
       summary: "Text message sent",
@@ -477,6 +481,7 @@ export default function LeadDetail() {
 
       await supabase.from("interactions").insert({
         lead_id: lead.id,
+        account_id: currentAccount?.id,
         type: "status_change" as InteractionType,
         direction: "na" as InteractionDirection,
         summary: "Converted to job",
