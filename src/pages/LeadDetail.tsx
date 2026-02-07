@@ -140,11 +140,10 @@ export default function LeadDetail() {
     address: "",
     city: "",
     estimated_value: "",
-    notes: ""
   });
   const [saving, setSaving] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"details" | "photos">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "photos" | "notes">("details");
   const [beforePhotoCount, setBeforePhotoCount] = useState(0);
 
   // Create estimate dialog
@@ -511,7 +510,6 @@ export default function LeadDetail() {
       address: lead.address || "",
       city: lead.city || "",
       estimated_value: lead.estimated_value?.toString() || "",
-      notes: lead.notes || ""
     });
     setEditDialogOpen(true);
   };
@@ -531,7 +529,6 @@ export default function LeadDetail() {
           address: editForm.address || null,
           city: editForm.city || null,
           estimated_value: editForm.estimated_value ? parseFloat(editForm.estimated_value) : null,
-          notes: editForm.notes || null,
         })
         .eq("id", lead.id);
 
@@ -854,16 +851,6 @@ export default function LeadDetail() {
                 placeholder="0"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-notes">Notes</Label>
-              <Textarea
-                id="edit-notes"
-                value={editForm.notes}
-                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                placeholder="Additional notes..."
-                rows={3}
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>
@@ -957,6 +944,7 @@ export default function LeadDetail() {
           {[
             { id: "details", label: "Details" },
             { id: "photos", label: "Photos" },
+            { id: "notes", label: "Notes" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1176,23 +1164,6 @@ export default function LeadDetail() {
             <div className="card-elevated rounded-lg p-4">
               <h3 className="font-medium mb-3">Activity Timeline</h3>
 
-              <div className="mb-4">
-                <Textarea
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add a note..."
-                  rows={2}
-                />
-                <Button
-                  size="sm"
-                  className="mt-2"
-                  onClick={addNote}
-                  disabled={!newNote.trim() || addingNote}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Add Note
-                </Button>
-              </div>
-
               <div className="space-y-3">
                 {interactions.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
@@ -1242,6 +1213,59 @@ export default function LeadDetail() {
             title="Before Photos"
             onPhotosChange={setBeforePhotoCount}
           />
+        </div>
+      )}
+
+      {activeTab === "notes" && (
+        <div className="px-4 py-4">
+          <div className="card-elevated rounded-lg p-4">
+            <div className="mb-4">
+              <Textarea
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="Add a note..."
+                rows={2}
+              />
+              <Button
+                size="sm"
+                className="mt-2"
+                onClick={addNote}
+                disabled={!newNote.trim() || addingNote}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Add Note
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {interactions.filter((i) => i.type === "note").length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground">No notes yet</p>
+                </div>
+              ) : (
+                interactions
+                  .filter((i) => i.type === "note")
+                  .map((interaction) => (
+                    <div key={interaction.id} className="flex gap-3 pb-3 border-b border-border last:border-0">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-sm font-medium">Note</span>
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {formatDate(interaction.created_at)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {interaction.body || interaction.summary}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 

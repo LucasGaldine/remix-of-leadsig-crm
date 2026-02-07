@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -71,7 +70,6 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           address: formData.address.trim() || null,
           estimated_value: formData.estimatedBudget ? parseFloat(formData.estimatedBudget) : null,
           source: formData.source || "Manual",
-          notes: formData.notes.trim() || null,
           created_by: user.id,
           account_id: currentAccount.id,
           status: "new",
@@ -82,7 +80,6 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
 
       if (error) throw error;
 
-      // Log interaction for lead creation
       await supabase.from("interactions").insert({
         lead_id: data.id,
         account_id: currentAccount.id,
@@ -91,6 +88,18 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
         summary: "Lead created manually",
         created_by: user.id,
       });
+
+      if (formData.notes.trim()) {
+        await supabase.from("interactions").insert({
+          lead_id: data.id,
+          account_id: currentAccount.id,
+          type: "note",
+          direction: "na",
+          summary: formData.notes.trim().slice(0, 100),
+          body: formData.notes.trim(),
+          created_by: user.id,
+        });
+      }
 
       toast.success("Lead created successfully");
       
@@ -233,18 +242,6 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
                 className="mt-1.5"
               />
             </div>
-          </div>
-
-          <div>
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => handleChange("notes", e.target.value)}
-              placeholder="Any additional details..."
-              rows={2}
-              className="mt-1.5"
-            />
           </div>
 
           <DialogFooter className="pt-4">
