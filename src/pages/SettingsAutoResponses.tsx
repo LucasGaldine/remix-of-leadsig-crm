@@ -9,7 +9,8 @@ export default function SettingsAutoResponses() {
     <FeaturePlaceholder
       title="Auto-Responses"
       description="Automate responses for missed calls and follow-ups"
-      icon={<Zap className="h-8 w-8 text-primary" />}
+      icon={<Zap className="h-8 w-8 text-amber-500" />}
+      isPremium
       whatItDoes={[
         "Send automatic texts when you miss a call",
         "Schedule follow-up reminders for cold leads",

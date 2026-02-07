@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, Mail } from "lucide-react";
+import { ArrowLeft, Clock, Crown, Lock, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ interface FeaturePlaceholderProps {
   backTo: string;
   backLabel?: string;
   icon?: React.ReactNode;
+  isPremium?: boolean;
   ctaLabel?: string;
   ctaAction?: () => void;
   alternativeAction?: {
@@ -29,6 +30,7 @@ export function FeaturePlaceholder({
   backTo,
   backLabel = "Go Back",
   icon,
+  isPremium = false,
   ctaLabel,
   ctaAction,
   alternativeAction,
@@ -55,15 +57,46 @@ export function FeaturePlaceholder({
       <main className="px-4 py-6 max-w-lg mx-auto">
         {/* Icon & Title */}
         <div className="text-center mb-6">
-          <div className={cn(
-            "inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4",
-            "bg-primary/10"
-          )}>
-            {icon || <Clock className="h-8 w-8 text-primary" />}
+          <div className="relative inline-block">
+            <div className={cn(
+              "inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4",
+              isPremium ? "bg-amber-500/10" : "bg-primary/10"
+            )}>
+              {icon || <Clock className="h-8 w-8 text-primary" />}
+            </div>
+            {isPremium && (
+              <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-1 shadow-sm">
+                <Lock className="h-3 w-3 text-white" />
+              </div>
+            )}
           </div>
+          {isPremium && (
+            <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-semibold px-3 py-1 rounded-full mb-3 shadow-sm">
+              <Crown className="h-3 w-3" />
+              PREMIUM FEATURE
+            </div>
+          )}
           <h1 className="text-2xl font-bold text-foreground mb-2">{title}</h1>
           <p className="text-muted-foreground">{description}</p>
         </div>
+
+        {isPremium && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <div className="bg-amber-100 rounded-full p-1.5 mt-0.5 shrink-0">
+                <Crown className="h-4 w-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-amber-900">
+                  Upgrade to Premium to unlock this feature
+                </p>
+                <p className="text-xs text-amber-700 mt-1">
+                  This feature is available exclusively for Premium plan subscribers.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* What This Feature Does */}
         <div className="bg-card rounded-lg border border-border p-4 mb-4">
