@@ -809,19 +809,19 @@ export default function EstimateDetail() {
                   <Button
                     variant="outline"
                     className="flex-1 h-14 gap-2"
-                    onClick={handleGenerateLink}
-                    disabled={generatingLink}
-                  >
-                    <Link2 className="h-4 w-4" />
-                    {generatingLink ? "Generating..." : "Approval Link"}
-                  </Button>
-                  <Button
-                    className="flex-1 h-14 gap-2"
                     onClick={handleManualApprove}
                     disabled={manualApproving}
                   >
                     <Check className="h-4 w-4" />
                     {manualApproving ? "Approving..." : "Approve"}
+                  </Button>
+                  <Button
+                    className="flex-1 h-14 gap-2"
+                    onClick={handleGenerateLink}
+                    disabled={generatingLink}
+                  >
+                    <Link2 className="h-4 w-4" />
+                    {generatingLink ? "Generating..." : "Approval Link"}
                   </Button>
                 </>
               )}
