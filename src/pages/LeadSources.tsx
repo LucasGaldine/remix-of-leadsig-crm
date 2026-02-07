@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Check, Copy, ChevronDown, ChevronUp, Loader2, RefreshCw, Mail, Webhook, ExternalLink, Key } from "lucide-react";
+import { Check, Copy, ChevronDown, ChevronUp, Loader2, RefreshCw, Mail, Webhook, ExternalLink, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -565,17 +566,12 @@ export default function LeadSources() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <header className="sticky top-0 z-10 bg-card border-b border-border">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-semibold text-lg">Lead Sources</h1>
-            <p className="text-sm text-muted-foreground">Connect your lead platforms</p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Lead Sources"
+        subtitle="Connect your lead platforms"
+        showBack
+        backTo="/settings"
+      />
 
       <main className="px-4 py-4">
         {loading ? (

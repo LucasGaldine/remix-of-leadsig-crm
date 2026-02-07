@@ -1,8 +1,9 @@
-import { CreditCard, ArrowLeft, Receipt, CheckCircle, Clock, DollarSign } from "lucide-react";
+import { CreditCard, Receipt, CheckCircle, Clock, DollarSign } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
 
 // Demo data - will be replaced with real data
@@ -101,16 +102,7 @@ export default function PaymentDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      {/* Header */}
-      <div className="bg-card border-b border-border px-4 py-3">
-        <button
-          onClick={() => navigate("/payments")}
-          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors min-h-touch"
-        >
-          <ArrowLeft className="h-5 w-5" />
-          <span>Back to Payments</span>
-        </button>
-      </div>
+      <PageHeader title="Payment Details" showBack backTo="/payments" />
 
       <main className="px-4 py-4 space-y-4">
         {/* Payment Summary */}

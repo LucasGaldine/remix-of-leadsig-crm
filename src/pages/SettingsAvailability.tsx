@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, CalendarClock, Plus, Trash2 } from 'lucide-react';
+import { Calendar, Clock, CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { MobileNav } from '@/components/layout/MobileNav';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -96,26 +98,14 @@ export default function SettingsAvailability() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader
+        title="Availability Settings"
+        subtitle="Manage your business hours and days off"
+        showBack
+        backTo="/settings"
+      />
       <div className="container max-w-4xl mx-auto p-6 space-y-6">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/settings')}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              Availability Settings
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400">
-              Manage your business hours and days off
-            </p>
-          </div>
-        </div>
 
         <Card>
           <CardHeader>
@@ -332,6 +322,7 @@ export default function SettingsAvailability() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <MobileNav />
     </div>
   );
 }

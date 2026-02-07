@@ -374,7 +374,7 @@ export default function CreateMaterialList() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Create Material List" showBack showNotifications={false} />
+      <PageHeader title="Create Material List" showBack />
 
       <main className="px-4 py-4">
         {/* Step 1: Select Job */}

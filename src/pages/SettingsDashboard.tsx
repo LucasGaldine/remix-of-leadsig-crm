@@ -83,7 +83,7 @@ export default function SettingsDashboard() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Dashboard Layout" showBack backTo="/settings" showNotifications={false} />
+      <PageHeader title="Dashboard Layout" showBack backTo="/settings" />
 
       <main className="px-4 py-4 space-y-6">
         <Card>

@@ -5,7 +5,7 @@ import { StripeConnectSettings } from "@/components/settings/StripeConnectSettin
 export default function StripeSettings() {
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Payment Settings" showBack showNotifications={false} />
+      <PageHeader title="Payment Settings" showBack />
 
       <main className="px-4 py-4">
         <div className="mb-6">

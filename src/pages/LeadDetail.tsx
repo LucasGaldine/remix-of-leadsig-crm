@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
 import { CreateEstimateDialog } from "@/components/leads/CreateEstimateDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -592,12 +593,7 @@ export default function LeadDetail() {
   if (notFound || !lead) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-24">
-        <header className="sticky top-0 z-10 bg-card border-b border-border px-4 py-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/leads")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Leads
-          </Button>
-        </header>
+        <PageHeader title="Lead Not Found" showBack backTo="/leads" />
         <div className="flex flex-col items-center justify-center py-20 px-4">
           <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold mb-2">Lead Not Found</h2>
@@ -618,49 +614,46 @@ export default function LeadDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-card border-b border-border">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/leads")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-semibold text-lg">{lead.name}</h1>
-            <p className="text-sm text-muted-foreground">{lead.service_type || "No service type"}</p>
-          </div>
-          {lead.status === "qualified" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary border border-primary/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              qualified
-            </span>
-          ) : (
-            <StatusBadge status={getStatusBadgeStatus(lead.status)}>
-              {lead.status.replace("_", " ")}
-            </StatusBadge>
-          )}
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreVertical className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={openEditDialog}>
-                <Edit className="h-4 w-4 mr-2" />
-                Edit Lead
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Lead
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+      <PageHeader
+        title={lead.name}
+        subtitle={lead.service_type || "No service type"}
+        showBack
+        backTo="/leads"
+        actions={
+          <>
+            {lead.status === "qualified" ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary border border-primary/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                qualified
+              </span>
+            ) : (
+              <StatusBadge status={getStatusBadgeStatus(lead.status)}>
+                {lead.status.replace("_", " ")}
+              </StatusBadge>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <MoreVertical className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={openEditDialog}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Lead
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Lead
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
       
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

@@ -117,7 +117,7 @@ export default function InvoiceDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-32">
-      <PageHeader title="Invoice" showBack backTo="/payments" showNotifications={false} />
+      <PageHeader title="Invoice" showBack backTo="/payments" />
 
       {/* Status Banner */}
       <div className="bg-card border-b border-border px-4 py-4">

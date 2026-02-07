@@ -273,7 +273,7 @@ export default function SettingsNotifications() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Notification Settings" showBack backTo="/settings" showNotifications={false} />
+      <PageHeader title="Notification Settings" showBack backTo="/settings" />
 
       <main className="px-4 py-4 space-y-6">
         <Card>

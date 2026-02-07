@@ -118,7 +118,6 @@ export default function SettingsCompanyProfile() {
         title="Company Profile"
         showBack
         backTo="/settings"
-        showNotifications={false}
       />
 
       <form onSubmit={handleSubmitForm} className="px-4 py-6 space-y-6">

@@ -196,7 +196,7 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Settings" showNotifications={false} />
+      <PageHeader title="Settings" />
 
       <main className="py-4">
         {visibleSections.map((section) => (

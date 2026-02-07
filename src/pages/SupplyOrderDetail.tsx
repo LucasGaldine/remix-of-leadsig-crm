@@ -1,8 +1,9 @@
-import { Truck, ArrowLeft, Phone, Mail, MapPin, Calendar, Package } from "lucide-react";
+import { Truck, Phone, Mail, MapPin, Calendar, Package } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
 
 // Demo data - will be replaced with real data
@@ -98,16 +99,7 @@ export default function SupplyOrderDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      {/* Header */}
-      <div className="bg-card border-b border-border px-4 py-3">
-        <button
-          onClick={() => navigate("/materials")}
-          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors min-h-touch"
-        >
-          <ArrowLeft className="h-5 w-5" />
-          <span>Back to Materials</span>
-        </button>
-      </div>
+      <PageHeader title="Supply Order" showBack backTo="/materials" />
 
       <main className="px-4 py-4 space-y-4">
         {/* Order Header */}

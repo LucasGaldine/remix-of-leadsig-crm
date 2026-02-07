@@ -94,7 +94,7 @@ export default function MaterialListDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-32">
-      <PageHeader title="Material List" showBack backTo="/materials" showNotifications={false} />
+      <PageHeader title="Material List" showBack backTo="/materials" />
 
       {/* Header Info */}
       <div className="bg-card border-b border-border px-4 py-4">

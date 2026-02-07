@@ -114,7 +114,7 @@ export default function JobDetail() {
   if (error || !job) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-24">
-        <PageHeader title="Job Details" showBack backTo="/jobs" showNotifications={false} />
+        <PageHeader title="Job Details" showBack backTo="/jobs" />
         <div className="flex items-center justify-center p-8">
           <p className="text-muted-foreground">Job not found</p>
         </div>
@@ -264,7 +264,7 @@ export default function JobDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Job Details" showBack backTo="/jobs" showNotifications={false} />
+      <PageHeader title="Job Details" showBack backTo="/jobs" />
 
       {/* Status Banner */}
       <div className="bg-card border-b border-border px-4 py-4">

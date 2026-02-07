@@ -267,7 +267,6 @@ export default function SettingsProfile() {
         title="Profile Settings"
         showBack
         backTo="/settings"
-        showNotifications={false}
       />
 
       <main className="px-4 py-6 space-y-6">

@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, MapPin, Plus, Trash2 } from "lucide-react";
+import { MapPin, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,26 +97,14 @@ export default function SettingsServiceArea() {
   }, [settings?.service_areas]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader
+        title="Service Area"
+        subtitle="Add coverage locations and how far you'll travel from each."
+        showBack
+        backTo="/settings"
+      />
       <div className="container max-w-4xl mx-auto p-6 space-y-6">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/settings")}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              Service Area
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400">
-              Add coverage locations and how far you’ll travel from each.
-            </p>
-          </div>
-        </div>
 
         <Card>
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -237,6 +227,7 @@ export default function SettingsServiceArea() {
           </CardContent>
         </Card>
       </div>
+      <MobileNav />
     </div>
   );
 }

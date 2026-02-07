@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Plus, Copy, Trash2, Key, Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { Plus, Copy, Trash2, Key, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -176,21 +177,17 @@ export default function ApiKeys() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-card border-b border-border">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-semibold text-lg">API Keys</h1>
-            <p className="text-sm text-muted-foreground">Manage third-party integrations</p>
-          </div>
+      <PageHeader
+        title="API Keys"
+        subtitle="Manage third-party integrations"
+        showBack
+        backTo="/settings"
+        actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> New Key
           </Button>
-        </div>
-      </header>
+        }
+      />
 
       <main className="px-4 py-4">
         {/* Info Card */}

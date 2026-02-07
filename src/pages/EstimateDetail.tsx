@@ -81,7 +81,7 @@ export default function EstimateDetail() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-32">
-        <PageHeader title="Estimate" showBack backTo="/payments" showNotifications={false} />
+        <PageHeader title="Estimate" showBack backTo="/payments" />
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
         </div>
@@ -93,7 +93,7 @@ export default function EstimateDetail() {
   if (!estimate) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-32">
-        <PageHeader title="Estimate" showBack backTo="/payments" showNotifications={false} />
+        <PageHeader title="Estimate" showBack backTo="/payments" />
         <div className="px-4 py-12 text-center">
           <p className="text-muted-foreground">Estimate not found</p>
         </div>
@@ -464,7 +464,7 @@ export default function EstimateDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-48">
-      <PageHeader title="Estimate" showBack backTo="/payments" showNotifications={false} />
+      <PageHeader title="Estimate" showBack backTo="/payments" />
 
       {estimate.is_finalized && (
         <div className="px-4 pt-4">

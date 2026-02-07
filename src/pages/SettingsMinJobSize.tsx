@@ -81,7 +81,6 @@ export default function SettingsMinJobSize() {
         title="Minimum Job Size"
         showBack
         backTo="/settings"
-        showNotifications={false}
       />
 
       <main className="px-4 py-6 space-y-6">

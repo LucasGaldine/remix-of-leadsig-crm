@@ -174,7 +174,6 @@ export default function SettingsPricingRules() {
         title="Pricing Rules"
         showBack
         backTo="/settings"
-        showNotifications={false}
       />
 
       <main className="px-4 py-4">

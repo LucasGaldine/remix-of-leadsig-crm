@@ -93,7 +93,7 @@ export default function CreateSupplyOrder() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Create Supply Order" showBack showNotifications={false} />
+      <PageHeader title="Create Supply Order" showBack />
 
       <main className="px-4 py-4">
         {/* Step 1: Select Material List */}

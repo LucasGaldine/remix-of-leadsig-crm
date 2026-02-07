@@ -102,7 +102,7 @@ export default function ChargePayment() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Charge Payment" showBack backTo="/payments" showNotifications={false} />
+      <PageHeader title="Charge Payment" showBack backTo="/payments" />
 
       <main className="px-4 py-4">
         {/* Step 1: Select Customer */}
