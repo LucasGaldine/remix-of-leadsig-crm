@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
@@ -43,63 +43,75 @@ import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import StripeCallback from "./pages/StripeCallback";
 import NotFound from "./pages/NotFound";
+import CrewDashboard from "./pages/CrewDashboard";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/stripe-callback" element={<ProtectedRoute><StripeCallback /></ProtectedRoute>} />
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
-            <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
-            <Route path="/leads/pending-approval" element={<ProtectedRoute><LeadsPendingApproval /></ProtectedRoute>} />
-            <Route path="/leads/rejected" element={<ProtectedRoute><LeadsRejected /></ProtectedRoute>} />
-            <Route path="/leads/:id" element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
-            <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
-            <Route path="/jobs/:id" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/settings/stripe" element={<ProtectedRoute><StripeSettings /></ProtectedRoute>} />
-            <Route path="/settings/api-keys" element={<ProtectedRoute><ApiKeys /></ProtectedRoute>} />
-            <Route path="/settings/lead-sources" element={<ProtectedRoute><LeadSources /></ProtectedRoute>} />
-            <Route path="/settings/profile" element={<ProtectedRoute><SettingsProfile /></ProtectedRoute>} />
-            <Route path="/settings/company" element={<ProtectedRoute><SettingsCompanyProfile /></ProtectedRoute>} />
-            <Route path="/settings/service-area" element={<ProtectedRoute><SettingsServiceArea /></ProtectedRoute>} />
-            <Route path="/settings/min-job-size" element={<ProtectedRoute><SettingsMinJobSize /></ProtectedRoute>} />
-            <Route path="/settings/availability" element={<ProtectedRoute><SettingsAvailability /></ProtectedRoute>} />
-            <Route path="/settings/crew" element={<ProtectedRoute><SettingsCrewManagement /></ProtectedRoute>} />
-            <Route path="/settings/auto-responses" element={<ProtectedRoute><SettingsAutoResponses /></ProtectedRoute>} />
-            <Route path="/settings/notifications" element={<ProtectedRoute><SettingsNotifications /></ProtectedRoute>} />
-            <Route path="/settings/pricing-rules" element={<ProtectedRoute><SettingsPricingRules /></ProtectedRoute>} />
-            {/* Payments Routes */}
-            <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
-            <Route path="/payments/estimates/new" element={<ProtectedRoute><CreateEstimate /></ProtectedRoute>} />
-            <Route path="/payments/estimates/:id" element={<ProtectedRoute><EstimateDetail /></ProtectedRoute>} />
-            <Route path="/payments/invoices/new" element={<ProtectedRoute><CreateInvoice /></ProtectedRoute>} />
-            <Route path="/payments/invoices/:id" element={<ProtectedRoute><InvoiceDetail /></ProtectedRoute>} />
-            <Route path="/payments/charge" element={<ProtectedRoute><ChargePayment /></ProtectedRoute>} />
-            <Route path="/payments/:id" element={<ProtectedRoute><PaymentDetail /></ProtectedRoute>} />
-            {/* Materials Routes */}
-            <Route path="/materials" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
-            <Route path="/materials/lists/:id" element={<ProtectedRoute><MaterialListDetail /></ProtectedRoute>} />
-            <Route path="/materials/lists/new" element={<ProtectedRoute><CreateMaterialList /></ProtectedRoute>} />
-            <Route path="/materials/orders/new" element={<ProtectedRoute><CreateSupplyOrder /></ProtectedRoute>} />
-            <Route path="/materials/orders/:id" element={<ProtectedRoute><SupplyOrderDetail /></ProtectedRoute>} />
-            <Route path="/materials/suppliers/new" element={<ProtectedRoute><SupplierManagement /></ProtectedRoute>} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-);
+function RootLayout() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <Outlet />
+        </TooltipProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+function Protected({ children }: { children: React.ReactNode }) {
+  return <ProtectedRoute>{children}</ProtectedRoute>;
+}
+
+const router = createBrowserRouter([
+  {
+    element: <RootLayout />,
+    children: [
+      { path: "/auth", element: <Auth /> },
+      { path: "/reset-password", element: <ResetPassword /> },
+      { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
+      { path: "/", element: <Protected><Index /></Protected> },
+      { path: "/schedule", element: <Protected><Schedule /></Protected> },
+      { path: "/leads", element: <Protected><Leads /></Protected> },
+      { path: "/leads/pending-approval", element: <Protected><LeadsPendingApproval /></Protected> },
+      { path: "/leads/rejected", element: <Protected><LeadsRejected /></Protected> },
+      { path: "/leads/:id", element: <Protected><LeadDetail /></Protected> },
+      { path: "/jobs", element: <Protected><Jobs /></Protected> },
+      { path: "/jobs/:id", element: <Protected><JobDetail /></Protected> },
+      { path: "/crew", element: <Protected><CrewDashboard /></Protected> },
+      { path: "/settings", element: <Protected><Settings /></Protected> },
+      { path: "/settings/stripe", element: <Protected><StripeSettings /></Protected> },
+      { path: "/settings/api-keys", element: <Protected><ApiKeys /></Protected> },
+      { path: "/settings/lead-sources", element: <Protected><LeadSources /></Protected> },
+      { path: "/settings/profile", element: <Protected><SettingsProfile /></Protected> },
+      { path: "/settings/company", element: <Protected><SettingsCompanyProfile /></Protected> },
+      { path: "/settings/service-area", element: <Protected><SettingsServiceArea /></Protected> },
+      { path: "/settings/min-job-size", element: <Protected><SettingsMinJobSize /></Protected> },
+      { path: "/settings/availability", element: <Protected><SettingsAvailability /></Protected> },
+      { path: "/settings/crew", element: <Protected><SettingsCrewManagement /></Protected> },
+      { path: "/settings/auto-responses", element: <Protected><SettingsAutoResponses /></Protected> },
+      { path: "/settings/notifications", element: <Protected><SettingsNotifications /></Protected> },
+      { path: "/settings/pricing-rules", element: <Protected><SettingsPricingRules /></Protected> },
+      { path: "/payments", element: <Protected><Payments /></Protected> },
+      { path: "/payments/estimates/new", element: <Protected><CreateEstimate /></Protected> },
+      { path: "/payments/estimates/:id", element: <Protected><EstimateDetail /></Protected> },
+      { path: "/payments/invoices/new", element: <Protected><CreateInvoice /></Protected> },
+      { path: "/payments/invoices/:id", element: <Protected><InvoiceDetail /></Protected> },
+      { path: "/payments/charge", element: <Protected><ChargePayment /></Protected> },
+      { path: "/payments/:id", element: <Protected><PaymentDetail /></Protected> },
+      { path: "/materials", element: <Protected><Materials /></Protected> },
+      { path: "/materials/lists/:id", element: <Protected><MaterialListDetail /></Protected> },
+      { path: "/materials/lists/new", element: <Protected><CreateMaterialList /></Protected> },
+      { path: "/materials/orders/new", element: <Protected><CreateSupplyOrder /></Protected> },
+      { path: "/materials/orders/:id", element: <Protected><SupplyOrderDetail /></Protected> },
+      { path: "/materials/suppliers/new", element: <Protected><SupplierManagement /></Protected> },
+      { path: "*", element: <NotFound /> },
+    ],
+  },
+]);
+
+const App = () => <RouterProvider router={router} />;
 
 export default App;
