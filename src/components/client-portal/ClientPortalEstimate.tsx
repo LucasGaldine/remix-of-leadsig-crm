@@ -1,4 +1,5 @@
-import { DollarSign } from "lucide-react";
+import { useState } from "react";
+import { Check, DollarSign, X } from "lucide-react";
 
 interface LineItem {
   id: string;
@@ -21,9 +22,49 @@ interface ClientPortalEstimateProps {
     status: string;
     line_items: LineItem[];
   };
+  token: string;
+  apiUrl: string;
+  apiHeaders: Record<string, string>;
+  onRefresh: () => void;
 }
 
-export function ClientPortalEstimate({ estimate }: ClientPortalEstimateProps) {
+export function ClientPortalEstimate({
+  estimate,
+  token,
+  apiUrl,
+  apiHeaders,
+  onRefresh,
+}: ClientPortalEstimateProps) {
+  const [submitting, setSubmitting] = useState<"approve" | "decline" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const isPending = estimate.status !== "accepted" && estimate.status !== "declined";
+
+  const handleAction = async (action: "approve" | "decline") => {
+    setSubmitting(action);
+    setError(null);
+    try {
+      const response = await fetch(`${apiUrl}?token=${token}`, {
+        method: "POST",
+        headers: apiHeaders,
+        body: JSON.stringify({ action }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.error || "Something went wrong");
+        return;
+      }
+
+      onRefresh();
+    } catch {
+      setError("Unable to connect. Please try again.");
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
       <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
@@ -33,6 +74,11 @@ export function ClientPortalEstimate({ estimate }: ClientPortalEstimateProps) {
           {estimate.status === "accepted" && (
             <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
               Approved
+            </span>
+          )}
+          {estimate.status === "declined" && (
+            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+              Declined
             </span>
           )}
         </div>
@@ -122,6 +168,40 @@ export function ClientPortalEstimate({ estimate }: ClientPortalEstimateProps) {
           <p className="text-sm text-slate-600 whitespace-pre-wrap">
             {estimate.notes}
           </p>
+        </div>
+      )}
+
+      {isPending && (
+        <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
+          {error && (
+            <p className="text-sm text-red-600 mb-3 text-center">{error}</p>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleAction("decline")}
+              disabled={submitting !== null}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting === "decline" ? (
+                <span className="animate-spin h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full" />
+              ) : (
+                <X className="h-4 w-4" />
+              )}
+              {submitting === "decline" ? "Declining..." : "Decline"}
+            </button>
+            <button
+              onClick={() => handleAction("approve")}
+              disabled={submitting !== null}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting === "approve" ? (
+                <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              {submitting === "approve" ? "Approving..." : "Approve"}
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -179,7 +179,15 @@ export default function ClientJobPortal() {
           <ClientPortalSchedule schedules={schedules} />
         )}
 
-        {estimate && <ClientPortalEstimate estimate={estimate} />}
+        {estimate && (
+          <ClientPortalEstimate
+            estimate={estimate}
+            token={token!}
+            apiUrl={apiUrl}
+            apiHeaders={apiHeaders}
+            onRefresh={fetchJobData}
+          />
+        )}
 
         {(photos.before.length > 0 || photos.after.length > 0) && (
           <ClientPortalPhotos photos={photos} />
