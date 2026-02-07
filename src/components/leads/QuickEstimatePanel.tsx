@@ -17,6 +17,7 @@ import {
 
 interface QuickEstimatePanelProps {
   leadId: string;
+  hasAddress?: boolean;
   onEstimateSaved?: () => void;
   onConvertToEstimate?: (estimateId: string) => void;
   className?: string;
@@ -24,6 +25,7 @@ interface QuickEstimatePanelProps {
 
 export function QuickEstimatePanel({
   leadId,
+  hasAddress = true,
   onEstimateSaved,
   onConvertToEstimate,
   className,
@@ -281,7 +283,8 @@ export function QuickEstimatePanel({
                       <Button
                         className="flex-1"
                         onClick={handleConvert}
-                        disabled={saving}
+                        disabled={saving || !hasAddress}
+                        title={!hasAddress ? "Add an address to create an estimate" : undefined}
                       >
                         <FileText className="h-4 w-4 mr-1" />
                         Create Draft

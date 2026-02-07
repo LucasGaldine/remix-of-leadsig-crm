@@ -431,6 +431,7 @@ export default function LeadDetail() {
   };
 
   const requiresPhotos = hasPlanAccess(currentAccount?.pricing_plan ?? "free", "basic");
+  const hasAddress = !!(lead?.address && lead.address.trim());
 
   const convertToJob = async () => {
     if (!lead || !hasEstimate) {
@@ -971,18 +972,33 @@ export default function LeadDetail() {
                   <MessageSquare className="h-4 w-4 mr-1" /> Text
                 </Button>
                 {showConvertButton && !hasEstimate && (
-                  <Button size="sm" className="flex-1" onClick={() => setCreateEstimateDialogOpen(true)}>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={!hasAddress}
+                    onClick={() => setCreateEstimateDialogOpen(true)}
+                  >
                     <FileText className="h-4 w-4 mr-1" />
                     Schedule Estimate
                   </Button>
                 )}
                 {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
-                  <Button size="sm" className="flex-1" onClick={() => setConvertJobDialogOpen(true)}>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={!hasAddress}
+                    onClick={() => setConvertJobDialogOpen(true)}
+                  >
                     <Briefcase className="h-4 w-4 mr-1" />
                     Convert to Job
                   </Button>
                 )}
               </div>
+              {!hasAddress && showConvertButton && (
+                <p className="text-xs text-amber-600 mt-2">
+                  Add an address to schedule or create an estimate.
+                </p>
+              )}
             </div>
           </div>
 
@@ -1047,6 +1063,7 @@ export default function LeadDetail() {
             <div className="px-4 pb-4">
               <QuickEstimatePanel
                 leadId={id!}
+                hasAddress={hasAddress}
                 onEstimateSaved={fetchInteractions}
                 onConvertToEstimate={(estimateId) => {
                   toast.success("Draft created! Redirecting to estimates...");
