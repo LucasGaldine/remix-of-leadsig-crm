@@ -172,7 +172,10 @@ export default function SettingsNotifications() {
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-sms`;
       const response = await fetch(apiUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify({
           event_type: "new_leads",
           account_id: currentAccount.id,
