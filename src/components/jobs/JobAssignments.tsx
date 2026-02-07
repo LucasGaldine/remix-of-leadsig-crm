@@ -45,6 +45,14 @@ const roleLabels: Record<string, string> = {
   crew_member: 'Crew Member',
 };
 
+const roleBadgeColors: Record<string, string> = {
+  owner: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+  admin: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  sales: 'bg-green-500/10 text-green-600 border-green-500/20',
+  crew_lead: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+  crew_member: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
+};
+
 interface JobAssignmentsProps {
   leadId: string;
 }
@@ -282,8 +290,12 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
                   ) : (
                     availableMembers?.map((member) => (
                       <SelectItem key={member.user_id} value={member.user_id}>
-                        {member.profiles?.full_name || 'Unknown'} -{' '}
-                        {roleLabels[member.role] || member.role}
+                        <span className="flex items-center gap-2">
+                          {member.profiles?.full_name || 'Unknown'}
+                          <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
+                            {roleLabels[member.role] || member.role}
+                          </Badge>
+                        </span>
                       </SelectItem>
                     ))
                   )}
