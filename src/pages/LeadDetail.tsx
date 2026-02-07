@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Navigation } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Navigation, Mail } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
@@ -677,12 +677,18 @@ export default function LeadDetail() {
             <p className="text-sm text-muted-foreground mt-0.5">
               {lead.service_type || "No service type"}
             </p>
-            {(lead.address || lead.city) && (
-              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{lead.address || lead.city}</span>
-              </div>
-            )}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+              <Phone className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{lead.phone || "No phone number"}</span>
+            </div>
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+              <Mail className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{lead.email || "No email"}</span>
+            </div>
+            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{lead.address || lead.city || "No address"}</span>
+            </div>
           </div>
           {lead.estimated_value && (
             <div className="text-right ml-4">
