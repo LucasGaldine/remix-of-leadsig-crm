@@ -71,9 +71,12 @@ const alertMeta: Record<AlertKey, { label: string; description: string; icon: Re
 export default function SettingsNotifications() {
   const { profile, user, refreshProfile } = useAuth();
 
+  const hasEmail = Boolean(profile?.email || user?.email);
+  const hasPhone = Boolean(profile?.phone);
+
   const defaultPrefs: NotificationPreferences = useMemo(
     () => ({
-      channels: { push: true, email: true, sms: false },
+      channels: { push: false, email: false, sms: false },
       alerts: {
         new_leads: true,
         lead_updates: true,
@@ -108,8 +111,16 @@ export default function SettingsNotifications() {
     setDigestFrequency(prefs.digest?.frequency ?? defaultPrefs.digest.frequency);
   }, [profile?.notification_preferences, defaultPrefs]);
 
-  const toggleChannel = (key: Channel, value: boolean) =>
+  const channelAvailability: Record<Channel, { available: boolean; reason?: string }> = {
+    push: { available: false, reason: "Coming soon" },
+    email: { available: hasEmail, reason: hasEmail ? undefined : "Add an email to your profile" },
+    sms: { available: hasPhone, reason: hasPhone ? undefined : "Add a phone number to your profile" },
+  };
+
+  const toggleChannel = (key: Channel, value: boolean) => {
+    if (!channelAvailability[key].available) return;
     setChannels((prev) => ({ ...prev, [key]: value }));
+  };
 
   const toggleAlert = (key: AlertKey, value: boolean) =>
     setAlerts((prev) => ({ ...prev, [key]: value }));
@@ -191,26 +202,50 @@ export default function SettingsNotifications() {
             <CardDescription>Choose where we should reach you.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
-            {(Object.keys(channelMeta) as Channel[]).map((channel) => (
-              <div
-                key={channel}
-                className={cn(
-                  "flex items-center justify-between rounded-lg border px-4 py-3",
-                  channels[channel] ? "bg-[hsl(var(--status-confirmed-bg))]" : "bg-card"
-                )}
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="p-2 rounded-lg bg-secondary text-secondary-foreground">
-                      {channelMeta[channel].icon}
+            {(Object.keys(channelMeta) as Channel[]).map((channel) => {
+              const { available, reason } = channelAvailability[channel];
+              const isComingSoon = channel === "push";
+              return (
+                <div
+                  key={channel}
+                  className={cn(
+                    "relative flex items-center justify-between rounded-lg border px-4 py-3 transition-colors",
+                    !available && "opacity-60",
+                    channels[channel] && available ? "bg-[hsl(var(--status-confirmed-bg))]" : "bg-card"
+                  )}
+                >
+                  {isComingSoon && (
+                    <span className="absolute -top-2.5 left-3 bg-slate-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wide">
+                      COMING SOON
                     </span>
-                    <span className="font-medium text-foreground">{channelMeta[channel].label}</span>
+                  )}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "p-2 rounded-lg",
+                        available ? "bg-secondary text-secondary-foreground" : "bg-muted text-muted-foreground"
+                      )}>
+                        {channelMeta[channel].icon}
+                      </span>
+                      <span className={cn(
+                        "font-medium",
+                        available ? "text-foreground" : "text-muted-foreground"
+                      )}>
+                        {channelMeta[channel].label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground ml-10">
+                      {!available && reason ? reason : channelMeta[channel].helper}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground ml-10">{channelMeta[channel].helper}</p>
+                  <Switch
+                    checked={available ? channels[channel] : false}
+                    onCheckedChange={(v) => toggleChannel(channel, v)}
+                    disabled={!available}
+                  />
                 </div>
-                <Switch checked={channels[channel]} onCheckedChange={(v) => toggleChannel(channel, v)} />
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
 
