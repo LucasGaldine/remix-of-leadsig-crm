@@ -247,6 +247,10 @@ export default function LeadDetail() {
         setCreateEstimateDialogOpen(true);
         return;
       }
+      if (estimate?.status !== "accepted") {
+        toast.error("The estimate must be approved before converting to a job");
+        return;
+      }
       const requiresPhotos = hasPlanAccess(currentAccount?.pricing_plan ?? "free", "basic");
       if (requiresPhotos && beforePhotoCount === 0) {
         toast.error("Please add at least one before photo to convert this lead to a job");
