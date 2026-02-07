@@ -79,11 +79,13 @@ export default function JobDetail() {
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
   const [parentLeadId, setParentLeadId] = useState<string | null>(null);
+  const [hasAfterPhotos, setHasAfterPhotos] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchEstimate();
       fetchParentLead();
+      fetchAfterPhotos();
     }
   }, [id]);
 
@@ -102,6 +104,20 @@ export default function JobDetail() {
       }
     } catch (error) {
       console.error("Error fetching parent lead:", error);
+    }
+  };
+
+  const fetchAfterPhotos = async () => {
+    if (!id) return;
+    try {
+      const { count } = await supabase
+        .from("lead_photos")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", id)
+        .eq("photo_type", "after");
+      setHasAfterPhotos((count ?? 0) > 0);
+    } catch (error) {
+      console.error("Error checking after photos:", error);
     }
   };
 
@@ -670,15 +686,17 @@ export default function JobDetail() {
       </main>
 
       {/* Bottom Action */}
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-        <Button
-          className="w-full h-14 text-base font-semibold"
-          onClick={() => setCompleteDialogOpen(true)}
-          disabled={job.status === "paid"}
-        >
-          {job.status === "paid" ? "Payment Received" : ((job as any).display_status === "completed" ? "Received Payment" : "Mark as Complete")}
-        </Button>
-      </div>
+      {!job.is_estimate_visit && (hasAfterPhotos || job.status === "paid" || (job as any).display_status === "completed") && (
+        <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
+          <Button
+            className="w-full h-14 text-base font-semibold"
+            onClick={() => setCompleteDialogOpen(true)}
+            disabled={job.status === "paid"}
+          >
+            {job.status === "paid" ? "Payment Received" : ((job as any).display_status === "completed" ? "Received Payment" : "Mark as Complete")}
+          </Button>
+        </div>
+      )}
 
       {/* Payment/Complete Confirmation Dialog */}
       <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
