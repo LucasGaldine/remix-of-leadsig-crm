@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Navigation } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
@@ -636,46 +636,96 @@ export default function LeadDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader
-        title={lead.name}
-        subtitle={lead.service_type || "No service type"}
-        showBack
-        backTo="/leads"
-        actions={
-          <>
-            {lead.status === "qualified" ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary border border-primary/20">
-                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                qualified
-              </span>
-            ) : (
-              <StatusBadge status={getStatusBadgeStatus(lead.status)}>
-                {lead.status.replace("_", " ")}
-              </StatusBadge>
+      <PageHeader title="Lead Details" showBack backTo="/leads" />
+
+      <div className="bg-card border-b border-border px-4 py-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              {lead.status === "qualified" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary border border-primary/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  qualified
+                </span>
+              ) : (
+                <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
+                  {lead.status.replace("_", " ")}
+                </StatusBadge>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="ml-auto">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={openEditDialog}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Lead
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Lead
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <h2 className="text-xl font-bold text-foreground">{lead.name}</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {lead.service_type || "No service type"}
+            </p>
+            {(lead.address || lead.city) && (
+              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{lead.address || lead.city}</span>
+              </div>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <MoreVertical className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={openEditDialog}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Lead
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => setDeleteDialogOpen(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Lead
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        }
-      />
+          </div>
+          {lead.estimated_value && (
+            <div className="text-right ml-4">
+              <p className="text-2xl font-bold text-foreground">
+                ${lead.estimated_value.toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">Estimated Value</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-2"
+            onClick={() => logCall("outbound")}
+          >
+            <Phone className="h-4 w-4" />
+            Call
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-2"
+            onClick={logText}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Text
+          </Button>
+          <Button
+            size="sm"
+            className="flex-1 gap-2"
+            onClick={() => {
+              const address = lead.address || lead.city;
+              if (address) window.open(`https://maps.google.com/?q=${encodeURIComponent(address)}`);
+            }}
+          >
+            <Navigation className="h-4 w-4" />
+            Navigate
+          </Button>
+        </div>
+      </div>
       
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -925,7 +975,7 @@ export default function LeadDetail() {
             </div>
           )}
 
-          {/* Lead Info Card */}
+          {/* Lead Info & Actions */}
           <div className="px-4 py-4">
             <div className="card-elevated rounded-lg p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -941,20 +991,6 @@ export default function LeadDetail() {
                     <p className="font-medium truncate">{lead.email}</p>
                   </div>
                 )}
-                {lead.city && (
-                  <div>
-                    <span className="text-muted-foreground">Location</span>
-                    <p className="font-medium">{lead.city}</p>
-                  </div>
-                )}
-                {lead.estimated_value && (
-                  <div>
-                    <span className="text-muted-foreground">Budget</span>
-                    <p className="font-medium text-status-confirmed">
-                      ${lead.estimated_value.toLocaleString()}
-                    </p>
-                  </div>
-                )}
                 {lead.source && (
                   <div>
                     <span className="text-muted-foreground">Source</span>
@@ -963,37 +999,32 @@ export default function LeadDetail() {
                 )}
               </div>
 
-              {/* Quick Actions */}
-              <div className="flex gap-2 pt-2 border-t border-border">
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => logCall("outbound")}>
-                  <Phone className="h-4 w-4 mr-1" /> Call
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1" onClick={logText}>
-                  <MessageSquare className="h-4 w-4 mr-1" /> Text
-                </Button>
-                {showConvertButton && !hasEstimate && (
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    disabled={!hasAddress}
-                    onClick={() => setCreateEstimateDialogOpen(true)}
-                  >
-                    <FileText className="h-4 w-4 mr-1" />
-                    Schedule Estimate
-                  </Button>
-                )}
-                {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    disabled={!hasAddress}
-                    onClick={() => setConvertJobDialogOpen(true)}
-                  >
-                    <Briefcase className="h-4 w-4 mr-1" />
-                    Convert to Job
-                  </Button>
-                )}
-              </div>
+              {showConvertButton && (
+                <div className="flex gap-2 pt-2 border-t border-border">
+                  {!hasEstimate && (
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      disabled={!hasAddress}
+                      onClick={() => setCreateEstimateDialogOpen(true)}
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Schedule Estimate
+                    </Button>
+                  )}
+                  {hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      disabled={!hasAddress}
+                      onClick={() => setConvertJobDialogOpen(true)}
+                    >
+                      <Briefcase className="h-4 w-4 mr-1" />
+                      Convert to Job
+                    </Button>
+                  )}
+                </div>
+              )}
               {!hasAddress && showConvertButton && (
                 <p className="text-xs text-amber-600 mt-2">
                   Add an address to schedule or create an estimate.
