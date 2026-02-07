@@ -21,6 +21,8 @@ interface NotificationPreferences {
     payments: boolean;
     schedule_changes: boolean;
     tasks: boolean;
+    job_assignments: boolean;
+    same_day_reminders: boolean;
   };
   quiet_hours: { enabled: boolean; start: string; end: string };
 }
@@ -40,6 +42,10 @@ function buildMessageBody(
       return `Schedule change: ${data.lead_name || "Job"} on ${data.scheduled_date || "TBD"}`;
     case "tasks":
       return `Task reminder: ${data.summary || "You have a pending task"}`;
+    case "job_assignments":
+      return `Job assignment: You have been assigned to ${data.lead_name || "a job"}`;
+    case "same_day_reminders":
+      return `Today's jobs: ${data.summary || "You have jobs scheduled for today"}`;
     default:
       return `Notification: ${eventType}`;
   }
@@ -52,6 +58,8 @@ function buildNotificationTitle(eventType: string): string {
     case "payments": return "SMS Sent - Payment";
     case "schedule_changes": return "SMS Sent - Schedule Change";
     case "tasks": return "SMS Sent - Task Reminder";
+    case "job_assignments": return "SMS Sent - Job Assignment";
+    case "same_day_reminders": return "SMS Sent - Day Reminder";
     default: return "SMS Sent";
   }
 }
@@ -62,6 +70,8 @@ function mapEventType(eventType: string): string {
     case "lead_updates": return "lead_status_change";
     case "payments": return "payment_received";
     case "schedule_changes": return "schedule_change";
+    case "job_assignments": return "job_assignment";
+    case "same_day_reminders": return "same_day_reminder";
     default: return eventType;
   }
 }
@@ -75,6 +85,8 @@ function getReferenceInfo(eventType: string, data: Record<string, unknown>): { r
       return { reference_id: (data.payment_id as string) || null, reference_type: "payment" };
     case "schedule_changes":
       return { reference_id: (data.lead_id as string) || null, reference_type: "job_schedule" };
+    case "job_assignments":
+      return { reference_id: (data.lead_id as string) || null, reference_type: "lead" };
     default:
       return { reference_id: null, reference_type: null };
   }
@@ -176,7 +188,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: members, error: membersError } = await supabase
       .from("account_members")
-      .select("user_id")
+      .select("user_id, role")
       .eq("account_id", account_id)
       .eq("is_active", true);
 
@@ -230,6 +242,38 @@ Deno.serve(async (req: Request) => {
           reason: "No phone number",
         });
         continue;
+      }
+
+      const member = members!.find((m) => m.user_id === profile.user_id);
+      const isCrewMember = member?.role === "crew_member";
+
+      if (event_type === "job_assignments" && data?.user_id) {
+        if (profile.user_id !== data.user_id) {
+          results.push({
+            user_id: profile.user_id,
+            sent: false,
+            reason: "Not the assigned crew member",
+          });
+          continue;
+        }
+      }
+
+      if (isCrewMember && data?.lead_id && ["schedule_changes", "lead_updates"].includes(event_type)) {
+        const { data: assignment } = await supabase
+          .from("job_assignments")
+          .select("id")
+          .eq("lead_id", data.lead_id as string)
+          .eq("user_id", profile.user_id)
+          .maybeSingle();
+
+        if (!assignment) {
+          results.push({
+            user_id: profile.user_id,
+            sent: false,
+            reason: "Crew member not assigned to this job",
+          });
+          continue;
+        }
       }
 
       const prefs =
