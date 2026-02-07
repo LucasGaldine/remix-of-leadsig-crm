@@ -703,7 +703,7 @@ export default function LeadDetail() {
             </div>
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{lead.address || lead.city || "No address"}</span>
+              <span className="truncate">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
             </div>
           </div>
           {lead.estimated_value && (

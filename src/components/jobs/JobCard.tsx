@@ -87,7 +87,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
 
   const displayStatus = (job.display_status || job.status) as string;
   const scheduledDateTime = formatScheduledDateTime(job.scheduled_date, job.scheduled_time_start, job.scheduled_time_end);
-  const address = job.address || job.customer?.address || "No address";
+  const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
 
   const outsideHours = job.scheduled_date

@@ -220,7 +220,7 @@ export default function JobDetail() {
   }
 
   const clientPhone = job.customer?.phone || "";
-  const clientAddress = job.address || "";
+  const clientAddress = [job.address, job.city].filter(Boolean).join(", ");
   const hasSchedules = schedules && schedules.length > 0;
   const scheduledDatesText = hasSchedules
     ? schedules.length === 1
