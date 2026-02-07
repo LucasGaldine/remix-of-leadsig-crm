@@ -355,30 +355,32 @@ export default function JobDetail() {
               <StatusBadge status={job.status} size="lg">
                 {job.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
               </StatusBadge>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={openEditDialog}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Job
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => setDeleteDialogOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Job
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {isManager() && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={openEditDialog}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit Job
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Job
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
             <h2 className="text-xl font-bold text-foreground">
               {job.customer?.name || "Unknown Client"}
