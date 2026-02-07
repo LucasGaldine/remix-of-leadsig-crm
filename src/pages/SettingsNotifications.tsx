@@ -167,6 +167,11 @@ export default function SettingsNotifications() {
       return;
     }
 
+    if (isDirty) {
+      toast.error("Save your preferences first before sending a test SMS.");
+      return;
+    }
+
     setIsSendingTest(true);
     try {
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-sms`;
@@ -457,14 +462,16 @@ export default function SettingsNotifications() {
             <div className="space-y-1">
               <p className="font-medium text-foreground">Send a test SMS</p>
               <p className="text-sm text-muted-foreground">
-                {channels.sms
-                  ? `Sends to ${profile?.phone || "your phone number"}`
-                  : "Enable SMS channel first"}
+                {!channels.sms
+                  ? "Enable SMS channel first"
+                  : isDirty
+                  ? "Save preferences before testing"
+                  : `Sends to ${profile?.phone || "your phone number"}`}
               </p>
             </div>
             <Button
               onClick={handleTest}
-              disabled={isSendingTest || !channels.sms || !hasPhone}
+              disabled={isSendingTest || !channels.sms || !hasPhone || isDirty}
               className="w-full sm:w-auto gap-2"
             >
               {isSendingTest ? (
