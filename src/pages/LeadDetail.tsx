@@ -987,7 +987,7 @@ export default function LeadDetail() {
           )}
 
           {/* Lead Actions */}
-          {showConvertButton && (
+          {showConvertButton && (!hasEstimate || (hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0))) && (
             <div className="px-4 py-4">
               <div className="card-elevated rounded-lg p-4 space-y-3">
                 <div className="flex gap-2">
