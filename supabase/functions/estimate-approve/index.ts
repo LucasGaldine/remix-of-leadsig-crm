@@ -171,22 +171,42 @@ Deno.serve(async (req: Request) => {
       if (estimate.job_id) {
         const { data: lead } = await supabase
           .from("leads")
-          .select("id, status")
+          .select("id, status, account_id")
           .eq("id", estimate.job_id)
           .maybeSingle();
 
         if (lead && lead.status !== "job" && lead.status !== "paid") {
-          await supabase
-            .from("leads")
-            .update({ status: "job" })
-            .eq("id", lead.id);
+          const { data: account } = await supabase
+            .from("accounts")
+            .select("pricing_plan")
+            .eq("id", lead.account_id)
+            .maybeSingle();
 
-          await supabase.from("interactions").insert({
-            lead_id: lead.id,
-            type: "status_change",
-            direction: "na",
-            summary: "Converted to job (estimate approved by customer)",
-          });
+          const plan = account?.pricing_plan ?? "free";
+          const requiresPhotos = plan === "basic" || plan === "premium";
+
+          let hasPhotos = true;
+          if (requiresPhotos) {
+            const { count } = await supabase
+              .from("lead_photos")
+              .select("id", { count: "exact", head: true })
+              .eq("lead_id", lead.id);
+            hasPhotos = (count ?? 0) > 0;
+          }
+
+          if (!requiresPhotos || hasPhotos) {
+            await supabase
+              .from("leads")
+              .update({ status: "job" })
+              .eq("id", lead.id);
+
+            await supabase.from("interactions").insert({
+              lead_id: lead.id,
+              type: "status_change",
+              direction: "na",
+              summary: "Converted to job (estimate approved by customer)",
+            });
+          }
         }
       }
 
