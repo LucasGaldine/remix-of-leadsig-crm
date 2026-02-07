@@ -24,6 +24,8 @@ import { useDeleteLead } from "@/hooks/useLeads";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
+import { BeforePhotos } from "@/components/leads/BeforePhotos";
+import { hasPlanAccess } from "@/lib/planGating";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -141,6 +143,9 @@ export default function LeadDetail() {
   });
   const [saving, setSaving] = useState(false);
 
+  // Before photos count
+  const [beforePhotoCount, setBeforePhotoCount] = useState(0);
+
   // Create estimate dialog
   const [createEstimateDialogOpen, setCreateEstimateDialogOpen] = useState(false);
 
@@ -240,6 +245,11 @@ export default function LeadDetail() {
       if (!hasEstimate) {
         toast.error("Please create an estimate first");
         setCreateEstimateDialogOpen(true);
+        return;
+      }
+      const requiresPhotos = hasPlanAccess(currentAccount?.pricing_plan ?? "free", "basic");
+      if (requiresPhotos && beforePhotoCount === 0) {
+        toast.error("Please add at least one before photo to convert this lead to a job");
         return;
       }
       setConvertJobDialogOpen(true);
@@ -415,6 +425,8 @@ export default function LeadDetail() {
     checkEstimate();
   };
 
+  const requiresPhotos = hasPlanAccess(currentAccount?.pricing_plan ?? "free", "basic");
+
   const convertToJob = async () => {
     if (!lead || !hasEstimate) {
       toast.error("An estimate is required to convert to job");
@@ -422,6 +434,10 @@ export default function LeadDetail() {
     }
     if (estimate?.status !== "accepted") {
       toast.error("The estimate must be approved before converting to a job");
+      return;
+    }
+    if (requiresPhotos && beforePhotoCount === 0) {
+      toast.error("Please add at least one before photo to convert this lead to a job");
       return;
     }
 
@@ -860,7 +876,8 @@ export default function LeadDetail() {
               {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
               {lead.status === "qualified" && !hasEstimate && "Create an estimate to send to the customer for approval."}
               {lead.status === "qualified" && hasEstimate && !isEstimateApproved && "The estimate needs to be approved before this lead can become a job."}
-              {lead.status === "qualified" && hasEstimate && isEstimateApproved && "The estimate is approved. Convert this lead to a job to get started."}
+              {lead.status === "qualified" && hasEstimate && isEstimateApproved && requiresPhotos && beforePhotoCount === 0 && "The estimate is approved. Add at least one before photo to convert this lead to a job."}
+              {lead.status === "qualified" && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && "The estimate is approved. Convert this lead to a job to get started."}
             </p>
           </div>
         </div>
@@ -918,7 +935,7 @@ export default function LeadDetail() {
                 Create Estimate
               </Button>
             )}
-            {showConvertButton && hasEstimate && isEstimateApproved && (
+            {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
               <Button size="sm" className="flex-1" onClick={() => setConvertJobDialogOpen(true)}>
                 <Briefcase className="h-4 w-4 mr-1" />
                 Convert to Job
@@ -981,6 +998,16 @@ export default function LeadDetail() {
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
           </button>
+        </div>
+      )}
+
+      {/* Before Photos */}
+      {requiresPhotos && !["job", "paid"].includes(lead.status) && (
+        <div className="px-4 pb-4">
+          <BeforePhotos
+            leadId={id!}
+            onPhotosChange={setBeforePhotoCount}
+          />
         </div>
       )}
 
