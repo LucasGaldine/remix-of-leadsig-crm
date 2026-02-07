@@ -118,6 +118,7 @@ export default function SettingsNotifications() {
   const [digestFrequency, setDigestFrequency] = useState<"off" | "daily" | "weekly">(defaultPrefs.digest.frequency);
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isSendingEmailTest, setIsSendingEmailTest] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
 
@@ -208,6 +209,59 @@ export default function SettingsNotifications() {
       toast.error("Could not reach the SMS service. Please try again.");
     } finally {
       setIsSendingTest(false);
+    }
+  };
+
+  const handleEmailTest = async () => {
+    if (!currentAccount || !user) {
+      toast.error("You need to be signed in to send a test.");
+      return;
+    }
+
+    if (!channels.email) {
+      toast.info("Enable the email channel first, then save your preferences.");
+      return;
+    }
+
+    const email = profile?.email || user?.email;
+    if (!email) {
+      toast.error("Add an email to your profile to test email notifications.");
+      return;
+    }
+
+    if (isDirty) {
+      toast.error("Save your preferences first before sending a test email.");
+      return;
+    }
+
+    setIsSendingEmailTest(true);
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email-digest`;
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          digest_type: digestFrequency === "weekly" ? "weekly" : "daily",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.sent > 0) {
+        toast.success("Test digest email sent to " + email);
+      } else if (response.ok && result.sent === 0) {
+        const reason = result.results?.[0]?.reason || "No new notifications to include";
+        toast.info("Digest not sent: " + reason);
+      } else {
+        toast.error(result.error || "Failed to send test email");
+      }
+    } catch {
+      toast.error("Could not reach the email service. Please try again.");
+    } finally {
+      setIsSendingEmailTest(false);
     }
   };
 
@@ -455,33 +509,63 @@ export default function SettingsNotifications() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Send className="h-5 w-5" />
-              Test SMS
+              Test Notifications
             </CardTitle>
-            <CardDescription>Send yourself a test SMS to confirm SMS notifications are working correctly.</CardDescription>
+            <CardDescription>Send yourself a test notification to confirm everything is working correctly.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="font-medium text-foreground">Send a test SMS</p>
-              <p className="text-sm text-muted-foreground">
-                {!channels.sms
-                  ? "Enable SMS channel first"
-                  : isDirty
-                  ? "Save preferences before testing"
-                  : `Sends to ${profile?.phone || "your phone number"}`}
-              </p>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border px-4 py-3">
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">Send a test SMS</p>
+                <p className="text-sm text-muted-foreground">
+                  {!channels.sms
+                    ? "Enable SMS channel first"
+                    : isDirty
+                    ? "Save preferences before testing"
+                    : `Sends to ${profile?.phone || "your phone number"}`}
+                </p>
+              </div>
+              <Button
+                onClick={handleTest}
+                disabled={isSendingTest || !channels.sms || !hasPhone || isDirty}
+                variant="outline"
+                className="w-full sm:w-auto gap-2"
+              >
+                {isSendingTest ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MessageSquare className="h-4 w-4" />
+                )}
+                {isSendingTest ? "Sending..." : "Send test SMS"}
+              </Button>
             </div>
-            <Button
-              onClick={handleTest}
-              disabled={isSendingTest || !channels.sms || !hasPhone || isDirty}
-              className="w-full sm:w-auto gap-2"
-            >
-              {isSendingTest ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <MessageSquare className="h-4 w-4" />
-              )}
-              {isSendingTest ? "Sending..." : "Send test SMS"}
-            </Button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border px-4 py-3">
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">Send a test email digest</p>
+                <p className="text-sm text-muted-foreground">
+                  {!channels.email
+                    ? "Enable email channel first"
+                    : isDirty
+                    ? "Save preferences before testing"
+                    : digestFrequency === "off"
+                    ? "Enable email digest first"
+                    : `Sends to ${profile?.email || user?.email || "your email"}`}
+                </p>
+              </div>
+              <Button
+                onClick={handleEmailTest}
+                disabled={isSendingEmailTest || !channels.email || !hasEmail || isDirty || digestFrequency === "off"}
+                variant="outline"
+                className="w-full sm:w-auto gap-2"
+              >
+                {isSendingEmailTest ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Mail className="h-4 w-4" />
+                )}
+                {isSendingEmailTest ? "Sending..." : "Send test email"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
