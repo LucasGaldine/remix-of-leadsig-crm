@@ -93,11 +93,27 @@ export function useNotifications() {
     },
   });
 
+  const deleteAll = useMutation({
+    mutationFn: async () => {
+      if (!currentAccount) return;
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("account_id", currentAccount.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
   return {
     notifications: filtered,
     isLoading: query.isLoading,
     unreadCount,
     markAsRead: markAsRead.mutate,
     markAllAsRead: markAllAsRead.mutate,
+    deleteAll: deleteAll.mutate,
+    isDeletingAll: deleteAll.isPending,
   };
 }

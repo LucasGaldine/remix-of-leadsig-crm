@@ -13,6 +13,7 @@ import {
   FileCheck,
   BellOff,
   CheckCheck,
+  Trash2,
 } from "lucide-react";
 
 interface NotificationsPanelProps {
@@ -96,7 +97,7 @@ function NotificationItem({
 
 export function NotificationsPanel({ open, onOpenChange }: NotificationsPanelProps) {
   const navigate = useNavigate();
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteAll, isDeletingAll } = useNotifications();
 
   const handleNavigate = (path: string) => {
     onOpenChange(false);
@@ -109,17 +110,31 @@ export function NotificationsPanel({ open, onOpenChange }: NotificationsPanelPro
         <SheetHeader className="px-4 pt-4 pb-3 border-b">
           <div className="flex items-center justify-between pr-8">
             <SheetTitle>Notifications</SheetTitle>
-            {unreadCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => markAllAsRead()}
-                className="text-xs h-8 gap-1.5"
-              >
-                <CheckCheck className="h-3.5 w-3.5" />
-                Mark all read
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {unreadCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => markAllAsRead()}
+                  className="text-xs h-8 gap-1.5"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Mark all read
+                </Button>
+              )}
+              {notifications.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deleteAll()}
+                  disabled={isDeletingAll}
+                  className="text-xs h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete all
+                </Button>
+              )}
+            </div>
           </div>
         </SheetHeader>
 
