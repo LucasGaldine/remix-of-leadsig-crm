@@ -313,6 +313,7 @@ Deno.serve(async (req: Request) => {
             .from("notifications")
             .select("id, title, body, event_type, created_at")
             .eq("account_id", member.account_id)
+            .eq("user_id", profile.user_id)
             .gte("created_at", cutoff.toISOString())
             .lte("created_at", periodEnd.toISOString())
             .order("created_at", { ascending: false })

@@ -287,6 +287,7 @@ Deno.serve(async (req: Request) => {
         const ref = getReferenceInfo(event_type, data || {});
         await supabase.from("notifications").insert({
           account_id,
+          user_id: profile.user_id,
           title: buildNotificationTitle(event_type),
           body: messageBody,
           event_type: mapEventType(event_type),
