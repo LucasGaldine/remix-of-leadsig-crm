@@ -368,7 +368,7 @@ export default function JobDetail() {
               {job.customer?.name || "Unknown Client"}
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {job.service_type || "No service type"}{job.name?.endsWith(", Estimate") ? ", Estimate" : ""}
+              {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
             </p>
             <button onClick={openAddressDialog} className="flex items-center gap-1 text-sm text-muted-foreground mt-1 hover:text-foreground transition-colors">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
@@ -622,7 +622,7 @@ export default function JobDetail() {
 
         {activeTab === "photos" && id && (
           <div className="space-y-8">
-            {job?.name?.endsWith(", Estimate") && parentLeadId ? (
+            {job?.is_estimate_visit && parentLeadId ? (
               <PhotoSection
                 leadId={parentLeadId}
                 photoType="before"
