@@ -509,7 +509,7 @@ export default function JobDetail() {
             {id && <JobAssignments leadId={id} />}
 
             {/* Estimate */}
-            {estimate && (
+            {estimate ? (
               <button
                 onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
                 className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
@@ -530,7 +530,19 @@ export default function JobDetail() {
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </div>
               </button>
-            )}
+            ) : !estimateLoading ? (
+              <div className="card-elevated rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-secondary">
+                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">Estimate</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">No estimate yet</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Crew */}
             {job.crew_lead && (

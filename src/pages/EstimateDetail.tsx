@@ -467,7 +467,7 @@ export default function EstimateDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-48">
-      <PageHeader title="Estimate" showBack backTo="/payments" />
+      <PageHeader title={`${estimate.customer?.name || "Unknown"}, Estimate`} showBack backTo="/payments" />
 
       {estimate.is_finalized && (
         <div className="px-4 pt-4">
