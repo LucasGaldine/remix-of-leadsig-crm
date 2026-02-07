@@ -52,6 +52,8 @@ export default function JobDetail() {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [addressDialogOpen, setAddressDialogOpen] = useState(false);
+  const [addressValue, setAddressValue] = useState("");
   const [scheduleForm, setScheduleForm] = useState({
     scheduled_date: "",
     scheduled_time_start: "",
@@ -247,6 +249,29 @@ export default function JobDetail() {
     }
   };
 
+  const openAddressDialog = () => {
+    setAddressValue(job?.address || "");
+    setAddressDialogOpen(true);
+  };
+
+  const handleSaveAddress = async () => {
+    if (!id) return;
+    try {
+      const trimmed = addressValue.trim() || null;
+      await updateJobMutation.mutateAsync({ id, address: trimmed });
+      if (job?.customer?.id) {
+        await supabase
+          .from("customers")
+          .update({ address: trimmed })
+          .eq("id", job.customer.id);
+      }
+      toast.success("Address updated!");
+      setAddressDialogOpen(false);
+    } catch {
+      toast.error("Failed to update address");
+    }
+  };
+
   const deleteJob = async () => {
     if (!id) return;
 
@@ -388,7 +413,7 @@ export default function JobDetail() {
           <div className="space-y-4">
             {/* Location */}
             <button
-              onClick={openEditDialog}
+              onClick={openAddressDialog}
               className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
             >
               <div className="flex items-start gap-3">
@@ -681,6 +706,30 @@ export default function JobDetail() {
             <Button onClick={handleSchedule} disabled={!scheduleForm.scheduled_date}>
               Add Schedule
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Address Dialog */}
+      <Dialog open={addressDialogOpen} onOpenChange={setAddressDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Job Location</DialogTitle>
+            <DialogDescription>Update the address for this job.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="job-address">Address</Label>
+            <Input
+              id="job-address"
+              value={addressValue}
+              onChange={(e) => setAddressValue(e.target.value)}
+              placeholder="Enter job address"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddressDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveAddress}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
