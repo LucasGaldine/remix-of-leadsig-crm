@@ -652,6 +652,11 @@ export default function LeadDetail() {
                   {lead.status.replace("_", " ")}
                 </StatusBadge>
               )}
+              {lead.source && (
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                  via {lead.source}
+                </span>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="ml-auto">
@@ -675,7 +680,7 @@ export default function LeadDetail() {
             </div>
             <h2 className="text-xl font-bold text-foreground">{lead.name}</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {lead.service_type || "No service type"}{lead.source ? ` · ${lead.source}` : ""}
+              {lead.service_type || "No service type"}
             </p>
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
               <Phone className="h-3.5 w-3.5 shrink-0" />
