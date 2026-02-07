@@ -45,6 +45,41 @@ function buildMessageBody(
   }
 }
 
+function buildNotificationTitle(eventType: string): string {
+  switch (eventType) {
+    case "new_leads": return "SMS Sent - New Lead";
+    case "lead_updates": return "SMS Sent - Lead Update";
+    case "payments": return "SMS Sent - Payment";
+    case "schedule_changes": return "SMS Sent - Schedule Change";
+    case "tasks": return "SMS Sent - Task Reminder";
+    default: return "SMS Sent";
+  }
+}
+
+function mapEventType(eventType: string): string {
+  switch (eventType) {
+    case "new_leads": return "new_lead";
+    case "lead_updates": return "lead_status_change";
+    case "payments": return "payment_received";
+    case "schedule_changes": return "schedule_change";
+    default: return eventType;
+  }
+}
+
+function getReferenceInfo(eventType: string, data: Record<string, unknown>): { reference_id: string | null; reference_type: string | null } {
+  switch (eventType) {
+    case "new_leads":
+    case "lead_updates":
+      return { reference_id: (data.lead_id as string) || null, reference_type: "lead" };
+    case "payments":
+      return { reference_id: (data.payment_id as string) || null, reference_type: "payment" };
+    case "schedule_changes":
+      return { reference_id: (data.lead_id as string) || null, reference_type: "job_schedule" };
+    default:
+      return { reference_id: null, reference_type: null };
+  }
+}
+
 function isInQuietHours(prefs: NotificationPreferences): boolean {
   if (!prefs.quiet_hours?.enabled) return false;
 
@@ -247,6 +282,18 @@ Deno.serve(async (req: Request) => {
         twilio_sid: twilioResult.sid || null,
         metadata: data || null,
       });
+
+      if (twilioResult.success) {
+        const ref = getReferenceInfo(event_type, data || {});
+        await supabase.from("notifications").insert({
+          account_id,
+          title: buildNotificationTitle(event_type),
+          body: messageBody,
+          event_type: mapEventType(event_type),
+          reference_id: ref.reference_id,
+          reference_type: ref.reference_type,
+        });
+      }
 
       results.push({
         user_id: profile.user_id,
