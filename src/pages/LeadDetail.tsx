@@ -479,6 +479,13 @@ export default function LeadDetail() {
 
       if (updateError) throw new Error("Failed to update job status");
 
+      if (lead.estimate_job_id) {
+        await supabase
+          .from("leads")
+          .update({ status: "paid" })
+          .eq("id", lead.estimate_job_id);
+      }
+
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         account_id: currentAccount?.id,
