@@ -184,13 +184,33 @@ export default function EstimateDetail() {
 
   const handleDelete = async () => {
     try {
+      const jobId = estimate?.job_id;
+
+      let estimateJobId: string | null = null;
+      if (jobId) {
+        const { data: lead } = await supabase
+          .from("leads")
+          .select("estimate_job_id")
+          .eq("id", jobId)
+          .maybeSingle();
+        estimateJobId = lead?.estimate_job_id ?? null;
+      }
+
       const { error } = await supabase
         .from("estimates")
         .delete()
         .eq("id", id);
 
       if (error) throw error;
+
+      if (estimateJobId) {
+        await supabase.from("job_schedules").delete().eq("lead_id", estimateJobId);
+        await supabase.from("leads").delete().eq("id", estimateJobId);
+      }
+
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
       toast.success("Estimate deleted");
       navigate("/payments");
     } catch {
