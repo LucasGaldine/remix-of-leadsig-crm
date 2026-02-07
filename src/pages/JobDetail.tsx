@@ -388,7 +388,7 @@ export default function JobDetail() {
           <div className="space-y-4">
             {/* Location */}
             <button
-              onClick={handleNavigate}
+              onClick={openEditDialog}
               className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
             >
               <div className="flex items-start gap-3">
