@@ -875,7 +875,9 @@ export default function LeadDetail() {
               {lead.status === "new" && "Contact this lead to move them to the next stage."}
               {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
               {lead.status === "qualified" && !hasEstimate && "Create an estimate to send to the customer for approval."}
-              {lead.status === "qualified" && hasEstimate && !isEstimateApproved && "The estimate needs to be approved before this lead can become a job."}
+              {lead.status === "qualified" && hasEstimate && !isEstimateApproved && (requiresPhotos && beforePhotoCount === 0
+                ? "The estimate needs to be approved and before photos added to convert this lead to a job."
+                : "The estimate needs to be approved before this lead can become a job.")}
               {lead.status === "qualified" && hasEstimate && isEstimateApproved && requiresPhotos && beforePhotoCount === 0 && "The estimate is approved. Add at least one before photo to convert this lead to a job."}
               {lead.status === "qualified" && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && "The estimate is approved. Convert this lead to a job to get started."}
             </p>

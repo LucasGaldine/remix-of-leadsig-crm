@@ -188,7 +188,7 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
       });
 
       toast.dismiss(loadingToast);
-      toast.success("Estimate created successfully! You can now convert this lead to a job.");
+      toast.success("Estimate created! Send it to the customer for approval.");
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
