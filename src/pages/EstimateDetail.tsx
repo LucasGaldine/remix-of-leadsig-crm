@@ -42,6 +42,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 
 const statusConfig = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
@@ -67,6 +68,7 @@ export default function EstimateDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: estimate, isLoading } = useEstimate(id);
+  const { account } = useAuth();
 
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -123,17 +125,31 @@ export default function EstimateDetail() {
       if (estimate?.job_id) {
         const leadStatus = estimate.job?.status;
         if (leadStatus && leadStatus !== "job" && leadStatus !== "paid") {
-          await supabase
-            .from("leads")
-            .update({ status: "job" })
-            .eq("id", estimate.job_id);
+          const plan = account?.pricing_plan ?? "free";
+          const requiresPhotos = plan === "basic" || plan === "premium";
 
-          await supabase.from("interactions").insert({
-            lead_id: estimate.job_id,
-            type: "status_change",
-            direction: "na",
-            summary: "Converted to job (estimate approved manually)",
-          });
+          let hasPhotos = true;
+          if (requiresPhotos) {
+            const { count } = await supabase
+              .from("lead_photos")
+              .select("id", { count: "exact", head: true })
+              .eq("lead_id", estimate.job_id);
+            hasPhotos = (count ?? 0) > 0;
+          }
+
+          if (!requiresPhotos || hasPhotos) {
+            await supabase
+              .from("leads")
+              .update({ status: "job" })
+              .eq("id", estimate.job_id);
+
+            await supabase.from("interactions").insert({
+              lead_id: estimate.job_id,
+              type: "status_change",
+              direction: "na",
+              summary: "Converted to job (estimate approved manually)",
+            });
+          }
         }
       }
 
