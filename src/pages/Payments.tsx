@@ -248,6 +248,7 @@ export default function Payments() {
                 discount: Number(estimate.discount),
                 total: Number(estimate.total),
                 status: estimate.status,
+                isFinalized: estimate.is_finalized,
                 createdAt: estimate.created_at ? format(new Date(estimate.created_at), "MMM d") : "",
                 sentAt: estimate.sent_at ? format(new Date(estimate.sent_at), "MMM d") : undefined,
                 viewedAt: estimate.viewed_at ? format(new Date(estimate.viewed_at), "MMM d") : undefined,

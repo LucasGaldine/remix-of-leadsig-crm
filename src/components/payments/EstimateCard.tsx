@@ -1,22 +1,30 @@
-import { FileText, Eye, Check, Clock, AlertCircle } from "lucide-react";
+import { FileText, Check, Clock, AlertCircle, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Estimate, EstimateStatus } from "@/types/payments";
+import { Estimate } from "@/types/payments";
 
 interface EstimateCardProps {
-  estimate: Estimate;
+  estimate: Estimate & { isFinalized?: boolean };
   onClick?: () => void;
 }
 
-const statusConfig: Record<EstimateStatus, { label: string; className: string; icon: React.ReactNode }> = {
-  draft: { label: "Estimate", className: "bg-blue-50 text-blue-600", icon: <FileText className="h-3 w-3" /> },
-  sent: { label: "Sent", className: "status-pending", icon: <Clock className="h-3 w-3" /> },
-  viewed: { label: "Viewed", className: "status-paid", icon: <Eye className="h-3 w-3" /> },
-  accepted: { label: "Approved", className: "status-confirmed", icon: <Check className="h-3 w-3" /> },
-  expired: { label: "Expired", className: "status-attention", icon: <AlertCircle className="h-3 w-3" /> },
-};
+function getDisplayConfig(estimate: Estimate & { isFinalized?: boolean }) {
+  if (estimate.isFinalized) {
+    return { label: "Invoiced", className: "status-paid", icon: <Receipt className="h-3 w-3" /> };
+  }
+  if (estimate.status === "accepted") {
+    return { label: "Approved", className: "status-confirmed", icon: <Check className="h-3 w-3" /> };
+  }
+  if (estimate.status === "expired") {
+    return { label: "Expired", className: "status-attention", icon: <AlertCircle className="h-3 w-3" /> };
+  }
+  if (estimate.status === "sent" || estimate.status === "viewed") {
+    return { label: "Not Approved", className: "status-pending", icon: <Clock className="h-3 w-3" /> };
+  }
+  return { label: "Not Approved", className: "bg-secondary text-secondary-foreground", icon: <FileText className="h-3 w-3" /> };
+}
 
 export function EstimateCard({ estimate, onClick }: EstimateCardProps) {
-  const config = statusConfig[estimate.status];
+  const config = getDisplayConfig(estimate);
 
   return (
     <button

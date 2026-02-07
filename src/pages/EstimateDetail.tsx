@@ -29,6 +29,16 @@ import { useEstimate } from "@/hooks/useEstimates";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -65,6 +75,8 @@ export default function EstimateDetail() {
   const [approvalLink, setApprovalLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [manualApproving, setManualApproving] = useState(false);
+  const [showApproveDialog, setShowApproveDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   if (isLoading) {
     return (
@@ -94,7 +106,6 @@ export default function EstimateDetail() {
   const hasChangeOrders = estimate.line_items.some((item: any) => item.is_change_order);
 
   const handleManualApprove = async () => {
-    if (!confirm("Mark this estimate as approved by the customer?")) return;
     setManualApproving(true);
     try {
       const { error } = await supabase
@@ -169,8 +180,8 @@ export default function EstimateDetail() {
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this estimate?")) return;
     toast.info("Delete functionality coming soon!");
+    setShowDeleteDialog(false);
   };
 
   const enterEditMode = () => {
@@ -772,7 +783,7 @@ export default function EstimateDetail() {
                 variant="outline"
                 size="sm"
                 className="gap-2 text-destructive w-full"
-                onClick={handleDelete}
+                onClick={() => setShowDeleteDialog(true)}
               >
                 <Trash2 className="h-4 w-4" />
                 Delete
@@ -809,7 +820,7 @@ export default function EstimateDetail() {
                   <Button
                     variant="outline"
                     className="flex-1 h-14 gap-2"
-                    onClick={handleManualApprove}
+                    onClick={() => setShowApproveDialog(true)}
                     disabled={manualApproving}
                   >
                     <Check className="h-4 w-4" />
@@ -848,6 +859,40 @@ export default function EstimateDetail() {
           </div>
         </>
       )}
+
+      <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve Estimate</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mark this estimate as approved by the customer?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setShowApproveDialog(false); handleManualApprove(); }}>
+              Approve
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Estimate</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this estimate? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MobileNav />
     </div>
