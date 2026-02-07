@@ -12,6 +12,8 @@ import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 import CrewDashboard from "./CrewDashboard";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -23,7 +25,8 @@ function getGreeting(): string {
 export default function Index() {
   const navigate = useNavigate();
   const { user, isCrewMember, profile } = useAuth();
-  const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
+  const { toast } = useToast();
+  const { data: qualifiedLeadsData = [], isLoading: leadsLoading, refetch: refetchLeads } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
 
@@ -32,6 +35,32 @@ export default function Index() {
 
   const handleLeadClick = (leadId: string) => {
     navigate(`/leads/${leadId}`);
+  };
+
+  const handleQualify = async (leadId: string) => {
+    const { error } = await supabase
+      .from("leads")
+      .update({ status: "qualified" })
+      .eq("id", leadId);
+    if (error) {
+      toast({ title: "Error", description: "Failed to qualify lead", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Lead qualified" });
+    refetchLeads();
+  };
+
+  const handleViewEstimate = async (leadId: string) => {
+    const { data } = await supabase
+      .from("estimates")
+      .select("id")
+      .eq("job_id", leadId)
+      .maybeSingle();
+    if (data) {
+      navigate(`/payments/estimates/${data.id}`);
+    } else {
+      navigate(`/leads/${leadId}`);
+    }
   };
 
   const formatLeadForCard = (lead: any): Lead => ({
@@ -163,12 +192,10 @@ export default function Index() {
                   key={lead.id}
                   lead={lead}
                   onClick={() => handleLeadClick(lead.id)}
-                  onCall={() => {
-                    if (import.meta.env.DEV) console.log("Call", lead.phone);
-                  }}
-                  onMessage={() => {
-                    if (import.meta.env.DEV) console.log("Message", lead.phone);
-                  }}
+                  onCall={() => window.open(`tel:${lead.phone}`)}
+                  onMessage={() => window.open(`sms:${lead.phone}`)}
+                  onQualify={() => handleQualify(lead.id)}
+                  onViewEstimate={() => handleViewEstimate(lead.id)}
                 />
               ))}
             </div>

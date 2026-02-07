@@ -13,6 +13,8 @@ import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 import { useRejectedLeads } from "@/hooks/useRejectedLeads";
 import { formatDistanceToNow } from "date-fns";
 import { UserPlus } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 type FilterStatus = "all" | LeadStatus;
 
@@ -29,11 +31,39 @@ export default function Leads() {
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
   const [showAddLead, setShowAddLead] = useState(false);
 
+  const { toast } = useToast();
   const { data: leadsData, isLoading, refetch } = useLeads();
   const { data: counts, refetch: refetchCounts } = useLeadCounts();
   const { data: pendingCount = 0 } = usePendingLeadsCount();
   const { data: rejectedLeads } = useRejectedLeads();
   const rejectedCount = rejectedLeads?.length || 0;
+
+  const handleQualify = async (leadId: string) => {
+    const { error } = await supabase
+      .from("leads")
+      .update({ status: "qualified" })
+      .eq("id", leadId);
+    if (error) {
+      toast({ title: "Error", description: "Failed to qualify lead", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Lead qualified" });
+    refetch();
+    refetchCounts();
+  };
+
+  const handleViewEstimate = async (leadId: string) => {
+    const { data } = await supabase
+      .from("estimates")
+      .select("id")
+      .eq("job_id", leadId)
+      .maybeSingle();
+    if (data) {
+      navigate(`/payments/estimates/${data.id}`);
+    } else {
+      navigate(`/leads/${leadId}`);
+    }
+  };
 
   // Transform database leads to component format
   const allLeads: Lead[] = (leadsData || []).map((lead) => ({
@@ -162,6 +192,8 @@ export default function Leads() {
                 onClick={() => navigate(`/leads/${lead.id}`)}
                 onCall={() => window.open(`tel:${lead.phone}`)}
                 onMessage={() => window.open(`sms:${lead.phone}`)}
+                onQualify={() => handleQualify(lead.id)}
+                onViewEstimate={() => handleViewEstimate(lead.id)}
               />
             ))}
           </div>
