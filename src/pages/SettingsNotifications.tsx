@@ -10,6 +10,11 @@ import {
   AlertTriangle,
   Clock,
   Inbox,
+  Send,
+  History,
+  CheckCircle,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -22,10 +27,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSmsLogs } from "@/hooks/useSmsLogs";
+import { formatDistanceToNow } from "date-fns";
 
 type Channel = "push" | "email" | "sms";
 type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks";
@@ -37,10 +45,10 @@ type NotificationPreferences = {
   digest: { frequency: "off" | "daily" | "weekly" };
 };
 
-const channelMeta: Record<Channel, { label: string; icon: React.ReactNode; helper: string }> = {
+const channelMeta: Record<Channel, { label: string; icon: React.ReactNode; helper: string; badge?: string }> = {
   push: { label: "Push", icon: <Smartphone className="h-4 w-4" />, helper: "App & desktop" },
   email: { label: "Email", icon: <Mail className="h-4 w-4" />, helper: "Detailed updates" },
-  sms: { label: "SMS", icon: <MessageSquare className="h-4 w-4" />, helper: "Urgent only" },
+  sms: { label: "SMS", icon: <MessageSquare className="h-4 w-4" />, helper: "Via Twilio", badge: "Twilio" },
 };
 
 const alertMeta: Record<AlertKey, { label: string; description: string; icon: React.ReactNode }> = {
@@ -71,8 +79,17 @@ const alertMeta: Record<AlertKey, { label: string; description: string; icon: Re
   },
 };
 
+const eventTypeLabels: Record<string, string> = {
+  new_leads: "New lead",
+  lead_updates: "Lead update",
+  payments: "Payment",
+  schedule_changes: "Schedule change",
+  tasks: "Task",
+};
+
 export default function SettingsNotifications() {
-  const { profile, user, refreshProfile } = useAuth();
+  const { profile, user, currentAccount, refreshProfile } = useAuth();
+  const { logs: smsLogs, isLoading: smsLogsLoading, refetch: refetchSmsLogs } = useSmsLogs(5);
 
   const hasEmail = Boolean(profile?.email || user?.email);
   const hasPhone = Boolean(profile?.phone);
@@ -100,6 +117,7 @@ export default function SettingsNotifications() {
   const [quietEnd, setQuietEnd] = useState(defaultPrefs.quiet_hours.end);
   const [digestFrequency, setDigestFrequency] = useState<"off" | "daily" | "weekly">(defaultPrefs.digest.frequency);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
 
@@ -133,8 +151,55 @@ export default function SettingsNotifications() {
     setIsDirty(true);
   };
 
-  const handleTest = () => {
-    toast.success("Test notification sent (mock)");
+  const handleTest = async () => {
+    if (!currentAccount || !user) {
+      toast.error("You need to be signed in to send a test.");
+      return;
+    }
+
+    if (!channels.sms) {
+      toast.info("Enable the SMS channel first, then save your preferences.");
+      return;
+    }
+
+    if (!profile?.phone) {
+      toast.error("Add a phone number to your profile to test SMS.");
+      return;
+    }
+
+    setIsSendingTest(true);
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-sms`;
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_type: "new_leads",
+          account_id: currentAccount.id,
+          data: {
+            name: "Test Lead",
+            phone: "(555) 000-0000",
+            service_type: "Test notification",
+            source: "manual",
+          },
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.sent > 0) {
+        toast.success("Test SMS sent to " + profile.phone);
+        refetchSmsLogs();
+      } else if (response.ok && result.sent === 0) {
+        toast.info(result.reason || "No SMS sent. Check that SMS is enabled and your preferences are saved.");
+      } else {
+        toast.error(result.error || "Failed to send test SMS");
+      }
+    } catch {
+      toast.error("Could not reach the SMS service. Please try again.");
+    } finally {
+      setIsSendingTest(false);
+    }
   };
 
   const handleSave = async () => {
@@ -226,6 +291,11 @@ export default function SettingsNotifications() {
                   {isComingSoon && (
                     <span className="absolute -top-2.5 left-3 bg-slate-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wide">
                       COMING SOON
+                    </span>
+                  )}
+                  {channelMeta[channel].badge && available && (
+                    <span className="absolute -top-2.5 right-3 bg-emerald-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wide">
+                      {channelMeta[channel].badge}
                     </span>
                   )}
                   <div className="space-y-1">
@@ -375,22 +445,101 @@ export default function SettingsNotifications() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
-              Verify
+              <Send className="h-5 w-5" />
+              Test SMS
             </CardTitle>
-            <CardDescription>Send yourself a test push/email to confirm everything works.</CardDescription>
+            <CardDescription>Send yourself a test SMS to confirm Twilio is configured correctly.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <p className="font-medium text-foreground">Send a test notification</p>
-              <p className="text-sm text-muted-foreground">Uses your current channel selections.</p>
+              <p className="font-medium text-foreground">Send a test SMS</p>
+              <p className="text-sm text-muted-foreground">
+                {channels.sms
+                  ? `Sends to ${profile?.phone || "your phone number"}`
+                  : "Enable SMS channel first"}
+              </p>
             </div>
-            <Button onClick={handleTest} className="w-full sm:w-auto gap-2">
-              <Bell className="h-4 w-4" />
-              Send test
+            <Button
+              onClick={handleTest}
+              disabled={isSendingTest || !channels.sms || !hasPhone}
+              className="w-full sm:w-auto gap-2"
+            >
+              {isSendingTest ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+              {isSendingTest ? "Sending..." : "Send test SMS"}
             </Button>
           </CardContent>
         </Card>
+
+        {channels.sms && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Recent SMS Activity
+              </CardTitle>
+              <CardDescription>Last {smsLogs.length > 0 ? smsLogs.length : "few"} SMS notifications sent from your account.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {smsLogsLoading ? (
+                <div className="flex items-center justify-center py-6 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Loading...
+                </div>
+              ) : smsLogs.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">No SMS notifications sent yet.</p>
+                  <p className="text-xs mt-1">Messages will appear here once events trigger SMS alerts.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {smsLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="flex items-start justify-between rounded-lg border px-4 py-3 gap-3"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className={cn(
+                          "p-1.5 rounded-full mt-0.5 shrink-0",
+                          log.status === "sent" ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"
+                        )}>
+                          {log.status === "sent" ? (
+                            <CheckCircle className="h-3.5 w-3.5" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-foreground">
+                              {eventTypeLabels[log.event_type] || log.event_type}
+                            </p>
+                            <Badge variant={log.status === "sent" ? "default" : "destructive"} className="text-[10px] px-1.5 py-0">
+                              {log.status}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                            {log.message_body}
+                          </p>
+                          {log.error_message && (
+                            <p className="text-xs text-red-500 mt-0.5">{log.error_message}</p>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                        {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <StickyActionBar onSave={handleSave} isSaving={isSaving} label="Save preferences" />
       </main>
