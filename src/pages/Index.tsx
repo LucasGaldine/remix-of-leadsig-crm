@@ -112,7 +112,7 @@ export default function Index() {
             <SectionHeader
               title="Awaiting Approval"
               count={pendingApprovals.length}
-              action={{ label: "View all", onClick: () => navigate("/payments") }}
+              action={pendingApprovals.length > SECTION_LIMIT ? { label: "View all", onClick: () => navigate("/payments") } : undefined}
               className="mb-3"
             />
             <div className="space-y-2">
@@ -157,7 +157,7 @@ export default function Index() {
             <SectionHeader
               title="Today's Jobs"
               count={activeJobsData.length}
-              action={{ label: "View all", onClick: () => navigate("/jobs") }}
+              action={activeJobsData.length > SECTION_LIMIT ? { label: "View all", onClick: () => navigate("/jobs") } : undefined}
               className="mb-3"
             />
             {activeJobsLoading ? (
@@ -198,7 +198,7 @@ export default function Index() {
             <SectionHeader
               title="Qualified Leads"
               count={qualifiedLeads.length}
-              action={{ label: "View all", onClick: () => navigate("/leads") }}
+              action={qualifiedLeads.length > SECTION_LIMIT ? { label: "View all", onClick: () => navigate("/leads") } : undefined}
               className="mb-3"
             />
             {leadsLoading ? (
