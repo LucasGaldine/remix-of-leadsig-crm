@@ -257,8 +257,17 @@ Deno.serve(async (req: Request) => {
 
     const sentCount = results.filter((r) => r.sent).length;
 
+    let reason: string | undefined;
+    if (sentCount === 0 && results.length > 0) {
+      const reasons = results
+        .filter((r) => !r.sent && r.reason)
+        .map((r) => r.reason!);
+      const unique = [...new Set(reasons)];
+      reason = unique.join("; ");
+    }
+
     return new Response(
-      JSON.stringify({ success: true, sent: sentCount, total: results.length, results }),
+      JSON.stringify({ success: true, sent: sentCount, total: results.length, reason, results }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -199,7 +199,8 @@ export default function SettingsNotifications() {
         toast.success("Test SMS sent to " + profile.phone);
         refetchSmsLogs();
       } else if (response.ok && result.sent === 0) {
-        toast.info(result.reason || "No SMS sent. Check that SMS is enabled and your preferences are saved.");
+        const reason = result.reason || "Unknown reason";
+        toast.error("SMS not sent: " + reason);
       } else {
         toast.error(result.error || "Failed to send test SMS");
       }
