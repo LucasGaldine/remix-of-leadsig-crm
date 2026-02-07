@@ -5,7 +5,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel, QuickEstimateBreakdown } from "@/components/leads/QuickEstimatePanel";
 import { CreateEstimateDialog } from "@/components/leads/CreateEstimateDialog";
-import { LineItemsEstimateDialog, EstimateLineItemInit } from "@/components/leads/LineItemsEstimateDialog";
+import { type EstimateLineItemInit } from "@/components/leads/LineItemsEstimateDialog";
+import { CreateDraftEstimateDialog } from "@/components/leads/CreateDraftEstimateDialog";
 import { SERVICE_LABELS } from "@/hooks/useQuickEstimate";
 import { supabase } from "@/integrations/supabase/client";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -895,12 +896,12 @@ export default function LeadDetail() {
 
       {/* Quick Estimate Draft Dialog */}
       {lead && (
-        <LineItemsEstimateDialog
+        <CreateDraftEstimateDialog
           open={draftEstimateDialogOpen}
           onOpenChange={setDraftEstimateDialogOpen}
           lead={lead}
+          lineItems={draftLineItems}
           onSuccess={handleEstimateSuccess}
-          initialLineItems={draftLineItems}
         />
       )}
 
