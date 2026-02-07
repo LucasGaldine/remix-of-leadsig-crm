@@ -675,7 +675,7 @@ export default function LeadDetail() {
             </div>
             <h2 className="text-xl font-bold text-foreground">{lead.name}</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {lead.service_type || "No service type"}
+              {lead.service_type || "No service type"}{lead.source ? ` · ${lead.source}` : ""}
             </p>
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
               <Phone className="h-3.5 w-3.5 shrink-0" />
@@ -995,12 +995,6 @@ export default function LeadDetail() {
                   <div>
                     <span className="text-muted-foreground">Email</span>
                     <p className="font-medium truncate">{lead.email}</p>
-                  </div>
-                )}
-                {lead.source && (
-                  <div>
-                    <span className="text-muted-foreground">Source</span>
-                    <p className="font-medium capitalize">{lead.source}</p>
                   </div>
                 )}
               </div>
