@@ -26,6 +26,7 @@ import { Database } from "@/integrations/supabase/types";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { PhotoSection } from "@/components/photos/PhotoSection";
 import { hasPlanAccess } from "@/lib/planGating";
+import { SERVICE_TYPES } from "@/constants/serviceTypes";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -738,12 +739,19 @@ export default function LeadDetail() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-service">Service Type</Label>
-              <Input
-                id="edit-service"
+              <Select
                 value={editForm.service_type}
-                onChange={(e) => setEditForm({ ...editForm, service_type: e.target.value })}
-                placeholder="e.g., Lawn Care, Tree Removal"
-              />
+                onValueChange={(value) => setEditForm({ ...editForm, service_type: value })}
+              >
+                <SelectTrigger id="edit-service">
+                  <SelectValue placeholder="Select service type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVICE_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-address">Address</Label>
