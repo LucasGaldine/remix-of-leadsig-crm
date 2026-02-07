@@ -248,8 +248,15 @@ export default function LeadSources() {
     platform: null,
   });
 
+  const [facebookConnecting, setFacebookConnecting] = useState(false);
+
   const handleConnect = async (platform: PlatformInfo) => {
-    if (!user) return;
+    if (!user || !currentAccount) return;
+
+    if (platform.id === "facebook") {
+      await handleConnectFacebook();
+      return;
+    }
 
     if (platform.id === "google") {
       await handleConnectWebhook(platform);
@@ -262,6 +269,38 @@ export default function LeadSources() {
     }
 
     setConnectionMethodDialog({ open: true, platform });
+  };
+
+  const handleConnectFacebook = async () => {
+    if (!user || !currentAccount) return;
+
+    setFacebookConnecting(true);
+    try {
+      const redirectUri = `${window.location.origin}/facebook-callback`;
+      const { data, error } = await supabase.functions.invoke(
+        "facebook-oauth-connect",
+        {
+          body: {
+            accountId: currentAccount.id,
+            redirectUri,
+          },
+        }
+      );
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data?.error || "Failed to start Facebook connection");
+      }
+    } catch (err) {
+      console.error("Facebook connect error:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to connect Facebook"
+      );
+      setFacebookConnecting(false);
+    }
   };
 
   const handleConnectWebhook = async (platform: PlatformInfo) => {
@@ -557,8 +596,23 @@ export default function LeadSources() {
         return <Mail className="h-3.5 w-3.5" />;
       case "webhook":
         return <Webhook className="h-3.5 w-3.5" />;
+      case "oauth":
+        return <ExternalLink className="h-3.5 w-3.5" />;
       default:
         return null;
+    }
+  };
+
+  const getMethodLabel = (method: ConnectionMethod | null) => {
+    switch (method) {
+      case "email_relay":
+        return "Email";
+      case "webhook":
+        return "Webhook";
+      case "oauth":
+        return "OAuth";
+      default:
+        return "";
     }
   };
 
@@ -610,7 +664,7 @@ export default function LeadSources() {
                           <span>{getStatusLabel(connection?.status)}</span>
                           {connection?.connection_method && (
                             <span className="flex items-center gap-1 text-muted-foreground text-xs">
-                              ({getMethodIcon(connection.connection_method)} {connection.connection_method === "email_relay" ? "Email" : "Webhook"})
+                              ({getMethodIcon(connection.connection_method)} {getMethodLabel(connection.connection_method)})
                             </span>
                           )}
                         </div>
@@ -641,8 +695,16 @@ export default function LeadSources() {
                         size="sm"
                         className="ml-auto"
                         onClick={() => handleConnect(platform)}
+                        disabled={platform.id === "facebook" && facebookConnecting}
                       >
-                        Connect
+                        {platform.id === "facebook" && facebookConnecting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            Connecting...
+                          </>
+                        ) : (
+                          "Connect"
+                        )}
                       </Button>
                     )}
                   </div>

@@ -43,6 +43,7 @@ import SettingsDashboard from "./pages/SettingsDashboard";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import StripeCallback from "./pages/StripeCallback";
+import FacebookCallback from "./pages/FacebookCallback";
 import NotFound from "./pages/NotFound";
 import CrewDashboard from "./pages/CrewDashboard";
 import EstimateApproval from "./pages/EstimateApproval";
@@ -75,6 +76,7 @@ const router = createBrowserRouter([
       { path: "/reset-password", element: <ResetPassword /> },
       { path: "/approve-estimate", element: <EstimateApproval /> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
+      { path: "/facebook-callback", element: <Protected><FacebookCallback /></Protected> },
       { path: "/", element: <Protected><Index /></Protected> },
       { path: "/schedule", element: <Protected><Schedule /></Protected> },
       { path: "/leads", element: <Protected><Leads /></Protected> },
