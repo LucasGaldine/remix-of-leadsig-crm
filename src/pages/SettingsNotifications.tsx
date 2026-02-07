@@ -14,6 +14,8 @@ import {
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -98,6 +100,8 @@ export default function SettingsNotifications() {
   const [quietEnd, setQuietEnd] = useState(defaultPrefs.quiet_hours.end);
   const [digestFrequency, setDigestFrequency] = useState<"off" | "daily" | "weekly">(defaultPrefs.digest.frequency);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useUnsavedChanges(isDirty);
 
   // Load saved preferences from profile
   useEffect(() => {
@@ -121,10 +125,13 @@ export default function SettingsNotifications() {
   const toggleChannel = (key: Channel, value: boolean) => {
     if (!channelAvailability[key].available) return;
     setChannels((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
   };
 
-  const toggleAlert = (key: AlertKey, value: boolean) =>
+  const toggleAlert = (key: AlertKey, value: boolean) => {
     setAlerts((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
+  };
 
   const handleTest = () => {
     toast.success("Test notification sent (mock)");
@@ -183,6 +190,7 @@ export default function SettingsNotifications() {
     setQuietEnd(saved.quiet_hours.end);
     setDigestFrequency(saved.digest.frequency);
 
+    setIsDirty(false);
     toast.success("Notification preferences saved");
     await refreshProfile();
 
@@ -295,7 +303,7 @@ export default function SettingsNotifications() {
                   Pause push & SMS. Urgent payment failures still arrive by email.
                 </p>
               </div>
-              <Switch checked={quietHoursEnabled} onCheckedChange={setQuietHoursEnabled} />
+              <Switch checked={quietHoursEnabled} onCheckedChange={(v) => { setQuietHoursEnabled(v); setIsDirty(true); }} />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -305,7 +313,7 @@ export default function SettingsNotifications() {
                   id="quiet-start"
                   type="time"
                   value={quietStart}
-                  onChange={(e) => setQuietStart(e.target.value)}
+                  onChange={(e) => { setQuietStart(e.target.value); setIsDirty(true); }}
                   disabled={!quietHoursEnabled}
                 />
               </div>
@@ -315,7 +323,7 @@ export default function SettingsNotifications() {
                   id="quiet-end"
                   type="time"
                   value={quietEnd}
-                  onChange={(e) => setQuietEnd(e.target.value)}
+                  onChange={(e) => { setQuietEnd(e.target.value); setIsDirty(true); }}
                   disabled={!quietHoursEnabled}
                 />
               </div>
@@ -335,7 +343,7 @@ export default function SettingsNotifications() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Email digest</Label>
-                <Select value={digestFrequency} onValueChange={(v: "off" | "daily" | "weekly") => setDigestFrequency(v)}>
+                <Select value={digestFrequency} onValueChange={(v: "off" | "daily" | "weekly") => { setDigestFrequency(v); setIsDirty(true); }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Choose frequency" />
                   </SelectTrigger>
@@ -388,6 +396,7 @@ export default function SettingsNotifications() {
       </main>
 
       <MobileNav />
+      <UnsavedChangesDialog blocker={blocker} />
     </div>
   );
 }

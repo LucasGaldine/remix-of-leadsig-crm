@@ -4,6 +4,8 @@ import { DollarSign } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -16,6 +18,8 @@ export default function SettingsMinJobSize() {
   const navigate = useNavigate();
   const { currentAccount } = useAuth();
   const { settings, updateSettingsAsync, isSaving } = useAccountSettings();
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useUnsavedChanges(isDirty);
   const defaultMap: Record<string, string> = SERVICE_TYPES.reduce((acc, type) => {
     acc[type] = "2500";
     return acc;
@@ -48,6 +52,7 @@ export default function SettingsMinJobSize() {
       ...prev,
       [type]: value,
     }));
+    setIsDirty(true);
   };
 
   const handleSave = () => {
@@ -62,6 +67,7 @@ export default function SettingsMinJobSize() {
 
     updateSettingsAsync({ min_job_size: payload })
       .then(() => {
+        setIsDirty(false);
         toast.success("Minimum job sizes saved");
       })
       .catch((err: Error) => {
@@ -121,6 +127,7 @@ export default function SettingsMinJobSize() {
       </main>
 
       <MobileNav />
+      <UnsavedChangesDialog blocker={blocker} />
     </div>
   );
 }

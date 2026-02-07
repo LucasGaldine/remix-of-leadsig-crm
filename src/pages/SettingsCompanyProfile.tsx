@@ -4,6 +4,8 @@ import { Building2, Loader2, Copy, Check, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +22,8 @@ export default function SettingsCompanyProfile() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useUnsavedChanges(isDirty);
 
   const [companyName, setCompanyName] = useState("");
   const [companyEmail, setCompanyEmail] = useState("");
@@ -90,6 +94,7 @@ export default function SettingsCompanyProfile() {
       return;
     }
 
+    setIsDirty(false);
     toast.success("Company profile updated successfully");
     await refreshProfile();
   };
@@ -176,7 +181,7 @@ export default function SettingsCompanyProfile() {
               <Input
                 id="company-name"
                 value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
+                onChange={(e) => { setCompanyName(e.target.value); setIsDirty(true); }}
                 placeholder="Your Company Name"
                 disabled={isSaving}
                 required
@@ -190,7 +195,7 @@ export default function SettingsCompanyProfile() {
                   id="company-email"
                   type="email"
                   value={companyEmail}
-                  onChange={(e) => setCompanyEmail(e.target.value)}
+                  onChange={(e) => { setCompanyEmail(e.target.value); setIsDirty(true); }}
                   placeholder="contact@company.com"
                   disabled={isSaving}
                 />
@@ -202,7 +207,7 @@ export default function SettingsCompanyProfile() {
                   id="company-phone"
                   type="tel"
                   value={companyPhone}
-                  onChange={(e) => setCompanyPhone(e.target.value)}
+                  onChange={(e) => { setCompanyPhone(e.target.value); setIsDirty(true); }}
                   placeholder="(555) 123-4567"
                   disabled={isSaving}
                 />
@@ -214,7 +219,7 @@ export default function SettingsCompanyProfile() {
               <Textarea
                 id="company-address"
                 value={companyAddress}
-                onChange={(e) => setCompanyAddress(e.target.value)}
+                onChange={(e) => { setCompanyAddress(e.target.value); setIsDirty(true); }}
                 placeholder="123 Main Street&#10;City, State 12345"
                 disabled={isSaving}
                 rows={3}
@@ -231,7 +236,7 @@ export default function SettingsCompanyProfile() {
                   id="billing-email"
                   type="email"
                   value={billingEmail}
-                  onChange={(e) => setBillingEmail(e.target.value)}
+                  onChange={(e) => { setBillingEmail(e.target.value); setIsDirty(true); }}
                   placeholder="billing@company.com"
                   disabled={isSaving}
                 />
@@ -246,7 +251,7 @@ export default function SettingsCompanyProfile() {
                   id="website"
                   type="url"
                   value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
+                  onChange={(e) => { setWebsite(e.target.value); setIsDirty(true); }}
                   placeholder="https://www.company.com"
                   disabled={isSaving}
                 />
@@ -268,6 +273,7 @@ export default function SettingsCompanyProfile() {
       </form>
 
       <MobileNav />
+      <UnsavedChangesDialog blocker={blocker} />
     </div>
   );
 }

@@ -4,6 +4,8 @@ import { Calculator, RotateCcw, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +39,8 @@ export default function SettingsPricingRules() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useUnsavedChanges(isDirty);
   const [rules, setRules] = useState<Record<ServiceType, PricingRule>>({} as Record<ServiceType, PricingRule>);
   const [activeTab, setActiveTab] = useState<ServiceType>("pavers");
 
@@ -87,6 +91,7 @@ export default function SettingsPricingRules() {
         [field]: value,
       },
     }));
+    setIsDirty(true);
   };
 
   const saveRules = async () => {
@@ -134,8 +139,9 @@ export default function SettingsPricingRules() {
         }
       }
 
+      setIsDirty(false);
       toast.success("Pricing rules saved");
-      fetchRules(); // Refresh to get IDs
+      fetchRules();
     } catch (error) {
       console.error("Error saving rules:", error);
       toast.error("Failed to save pricing rules");
@@ -155,7 +161,7 @@ export default function SettingsPricingRules() {
         user_id: user.id,
       } as PricingRule,
     }));
-    
+    setIsDirty(true);
     toast.success("Reset to defaults - save to apply");
   };
 
@@ -361,6 +367,7 @@ export default function SettingsPricingRules() {
       </main>
 
       <MobileNav />
+      <UnsavedChangesDialog blocker={blocker} />
     </div>
   );
 }

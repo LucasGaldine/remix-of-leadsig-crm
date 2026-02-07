@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { User, Camera, Trash2, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +43,8 @@ export default function SettingsProfile() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useUnsavedChanges(isDirty);
 
   const [formData, setFormData] = useState({
     full_name: "",
@@ -48,6 +52,11 @@ export default function SettingsProfile() {
     phone: "",
     timezone: "America/New_York",
   });
+
+  const updateFormField = useCallback((updates: Partial<typeof formData>) => {
+    setFormData((prev) => ({ ...prev, ...updates }));
+    setIsDirty(true);
+  }, []);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -101,6 +110,7 @@ export default function SettingsProfile() {
       if (error) throw error;
 
       await refreshProfile();
+      setIsDirty(false);
       toast.success("Profile updated successfully");
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -335,9 +345,7 @@ export default function SettingsProfile() {
               <Input
                 id="full_name"
                 value={formData.full_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, full_name: e.target.value })
-                }
+                onChange={(e) => updateFormField({ full_name: e.target.value })}
                 placeholder="John Doe"
               />
             </div>
@@ -347,9 +355,7 @@ export default function SettingsProfile() {
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => updateFormField({ email: e.target.value })}
                 placeholder="john@example.com"
               />
             </div>
@@ -359,9 +365,7 @@ export default function SettingsProfile() {
                 id="phone"
                 type="tel"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => updateFormField({ phone: e.target.value })}
                 placeholder="(555) 555-5555"
               />
             </div>
@@ -375,9 +379,7 @@ export default function SettingsProfile() {
             <Label htmlFor="timezone">Default Time Zone</Label>
             <Select
               value={formData.timezone}
-              onValueChange={(value) =>
-                setFormData({ ...formData, timezone: value })
-              }
+              onValueChange={(value) => updateFormField({ timezone: value })}
             >
               <SelectTrigger id="timezone">
                 <SelectValue placeholder="Select timezone" />
@@ -504,6 +506,8 @@ export default function SettingsProfile() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UnsavedChangesDialog blocker={blocker} />
     </div>
   );
 }
