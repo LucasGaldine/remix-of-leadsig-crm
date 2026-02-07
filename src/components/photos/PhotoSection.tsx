@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Camera, Crown, Expand, Loader2, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,11 +36,9 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange }: Photo
   const currentPlan: PricingPlan = currentAccount?.pricing_plan ?? "free";
   const canUpload = hasPlanAccess(currentPlan, "basic");
 
-  const prevCountRef = useState(() => ({ current: -1 }))[0];
-  if (photos.length !== prevCountRef.current) {
-    prevCountRef.current = photos.length;
+  useEffect(() => {
     onPhotosChange?.(photos.length);
-  }
+  }, [photos.length, onPhotosChange]);
 
   const confirmDelete = async () => {
     if (deleteTarget) {

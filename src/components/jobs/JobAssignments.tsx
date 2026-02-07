@@ -70,7 +70,7 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
         .select('user_id, role, full_name, email')
         .eq('account_id', currentAccount.id)
         .eq('is_active', true)
-        .order('role', { ascending: false });
+        .order('full_name', { ascending: true });
 
       if (error) throw error;
 
