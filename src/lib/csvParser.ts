@@ -57,7 +57,7 @@ export const LEAD_FIELDS = [
   { key: "service_type", label: "Service Type" },
   { key: "source", label: "Source" },
   { key: "notes", label: "Notes" },
-  { key: "estimated_value", label: "Estimated Value" },
+  { key: "estimated_value", label: "Budget" },
 ] as const;
 
 export type LeadFieldKey = (typeof LEAD_FIELDS)[number]["key"];
