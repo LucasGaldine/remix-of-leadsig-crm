@@ -54,6 +54,10 @@ export default function EstimateApproval() {
   const [approving, setApproving] = useState(false);
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-approve`;
+  const apiHeaders = {
+    "Content-Type": "application/json",
+    "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+  };
 
   useEffect(() => {
     if (!token) {
@@ -67,7 +71,7 @@ export default function EstimateApproval() {
   const fetchEstimate = async () => {
     try {
       const response = await fetch(`${apiUrl}?token=${token}`, {
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders,
       });
 
       if (!response.ok) {
@@ -104,7 +108,7 @@ export default function EstimateApproval() {
     try {
       const response = await fetch(`${apiUrl}?token=${token}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders,
       });
 
       if (!response.ok) {
