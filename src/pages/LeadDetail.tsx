@@ -965,7 +965,7 @@ export default function LeadDetail() {
                 {showConvertButton && !hasEstimate && (
                   <Button size="sm" className="flex-1" onClick={() => setCreateEstimateDialogOpen(true)}>
                     <FileText className="h-4 w-4 mr-1" />
-                    Create Estimate
+                    Schedule Estimate
                   </Button>
                 )}
                 {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (

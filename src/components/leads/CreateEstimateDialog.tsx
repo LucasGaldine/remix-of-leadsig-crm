@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -45,6 +45,9 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
   const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
   const [creating, setCreating] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTimeStart, setScheduledTimeStart] = useState("");
+  const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
 
   const addLineItem = () => {
     setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
@@ -82,8 +85,13 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
       return;
     }
 
+    if (!scheduledDate) {
+      toast.error("Please select a date for the estimate visit");
+      return;
+    }
+
     setCreating(true);
-    const loadingToast = toast.loading("Creating estimate...");
+    const loadingToast = toast.loading("Scheduling estimate...");
 
     try {
       let customerId = null;
@@ -178,28 +186,64 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
       if (lineItemsError) throw new Error("Failed to create line items");
 
+      const { data: estimateJob, error: estimateJobError } = await supabase
+        .from("leads")
+        .insert({
+          name: `${lead.name}, Estimate`,
+          status: "job",
+          service_type: lead.service_type,
+          address: lead.address,
+          customer_id: customerId,
+          created_by: user.id,
+          account_id: currentAccount.id,
+          approval_status: "approved",
+        })
+        .select()
+        .single();
+
+      if (estimateJobError) throw new Error("Failed to create estimate job");
+
+      const { error: scheduleError } = await supabase
+        .from("job_schedules")
+        .insert({
+          lead_id: estimateJob.id,
+          scheduled_date: scheduledDate,
+          scheduled_time_start: scheduledTimeStart || null,
+          scheduled_time_end: scheduledTimeEnd || null,
+          created_by: user.id,
+          account_id: currentAccount.id,
+        });
+
+      if (scheduleError) throw new Error("Failed to schedule estimate visit");
+
+      await supabase
+        .from("leads")
+        .update({ estimate_job_id: estimateJob.id })
+        .eq("id", lead.id);
+
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "note",
         direction: "na",
-        summary: "Estimate created",
-        body: `Estimate created with ${validLineItems.length} line items totaling $${estimateTotal.toFixed(2)}`,
+        summary: "Estimate scheduled",
+        body: `Estimate created with ${validLineItems.length} line items totaling $${estimateTotal.toFixed(2)}. Visit scheduled for ${scheduledDate}.`,
         created_by: user.id,
       });
 
       toast.dismiss(loadingToast);
-      toast.success("Estimate created! Send it to the customer for approval.");
+      toast.success("Estimate scheduled!");
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
 
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error creating estimate:", error);
+      console.error("Error scheduling estimate:", error);
       toast.dismiss(loadingToast);
-      toast.error(error instanceof Error ? error.message : "Failed to create estimate");
+      toast.error(error instanceof Error ? error.message : "Failed to schedule estimate");
     } finally {
       setCreating(false);
     }
@@ -209,13 +253,50 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Estimate</DialogTitle>
+          <DialogTitle>Schedule Estimate</DialogTitle>
           <DialogDescription>
-            Add line items for this estimate. The total will be calculated automatically.
+            Add line items and schedule a visit for this estimate.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          <div className="space-y-3">
+            <Label className="text-base font-semibold flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Schedule Visit *
+            </Label>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="schedule-date">Date</Label>
+                <Input
+                  id="schedule-date"
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  min={new Date().toISOString().split("T")[0]}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-start">Start Time</Label>
+                <Input
+                  id="schedule-start"
+                  type="time"
+                  value={scheduledTimeStart}
+                  onChange={(e) => setScheduledTimeStart(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-end">End Time</Label>
+                <Input
+                  id="schedule-end"
+                  type="time"
+                  value={scheduledTimeEnd}
+                  onChange={(e) => setScheduledTimeEnd(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-base font-semibold">Line Items *</Label>
@@ -343,9 +424,9 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={creating || !lineItems.some(item => item.name && item.unit_price)}
+            disabled={creating || !scheduledDate || !lineItems.some(item => item.name && item.unit_price)}
           >
-            {creating ? "Creating..." : "Create Estimate"}
+            {creating ? "Scheduling..." : "Schedule Estimate"}
           </Button>
         </DialogFooter>
       </DialogContent>
