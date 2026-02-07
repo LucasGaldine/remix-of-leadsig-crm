@@ -17,6 +17,7 @@ import {
   Trash2,
   MoreVertical,
   Plus,
+  Info,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -366,6 +367,21 @@ export default function JobDetail() {
           ))}
         </div>
       </div>
+
+      {/* Next Step Guidance */}
+      {job.status !== "paid" && (
+        <div className="px-4 pt-4">
+          <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            <Info className="h-4 w-4 mt-0.5 shrink-0" />
+            <p>
+              {(job as any).display_status === "unscheduled" && "Schedule this job to set a date and get the crew ready."}
+              {(job as any).display_status === "scheduled" && "This job is scheduled. It will move to in-progress on the scheduled date."}
+              {(job as any).display_status === "in_progress" && "This job is in progress. Mark it as complete once the work is done."}
+              {(job as any).display_status === "completed" && "This job is complete. Record the payment to close it out."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Tab Content */}
       <main className="px-4 py-4 pb-32">

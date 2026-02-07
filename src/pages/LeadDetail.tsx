@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight } from "lucide-react";
+import { ArrowLeft, Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
@@ -856,6 +856,22 @@ export default function LeadDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Next Step Guidance */}
+      {!["job", "paid"].includes(lead.status) && (
+        <div className="px-4 pt-4">
+          <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            <Info className="h-4 w-4 mt-0.5 shrink-0" />
+            <p>
+              {lead.status === "new" && "Contact this lead to move them to the next stage."}
+              {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
+              {lead.status === "qualified" && !hasEstimate && "Create an estimate to send to the customer for approval."}
+              {lead.status === "qualified" && hasEstimate && !isEstimateApproved && "The estimate needs to be approved before this lead can become a job."}
+              {lead.status === "qualified" && hasEstimate && isEstimateApproved && "The estimate is approved. Convert this lead to a job to get started."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Lead Info Card */}
       <div className="px-4 py-4">
