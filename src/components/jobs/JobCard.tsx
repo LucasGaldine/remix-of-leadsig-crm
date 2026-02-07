@@ -127,7 +127,9 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
           </h3>
 
           <p className="text-sm text-muted-foreground font-medium mt-0.5">
-            {job.service_type || "No service type"}
+            {job.name?.endsWith(", Estimate")
+              ? `${job.service_type || "No service type"}, Estimate`
+              : job.service_type || "No service type"}
           </p>
 
           <div className="flex flex-col gap-1 mt-3">
