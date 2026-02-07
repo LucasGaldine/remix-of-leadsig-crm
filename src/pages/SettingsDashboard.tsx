@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GripVertical, Plus, X, LayoutDashboard } from "lucide-react";
+import { GripVertical, Plus, X, LayoutDashboard, Rows3 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -7,17 +7,19 @@ import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
-import { DASHBOARD_CARDS, getCardConfig } from "@/constants/dashboardCards";
+import { DASHBOARD_CARDS, DASHBOARD_SECTIONS, getCardConfig } from "@/constants/dashboardCards";
 
 const MAX_CARDS = 4;
 const MIN_CARDS = 1;
 
 export default function SettingsDashboard() {
-  const { cards: savedCards, saveCards, isSaving } = useDashboardPreferences();
+  const { cards: savedCards, sections: savedSections, save, isSaving } = useDashboardPreferences();
   const [selectedIds, setSelectedIds] = useState<string[]>(savedCards);
+  const [selectedSections, setSelectedSections] = useState<string[]>(savedSections);
   const [isDirty, setIsDirty] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const blocker = useUnsavedChanges(isDirty);
@@ -25,6 +27,17 @@ export default function SettingsDashboard() {
   useEffect(() => {
     setSelectedIds(savedCards);
   }, [savedCards]);
+
+  useEffect(() => {
+    setSelectedSections(savedSections);
+  }, [savedSections]);
+
+  const toggleSection = (id: string) => {
+    setSelectedSections((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+    setIsDirty(true);
+  };
 
   const availableCards = DASHBOARD_CARDS.filter((c) => !selectedIds.includes(c.id));
 
@@ -72,7 +85,7 @@ export default function SettingsDashboard() {
   };
 
   const handleSave = async () => {
-    const success = await saveCards(selectedIds);
+    const success = await save(selectedIds, selectedSections);
     if (success) {
       setIsDirty(false);
       toast.success("Dashboard layout saved");
@@ -184,6 +197,42 @@ export default function SettingsDashboard() {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Rows3 className="h-5 w-5" />
+              Dashboard Sections
+            </CardTitle>
+            <CardDescription>
+              Choose which sections appear on your dashboard below the stat cards.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {DASHBOARD_SECTIONS.map((section) => {
+              const Icon = section.icon;
+              const enabled = selectedSections.includes(section.id);
+              return (
+                <div
+                  key={section.id}
+                  className="flex items-center gap-3 rounded-lg border bg-card px-3 py-3"
+                >
+                  <div className="p-2 rounded-lg shrink-0 bg-secondary text-muted-foreground">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm text-foreground">{section.label}</p>
+                    <p className="text-xs text-muted-foreground truncate">{section.description}</p>
+                  </div>
+                  <Switch
+                    checked={enabled}
+                    onCheckedChange={() => toggleSection(section.id)}
+                  />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
 
         <StickyActionBar onSave={handleSave} isSaving={isSaving} label="Save layout" />
       </main>

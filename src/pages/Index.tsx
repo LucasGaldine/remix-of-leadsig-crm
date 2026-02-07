@@ -8,9 +8,10 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@/hooks/useDashboardLeads";
+import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronRight } from "lucide-react";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -26,9 +27,12 @@ export default function Index() {
   const navigate = useNavigate();
   const { user, isCrewMember, profile } = useAuth();
   const { toast } = useToast();
+  const { sections } = useDashboardPreferences();
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading, refetch: refetchLeads } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
+
+  const SECTION_LIMIT = 3;
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
   const firstName = profile?.full_name?.split(" ")[0] || "";
@@ -103,8 +107,7 @@ export default function Index() {
         {/* Quick Stats */}
         <DashboardStatCards />
 
-        {/* Pending Approvals */}
-        {!approvalsLoading && pendingApprovals.length > 0 && (
+        {sections.includes("awaiting_approval") && !approvalsLoading && pendingApprovals.length > 0 && (
           <section>
             <SectionHeader
               title="Awaiting Approval"
@@ -113,7 +116,7 @@ export default function Index() {
               className="mb-3"
             />
             <div className="space-y-2">
-              {pendingApprovals.map((estimate) => (
+              {pendingApprovals.slice(0, SECTION_LIMIT).map((estimate) => (
                 <button
                   key={estimate.id}
                   onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
@@ -137,70 +140,103 @@ export default function Index() {
                 </button>
               ))}
             </div>
+            {pendingApprovals.length > SECTION_LIMIT && (
+              <button
+                onClick={() => navigate("/payments")}
+                className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+              >
+                View {pendingApprovals.length - SECTION_LIMIT} more
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
           </section>
         )}
 
-        {/* Today's Jobs */}
-        <section>
-          <SectionHeader
-            title="Today's Jobs"
-            count={activeJobsData.length}
-            action={{ label: "View all", onClick: () => navigate("/jobs") }}
-            className="mb-3"
-          />
-          {activeJobsLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : activeJobsData.length === 0 ? (
-            <div className="card-elevated rounded-lg p-6 text-center">
-              <p className="text-muted-foreground">No jobs today</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activeJobsData.map((job) => (
-                <JobCard
-                  key={job.id}
-                  job={job}
-                  onClick={() => navigate(`/jobs/${job.id}`)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+        {sections.includes("todays_jobs") && (
+          <section>
+            <SectionHeader
+              title="Today's Jobs"
+              count={activeJobsData.length}
+              action={{ label: "View all", onClick: () => navigate("/jobs") }}
+              className="mb-3"
+            />
+            {activeJobsLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : activeJobsData.length === 0 ? (
+              <div className="card-elevated rounded-lg p-6 text-center">
+                <p className="text-muted-foreground">No jobs today</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {activeJobsData.slice(0, SECTION_LIMIT).map((job) => (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      onClick={() => navigate(`/jobs/${job.id}`)}
+                    />
+                  ))}
+                </div>
+                {activeJobsData.length > SECTION_LIMIT && (
+                  <button
+                    onClick={() => navigate("/jobs")}
+                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    View {activeJobsData.length - SECTION_LIMIT} more
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
-        {/* Qualified Leads */}
-        <section>
-          <SectionHeader
-            title="Qualified Leads"
-            count={qualifiedLeads.length}
-            action={{ label: "View all", onClick: () => navigate("/leads") }}
-            className="mb-3"
-          />
-          {leadsLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : qualifiedLeads.length === 0 ? (
-            <div className="card-elevated rounded-lg p-6 text-center">
-              <p className="text-muted-foreground">No qualified leads at the moment</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {qualifiedLeads.map((lead) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  onClick={() => handleLeadClick(lead.id)}
-                  onCall={() => window.open(`tel:${lead.phone}`)}
-                  onMessage={() => window.open(`sms:${lead.phone}`)}
-                  onQualify={() => handleQualify(lead.id)}
-                  onViewEstimate={() => handleViewEstimate(lead.id)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+        {sections.includes("qualified_leads") && (
+          <section>
+            <SectionHeader
+              title="Qualified Leads"
+              count={qualifiedLeads.length}
+              action={{ label: "View all", onClick: () => navigate("/leads") }}
+              className="mb-3"
+            />
+            {leadsLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : qualifiedLeads.length === 0 ? (
+              <div className="card-elevated rounded-lg p-6 text-center">
+                <p className="text-muted-foreground">No qualified leads at the moment</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {qualifiedLeads.slice(0, SECTION_LIMIT).map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      onClick={() => handleLeadClick(lead.id)}
+                      onCall={() => window.open(`tel:${lead.phone}`)}
+                      onMessage={() => window.open(`sms:${lead.phone}`)}
+                      onQualify={() => handleQualify(lead.id)}
+                      onViewEstimate={() => handleViewEstimate(lead.id)}
+                    />
+                  ))}
+                </div>
+                {qualifiedLeads.length > SECTION_LIMIT && (
+                  <button
+                    onClick={() => navigate("/leads")}
+                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    View {qualifiedLeads.length - SECTION_LIMIT} more
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+        )}
       </main>
 
       <MobileNav />

@@ -106,3 +106,33 @@ export const DEFAULT_CARD_IDS = ["leads_pending", "pending_approvals", "qualifie
 export function getCardConfig(id: string): DashboardCardConfig | undefined {
   return DASHBOARD_CARDS.find((c) => c.id === id);
 }
+
+export interface DashboardSectionConfig {
+  id: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}
+
+export const DASHBOARD_SECTIONS: DashboardSectionConfig[] = [
+  {
+    id: "awaiting_approval",
+    label: "Awaiting Approval",
+    description: "Estimates sent and awaiting client approval",
+    icon: Clock,
+  },
+  {
+    id: "todays_jobs",
+    label: "Today's Jobs",
+    description: "Jobs scheduled for today",
+    icon: CalendarDays,
+  },
+  {
+    id: "qualified_leads",
+    label: "Qualified Leads",
+    description: "Approved leads ready to convert",
+    icon: Target,
+  },
+];
+
+export const DEFAULT_SECTION_IDS = ["awaiting_approval", "todays_jobs", "qualified_leads"];
