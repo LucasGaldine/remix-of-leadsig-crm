@@ -124,7 +124,6 @@ export default function Settings() {
           icon: <Zap className="h-5 w-5" />,
           label: "Auto-Responses",
           description: "Missed calls, follow-ups",
-          comingSoon: true,
           onClick: () => navigate("/settings/auto-responses"),
         },
         {
