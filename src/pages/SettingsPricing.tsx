@@ -4,6 +4,10 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+
+type PlanKey = "free" | "basic" | "premium";
 
 interface PlanFeature {
   label: string;
@@ -11,6 +15,7 @@ interface PlanFeature {
 }
 
 interface Plan {
+  key: PlanKey;
   name: string;
   price: string;
   period: string;
@@ -19,19 +24,16 @@ interface Plan {
   features: PlanFeature[];
   highlighted?: boolean;
   badge?: string;
-  buttonLabel: string;
-  buttonVariant: "default" | "outline";
 }
 
 const plans: Plan[] = [
   {
+    key: "free",
     name: "Free",
     price: "$0",
     period: "/month",
     description: "Get started with basic lead storage and tracking.",
     icon: <Leaf className="h-6 w-6" />,
-    buttonLabel: "Current Plan",
-    buttonVariant: "outline",
     features: [
       { label: "Lead storage & management", included: true },
       { label: "Job tracking", included: true },
@@ -43,13 +45,12 @@ const plans: Plan[] = [
     ],
   },
   {
+    key: "basic",
     name: "Basic",
     price: "$500",
     period: "/month",
     description: "Connect your tools and stay informed with real-time alerts.",
     icon: <Zap className="h-6 w-6" />,
-    buttonLabel: "Upgrade to Basic",
-    buttonVariant: "default",
     features: [
       { label: "Lead storage & management", included: true },
       { label: "Job tracking", included: true },
@@ -61,6 +62,7 @@ const plans: Plan[] = [
     ],
   },
   {
+    key: "premium",
     name: "Premium",
     price: "$3,000",
     period: "/month",
@@ -68,8 +70,6 @@ const plans: Plan[] = [
     icon: <Crown className="h-6 w-6" />,
     highlighted: true,
     badge: "Most Popular",
-    buttonLabel: "Upgrade to Premium",
-    buttonVariant: "default",
     features: [
       { label: "Lead storage & management", included: true },
       { label: "Job tracking", included: true },
@@ -82,18 +82,38 @@ const plans: Plan[] = [
   },
 ];
 
-function PlanCard({ plan }: { plan: Plan }) {
+function PlanCard({
+  plan,
+  isCurrent,
+}: {
+  plan: Plan;
+  isCurrent: boolean;
+}) {
+  const handleUpgrade = () => {
+    toast.info("Contact support@leadsig.ai to change your plan.");
+  };
+
   return (
     <div
       className={cn(
         "relative flex flex-col rounded-xl border bg-card p-6 transition-shadow",
-        plan.highlighted
+        isCurrent
           ? "border-primary shadow-lg ring-1 ring-primary/20"
+          : plan.highlighted && !isCurrent
+          ? "border-border shadow-sm"
           : "border-border shadow-sm"
       )}
     >
-      {plan.badge && (
+      {isCurrent && (
         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 text-xs">
+          Current Plan
+        </Badge>
+      )}
+      {!isCurrent && plan.badge && (
+        <Badge
+          variant="outline"
+          className="absolute -top-3 left-1/2 -translate-x-1/2 bg-card px-3 py-0.5 text-xs"
+        >
           {plan.badge}
         </Badge>
       )}
@@ -102,7 +122,7 @@ function PlanCard({ plan }: { plan: Plan }) {
         <div
           className={cn(
             "rounded-lg p-2",
-            plan.highlighted
+            isCurrent
               ? "bg-primary/10 text-primary"
               : "bg-secondary text-secondary-foreground"
           )}
@@ -145,18 +165,27 @@ function PlanCard({ plan }: { plan: Plan }) {
         ))}
       </div>
 
-      <Button
-        variant={plan.buttonVariant}
-        className={cn("w-full", plan.highlighted && "shadow-sm")}
-        disabled={plan.name === "Free"}
-      >
-        {plan.buttonLabel}
-      </Button>
+      {isCurrent ? (
+        <Button variant="outline" className="w-full" disabled>
+          Current Plan
+        </Button>
+      ) : (
+        <Button
+          variant="default"
+          className={cn("w-full", plan.highlighted && "shadow-sm")}
+          onClick={handleUpgrade}
+        >
+          {plan.key === "free" ? "Downgrade" : `Upgrade to ${plan.name}`}
+        </Button>
+      )}
     </div>
   );
 }
 
 export default function SettingsPricing() {
+  const { currentAccount } = useAuth();
+  const currentPlan: PlanKey = currentAccount?.pricing_plan ?? "free";
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Pricing Plans" showBack />
@@ -168,13 +197,19 @@ export default function SettingsPricing() {
               Choose the right plan for your business
             </h2>
             <p className="mt-2 text-muted-foreground">
-              Scale your operations with the tools and support you need.
+              {currentAccount?.company_name
+                ? `${currentAccount.company_name} is on the ${currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)} plan.`
+                : "Scale your operations with the tools and support you need."}
             </p>
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {plans.map((plan) => (
-              <PlanCard key={plan.name} plan={plan} />
+              <PlanCard
+                key={plan.key}
+                plan={plan}
+                isCurrent={plan.key === currentPlan}
+              />
             ))}
           </div>
 

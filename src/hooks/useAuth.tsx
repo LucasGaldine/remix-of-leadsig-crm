@@ -27,6 +27,7 @@ interface Account {
   logo_url: string | null;
   settings: Record<string, any> | null;
   invite_code: string;
+  pricing_plan: 'free' | 'basic' | 'premium';
 }
 
 interface AccountMembership {
@@ -100,7 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           website,
           logo_url,
           settings,
-          invite_code
+          invite_code,
+          pricing_plan
         )
       `)
       .eq('user_id', userId)
