@@ -44,6 +44,7 @@ import ResetPassword from "./pages/ResetPassword";
 import StripeCallback from "./pages/StripeCallback";
 import NotFound from "./pages/NotFound";
 import CrewDashboard from "./pages/CrewDashboard";
+import EstimateApproval from "./pages/EstimateApproval";
 
 const queryClient = new QueryClient();
 
@@ -71,6 +72,7 @@ const router = createBrowserRouter([
     children: [
       { path: "/auth", element: <Auth /> },
       { path: "/reset-password", element: <ResetPassword /> },
+      { path: "/approve-estimate", element: <EstimateApproval /> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
       { path: "/", element: <Protected><Index /></Protected> },
       { path: "/schedule", element: <Protected><Schedule /></Protected> },

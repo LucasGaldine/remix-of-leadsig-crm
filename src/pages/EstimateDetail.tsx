@@ -13,6 +13,10 @@ import {
   Plus,
   X,
   Save,
+  Check,
+  Link2,
+  Copy,
+  CheckCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -33,7 +37,7 @@ const statusConfig = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
   sent: { label: "Sent", className: "status-pending" },
   viewed: { label: "Viewed", className: "status-paid" },
-  accepted: { label: "Accepted", className: "status-confirmed" },
+  accepted: { label: "Approved", className: "status-confirmed" },
   expired: { label: "Expired", className: "status-attention" },
 };
 
@@ -57,6 +61,10 @@ export default function EstimateDetail() {
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lineItems, setLineItems] = useState<LineItemForm[]>([]);
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [approvalLink, setApprovalLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [manualApproving, setManualApproving] = useState(false);
 
   if (isLoading) {
     return (
@@ -84,6 +92,69 @@ export default function EstimateDetail() {
 
   const config = statusConfig[estimate.status as keyof typeof statusConfig];
   const hasChangeOrders = estimate.line_items.some((item: any) => item.is_change_order);
+
+  const handleManualApprove = async () => {
+    if (!confirm("Mark this estimate as approved by the customer?")) return;
+    setManualApproving(true);
+    try {
+      const { error } = await supabase
+        .from("estimates")
+        .update({
+          status: "accepted",
+          accepted_at: new Date().toISOString(),
+          approved_via: "manual",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      toast.success("Estimate marked as approved");
+    } catch {
+      toast.error("Failed to approve estimate");
+    } finally {
+      setManualApproving(false);
+    }
+  };
+
+  const handleGenerateLink = async () => {
+    setGeneratingLink(true);
+    try {
+      const existingToken = (estimate as any).approval_token;
+      let token = existingToken;
+
+      if (!token) {
+        token = crypto.randomUUID();
+        const { error } = await supabase
+          .from("estimates")
+          .update({ approval_token: token })
+          .eq("id", id);
+
+        if (error) throw error;
+        await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+      }
+
+      const link = `${window.location.origin}/approve-estimate?token=${token}`;
+      setApprovalLink(link);
+    } catch {
+      toast.error("Failed to generate approval link");
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!approvalLink) return;
+    try {
+      await navigator.clipboard.writeText(approvalLink);
+      setCopied(true);
+      toast.success("Link copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  };
 
   const handleSend = () => {
     toast.info("Email/SMS sending functionality coming soon!");
@@ -420,6 +491,80 @@ export default function EstimateDetail() {
           </div>
         </button>
       </div>
+
+      {estimate.status !== "accepted" && !estimate.is_finalized && (
+        <div className="px-4">
+          <div className="card-elevated rounded-lg p-4 space-y-3">
+            <h3 className="font-semibold text-foreground">Customer Approval</h3>
+            <p className="text-sm text-muted-foreground">
+              Approve this estimate manually or generate a link to send to the customer.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 gap-2"
+                onClick={handleManualApprove}
+                disabled={manualApproving}
+              >
+                <Check className="h-4 w-4" />
+                {manualApproving ? "Approving..." : "Manual Approve"}
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 gap-2"
+                onClick={handleGenerateLink}
+                disabled={generatingLink}
+              >
+                <Link2 className="h-4 w-4" />
+                {generatingLink ? "Generating..." : "Get Approval Link"}
+              </Button>
+            </div>
+            {approvalLink && (
+              <div className="flex items-center gap-2 bg-secondary rounded-lg p-3">
+                <input
+                  type="text"
+                  readOnly
+                  value={approvalLink}
+                  className="flex-1 bg-transparent text-sm text-foreground outline-none truncate"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCopyLink}
+                  className="shrink-0"
+                >
+                  {copied ? (
+                    <CheckCheck className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {estimate.status === "accepted" && (
+        <div className="px-4">
+          <div className="card-elevated rounded-lg p-4 border-l-4 border-l-emerald-500">
+            <div className="flex items-center gap-2 mb-1">
+              <Check className="h-4 w-4 text-emerald-600" />
+              <h3 className="font-semibold text-foreground">Approved</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {(estimate as any).approved_via === "customer_link"
+                ? "Approved by customer via approval link"
+                : (estimate as any).approved_via === "manual"
+                  ? "Manually marked as approved"
+                  : "This estimate has been approved"}
+              {estimate.accepted_at && (
+                <> on {format(new Date(estimate.accepted_at), "MMM d, yyyy 'at' h:mm a")}</>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="px-4">
         <div className="flex items-center justify-between mb-3">

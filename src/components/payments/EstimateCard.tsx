@@ -11,7 +11,7 @@ const statusConfig: Record<EstimateStatus, { label: string; className: string; i
   draft: { label: "Estimate", className: "bg-blue-50 text-blue-600", icon: <FileText className="h-3 w-3" /> },
   sent: { label: "Sent", className: "status-pending", icon: <Clock className="h-3 w-3" /> },
   viewed: { label: "Viewed", className: "status-paid", icon: <Eye className="h-3 w-3" /> },
-  accepted: { label: "Accepted", className: "status-confirmed", icon: <Check className="h-3 w-3" /> },
+  accepted: { label: "Approved", className: "status-confirmed", icon: <Check className="h-3 w-3" /> },
   expired: { label: "Expired", className: "status-attention", icon: <AlertCircle className="h-3 w-3" /> },
 };
 
