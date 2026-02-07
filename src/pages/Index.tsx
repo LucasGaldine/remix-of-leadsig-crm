@@ -1,6 +1,4 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect } from "react";
-import { Clock, UserCheck, CheckCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -9,8 +7,10 @@ import { LeadCard, Lead } from "@/components/leads/LeadCard";
 import { JobCard } from "@/components/jobs/JobCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
-import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@/hooks/useDashboardLeads";
+import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
+import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { getCardConfig } from "@/constants/dashboardCards";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 import CrewDashboard from "./CrewDashboard";
@@ -18,7 +18,8 @@ import CrewDashboard from "./CrewDashboard";
 export default function Index() {
   const navigate = useNavigate();
   const { user, isCrewMember } = useAuth();
-  const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
+  const { cards: selectedCardIds } = useDashboardPreferences();
+  const { data: stats = {} } = useDashboardStats(selectedCardIds);
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
@@ -65,27 +66,23 @@ export default function Index() {
 
         {/* Quick Stats */}
         <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-4 px-4">
-          <StatCard
-            label="Leads Pending"
-            value={pendingLeadsCount}
-            icon={CheckCircle}
-            variant={pendingLeadsCount > 0 ? "warning" : "success"}
-            onClick={() => navigate("/leads/pending-approval")}
-          />
-          <StatCard
-            label="Pending Approvals"
-            value={pendingApprovals.length}
-            icon={Clock}
-            variant="warning"
-            onClick={() => navigate("/payments")}
-          />
-          <StatCard
-            label="Qualified Leads"
-            value={qualifiedLeads.length}
-            icon={UserCheck}
-            variant="success"
-            onClick={() => navigate("/leads")}
-          />
+          {selectedCardIds.map((cardId) => {
+            const config = getCardConfig(cardId);
+            if (!config) return null;
+            const value = cardId === "revenue_this_month"
+              ? `$${(stats[cardId] || 0).toLocaleString()}`
+              : (stats[cardId] ?? 0);
+            return (
+              <StatCard
+                key={cardId}
+                label={config.label}
+                value={value}
+                icon={config.icon}
+                variant={config.variant}
+                onClick={() => navigate(config.navigateTo)}
+              />
+            );
+          })}
         </div>
 
         {/* Pending Approvals */}

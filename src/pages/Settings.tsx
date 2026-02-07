@@ -1,19 +1,20 @@
 import { useState } from "react";
-import { 
-  User, 
-  Building2, 
-  DollarSign, 
-  Bell, 
-  Calendar, 
-  Users, 
-  Zap, 
+import {
+  User,
+  Building2,
+  DollarSign,
+  Bell,
+  Calendar,
+  Users,
+  Zap,
   HelpCircle,
   LogOut,
   ChevronRight,
   MapPin,
   Shield,
   Plug,
-  ExternalLink
+  ExternalLink,
+  LayoutDashboard
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -160,6 +161,12 @@ export default function Settings() {
     {
       title: "Account",
       items: [
+        {
+          icon: <LayoutDashboard className="h-5 w-5" />,
+          label: "Dashboard",
+          description: "Customize your stat cards",
+          onClick: () => navigate("/settings/dashboard"),
+        },
         {
           icon: <User className="h-5 w-5" />,
           label: "Profile",

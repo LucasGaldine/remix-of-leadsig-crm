@@ -39,6 +39,7 @@ import SettingsCrewManagement from "./pages/SettingsCrewManagement";
 import SettingsAutoResponses from "./pages/SettingsAutoResponses";
 import SettingsNotifications from "./pages/SettingsNotifications";
 import SettingsPricingRules from "./pages/SettingsPricingRules";
+import SettingsDashboard from "./pages/SettingsDashboard";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import StripeCallback from "./pages/StripeCallback";
@@ -96,6 +97,7 @@ const router = createBrowserRouter([
       { path: "/settings/auto-responses", element: <Protected><SettingsAutoResponses /></Protected> },
       { path: "/settings/notifications", element: <Protected><SettingsNotifications /></Protected> },
       { path: "/settings/pricing-rules", element: <Protected><SettingsPricingRules /></Protected> },
+      { path: "/settings/dashboard", element: <Protected><SettingsDashboard /></Protected> },
       { path: "/payments", element: <Protected><Payments /></Protected> },
       { path: "/payments/estimates/new", element: <Protected><CreateEstimate /></Protected> },
       { path: "/payments/estimates/:id", element: <Protected><EstimateDetail /></Protected> },

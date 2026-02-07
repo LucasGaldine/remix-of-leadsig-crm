@@ -13,6 +13,7 @@ interface Profile {
   avatar_url: string | null;
   timezone: string | null;
   notification_preferences: Record<string, any> | null;
+  dashboard_preferences: { cards: string[] } | null;
 }
 
 interface Account {
