@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { format } from "date-fns";
 
 export function useDashboardStats(cardIds: string[]) {
   const { user, currentAccount } = useAuth();
-  const today = new Date().toISOString().split("T")[0];
+  const today = format(new Date(), "yyyy-MM-dd");
 
   return useQuery({
     queryKey: ["dashboard-stats", cardIds, currentAccount?.id, today],
@@ -57,16 +58,19 @@ export function useDashboardStats(cardIds: string[]) {
           .select("id", { count: "exact", head: true })
           .eq("account_id", currentAccount.id)
           .eq("approval_status", "approved")
-          .in("status", ["job", "invoiced", "paid"]);
+          .in("status", ["job", "paid"]);
         stats.total_jobs = count || 0;
       }
 
       if (needed.has("todays_jobs")) {
         const { data } = await supabase
           .from("job_schedules")
-          .select("lead_id")
+          .select("lead_id, leads!lead_id(account_id)")
           .eq("scheduled_date", today);
-        const uniqueJobs = new Set(data?.map((d) => d.lead_id));
+        const filtered = (data || []).filter(
+          (d: any) => d.leads?.account_id === currentAccount.id
+        );
+        const uniqueJobs = new Set(filtered.map((d: any) => d.lead_id));
         stats.todays_jobs = uniqueJobs.size;
       }
 
