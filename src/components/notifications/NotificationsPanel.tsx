@@ -107,7 +107,7 @@ export function NotificationsPanel({ open, onOpenChange }: NotificationsPanelPro
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
         <SheetHeader className="px-4 pt-4 pb-3 border-b">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pr-8">
             <SheetTitle>Notifications</SheetTitle>
             {unreadCount > 0 && (
               <Button
