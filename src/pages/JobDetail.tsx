@@ -7,7 +7,6 @@ import {
   Phone,
   MessageSquare,
   Navigation,
-  Camera,
   CheckSquare,
   FileText,
   DollarSign,
@@ -42,6 +41,7 @@ import { useBusinessHours } from "@/hooks/useBusinessHours";
 import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
+import { PhotoSection } from "@/components/photos/PhotoSection";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -556,16 +556,18 @@ export default function JobDetail() {
           </div>
         )}
 
-        {activeTab === "photos" && (
-          <div className="space-y-4">
-            <div className="text-center py-12">
-              <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground mb-4">No photos yet</p>
-              <Button className="gap-2">
-                <Camera className="h-4 w-4" />
-                Add Photo
-              </Button>
-            </div>
+        {activeTab === "photos" && id && (
+          <div className="space-y-8">
+            <PhotoSection
+              leadId={id}
+              photoType="before"
+              title="Before Photos"
+            />
+            <PhotoSection
+              leadId={id}
+              photoType="after"
+              title="After Photos"
+            />
           </div>
         )}
 

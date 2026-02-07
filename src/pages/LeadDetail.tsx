@@ -24,7 +24,7 @@ import { useDeleteLead } from "@/hooks/useLeads";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
-import { BeforePhotos } from "@/components/leads/BeforePhotos";
+import { PhotoSection } from "@/components/photos/PhotoSection";
 import { hasPlanAccess } from "@/lib/planGating";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
@@ -143,7 +143,7 @@ export default function LeadDetail() {
   });
   const [saving, setSaving] = useState(false);
 
-  // Before photos count
+  const [activeTab, setActiveTab] = useState<"details" | "photos">("details");
   const [beforePhotoCount, setBeforePhotoCount] = useState(0);
 
   // Create estimate dialog
@@ -870,332 +870,358 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Next Step Guidance */}
-      {!["job", "paid"].includes(lead.status) && (
-        <div className="px-4 pt-4">
-          <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-            <Info className="h-4 w-4 mt-0.5 shrink-0" />
-            <p>
-              {lead.status === "new" && "Contact this lead to move them to the next stage."}
-              {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
-              {lead.status === "qualified" && !hasEstimate && "Create an estimate to send to the customer for approval."}
-              {lead.status === "qualified" && hasEstimate && !isEstimateApproved && (requiresPhotos && beforePhotoCount === 0
-                ? "The estimate needs to be approved and before photos added to convert this lead to a job."
-                : "The estimate needs to be approved before this lead can become a job.")}
-              {lead.status === "qualified" && hasEstimate && isEstimateApproved && requiresPhotos && beforePhotoCount === 0 && "The estimate is approved. Add at least one before photo to convert this lead to a job."}
-              {lead.status === "qualified" && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && "The estimate is approved. Convert this lead to a job to get started."}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Lead Info Card */}
-      <div className="px-4 py-4">
-        <div className="card-elevated rounded-lg p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {lead.phone && (
-              <div>
-                <span className="text-muted-foreground">Phone</span>
-                <p className="font-medium">{lead.phone}</p>
-              </div>
-            )}
-            {lead.email && (
-              <div>
-                <span className="text-muted-foreground">Email</span>
-                <p className="font-medium truncate">{lead.email}</p>
-              </div>
-            )}
-            {lead.city && (
-              <div>
-                <span className="text-muted-foreground">Location</span>
-                <p className="font-medium">{lead.city}</p>
-              </div>
-            )}
-            {lead.estimated_value && (
-              <div>
-                <span className="text-muted-foreground">Budget</span>
-                <p className="font-medium text-status-confirmed">
-                  ${lead.estimated_value.toLocaleString()}
-                </p>
-              </div>
-            )}
-            {lead.source && (
-              <div>
-                <span className="text-muted-foreground">Source</span>
-                <p className="font-medium capitalize">{lead.source}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Actions */}
-          <div className="flex gap-2 pt-2 border-t border-border">
-            <Button variant="outline" size="sm" className="flex-1" onClick={() => logCall("outbound")}>
-              <Phone className="h-4 w-4 mr-1" /> Call
-            </Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={logText}>
-              <MessageSquare className="h-4 w-4 mr-1" /> Text
-            </Button>
-            {showConvertButton && !hasEstimate && (
-              <Button size="sm" className="flex-1" onClick={() => setCreateEstimateDialogOpen(true)}>
-                <FileText className="h-4 w-4 mr-1" />
-                Create Estimate
-              </Button>
-            )}
-            {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
-              <Button size="sm" className="flex-1" onClick={() => setConvertJobDialogOpen(true)}>
-                <Briefcase className="h-4 w-4 mr-1" />
-                Convert to Job
-              </Button>
-            )}
-          </div>
+      {/* Tabs */}
+      <div className="bg-card border-b border-border px-4 overflow-x-auto scrollbar-hide">
+        <div className="flex">
+          {[
+            { id: "details", label: "Details" },
+            { id: "photos", label: "Photos" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              className={cn(
+                "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                activeTab === tab.id
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Pipeline Stage Selector */}
-      {!["job", "paid"].includes(lead.status) && (
-        <div className="px-4 pb-4">
-          <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
-          <div className="flex flex-wrap gap-2">
-            {PIPELINE_STAGES.map((stage) => (
-              <button
-                key={stage.value}
-                onClick={() => updateLeadStatus(stage.value)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
-                  lead.status === stage.value
-                    ? `${stage.color} text-white`
-                    : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                )}
-              >
-                {stage.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Estimate */}
-      {hasEstimate && estimate && (
-        <div className="px-4 pb-4">
-          <button
-            onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-            className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-          >
-            <div className="flex items-start gap-3">
-              <div className={cn("p-2 rounded-lg", estimate.status === "accepted" ? "bg-emerald-100" : "bg-secondary")}>
-                <DollarSign className={cn("h-5 w-5", estimate.status === "accepted" ? "text-emerald-700" : "text-secondary-foreground")} />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium text-foreground">Estimate</p>
-                  <span className={cn(
-                    "text-xs font-medium px-2 py-0.5 rounded-full",
-                    estimate.status === "accepted"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-amber-100 text-amber-700"
-                  )}>
-                    {estimate.status === "accepted" ? "Approved" : "Not Approved"}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  ${Number(estimate.total).toLocaleString()} · {estimate.line_items?.length || 0} line items
+      {activeTab === "details" && (
+        <>
+          {/* Next Step Guidance */}
+          {!["job", "paid"].includes(lead.status) && (
+            <div className="px-4 pt-4">
+              <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                <p>
+                  {lead.status === "new" && "Contact this lead to move them to the next stage."}
+                  {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
+                  {lead.status === "qualified" && !hasEstimate && "Create an estimate to send to the customer for approval."}
+                  {lead.status === "qualified" && hasEstimate && !isEstimateApproved && (requiresPhotos && beforePhotoCount === 0
+                    ? "The estimate needs to be approved and before photos added to convert this lead to a job."
+                    : "The estimate needs to be approved before this lead can become a job.")}
+                  {lead.status === "qualified" && hasEstimate && isEstimateApproved && requiresPhotos && beforePhotoCount === 0 && "The estimate is approved. Add at least one before photo to convert this lead to a job."}
+                  {lead.status === "qualified" && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && "The estimate is approved. Convert this lead to a job to get started."}
                 </p>
               </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
-          </button>
-        </div>
+          )}
+
+          {/* Lead Info Card */}
+          <div className="px-4 py-4">
+            <div className="card-elevated rounded-lg p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {lead.phone && (
+                  <div>
+                    <span className="text-muted-foreground">Phone</span>
+                    <p className="font-medium">{lead.phone}</p>
+                  </div>
+                )}
+                {lead.email && (
+                  <div>
+                    <span className="text-muted-foreground">Email</span>
+                    <p className="font-medium truncate">{lead.email}</p>
+                  </div>
+                )}
+                {lead.city && (
+                  <div>
+                    <span className="text-muted-foreground">Location</span>
+                    <p className="font-medium">{lead.city}</p>
+                  </div>
+                )}
+                {lead.estimated_value && (
+                  <div>
+                    <span className="text-muted-foreground">Budget</span>
+                    <p className="font-medium text-status-confirmed">
+                      ${lead.estimated_value.toLocaleString()}
+                    </p>
+                  </div>
+                )}
+                {lead.source && (
+                  <div>
+                    <span className="text-muted-foreground">Source</span>
+                    <p className="font-medium capitalize">{lead.source}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex gap-2 pt-2 border-t border-border">
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => logCall("outbound")}>
+                  <Phone className="h-4 w-4 mr-1" /> Call
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1" onClick={logText}>
+                  <MessageSquare className="h-4 w-4 mr-1" /> Text
+                </Button>
+                {showConvertButton && !hasEstimate && (
+                  <Button size="sm" className="flex-1" onClick={() => setCreateEstimateDialogOpen(true)}>
+                    <FileText className="h-4 w-4 mr-1" />
+                    Create Estimate
+                  </Button>
+                )}
+                {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
+                  <Button size="sm" className="flex-1" onClick={() => setConvertJobDialogOpen(true)}>
+                    <Briefcase className="h-4 w-4 mr-1" />
+                    Convert to Job
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Pipeline Stage Selector */}
+          {!["job", "paid"].includes(lead.status) && (
+            <div className="px-4 pb-4">
+              <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
+              <div className="flex flex-wrap gap-2">
+                {PIPELINE_STAGES.map((stage) => (
+                  <button
+                    key={stage.value}
+                    onClick={() => updateLeadStatus(stage.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                      lead.status === stage.value
+                        ? `${stage.color} text-white`
+                        : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                    )}
+                  >
+                    {stage.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Estimate */}
+          {hasEstimate && estimate && (
+            <div className="px-4 pb-4">
+              <button
+                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+              >
+                <div className="flex items-start gap-3">
+                  <div className={cn("p-2 rounded-lg", estimate.status === "accepted" ? "bg-emerald-100" : "bg-secondary")}>
+                    <DollarSign className={cn("h-5 w-5", estimate.status === "accepted" ? "text-emerald-700" : "text-secondary-foreground")} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-foreground">Estimate</p>
+                      <span className={cn(
+                        "text-xs font-medium px-2 py-0.5 rounded-full",
+                        estimate.status === "accepted"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      )}>
+                        {estimate.status === "accepted" ? "Approved" : "Not Approved"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      ${Number(estimate.total).toLocaleString()} · {estimate.line_items?.length || 0} line items
+                    </p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Quick Estimate Panel */}
+          {!["job", "paid"].includes(lead.status) && !hasEstimate && (
+            <div className="px-4 pb-4">
+              <QuickEstimatePanel
+                leadId={id!}
+                onEstimateSaved={fetchInteractions}
+                onConvertToEstimate={(estimateId) => {
+                  toast.success("Draft created! Redirecting to estimates...");
+                  navigate("/payments");
+                }}
+              />
+            </div>
+          )}
+
+          {/* Qualification Panel */}
+          {!["job", "paid"].includes(lead.status) && (
+            <div className="px-4 pb-4">
+              <div className="card-elevated rounded-lg p-4">
+                <h3 className="font-medium mb-3">Qualification</h3>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
+                    <Switch
+                      id="budget-confirmed"
+                      checked={qualification?.budget_confirmed ?? false}
+                      onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
+                    <Switch
+                      id="service-area"
+                      checked={qualification?.service_area_fit ?? false}
+                      onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
+                    <Switch
+                      id="decision-maker"
+                      checked={qualification?.decision_maker_confirmed ?? false}
+                      onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Timeline</Label>
+                    <Select
+                      value={qualification?.timeline || "none"}
+                      onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select timeline" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {TIMELINE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label>Notes</Label>
+                    <Textarea
+                      value={qualNotes}
+                      onChange={(e) => setQualNotes(e.target.value)}
+                      onBlur={() => updateQualification({ notes: qualNotes })}
+                      placeholder="Add qualification notes..."
+                      className="mt-1"
+                      rows={2}
+                    />
+                  </div>
+
+                  {qualification && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Fit Score:</span>
+                      <span className={cn(
+                        "font-semibold",
+                        calculateFitScore(qualification) >= 70 ? "text-status-confirmed" :
+                        calculateFitScore(qualification) >= 40 ? "text-status-pending" : "text-status-attention"
+                      )}>
+                        {calculateFitScore(qualification)}/100
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="flex-1"
+                      onClick={markQualified}
+                      disabled={lead.status === "qualified"}
+                    >
+                      <Check className="h-4 w-4 mr-1" /> Mark Qualified
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setDisqualifyOpen(true)}
+                    >
+                      <X className="h-4 w-4 mr-1" /> Disqualify
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Interaction Timeline */}
+          <div className="px-4 pb-4">
+            <div className="card-elevated rounded-lg p-4">
+              <h3 className="font-medium mb-3">Activity Timeline</h3>
+
+              <div className="mb-4">
+                <Textarea
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Add a note..."
+                  rows={2}
+                />
+                <Button
+                  size="sm"
+                  className="mt-2"
+                  onClick={addNote}
+                  disabled={!newNote.trim() || addingNote}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add Note
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {interactions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No activity yet
+                  </p>
+                ) : (
+                  interactions.map((interaction) => (
+                    <div key={interaction.id} className="flex gap-3 pb-3 border-b border-border last:border-0">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                        {getInteractionIcon(interaction.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-sm font-medium capitalize">
+                            {interaction.type.replace("_", " ")}
+                          </span>
+                          {interaction.direction !== "na" && (
+                            <span className="text-xs text-muted-foreground capitalize">
+                              ({interaction.direction})
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {formatDate(interaction.created_at)}
+                          </span>
+                        </div>
+                        {interaction.summary && (
+                          <p className="text-sm text-muted-foreground">{interaction.summary}</p>
+                        )}
+                        {interaction.body && interaction.body !== interaction.summary && (
+                          <p className="text-sm mt-1">{interaction.body}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
-      {/* Before Photos */}
-      {requiresPhotos && !["job", "paid"].includes(lead.status) && (
-        <div className="px-4 pb-4">
-          <BeforePhotos
+      {activeTab === "photos" && (
+        <div className="px-4 py-4">
+          <PhotoSection
             leadId={id!}
+            photoType="before"
+            title="Before Photos"
             onPhotosChange={setBeforePhotoCount}
           />
         </div>
       )}
-
-      {/* Quick Estimate Panel */}
-      {!["job", "paid"].includes(lead.status) && !hasEstimate && (
-        <div className="px-4 pb-4">
-          <QuickEstimatePanel
-            leadId={id!}
-            onEstimateSaved={fetchInteractions}
-            onConvertToEstimate={(estimateId) => {
-              toast.success("Draft created! Redirecting to estimates...");
-              navigate("/payments");
-            }}
-          />
-        </div>
-      )}
-
-      {/* Qualification Panel */}
-      {!["job", "paid"].includes(lead.status) && (
-        <div className="px-4 pb-4">
-          <div className="card-elevated rounded-lg p-4">
-            <h3 className="font-medium mb-3">Qualification</h3>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
-                <Switch
-                  id="budget-confirmed"
-                  checked={qualification?.budget_confirmed ?? false}
-                  onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
-                <Switch
-                  id="service-area"
-                  checked={qualification?.service_area_fit ?? false}
-                  onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
-                <Switch
-                  id="decision-maker"
-                  checked={qualification?.decision_maker_confirmed ?? false}
-                  onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
-                />
-              </div>
-
-              <div>
-                <Label>Timeline</Label>
-                <Select
-                  value={qualification?.timeline || "none"}
-                  onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select timeline" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {TIMELINE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Notes</Label>
-                <Textarea
-                  value={qualNotes}
-                  onChange={(e) => setQualNotes(e.target.value)}
-                  onBlur={() => updateQualification({ notes: qualNotes })}
-                  placeholder="Add qualification notes..."
-                  className="mt-1"
-                  rows={2}
-                />
-              </div>
-
-              {qualification && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Fit Score:</span>
-                  <span className={cn(
-                    "font-semibold",
-                    calculateFitScore(qualification) >= 70 ? "text-status-confirmed" :
-                    calculateFitScore(qualification) >= 40 ? "text-status-pending" : "text-status-attention"
-                  )}>
-                    {calculateFitScore(qualification)}/100
-                  </span>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="flex-1"
-                  onClick={markQualified}
-                  disabled={lead.status === "qualified"}
-                >
-                  <Check className="h-4 w-4 mr-1" /> Mark Qualified
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setDisqualifyOpen(true)}
-                >
-                  <X className="h-4 w-4 mr-1" /> Disqualify
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Interaction Timeline */}
-      <div className="px-4 pb-4">
-        <div className="card-elevated rounded-lg p-4">
-          <h3 className="font-medium mb-3">Activity Timeline</h3>
-
-          {/* Add Note */}
-          <div className="mb-4">
-            <Textarea
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              placeholder="Add a note..."
-              rows={2}
-            />
-            <Button 
-              size="sm" 
-              className="mt-2" 
-              onClick={addNote}
-              disabled={!newNote.trim() || addingNote}
-            >
-              <Plus className="h-4 w-4 mr-1" /> Add Note
-            </Button>
-          </div>
-
-          {/* Timeline */}
-          <div className="space-y-3">
-            {interactions.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No activity yet
-              </p>
-            ) : (
-              interactions.map((interaction) => (
-                <div key={interaction.id} className="flex gap-3 pb-3 border-b border-border last:border-0">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                    {getInteractionIcon(interaction.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-medium capitalize">
-                        {interaction.type.replace("_", " ")}
-                      </span>
-                      {interaction.direction !== "na" && (
-                        <span className="text-xs text-muted-foreground capitalize">
-                          ({interaction.direction})
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        {formatDate(interaction.created_at)}
-                      </span>
-                    </div>
-                    {interaction.summary && (
-                      <p className="text-sm text-muted-foreground">{interaction.summary}</p>
-                    )}
-                    {interaction.body && interaction.body !== interaction.summary && (
-                      <p className="text-sm mt-1">{interaction.body}</p>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Disqualify Dialog */}
       <Dialog open={disqualifyOpen} onOpenChange={setDisqualifyOpen}>

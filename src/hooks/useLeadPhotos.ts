@@ -4,20 +4,21 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 const MAX_PHOTOS = 4;
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 
-interface LeadPhoto {
+export interface LeadPhoto {
   id: string;
   lead_id: string;
   account_id: string;
   file_path: string;
+  photo_type: "before" | "after";
   uploaded_by: string;
   created_at: string;
   publicUrl: string;
 }
 
-export function useLeadPhotos(leadId: string | undefined) {
+export function useLeadPhotos(leadId: string | undefined, photoType: "before" | "after" = "before") {
   const { user, currentAccount } = useAuth();
   const [photos, setPhotos] = useState<LeadPhoto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,6 +31,7 @@ export function useLeadPhotos(leadId: string | undefined) {
       .from("lead_photos")
       .select("*")
       .eq("lead_id", leadId)
+      .eq("photo_type", photoType)
       .order("created_at", { ascending: true });
 
     if (error) {
@@ -46,7 +48,7 @@ export function useLeadPhotos(leadId: string | undefined) {
     }
 
     setIsLoading(false);
-  }, [leadId]);
+  }, [leadId, photoType]);
 
   useEffect(() => {
     fetchPhotos();
@@ -60,7 +62,7 @@ export function useLeadPhotos(leadId: string | undefined) {
 
     const remaining = MAX_PHOTOS - photos.length;
     if (remaining <= 0) {
-      toast.error(`Maximum of ${MAX_PHOTOS} before photos allowed`);
+      toast.error(`Maximum of ${MAX_PHOTOS} photos allowed`);
       return;
     }
 
@@ -85,7 +87,7 @@ export function useLeadPhotos(leadId: string | undefined) {
     try {
       for (const file of filesToUpload) {
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-        const filePath = `${currentAccount.id}/${leadId}/${crypto.randomUUID()}.${ext}`;
+        const filePath = `${currentAccount.id}/${leadId}/${photoType}/${crypto.randomUUID()}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
           .from("lead-photos")
@@ -102,6 +104,7 @@ export function useLeadPhotos(leadId: string | undefined) {
           account_id: currentAccount.id,
           file_path: filePath,
           uploaded_by: user.id,
+          photo_type: photoType,
         });
 
         if (dbError) {
