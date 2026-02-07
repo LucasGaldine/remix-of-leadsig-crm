@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+
+export interface EstimateLineItemInit {
+  name: string;
+  description: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+}
 
 interface LineItemsEstimateDialogProps {
   open: boolean;
@@ -25,26 +33,26 @@ interface LineItemsEstimateDialogProps {
     estimated_value: number | null;
   };
   onSuccess: () => void;
+  initialLineItems?: EstimateLineItemInit[];
 }
 
-interface LineItem {
-  name: string;
-  description: string;
-  quantity: string;
-  unit: string;
-  unit_price: string;
-}
-
-export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess }: LineItemsEstimateDialogProps) {
+export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, initialLineItems }: LineItemsEstimateDialogProps) {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
-  const initialLineItems: LineItem[] = lead.estimated_value
-    ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString() }]
-    : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "" }];
+  const defaultLineItems: EstimateLineItemInit[] = initialLineItems ??
+    (lead.estimated_value
+      ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString() }]
+      : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
 
-  const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
+  const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setLineItems(defaultLineItems);
+    }
+  }, [open]);
 
   const addLineItem = () => {
     setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
@@ -54,7 +62,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess }:
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
-  const updateLineItem = (index: number, field: keyof LineItem, value: string) => {
+  const updateLineItem = (index: number, field: keyof EstimateLineItemInit, value: string) => {
     const updated = [...lineItems];
     updated[index][field] = value;
     setLineItems(updated);

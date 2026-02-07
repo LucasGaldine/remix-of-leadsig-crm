@@ -7,19 +7,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { 
-  useQuickEstimate, 
-  ServiceType, 
-  SERVICE_LABELS, 
+import {
+  useQuickEstimate,
+  ServiceType,
+  SERVICE_LABELS,
   Measurements,
-  QuickEstimateResult 
+  QuickEstimateResult
 } from "@/hooks/useQuickEstimate";
+
+export interface QuickEstimateBreakdown {
+  serviceType: ServiceType;
+  measurements: Measurements;
+  result: QuickEstimateResult;
+}
 
 interface QuickEstimatePanelProps {
   leadId: string;
   hasAddress?: boolean;
   onEstimateSaved?: () => void;
-  onConvertToEstimate?: (estimateId: string) => void;
+  onCreateDraft?: (breakdown: QuickEstimateBreakdown) => void;
   className?: string;
 }
 
@@ -27,7 +33,7 @@ export function QuickEstimatePanel({
   leadId,
   hasAddress = true,
   onEstimateSaved,
-  onConvertToEstimate,
+  onCreateDraft,
   className,
 }: QuickEstimatePanelProps) {
   const { calculateEstimate, saveQuickEstimate, loading, saving } = useQuickEstimate(leadId);
@@ -92,11 +98,9 @@ export function QuickEstimatePanel({
 
   const handleConvert = async () => {
     if (!result) return;
-    
-    const saved = await saveQuickEstimate(serviceType, measurements, result, notes);
-    if (saved) {
-      onConvertToEstimate?.(saved.id);
-    }
+
+    await saveQuickEstimate(serviceType, measurements, result, notes);
+    onCreateDraft?.({ serviceType, measurements, result });
   };
 
   const isFencing = serviceType === "fencing";

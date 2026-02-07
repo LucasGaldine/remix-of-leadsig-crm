@@ -3,8 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Mail } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { QuickEstimatePanel } from "@/components/leads/QuickEstimatePanel";
+import { QuickEstimatePanel, QuickEstimateBreakdown } from "@/components/leads/QuickEstimatePanel";
 import { CreateEstimateDialog } from "@/components/leads/CreateEstimateDialog";
+import { LineItemsEstimateDialog, EstimateLineItemInit } from "@/components/leads/LineItemsEstimateDialog";
+import { SERVICE_LABELS } from "@/hooks/useQuickEstimate";
 import { supabase } from "@/integrations/supabase/client";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -149,6 +151,10 @@ export default function LeadDetail() {
 
   // Create estimate dialog
   const [createEstimateDialogOpen, setCreateEstimateDialogOpen] = useState(false);
+
+  // Quick estimate draft dialog
+  const [draftEstimateDialogOpen, setDraftEstimateDialogOpen] = useState(false);
+  const [draftLineItems, setDraftLineItems] = useState<EstimateLineItemInit[]>([]);
 
   // Convert to job dialog with optional scheduling
   const [convertJobDialogOpen, setConvertJobDialogOpen] = useState(false);
@@ -887,6 +893,17 @@ export default function LeadDetail() {
         />
       )}
 
+      {/* Quick Estimate Draft Dialog */}
+      {lead && (
+        <LineItemsEstimateDialog
+          open={draftEstimateDialogOpen}
+          onOpenChange={setDraftEstimateDialogOpen}
+          lead={lead}
+          onSuccess={handleEstimateSuccess}
+          initialLineItems={draftLineItems}
+        />
+      )}
+
       {/* Convert to Job Dialog */}
       <Dialog open={convertJobDialogOpen} onOpenChange={setConvertJobDialogOpen}>
         <DialogContent>
@@ -1062,9 +1079,41 @@ export default function LeadDetail() {
                 leadId={id!}
                 hasAddress={hasAddress}
                 onEstimateSaved={fetchInteractions}
-                onConvertToEstimate={(estimateId) => {
-                  toast.success("Draft created! Redirecting to estimates...");
-                  navigate("/payments");
+                onCreateDraft={(breakdown: QuickEstimateBreakdown) => {
+                  const { serviceType, measurements, result } = breakdown;
+                  const label = SERVICE_LABELS[serviceType];
+                  const qty = serviceType === "fencing"
+                    ? (measurements.linearFeet || 0)
+                    : (measurements.sqft || 0);
+                  const unit = serviceType === "fencing" ? "linear ft" : "sq ft";
+                  const overheadAmount = result.totalMid - result.laborTotal - result.materialTotal;
+
+                  const items: EstimateLineItemInit[] = [
+                    {
+                      name: `${label} - Labor`,
+                      description: "",
+                      quantity: qty.toString(),
+                      unit,
+                      unit_price: qty > 0 ? (result.laborTotal / qty).toFixed(2) : "0",
+                    },
+                    {
+                      name: `${label} - Materials`,
+                      description: "Includes waste factor",
+                      quantity: qty.toString(),
+                      unit,
+                      unit_price: qty > 0 ? (result.materialTotal / qty).toFixed(2) : "0",
+                    },
+                    {
+                      name: "Overhead & Profit",
+                      description: "",
+                      quantity: "1",
+                      unit: "item",
+                      unit_price: overheadAmount.toFixed(2),
+                    },
+                  ];
+
+                  setDraftLineItems(items);
+                  setDraftEstimateDialogOpen(true);
                 }}
               />
             </div>
