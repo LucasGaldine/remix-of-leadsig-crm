@@ -53,7 +53,7 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Good morning" subtitle="Monday, January 13" notificationCount={3} />
+      <PageHeader title="Good morning" subtitle="Monday, January 13" />
 
       <main className="px-4 py-4 space-y-6">
         {/* Email Verification Banner */}
