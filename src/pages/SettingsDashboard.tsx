@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { DASHBOARD_CARDS, getCardConfig } from "@/constants/dashboardCards";
 
-const MAX_CARDS = 5;
+const MAX_CARDS = 4;
 const MIN_CARDS = 1;
 
 export default function SettingsDashboard() {
@@ -93,7 +93,7 @@ export default function SettingsDashboard() {
               Your Dashboard Cards
             </CardTitle>
             <CardDescription>
-              Drag to reorder. You can display {MIN_CARDS}--{MAX_CARDS} stat cards at the top of your dashboard.
+              Drag to reorder. You can display {MIN_CARDS} to {MAX_CARDS} stat cards at the top of your dashboard.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
