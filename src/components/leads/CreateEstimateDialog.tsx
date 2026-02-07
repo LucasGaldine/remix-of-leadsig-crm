@@ -124,6 +124,29 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
         .update({ estimate_job_id: estimateJob.id })
         .eq("id", lead.id);
 
+      const { data: existingEstimate } = await supabase
+        .from("estimates")
+        .select("id")
+        .eq("job_id", lead.id)
+        .maybeSingle();
+
+      if (!existingEstimate) {
+        await supabase
+          .from("estimates")
+          .insert({
+            customer_id: customerId,
+            job_id: lead.id,
+            subtotal: lead.estimated_value || 0,
+            tax_rate: 0,
+            tax: 0,
+            discount: 0,
+            total: lead.estimated_value || 0,
+            status: "draft",
+            created_by: user.id,
+            account_id: currentAccount.id,
+          });
+      }
+
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "note",
@@ -139,6 +162,7 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
       await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
 
       onSuccess();
       onOpenChange(false);
