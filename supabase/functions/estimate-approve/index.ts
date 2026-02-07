@@ -109,7 +109,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST") {
       const { data: estimate, error: fetchError } = await supabase
         .from("estimates")
-        .select("id, status, expires_at")
+        .select("id, status, expires_at, job_id")
         .eq("approval_token", token)
         .maybeSingle();
 
@@ -166,6 +166,28 @@ Deno.serve(async (req: Request) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           }
         );
+      }
+
+      if (estimate.job_id) {
+        const { data: lead } = await supabase
+          .from("leads")
+          .select("id, status")
+          .eq("id", estimate.job_id)
+          .maybeSingle();
+
+        if (lead && lead.status !== "job" && lead.status !== "paid") {
+          await supabase
+            .from("leads")
+            .update({ status: "job" })
+            .eq("id", lead.id);
+
+          await supabase.from("interactions").insert({
+            lead_id: lead.id,
+            type: "status_change",
+            direction: "na",
+            summary: "Converted to job (estimate approved by customer)",
+          });
+        }
       }
 
       return new Response(

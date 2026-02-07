@@ -119,8 +119,28 @@ export default function EstimateDetail() {
         .eq("id", id);
 
       if (error) throw error;
+
+      if (estimate?.job_id) {
+        const leadStatus = estimate.job?.status;
+        if (leadStatus && leadStatus !== "job" && leadStatus !== "paid") {
+          await supabase
+            .from("leads")
+            .update({ status: "job" })
+            .eq("id", estimate.job_id);
+
+          await supabase.from("interactions").insert({
+            lead_id: estimate.job_id,
+            type: "status_change",
+            direction: "na",
+            summary: "Converted to job (estimate approved manually)",
+          });
+        }
+      }
+
       await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       toast.success("Estimate marked as approved");
     } catch {
       toast.error("Failed to approve estimate");

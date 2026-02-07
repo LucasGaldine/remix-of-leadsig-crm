@@ -419,6 +419,10 @@ export default function LeadDetail() {
       toast.error("An estimate is required to convert to job");
       return;
     }
+    if (estimate?.status !== "accepted") {
+      toast.error("The estimate must be approved before converting to a job");
+      return;
+    }
 
     setConvertingJob(true);
     const loadingToast = toast.loading("Converting to job...");
@@ -610,6 +614,7 @@ export default function LeadDetail() {
   }
 
   const showConvertButton = lead.status === "qualified";
+  const isEstimateApproved = estimate?.status === "accepted";
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -904,7 +909,7 @@ export default function LeadDetail() {
                 Create Estimate
               </Button>
             )}
-            {showConvertButton && hasEstimate && (
+            {showConvertButton && hasEstimate && isEstimateApproved && (
               <Button size="sm" className="flex-1" onClick={() => setConvertJobDialogOpen(true)}>
                 <Briefcase className="h-4 w-4 mr-1" />
                 Convert to Job
