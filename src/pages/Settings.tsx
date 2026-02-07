@@ -24,6 +24,7 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { type PricingPlan, hasPlanAccess } from "@/lib/planGating";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ interface SettingItem {
   variant?: "default" | "danger";
   comingSoon?: boolean;
   external?: boolean;
+  requiredPlan?: PricingPlan;
 }
 
 interface SettingSection {
@@ -46,7 +48,7 @@ interface SettingSection {
 
 export default function Settings() {
   const [show2FASetup, setShow2FASetup] = useState(false);
-  const { signOut, profile, role } = useAuth();
+  const { signOut, profile, role, currentAccount } = useAuth();
   const navigate = useNavigate();
   
 
@@ -129,12 +131,14 @@ export default function Settings() {
           label: "Auto-Responses",
           description: "Missed calls, follow-ups",
           onClick: () => navigate("/settings/auto-responses"),
+          requiredPlan: "premium",
         },
         {
           icon: <Bell className="h-5 w-5" />,
           label: "Notifications",
           description: "Push and SMS settings",
           onClick: () => navigate("/settings/notifications"),
+          requiredPlan: "basic",
         },
       ],
     },
@@ -147,6 +151,7 @@ export default function Settings() {
           label: "Lead Sources",
           description: "Connect platforms to capture leads",
           onClick: () => navigate("/settings/lead-sources"),
+          requiredPlan: "basic",
         },
       ],
     },
@@ -199,9 +204,20 @@ export default function Settings() {
     },
   ];
 
-  const visibleSections = settingSections.filter(section =>
-  section.roles == null || section.roles.includes(role)
-  );
+  const currentPlan: PricingPlan = currentAccount?.pricing_plan ?? "free";
+  const isOwner = role === "owner";
+
+  const visibleSections = settingSections
+    .filter(section => section.roles == null || section.roles.includes(role))
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (!item.requiredPlan) return true;
+        if (isOwner) return true;
+        return hasPlanAccess(currentPlan, item.requiredPlan);
+      }),
+    }))
+    .filter(section => section.items.length > 0);
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">

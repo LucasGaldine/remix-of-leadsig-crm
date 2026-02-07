@@ -3,6 +3,7 @@ import { Check, Copy, ChevronDown, ChevronUp, Loader2, RefreshCw, Mail, Webhook,
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { PlanGate } from "@/components/features/PlanGate";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -617,6 +618,12 @@ export default function LeadSources() {
   };
 
   return (
+    <PlanGate
+      requiredPlan="basic"
+      featureName="Lead Sources"
+      featureDescription="Connect platforms like Facebook, Google, Angi, and more to automatically capture and qualify leads in one place."
+      backTo="/settings"
+    >
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
         title="Lead Sources"
@@ -1214,5 +1221,6 @@ export default function LeadSources() {
 
       <MobileNav />
     </div>
+    </PlanGate>
   );
 }

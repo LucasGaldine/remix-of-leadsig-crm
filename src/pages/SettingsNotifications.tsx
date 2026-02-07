@@ -34,6 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSmsLogs } from "@/hooks/useSmsLogs";
 import { formatDistanceToNow } from "date-fns";
+import { PlanGate } from "@/components/features/PlanGate";
 
 type Channel = "push" | "email" | "sms";
 type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks";
@@ -326,6 +327,12 @@ export default function SettingsNotifications() {
   };
 
   return (
+    <PlanGate
+      requiredPlan="basic"
+      featureName="Notifications"
+      featureDescription="Set up push, email, and SMS notifications so you never miss a new lead, payment, or schedule change."
+      backTo="/settings"
+    >
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Notification Settings" showBack backTo="/settings" />
 
@@ -642,5 +649,6 @@ export default function SettingsNotifications() {
       <MobileNav />
       <UnsavedChangesDialog blocker={blocker} />
     </div>
+    </PlanGate>
   );
 }
