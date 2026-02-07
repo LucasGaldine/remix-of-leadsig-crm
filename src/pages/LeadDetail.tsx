@@ -49,6 +49,7 @@ interface Lead {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  estimate_job_id: string | null;
 }
 
 interface Interaction {
