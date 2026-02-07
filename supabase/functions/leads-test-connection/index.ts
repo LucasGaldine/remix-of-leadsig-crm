@@ -1,8 +1,9 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
 interface TestConnectionPayload {
@@ -11,12 +12,17 @@ interface TestConnectionPayload {
   accountId: string;
 }
 
-Deno.serve(async (req) => {
-  console.log("leads-test-connection: Request received", req.method);
+const platformNames: Record<string, string> = {
+  facebook: "Facebook",
+  google: "Google",
+  angi: "Angi",
+  yelp: "Yelp",
+  thumbtack: "Thumbtack",
+};
 
-  // Handle CORS preflight
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -24,10 +30,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Parse request body
     const payload: TestConnectionPayload = await req.json();
-    console.log("leads-test-connection: Payload received", JSON.stringify(payload));
-
     const { platform, userId, accountId } = payload;
 
     if (!platform || !userId || !accountId) {
@@ -37,30 +40,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify the connection exists
     const { data: connection, error: connError } = await supabase
       .from("lead_source_connections")
       .select("id, status")
       .eq("account_id", accountId)
       .eq("platform", platform)
-      .single();
+      .maybeSingle();
 
     if (connError || !connection) {
-      console.log("leads-test-connection: Connection not found");
       return new Response(
-        JSON.stringify({ error: "Connection not found" }),
+        JSON.stringify({ error: "Connection not found. Please connect this platform first." }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Create a test lead
-    const platformNames: Record<string, string> = {
-      facebook: "Facebook",
-      google: "Google",
-      angi: "Angi",
-      yelp: "Yelp",
-      thumbtack: "Thumbtack",
-    };
 
     const testLead = {
       name: `Test Lead - ${platformNames[platform] || platform}`,
@@ -82,17 +74,15 @@ Deno.serve(async (req) => {
       .from("leads")
       .insert(testLead)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (leadError) {
-      console.error("leads-test-connection: Failed to create test lead", leadError);
+    if (leadError || !lead) {
       return new Response(
-        JSON.stringify({ error: "Failed to create test lead", details: leadError.message }),
+        JSON.stringify({ error: "Failed to create test lead", details: leadError?.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Log a system interaction
     await supabase.from("interactions").insert({
       lead_id: lead.id,
       type: "system",
@@ -101,9 +91,6 @@ Deno.serve(async (req) => {
       metadata: { test: true, platform },
     });
 
-    console.log("leads-test-connection: Test lead created successfully", lead.id);
-
-    // Update last_sync_at on the connection
     await supabase
       .from("lead_source_connections")
       .update({ last_sync_at: new Date().toISOString() })

@@ -240,6 +240,14 @@ export default function LeadSources() {
     return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   };
 
+  const [connectionMethodDialog, setConnectionMethodDialog] = useState<{
+    open: boolean;
+    platform: PlatformInfo | null;
+  }>({
+    open: false,
+    platform: null,
+  });
+
   const handleConnect = async (platform: PlatformInfo) => {
     if (!user) return;
 
@@ -253,17 +261,7 @@ export default function LeadSources() {
       return;
     }
 
-    const inboundEmail = generateInboundEmail(user.id);
-
-    setConnectDialog({
-      open: true,
-      platform,
-      method: "email_relay",
-      inboundEmail,
-      apiKey: null,
-      apiKeyId: null,
-      copied: null,
-    });
+    setConnectionMethodDialog({ open: true, platform });
   };
 
   const handleConnectWebhook = async (platform: PlatformInfo) => {
@@ -720,6 +718,70 @@ export default function LeadSources() {
       </main>
 
       <Dialog
+        open={connectionMethodDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setConnectionMethodDialog({ open: false, platform: null });
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {connectionMethodDialog.platform?.icon}
+              Connect {connectionMethodDialog.platform?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Choose how you'd like to receive leads
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <button
+              className="w-full p-4 border border-border rounded-lg text-left hover:bg-muted/50 transition-colors"
+              onClick={() => {
+                if (!connectionMethodDialog.platform) return;
+                setConnectionMethodDialog({ open: false, platform: null });
+                handleConnectWebhook(connectionMethodDialog.platform);
+              }}
+            >
+              <h4 className="font-medium mb-1 flex items-center gap-2">
+                <Webhook className="h-4 w-4" />
+                Webhook / Zapier
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                Connect via webhook using Zapier, Make, or a direct API call. Most reliable option.
+              </p>
+            </button>
+
+            <button
+              className="w-full p-4 border border-border rounded-lg text-left hover:bg-muted/50 transition-colors"
+              onClick={() => {
+                if (!connectionMethodDialog.platform) return;
+                setConnectionMethodDialog({ open: false, platform: null });
+                handleConnectViaEmailRelay(connectionMethodDialog.platform);
+              }}
+            >
+              <h4 className="font-medium mb-1 flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                Email Forwarding
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                Forward lead notification emails from {connectionMethodDialog.platform?.name} to LeadSig.
+              </p>
+            </button>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConnectionMethodDialog({ open: false, platform: null })}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={oauthComingSoonDialog.open}
         onOpenChange={(open) => {
           if (!open) {
@@ -800,7 +862,7 @@ export default function LeadSources() {
             </DialogTitle>
             <DialogDescription>
               {connectDialog.method === "webhook"
-                ? "Set up webhook integration for Google Ads lead forms"
+                ? `Set up webhook integration for ${connectDialog.platform?.name || "lead"} forms`
                 : "Set up email forwarding to receive leads automatically"
               }
             </DialogDescription>
@@ -809,9 +871,9 @@ export default function LeadSources() {
           {connectDialog.method === "webhook" ? (
             <div className="space-y-4">
               <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">AI-Powered Lead Intelligence</h4>
+                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Smart Lead Parsing</h4>
                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                  Our AI automatically extracts and qualifies all information from your Google Ads leads. No field mapping needed!
+                  LeadSig automatically extracts and qualifies all information from your {connectDialog.platform?.name} leads. No field mapping needed.
                 </p>
               </div>
 
@@ -830,11 +892,9 @@ export default function LeadSources() {
                 {connectDialog.apiKey ? (
                   <div className="space-y-3">
                     <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                      <h4 className="font-medium mb-2 text-yellow-900 dark:text-yellow-100 flex items-center gap-2">
-                        <span className="text-lg">⚠️</span> Copy Your API Key
-                      </h4>
+                      <h4 className="font-medium mb-2 text-yellow-900 dark:text-yellow-100">Copy Your API Key</h4>
                       <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
-                        Copy this key now and paste it into Google Ads. You won't be able to see it again.
+                        Copy this key now. You won't be able to see it again.
                       </p>
                       <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
                         <code className="flex-1 text-sm break-all font-mono">
@@ -866,98 +926,94 @@ export default function LeadSources() {
               </div>
 
               <div className="space-y-3">
-                <h4 className="font-medium">Setup Instructions</h4>
-                <ol className="text-sm space-y-3 list-decimal list-inside">
-                  <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Sign in to your Google Ads account</span>
-                  </li>
-                  <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Create or edit a lead form campaign</span>
-                  </li>
-                  <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">In your lead form settings, scroll to "Webhook integration (optional)"</span>
-                  </li>
-                  <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Enter your webhook details:</span>
-                    <div className="ml-6 mt-2 space-y-3">
-                      <div>
-                        <p className="text-xs font-medium mb-1">Webhook URL</p>
-                        <div className="flex items-center gap-2 p-2 bg-muted rounded border">
-                          <code className="flex-1 text-xs break-all">
-                            {getWebhookUrl()}
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={handleCopyWebhookUrl}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                      {connectDialog.apiKey && (
-                        <div>
-                          <p className="text-xs font-medium mb-1">Key</p>
-                          <div className="flex items-center gap-2 p-2 bg-muted rounded border">
-                            <code className="flex-1 text-xs break-all">
-                              {connectDialog.apiKey}
-                            </code>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={handleCopyApiKey}
-                            >
-                              {connectDialog.copied === "key" ? (
-                                <Check className="h-3 w-3 text-status-confirmed" />
-                              ) : (
-                                <Copy className="h-3 w-3" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
+                <h4 className="font-medium">Webhook Details</h4>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium mb-1">Webhook URL</p>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded border">
+                      <code className="flex-1 text-xs break-all">
+                        POST {getWebhookUrl()}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={handleCopyWebhookUrl}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </li>
-                  <li className="text-muted-foreground">
-                    <span className="font-medium text-foreground">Save your lead form settings</span>
-                  </li>
-                </ol>
-                <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-                  <p className="text-xs text-green-800 dark:text-green-200">
-                    <span className="font-medium">✨ AI Magic:</span> Our AI automatically extracts names, emails, phone numbers, budgets, service types, and more from any form format. Leads are qualified instantly!
-                  </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium mb-1">Required Header</p>
+                    <div className="p-2 bg-muted rounded border">
+                      <code className="text-xs">x-leadsig-api-key: {"<your-api-key>"}</code>
+                    </div>
+                  </div>
+                  {connectDialog.apiKey && (
+                    <div>
+                      <p className="text-xs font-medium mb-1">Your API Key</p>
+                      <div className="flex items-center gap-2 p-2 bg-muted rounded border">
+                        <code className="flex-1 text-xs break-all">
+                          {connectDialog.apiKey}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={handleCopyApiKey}
+                        >
+                          {connectDialog.copied === "key" ? (
+                            <Check className="h-3 w-3 text-status-confirmed" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {connectDialog.platform?.id === "google" ? (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Google Ads Setup</h4>
+                    <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
+                      <li>Sign in to your Google Ads account</li>
+                      <li>Create or edit a lead form campaign</li>
+                      <li>In lead form settings, go to "Webhook integration"</li>
+                      <li>Paste the webhook URL and API key above</li>
+                      <li>Save your lead form settings</li>
+                    </ol>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">How to connect</h4>
+                    <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
+                      <li>Use Zapier or Make to create an automation</li>
+                      <li>Set {connectDialog.platform?.name} as the trigger (new lead/request)</li>
+                      <li>Add a "Webhook" action pointing to the URL above</li>
+                      <li>Include the API key in the <code className="text-xs bg-muted px-1 rounded">x-leadsig-api-key</code> header</li>
+                      <li>Map the lead fields: name, phone, email, source (set to "{connectDialog.platform?.id}")</li>
+                    </ol>
+                  </div>
+                )}
+
+                <div className="p-3 bg-muted/50 rounded-lg border border-border">
+                  <p className="text-xs font-medium mb-1">Example JSON Payload</p>
+                  <pre className="text-xs overflow-x-auto">
+{`{
+  "source": "${connectDialog.platform?.id || "yelp"}",
+  "name": "John Doe",
+  "phone": "555-123-4567",
+  "email": "john@example.com",
+  "serviceType": "Pavers",
+  "location": "Miami, FL",
+  "budget": 5000,
+  "message": "Need a new patio"
+}`}
+                  </pre>
                 </div>
               </div>
-
-              <Collapsible>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground">
-                    <span className="flex items-center gap-2">
-                      <ExternalLink className="h-4 w-4" />
-                      Need help? View Google's documentation
-                    </span>
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2">
-                  <div className="p-3 bg-muted rounded-lg text-sm space-y-2">
-                    <p className="text-muted-foreground">
-                      For detailed instructions on setting up webhooks in Google Ads lead forms, visit:
-                    </p>
-                    <a
-                      href="https://support.google.com/google-ads/answer/7759777"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1"
-                    >
-                      Google Ads Lead Form Extensions Help
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
             </div>
           ) : (
             <div className="space-y-4">

@@ -16,6 +16,7 @@ interface ParsedLead {
   city?: string;
   state?: string;
   notes?: string;
+  source?: string;
 }
 
 interface GoogleColumnData {
@@ -115,6 +116,90 @@ function parseFacebookLead(payload: Record<string, unknown>): ParsedLead | null 
   return lead;
 }
 
+function parseGenericLead(payload: Record<string, unknown>): ParsedLead | null {
+  const getString = (keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const val = payload[key];
+      if (typeof val === "string" && val.trim()) return val.trim();
+    }
+    return undefined;
+  };
+
+  const getNumber = (keys: string[]): number | undefined => {
+    for (const key of keys) {
+      const val = payload[key];
+      if (typeof val === "number" && !isNaN(val)) return val;
+      if (typeof val === "string") {
+        const cleaned = val.replace(/[$,]/g, "");
+        const parsed = parseFloat(cleaned);
+        if (!isNaN(parsed)) return parsed;
+      }
+    }
+    return undefined;
+  };
+
+  const name = getString(["name", "full_name", "fullName", "customer_name", "customerName", "contact_name", "contactName"]);
+  const email = getString(["email", "email_address", "emailAddress", "customer_email"]);
+  const phone = getString(["phone", "phone_number", "phoneNumber", "telephone", "mobile", "customer_phone"]);
+
+  if (!name && !email && !phone) return null;
+
+  const firstName = getString(["first_name", "firstName"]);
+  const lastName = getString(["last_name", "lastName"]);
+  const fullName = name || [firstName, lastName].filter(Boolean).join(" ") || undefined;
+
+  const locationStr = getString(["location", "city_state"]);
+  let city = getString(["city"]);
+  let state = getString(["state", "region", "province"]);
+
+  if (!city && !state && locationStr) {
+    const parts = locationStr.split(",").map((p) => p.trim());
+    if (parts.length >= 2) {
+      city = parts[0];
+      state = parts[1];
+    } else {
+      city = locationStr;
+    }
+  }
+
+  const extraNotes: string[] = [];
+  const knownKeys = new Set([
+    "name", "full_name", "fullName", "customer_name", "customerName", "contact_name", "contactName",
+    "email", "email_address", "emailAddress", "customer_email",
+    "phone", "phone_number", "phoneNumber", "telephone", "mobile", "customer_phone",
+    "first_name", "firstName", "last_name", "lastName",
+    "location", "city_state", "city", "state", "region", "province",
+    "address", "street", "street_address", "streetAddress",
+    "service_type", "serviceType", "service", "category", "project_type", "projectType",
+    "budget", "estimated_value", "estimatedValue", "value", "price", "amount",
+    "message", "notes", "description", "details", "comment", "comments",
+    "source", "google_key", "api_key",
+  ]);
+
+  for (const [key, val] of Object.entries(payload)) {
+    if (knownKeys.has(key)) continue;
+    if (val !== null && val !== undefined && typeof val !== "object") {
+      extraNotes.push(`${key}: ${val}`);
+    }
+  }
+
+  const messageStr = getString(["message", "notes", "description", "details", "comment", "comments"]);
+  const allNotes = [messageStr, ...extraNotes].filter(Boolean).join("; ") || undefined;
+
+  return {
+    full_name: fullName,
+    email,
+    phone_number: phone,
+    address: getString(["address", "street", "street_address", "streetAddress"]),
+    city,
+    state,
+    service_type: getString(["service_type", "serviceType", "service", "category", "project_type", "projectType"]),
+    budget: getNumber(["budget", "estimated_value", "estimatedValue", "value", "price", "amount"]),
+    notes: allNotes,
+    source: getString(["source"]),
+  };
+}
+
 function detectSourceAndParse(rawPayload: Record<string, unknown>): { source: string; parsed: ParsedLead | null } {
   if ("user_column_data" in rawPayload && "lead_id" in rawPayload) {
     return { source: "google", parsed: parseGoogleLead(rawPayload) };
@@ -122,6 +207,13 @@ function detectSourceAndParse(rawPayload: Record<string, unknown>): { source: st
 
   if ("field_data" in rawPayload || ("form_id" in rawPayload && "leadgen_id" in rawPayload)) {
     return { source: "facebook", parsed: parseFacebookLead(rawPayload) };
+  }
+
+  const genericParsed = parseGenericLead(rawPayload);
+  if (genericParsed) {
+    const source = genericParsed.source || "unknown";
+    delete genericParsed.source;
+    return { source, parsed: genericParsed };
   }
 
   return { source: "unknown", parsed: null };
