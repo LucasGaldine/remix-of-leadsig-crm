@@ -90,13 +90,33 @@ export default function JobDetail() {
 
     setEstimateLoading(true);
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("estimates")
         .select("id, total, status, line_items:estimate_line_items(id)")
         .eq("job_id", id)
         .maybeSingle();
 
       if (error) throw error;
+
+      if (!data) {
+        const { data: parentLead } = await supabase
+          .from("leads")
+          .select("id")
+          .eq("estimate_job_id", id)
+          .maybeSingle();
+
+        if (parentLead) {
+          const { data: parentEstimate, error: parentError } = await supabase
+            .from("estimates")
+            .select("id, total, status, line_items:estimate_line_items(id)")
+            .eq("job_id", parentLead.id)
+            .maybeSingle();
+
+          if (parentError) throw parentError;
+          data = parentEstimate;
+        }
+      }
+
       setEstimate(data);
     } catch (error) {
       console.error("Error fetching estimate:", error);
