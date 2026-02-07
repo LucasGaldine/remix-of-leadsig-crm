@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Users, ArrowLeft, Mail, Phone, UserPlus, Trash2,
+  Users, Mail, Phone, UserPlus, Trash2,
   Copy, CheckCircle2, AlertCircle
 } from "lucide-react";
 import {
@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
 
 interface AccountMember {
   id: string;
@@ -127,22 +129,14 @@ export default function SettingsCrewManagement() {
   const canManageMembers = currentAccount && user;
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Users className="h-8 w-8 text-primary" />
-              Crew Management
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Manage team members and their roles
-            </p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader
+        title="Crew Management"
+        subtitle="Manage team members and their roles"
+        showBack
+        backTo="/settings"
+      />
+      <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
 
         <Card>
           <CardHeader>
@@ -297,6 +291,7 @@ export default function SettingsCrewManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <MobileNav />
     </div>
   );
 }
