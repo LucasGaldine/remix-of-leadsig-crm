@@ -95,7 +95,7 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
           name: `${lead.name}, Estimate`,
           status: "job",
           service_type: lead.service_type,
-          address: [lead.address, lead.city].filter(Boolean).join(", ") || null,
+          address: lead.address || lead.city || null,
           city: lead.city,
           customer_id: customerId,
           created_by: user.id,
