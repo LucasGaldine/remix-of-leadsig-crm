@@ -2,14 +2,13 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, Calendar } from "lucide-react";
+import { Calendar, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
 
 interface CreateEstimateDialogProps {
   open: boolean;
@@ -27,61 +26,19 @@ interface CreateEstimateDialogProps {
   onSuccess: () => void;
 }
 
-interface LineItem {
-  name: string;
-  description: string;
-  quantity: string;
-  unit: string;
-  unit_price: string;
-}
-
 export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: CreateEstimateDialogProps) {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
-  const initialLineItems: LineItem[] = lead.estimated_value
-    ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString() }]
-    : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "" }];
-
-  const [lineItems, setLineItems] = useState<LineItem[]>(initialLineItems);
-  const [creating, setCreating] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
+  const [lineItemsOpen, setLineItemsOpen] = useState(false);
 
-  const addLineItem = () => {
-    setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
-  };
-
-  const removeLineItem = (index: number) => {
-    setLineItems(lineItems.filter((_, i) => i !== index));
-  };
-
-  const updateLineItem = (index: number, field: keyof LineItem, value: string) => {
-    const updated = [...lineItems];
-    updated[index][field] = value;
-    setLineItems(updated);
-  };
-
-  const calculateTotal = () => {
-    return lineItems
-      .filter(item => item.unit_price && item.quantity)
-      .reduce((sum, item) => {
-        const quantity = parseFloat(item.quantity || "0");
-        const unitPrice = parseFloat(item.unit_price || "0");
-        return sum + (quantity * unitPrice);
-      }, 0);
-  };
-
-  const handleCreate = async () => {
+  const handleSchedule = async () => {
     if (!user || !currentAccount) {
       toast.error("Authentication required");
-      return;
-    }
-
-    const validLineItems = lineItems.filter(item => item.name && item.unit_price);
-    if (validLineItems.length === 0) {
-      toast.error("At least one line item is required");
       return;
     }
 
@@ -90,7 +47,7 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
       return;
     }
 
-    setCreating(true);
+    setScheduling(true);
     const loadingToast = toast.loading("Scheduling estimate...");
 
     try {
@@ -127,64 +84,10 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
         customerId = newCustomer.id;
       }
 
-      const estimateTotal = validLineItems.reduce((sum, item) => {
-        const quantity = parseFloat(item.quantity || "1");
-        const unitPrice = parseFloat(item.unit_price);
-        return sum + (quantity * unitPrice);
-      }, 0);
-
-      const { error: updateError } = await supabase
+      await supabase
         .from("leads")
-        .update({
-          customer_id: customerId,
-          estimated_value: estimateTotal,
-        })
+        .update({ customer_id: customerId })
         .eq("id", lead.id);
-
-      if (updateError) throw new Error("Failed to attach customer to lead");
-
-      const { data: estimateData, error: estimateError } = await supabase
-        .from("estimates")
-        .insert({
-          customer_id: customerId,
-          job_id: lead.id,
-          subtotal: estimateTotal,
-          tax_rate: 0,
-          tax: 0,
-          discount: 0,
-          total: estimateTotal,
-          status: "draft",
-          created_by: user.id,
-          account_id: currentAccount.id,
-        })
-        .select()
-        .single();
-
-      if (estimateError) throw new Error("Failed to create estimate");
-
-      const lineItemsToInsert = validLineItems.map((item, index) => {
-        const quantity = parseFloat(item.quantity || "1");
-        const unitPrice = parseFloat(item.unit_price);
-        const total = quantity * unitPrice;
-
-        return {
-          estimate_id: estimateData.id,
-          account_id: currentAccount.id,
-          name: item.name,
-          description: item.description || null,
-          quantity,
-          unit: item.unit,
-          unit_price: unitPrice,
-          total,
-          sort_order: index,
-        };
-      });
-
-      const { error: lineItemsError } = await supabase
-        .from("estimate_line_items")
-        .insert(lineItemsToInsert);
-
-      if (lineItemsError) throw new Error("Failed to create line items");
 
       const { data: estimateJob, error: estimateJobError } = await supabase
         .from("leads")
@@ -225,17 +128,16 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
         lead_id: lead.id,
         type: "note",
         direction: "na",
-        summary: "Estimate scheduled",
-        body: `Estimate created with ${validLineItems.length} line items totaling $${estimateTotal.toFixed(2)}. Visit scheduled for ${scheduledDate}.`,
+        summary: "Estimate visit scheduled",
+        body: `Estimate visit scheduled for ${scheduledDate}.`,
         created_by: user.id,
       });
 
       toast.dismiss(loadingToast);
-      toast.success("Estimate scheduled!");
+      toast.success("Estimate visit scheduled!");
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
-      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
       await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
 
       onSuccess();
@@ -245,191 +147,100 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
       toast.dismiss(loadingToast);
       toast.error(error instanceof Error ? error.message : "Failed to schedule estimate");
     } finally {
-      setCreating(false);
+      setScheduling(false);
     }
   };
 
+  const handleCreateEstimateClick = () => {
+    onOpenChange(false);
+    setLineItemsOpen(true);
+  };
+
+  const handleLineItemsSuccess = () => {
+    onSuccess();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Schedule Estimate</DialogTitle>
-          <DialogDescription>
-            Add line items and schedule a visit for this estimate.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Schedule Estimate</DialogTitle>
+            <DialogDescription>
+              Schedule an estimate visit for {lead.name}.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-3">
-            <Label className="text-base font-semibold flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Schedule Visit *
-            </Label>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="schedule-date">Date</Label>
-                <Input
-                  id="schedule-date"
-                  type="date"
-                  value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                  min={new Date().toISOString().split("T")[0]}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="schedule-start">Start Time</Label>
-                <Input
-                  id="schedule-start"
-                  type="time"
-                  value={scheduledTimeStart}
-                  onChange={(e) => setScheduledTimeStart(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="schedule-end">End Time</Label>
-                <Input
-                  id="schedule-end"
-                  type="time"
-                  value={scheduledTimeEnd}
-                  onChange={(e) => setScheduledTimeEnd(e.target.value)}
-                />
+          <div className="space-y-4 py-4">
+            <div className="space-y-3">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Visit Date & Time
+              </Label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="schedule-date">Date *</Label>
+                  <Input
+                    id="schedule-date"
+                    type="date"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="schedule-start">Start Time</Label>
+                  <Input
+                    id="schedule-start"
+                    type="time"
+                    value={scheduledTimeStart}
+                    onChange={(e) => setScheduledTimeStart(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="schedule-end">End Time</Label>
+                  <Input
+                    id="schedule-end"
+                    type="time"
+                    value={scheduledTimeEnd}
+                    onChange={(e) => setScheduledTimeEnd(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">Line Items *</Label>
-              <Button
+            <div className="pt-2 border-t border-border">
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
-                onClick={addLineItem}
+                onClick={handleCreateEstimateClick}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Item
-              </Button>
-            </div>
-
-            {lineItems.map((item, index) => (
-              <div key={index} className="p-4 border border-border rounded-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-                  {lineItems.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeLineItem(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-name-${index}`}>Title *</Label>
-                  <Input
-                    id={`item-name-${index}`}
-                    value={item.name}
-                    onChange={(e) => updateLineItem(index, "name", e.target.value)}
-                    placeholder="e.g., Paver Installation"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-description-${index}`}>Description</Label>
-                  <Textarea
-                    id={`item-description-${index}`}
-                    value={item.description}
-                    onChange={(e) => updateLineItem(index, "description", e.target.value)}
-                    placeholder="Additional details..."
-                    rows={2}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-quantity-${index}`}>Quantity *</Label>
-                    <Input
-                      id={`item-quantity-${index}`}
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(index, "quantity", e.target.value)}
-                      placeholder="1"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-unit-${index}`}>Unit</Label>
-                    <Select
-                      value={item.unit}
-                      onValueChange={(value) => updateLineItem(index, "unit", value)}
-                    >
-                      <SelectTrigger id={`item-unit-${index}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="item">Item</SelectItem>
-                        <SelectItem value="each">Each</SelectItem>
-                        <SelectItem value="hour">Hour</SelectItem>
-                        <SelectItem value="sq ft">Sq Ft</SelectItem>
-                        <SelectItem value="linear ft">Linear Ft</SelectItem>
-                        <SelectItem value="day">Day</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-price-${index}`}>Unit Price *</Label>
-                  <Input
-                    id={`item-price-${index}`}
-                    type="number"
-                    value={item.unit_price}
-                    onChange={(e) => updateLineItem(index, "unit_price", e.target.value)}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-border">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Line Total:</span>
-                    <span className="font-semibold">
-                      ${((parseFloat(item.quantity || "0") * parseFloat(item.unit_price || "0")).toFixed(2))}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            <div className="bg-secondary p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold">Total Estimate:</span>
-                <span className="text-xl font-bold">
-                  ${calculateTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
+                <FileText className="h-4 w-4" />
+                Create estimate instead
+              </button>
             </div>
           </div>
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={creating}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={creating || !scheduledDate || !lineItems.some(item => item.name && item.unit_price)}
-          >
-            {creating ? "Scheduling..." : "Schedule Estimate"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={scheduling}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSchedule}
+              disabled={scheduling || !scheduledDate}
+            >
+              {scheduling ? "Scheduling..." : "Schedule Estimate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <LineItemsEstimateDialog
+        open={lineItemsOpen}
+        onOpenChange={setLineItemsOpen}
+        lead={lead}
+        onSuccess={handleLineItemsSuccess}
+      />
+    </>
   );
 }
