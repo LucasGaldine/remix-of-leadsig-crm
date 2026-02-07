@@ -5,7 +5,6 @@ interface StatCardProps {
   label: string;
   value: string | number;
   icon: LucideIcon;
-  variant?: "default" | "success" | "warning" | "danger";
   onClick?: () => void;
 }
 
@@ -13,7 +12,6 @@ export function StatCard({
   label,
   value,
   icon: Icon,
-  variant = "default",
   onClick,
 }: StatCardProps) {
   return (
@@ -27,15 +25,7 @@ export function StatCard({
       )}
     >
       <div className="flex items-start justify-between">
-        <div
-          className={cn(
-            "p-2 rounded-lg",
-            variant === "default" && "bg-secondary text-secondary-foreground",
-            variant === "success" && "bg-status-confirmed-bg text-status-confirmed",
-            variant === "warning" && "bg-status-pending-bg text-status-pending",
-            variant === "danger" && "bg-status-attention-bg text-status-attention"
-          )}
-        >
+        <div className="p-2 rounded-lg bg-secondary text-muted-foreground">
           <Icon className="h-5 w-5" />
         </div>
       </div>

@@ -121,15 +121,7 @@ export default function SettingsDashboard() {
                   <div className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none">
                     <GripVertical className="h-5 w-5" />
                   </div>
-                  <div
-                    className={cn(
-                      "p-2 rounded-lg shrink-0",
-                      config.variant === "success" && "bg-status-confirmed-bg text-status-confirmed",
-                      config.variant === "warning" && "bg-status-pending-bg text-status-pending",
-                      config.variant === "danger" && "bg-status-attention-bg text-status-attention",
-                      config.variant === "default" && "bg-secondary text-secondary-foreground"
-                    )}
-                  >
+                  <div className="p-2 rounded-lg shrink-0 bg-secondary text-muted-foreground">
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -178,15 +170,7 @@ export default function SettingsDashboard() {
                         : "hover:bg-muted/50 active:scale-[0.99] cursor-pointer"
                     )}
                   >
-                    <div
-                      className={cn(
-                        "p-2 rounded-lg shrink-0",
-                        config.variant === "success" && "bg-status-confirmed-bg text-status-confirmed",
-                        config.variant === "warning" && "bg-status-pending-bg text-status-pending",
-                        config.variant === "danger" && "bg-status-attention-bg text-status-attention",
-                        config.variant === "default" && "bg-secondary text-secondary-foreground"
-                      )}
-                    >
+                    <div className="p-2 rounded-lg shrink-0 bg-secondary text-muted-foreground">
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">

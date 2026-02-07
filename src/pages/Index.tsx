@@ -78,7 +78,6 @@ export default function Index() {
                 label={config.label}
                 value={value}
                 icon={config.icon}
-                variant={config.variant}
                 onClick={() => navigate(config.navigateTo)}
               />
             );
