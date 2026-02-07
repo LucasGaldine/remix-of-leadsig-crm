@@ -507,7 +507,11 @@ export default function EstimateDetail() {
       <div className="px-4 py-4 space-y-3">
         <button
           className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-          onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
+          onClick={() => {
+            if (!estimate.job) return;
+            const isJob = estimate.job.status === 'job' || estimate.job.status === 'paid';
+            navigate(isJob ? `/jobs/${estimate.job.id}` : `/leads/${estimate.job.id}`);
+          }}
         >
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-secondary">
