@@ -90,7 +90,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
             </h3>
             
             <p className="text-sm text-muted-foreground font-medium mt-0.5">
-              {lead.serviceType || "No service type"}
+              {lead.serviceType && lead.serviceType !== "Unknown" ? lead.serviceType : "No service type"}
             </p>
 
             <div className="flex items-center gap-2 mt-2">
