@@ -46,7 +46,7 @@ import { PhotoSection } from "@/components/photos/PhotoSection";
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isManager } = useAuth();
+  const { isManager, user, currentAccount } = useAuth();
   const [activeTab, setActiveTab] = useState<"details" | "checklist" | "photos" | "notes">("details");
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
@@ -80,12 +80,16 @@ export default function JobDetail() {
   const [estimateLoading, setEstimateLoading] = useState(true);
   const [parentLeadId, setParentLeadId] = useState<string | null>(null);
   const [hasAfterPhotos, setHasAfterPhotos] = useState(false);
+  const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
+  const [newNote, setNewNote] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchEstimate();
       fetchParentLead();
       fetchAfterPhotos();
+      fetchNotes();
     }
   }, [id]);
 
@@ -119,6 +123,39 @@ export default function JobDetail() {
     } catch (error) {
       console.error("Error checking after photos:", error);
     }
+  };
+
+  const fetchNotes = async () => {
+    if (!id) return;
+    const { data } = await supabase
+      .from("interactions")
+      .select("id, body, summary, created_at, created_by")
+      .eq("lead_id", id)
+      .eq("type", "note")
+      .order("created_at", { ascending: false });
+    if (data) setNotes(data);
+  };
+
+  const addNote = async () => {
+    if (!newNote.trim() || !id) return;
+    setAddingNote(true);
+    const { error } = await supabase.from("interactions").insert({
+      lead_id: id,
+      account_id: currentAccount?.id,
+      type: "note",
+      direction: "na",
+      body: newNote,
+      summary: newNote.slice(0, 100),
+      created_by: user?.id,
+    });
+    if (error) {
+      toast.error("Failed to add note");
+    } else {
+      setNewNote("");
+      fetchNotes();
+      toast.success("Note added");
+    }
+    setAddingNote(false);
   };
 
   const fetchEstimate = async () => {
@@ -664,23 +701,39 @@ export default function JobDetail() {
         )}
 
         {activeTab === "notes" && (
-          <div className="space-y-3">
-            {job.notes ? (
-              <>
-                <div className="card-elevated rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">{job.notes}</p>
-                </div>
-                <Button variant="outline" className="w-full gap-2">
-                  Edit Note
-                </Button>
-              </>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Add a note..."
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                rows={2}
+                className="flex-1"
+              />
+              <Button
+                onClick={addNote}
+                disabled={addingNote || !newNote.trim()}
+                className="self-end"
+              >
+                {addingNote ? "Adding..." : "Add"}
+              </Button>
+            </div>
+
+            {notes.length > 0 ? (
+              <div className="space-y-3">
+                {notes.map((note) => (
+                  <div key={note.id} className="card-elevated rounded-lg p-4">
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{note.body || note.summary}</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {format(new Date(note.created_at), "MMM d, yyyy 'at' h:mm a")}
+                    </p>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="text-center py-12">
                 <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground mb-4">No notes yet</p>
-                <Button variant="outline" className="w-full gap-2">
-                  Add Note
-                </Button>
+                <p className="text-muted-foreground">No notes yet</p>
               </div>
             )}
           </div>
