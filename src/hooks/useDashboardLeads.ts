@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useAuth } from "./useAuth";
+import { format } from "date-fns";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
 
@@ -31,7 +32,7 @@ export function useQualifiedLeads() {
 
 export function useActiveJobs() {
   const { user, currentAccount } = useAuth();
-  const today = new Date().toISOString().split("T")[0];
+  const today = format(new Date(), "yyyy-MM-dd");
 
   return useQuery({
     queryKey: ["dashboard-leads", "active-jobs", today, currentAccount?.id],
