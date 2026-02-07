@@ -1025,7 +1025,7 @@ export default function LeadDetail() {
 
           {/* Pipeline Stage Selector */}
           {!["job", "paid"].includes(lead.status) && (
-            <div className="px-4 pb-4">
+            <div className="px-4 pt-4 pb-4">
               <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
               <div className="flex flex-wrap gap-2">
                 {PIPELINE_STAGES.map((stage) => (
