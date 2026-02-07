@@ -99,7 +99,6 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
           customer_id: customerId,
           created_by: user.id,
           account_id: currentAccount.id,
-          approval_status: "approved",
         })
         .select()
         .single();
