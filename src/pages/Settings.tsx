@@ -16,7 +16,8 @@ import {
   ExternalLink,
   LayoutDashboard,
   Calculator,
-  Ruler
+  Ruler,
+  Crown
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -175,6 +176,12 @@ export default function Settings() {
           description: profile?.full_name || profile?.email || "Your account settings",
           onClick: () => navigate("/settings/profile"),
         },
+        ...(role === "owner" ? [{
+          icon: <Crown className="h-5 w-5" />,
+          label: "Pricing Plans",
+          description: "Manage your subscription",
+          onClick: () => navigate("/settings/pricing"),
+        }] : []),
         {
           icon: <HelpCircle className="h-5 w-5" />,
           label: "Help & Support",
