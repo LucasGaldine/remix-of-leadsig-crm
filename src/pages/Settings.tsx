@@ -14,7 +14,9 @@ import {
   Shield,
   Plug,
   ExternalLink,
-  LayoutDashboard
+  LayoutDashboard,
+  Calculator,
+  Ruler
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -76,13 +78,13 @@ export default function Settings() {
           onClick: () => navigate("/settings/service-area"),
         },
         {
-          icon: <DollarSign className="h-5 w-5" />,
+          icon: <Calculator className="h-5 w-5" />,
           label: "Pricing Rules",
           description: "Configure estimate calculations",
           onClick: () => navigate("/settings/pricing-rules"),
         },
         {
-          icon: <DollarSign className="h-5 w-5" />,
+          icon: <Ruler className="h-5 w-5" />,
           label: "Minimum Job Size",
           description: "Set your floor",
           onClick: () => navigate("/settings/min-job-size"),
