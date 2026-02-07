@@ -58,7 +58,7 @@ export function useDashboardStats(cardIds: string[]) {
           .select("id", { count: "exact", head: true })
           .eq("account_id", currentAccount.id)
           .eq("approval_status", "approved")
-          .in("status", ["job", "paid"]);
+          .in("status", ["job", "paid", "completed"]);
         stats.total_jobs = count || 0;
       }
 

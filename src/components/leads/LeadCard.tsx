@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 
-export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid";
+export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid" | "completed";
 
 export interface Lead {
   id: string;
@@ -40,12 +40,13 @@ interface LeadCardProps {
 
 export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEstimate, className }: LeadCardProps) {
   const [showQualifyConfirm, setShowQualifyConfirm] = useState(false);
-  const isQualifiedOrBeyond = lead.status === "qualified" || lead.status === "job" || lead.status === "paid";
+  const isQualifiedOrBeyond = lead.status === "qualified" || lead.status === "job" || lead.status === "paid" || lead.status === "completed";
   const getStatusBadgeStatus = (status: LeadStatus) => {
     switch (status) {
       case "qualified":
       case "job":
       case "paid":
+      case "completed":
         return "confirmed";
       case "new":
       case "contacted":
@@ -61,6 +62,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
     qualified: "Qualified",
     job: "Job",
     paid: "Paid",
+    completed: "Completed",
   };
 
   return (

@@ -483,7 +483,7 @@ export default function LeadDetail() {
       if (lead.estimate_job_id) {
         await supabase
           .from("leads")
-          .update({ status: "paid" })
+          .update({ status: "completed" })
           .eq("id", lead.estimate_job_id);
       }
 
@@ -594,6 +594,7 @@ export default function LeadDetail() {
       case "contacted":
         return "pending";
       case "paid":
+      case "completed":
         return "confirmed";
       default:
         return "pending";
@@ -978,7 +979,7 @@ export default function LeadDetail() {
       {activeTab === "details" && (
         <>
           {/* Next Step Guidance */}
-          {!["job", "paid"].includes(lead.status) && (
+          {!["job", "paid", "completed"].includes(lead.status) && (
             <div className="px-4 pt-4">
               <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
                 <Info className="h-4 w-4 mt-0.5 shrink-0" />
@@ -999,7 +1000,7 @@ export default function LeadDetail() {
           )}
 
           {/* Pipeline Stage Selector */}
-          {!["job", "paid"].includes(lead.status) && (
+          {!["job", "paid", "completed"].includes(lead.status) && (
             <div className="px-4 pt-4 pb-4">
               <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
               <div className="flex flex-wrap gap-2">
@@ -1055,7 +1056,7 @@ export default function LeadDetail() {
           )}
 
           {/* Quick Estimate Panel */}
-          {!["job", "paid"].includes(lead.status) && !hasEstimate && (
+          {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
             <div className="px-4 pb-4">
               <QuickEstimatePanel
                 leadId={id!}
@@ -1070,7 +1071,7 @@ export default function LeadDetail() {
           )}
 
           {/* Qualification Panel */}
-          {!["job", "paid"].includes(lead.status) && (
+          {!["job", "paid", "completed"].includes(lead.status) && (
             <div className="px-4 pb-4">
               <div className="card-elevated rounded-lg p-4">
                 <h3 className="font-medium mb-3">Qualification</h3>

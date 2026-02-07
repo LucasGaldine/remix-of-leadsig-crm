@@ -58,7 +58,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["job", "paid"])
+        .in("status", ["job", "paid", "completed"])
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -113,6 +113,8 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           }
         } else if (job.status === 'paid') {
           displayStatus = 'paid';
+        } else if (job.status === 'completed') {
+          displayStatus = 'completed';
         }
 
         return {
@@ -206,6 +208,8 @@ export function useJob(id: string | undefined) {
         }
       } else if (data.status === 'paid') {
         displayStatus = 'paid';
+      } else if (data.status === 'completed') {
+        displayStatus = 'completed';
       }
 
       return {
@@ -326,7 +330,7 @@ export function useJobCounts() {
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["job", "paid"]);
+        .in("status", ["job", "paid", "completed"]);
 
       if (error) throw error;
 
@@ -367,6 +371,8 @@ export function useJobCounts() {
           }
         } else if (lead.status === 'paid') {
           displayStatus = 'paid';
+        } else if (lead.status === 'completed') {
+          displayStatus = 'completed';
         }
 
         if (counts[displayStatus] !== undefined) {

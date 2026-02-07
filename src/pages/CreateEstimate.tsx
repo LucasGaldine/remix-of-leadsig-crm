@@ -81,7 +81,7 @@ export default function CreateEstimate() {
           customer:customers!customer_id(name)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["job", "paid"])
+        .in("status", ["job", "paid", "completed"])
         .order("created_at", { ascending: false });
 
       if (jobsError) throw jobsError;
