@@ -434,7 +434,7 @@ export default function LeadDetail() {
   };
 
   const requiresPhotos = hasPlanAccess(currentAccount?.pricing_plan ?? "free", "basic");
-  const hasAddress = !!(lead?.address && lead.address.trim());
+  const hasAddress = !!(lead?.address && lead.address.trim() && lead?.city && lead.city.trim());
 
   const convertToJob = async () => {
     if (!lead || !hasEstimate) {
