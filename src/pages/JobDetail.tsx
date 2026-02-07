@@ -78,12 +78,32 @@ export default function JobDetail() {
 
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
+  const [parentLeadId, setParentLeadId] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
       fetchEstimate();
+      fetchParentLead();
     }
   }, [id]);
+
+  const fetchParentLead = async () => {
+    if (!id) return;
+
+    try {
+      const { data } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("estimate_job_id", id)
+        .maybeSingle();
+
+      if (data) {
+        setParentLeadId(data.id);
+      }
+    } catch (error) {
+      console.error("Error fetching parent lead:", error);
+    }
+  };
 
   const fetchEstimate = async () => {
     if (!id) return;
@@ -602,16 +622,26 @@ export default function JobDetail() {
 
         {activeTab === "photos" && id && (
           <div className="space-y-8">
-            <PhotoSection
-              leadId={id}
-              photoType="before"
-              title="Before Photos"
-            />
-            <PhotoSection
-              leadId={id}
-              photoType="after"
-              title="After Photos"
-            />
+            {job?.name?.endsWith(", Estimate") && parentLeadId ? (
+              <PhotoSection
+                leadId={parentLeadId}
+                photoType="before"
+                title="Before Photos"
+              />
+            ) : (
+              <>
+                <PhotoSection
+                  leadId={id}
+                  photoType="before"
+                  title="Before Photos"
+                />
+                <PhotoSection
+                  leadId={id}
+                  photoType="after"
+                  title="After Photos"
+                />
+              </>
+            )}
           </div>
         )}
 
