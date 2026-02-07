@@ -43,12 +43,13 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
   sent: { label: "Sent", className: "status-pending" },
   viewed: { label: "Viewed", className: "status-paid" },
   accepted: { label: "Approved", className: "status-confirmed" },
   expired: { label: "Expired", className: "status-attention" },
+  declined: { label: "Declined", className: "bg-red-100 text-red-800" },
 };
 
 interface LineItemForm {
@@ -102,7 +103,7 @@ export default function EstimateDetail() {
     );
   }
 
-  const config = statusConfig[estimate.status as keyof typeof statusConfig];
+  const config = statusConfig[estimate.status] || { label: estimate.status, className: "bg-secondary text-secondary-foreground" };
   const hasChangeOrders = estimate.line_items.some((item: any) => item.is_change_order);
 
   const handleManualApprove = async () => {

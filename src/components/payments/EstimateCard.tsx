@@ -1,4 +1,4 @@
-import { FileText, Check, Clock, AlertCircle, Receipt } from "lucide-react";
+import { FileText, Check, Clock, AlertCircle, Receipt, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Estimate } from "@/types/payments";
 
@@ -13,6 +13,9 @@ function getDisplayConfig(estimate: Estimate & { isFinalized?: boolean }) {
   }
   if (estimate.status === "accepted") {
     return { label: "Approved", className: "status-confirmed", icon: <Check className="h-3 w-3" /> };
+  }
+  if (estimate.status === "declined") {
+    return { label: "Declined", className: "bg-red-100 text-red-800", icon: <XCircle className="h-3 w-3" /> };
   }
   if (estimate.status === "expired") {
     return { label: "Expired", className: "status-attention", icon: <AlertCircle className="h-3 w-3" /> };
