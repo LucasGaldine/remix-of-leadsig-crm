@@ -14,18 +14,20 @@ import { LogOut, User, Settings, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-const roleLabels = {
+const roleLabels: Record<string, string> = {
   owner: 'Owner',
   admin: 'Admin',
   sales: 'Sales',
   crew_lead: 'Crew Lead',
+  crew_member: 'Crew Member',
 };
 
-const roleColors = {
+const roleColors: Record<string, string> = {
   owner: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
   admin: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   sales: 'bg-green-500/10 text-green-500 border-green-500/20',
   crew_lead: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  crew_member: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
 };
 
 export function UserMenu() {
