@@ -15,6 +15,8 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  UserCheck,
+  Sun,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -37,11 +39,11 @@ import { formatDistanceToNow } from "date-fns";
 import { PlanGate } from "@/components/features/PlanGate";
 
 type Channel = "push" | "email" | "sms";
-type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks";
+type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks" | "job_assignments" | "same_day_reminders";
 
 type NotificationPreferences = {
   channels: Record<Channel, boolean>;
-  alerts: Record<AlertKey, boolean>;
+  alerts: Partial<Record<AlertKey, boolean>>;
   quiet_hours: { enabled: boolean; start: string; end: string };
   digest: { frequency: "off" | "daily" | "weekly" };
 };
@@ -51,6 +53,9 @@ const channelMeta: Record<Channel, { label: string; icon: React.ReactNode; helpe
   email: { label: "Email", icon: <Mail className="h-4 w-4" />, helper: "Detailed updates" },
   sms: { label: "SMS", icon: <MessageSquare className="h-4 w-4" />, helper: "Text messages" },
 };
+
+const ownerAlertKeys: AlertKey[] = ["new_leads", "lead_updates", "payments", "schedule_changes", "tasks"];
+const crewAlertKeys: AlertKey[] = ["job_assignments", "schedule_changes", "same_day_reminders", "tasks"];
 
 const alertMeta: Record<AlertKey, { label: string; description: string; icon: React.ReactNode }> = {
   new_leads: {
@@ -70,13 +75,23 @@ const alertMeta: Record<AlertKey, { label: string; description: string; icon: Re
   },
   schedule_changes: {
     label: "Schedule changes",
-    description: "Crew assignments, reschedules, and cancellations.",
+    description: "Reschedules, cancellations, and time updates.",
     icon: <CalendarClock className="h-4 w-4" />,
   },
   tasks: {
     label: "Tasks & reminders",
     description: "Daily to-dos and follow-up reminders.",
     icon: <Inbox className="h-4 w-4" />,
+  },
+  job_assignments: {
+    label: "Job assignments",
+    description: "When you are assigned to a new job or removed from one.",
+    icon: <UserCheck className="h-4 w-4" />,
+  },
+  same_day_reminders: {
+    label: "Same-day reminders",
+    description: "Morning notification with your jobs scheduled for today.",
+    icon: <Sun className="h-4 w-4" />,
   },
 };
 
@@ -86,11 +101,15 @@ const eventTypeLabels: Record<string, string> = {
   payments: "Payment",
   schedule_changes: "Schedule change",
   tasks: "Task",
+  job_assignments: "Job assignment",
+  same_day_reminders: "Day reminder",
 };
 
 export default function SettingsNotifications() {
-  const { profile, user, currentAccount, refreshProfile } = useAuth();
+  const { profile, user, currentAccount, isCrewMember, refreshProfile } = useAuth();
   const { logs: smsLogs, isLoading: smsLogsLoading, refetch: refetchSmsLogs } = useSmsLogs(5);
+  const isCrew = isCrewMember();
+  const visibleAlertKeys = isCrew ? crewAlertKeys : ownerAlertKeys;
 
   const hasEmail = Boolean(profile?.email || user?.email);
   const hasPhone = Boolean(profile?.phone);
@@ -98,21 +117,17 @@ export default function SettingsNotifications() {
   const defaultPrefs: NotificationPreferences = useMemo(
     () => ({
       channels: { push: false, email: false, sms: false },
-      alerts: {
-        new_leads: true,
-        lead_updates: true,
-        payments: true,
-        schedule_changes: true,
-        tasks: false,
-      },
+      alerts: isCrew
+        ? { job_assignments: true, schedule_changes: true, same_day_reminders: true, tasks: true }
+        : { new_leads: true, lead_updates: true, payments: true, schedule_changes: true, tasks: false },
       quiet_hours: { enabled: false, start: "21:00", end: "07:00" },
-      digest: { frequency: "daily" },
+      digest: { frequency: isCrew ? "off" : "daily" },
     }),
-    []
+    [isCrew]
   );
 
   const [channels, setChannels] = useState<Record<Channel, boolean>>(defaultPrefs.channels);
-  const [alerts, setAlerts] = useState<Record<AlertKey, boolean>>(defaultPrefs.alerts);
+  const [alerts, setAlerts] = useState<Partial<Record<AlertKey, boolean>>>(defaultPrefs.alerts);
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(defaultPrefs.quiet_hours.enabled);
   const [quietStart, setQuietStart] = useState(defaultPrefs.quiet_hours.start);
   const [quietEnd, setQuietEnd] = useState(defaultPrefs.quiet_hours.end);
@@ -123,7 +138,6 @@ export default function SettingsNotifications() {
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
 
-  // Load saved preferences from profile
   useEffect(() => {
     const prefs = profile?.notification_preferences as Partial<NotificationPreferences> | null | undefined;
     if (!prefs) return;
@@ -184,14 +198,11 @@ export default function SettingsNotifications() {
           "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          event_type: "new_leads",
+          event_type: isCrew ? "job_assignments" : "new_leads",
           account_id: currentAccount.id,
-          data: {
-            name: "Test Lead",
-            phone: "(555) 000-0000",
-            service_type: "Test notification",
-            source: "manual",
-          },
+          data: isCrew
+            ? { job_title: "Test Job", date: new Date().toLocaleDateString() }
+            : { name: "Test Lead", phone: "(555) 000-0000", service_type: "Test notification", source: "manual" },
         }),
       });
 
@@ -407,7 +418,7 @@ export default function SettingsNotifications() {
             <CardDescription>Pick the events that should trigger notifications.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {(Object.keys(alertMeta) as AlertKey[]).map((key) => (
+            {visibleAlertKeys.map((key) => (
               <div
                 key={key}
                 className="flex items-start justify-between rounded-lg border px-4 py-3 gap-3"
@@ -421,7 +432,7 @@ export default function SettingsNotifications() {
                     <p className="text-sm text-muted-foreground">{alertMeta[key].description}</p>
                   </div>
                 </div>
-                <Switch checked={alerts[key]} onCheckedChange={(v) => toggleAlert(key, v)} />
+                <Switch checked={alerts[key] ?? false} onCheckedChange={(v) => toggleAlert(key, v)} />
               </div>
             ))}
           </CardContent>
@@ -471,46 +482,48 @@ export default function SettingsNotifications() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5" />
-              Digest & escalation
-            </CardTitle>
-            <CardDescription>Get a summary instead of many pings, and flag overdue items.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Email digest</Label>
-                <Select value={digestFrequency} onValueChange={(v: "off" | "daily" | "weekly") => { setDigestFrequency(v); setIsDirty(true); }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose frequency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="off">Off</SelectItem>
-                    <SelectItem value="daily">Daily at 8:00 AM</SelectItem>
-                    <SelectItem value="weekly">Weekly on Monday</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Includes new leads, payments, and schedule changes.
-                </p>
-              </div>
+        {!isCrew && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Digest & escalation
+              </CardTitle>
+              <CardDescription>Get a summary instead of many pings, and flag overdue items.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Email digest</Label>
+                  <Select value={digestFrequency} onValueChange={(v: "off" | "daily" | "weekly") => { setDigestFrequency(v); setIsDirty(true); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="off">Off</SelectItem>
+                      <SelectItem value="daily">Daily at 8:00 AM</SelectItem>
+                      <SelectItem value="weekly">Weekly on Monday</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Includes new leads, payments, and schedule changes.
+                  </p>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Overdue invoice escalation</Label>
-                <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                  <div>
-                    <p className="font-medium text-foreground">Alert me when invoices are overdue</p>
-                    <p className="text-xs text-muted-foreground">Sends push + email when an invoice is 3+ days late.</p>
+                <div className="space-y-2">
+                  <Label>Overdue invoice escalation</Label>
+                  <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                    <div>
+                      <p className="font-medium text-foreground">Alert me when invoices are overdue</p>
+                      <p className="text-xs text-muted-foreground">Sends push + email when an invoice is 3+ days late.</p>
+                    </div>
+                    <Switch checked={alerts.payments ?? false} onCheckedChange={(v) => toggleAlert("payments", v)} />
                   </div>
-                  <Switch checked={alerts.payments} onCheckedChange={(v) => toggleAlert("payments", v)} />
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -546,33 +559,35 @@ export default function SettingsNotifications() {
                 {isSendingTest ? "Sending..." : "Send test SMS"}
               </Button>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border px-4 py-3">
-              <div className="space-y-1">
-                <p className="font-medium text-foreground">Send a test email digest</p>
-                <p className="text-sm text-muted-foreground">
-                  {!channels.email
-                    ? "Enable email channel first"
-                    : isDirty
-                    ? "Save preferences before testing"
-                    : digestFrequency === "off"
-                    ? "Enable email digest first"
-                    : `Sends to ${profile?.email || user?.email || "your email"}`}
-                </p>
+            {!isCrew && (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border px-4 py-3">
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Send a test email digest</p>
+                  <p className="text-sm text-muted-foreground">
+                    {!channels.email
+                      ? "Enable email channel first"
+                      : isDirty
+                      ? "Save preferences before testing"
+                      : digestFrequency === "off"
+                      ? "Enable email digest first"
+                      : `Sends to ${profile?.email || user?.email || "your email"}`}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleEmailTest}
+                  disabled={isSendingEmailTest || !channels.email || !hasEmail || isDirty || digestFrequency === "off"}
+                  variant="outline"
+                  className="w-full sm:w-auto gap-2"
+                >
+                  {isSendingEmailTest ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4" />
+                  )}
+                  {isSendingEmailTest ? "Sending..." : "Send test email"}
+                </Button>
               </div>
-              <Button
-                onClick={handleEmailTest}
-                disabled={isSendingEmailTest || !channels.email || !hasEmail || isDirty || digestFrequency === "off"}
-                variant="outline"
-                className="w-full sm:w-auto gap-2"
-              >
-                {isSendingEmailTest ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Mail className="h-4 w-4" />
-                )}
-                {isSendingEmailTest ? "Sending..." : "Send test email"}
-              </Button>
-            </div>
+            )}
           </CardContent>
         </Card>
 
