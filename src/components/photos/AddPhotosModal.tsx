@@ -89,54 +89,61 @@ export function AddPhotosModal({
         </DialogHeader>
 
         <div className="py-4">
-          <div className="grid grid-cols-2 gap-3">
-            {previews.map((url, index) => (
-              <div
-                key={index}
-                className="relative aspect-[4/3] rounded-lg overflow-hidden bg-muted border border-border group"
-              >
-                <img
-                  src={url}
-                  alt={`Selected photo ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-                <button
-                  onClick={() => removeFile(index)}
-                  className="absolute top-2 right-2 p-1 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
+          {selectedFiles.length === 0 ? (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                "w-full rounded-lg border-2 border-dashed border-border py-12",
+                "flex flex-col items-center justify-center gap-2",
+                "text-muted-foreground hover:border-primary hover:text-primary",
+                "transition-colors cursor-pointer"
+              )}
+            >
+              <Camera className="h-10 w-10" />
+              <span className="text-sm font-medium">Browse photos to upload</span>
+              <span className="text-xs">JPEG, PNG, WebP, or HEIC up to 10MB</span>
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                {previews.map((url, index) => (
+                  <div
+                    key={index}
+                    className="relative aspect-[4/3] rounded-lg overflow-hidden bg-muted border border-border group"
+                  >
+                    <img
+                      src={url}
+                      alt={`Selected photo ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="absolute top-2 right-2 p-1 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
 
-            {canAddMore && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className={cn(
-                  "aspect-[4/3] rounded-lg border-2 border-dashed border-border",
-                  "flex flex-col items-center justify-center gap-1.5",
-                  "text-muted-foreground hover:border-primary hover:text-primary",
-                  "transition-colors cursor-pointer"
+                {canAddMore && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className={cn(
+                      "aspect-[4/3] rounded-lg border-2 border-dashed border-border",
+                      "flex flex-col items-center justify-center gap-1.5",
+                      "text-muted-foreground hover:border-primary hover:text-primary",
+                      "transition-colors cursor-pointer"
+                    )}
+                  >
+                    <Camera className="h-6 w-6" />
+                    <span className="text-xs font-medium">Add More</span>
+                  </button>
                 )}
-              >
-                <Camera className="h-6 w-6" />
-                <span className="text-xs font-medium">Add Photo</span>
-              </button>
-            )}
-          </div>
+              </div>
 
-          {selectedFiles.length === 0 && (
-            <div className="text-center py-8">
-              <Camera className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground mb-3">No photos selected</p>
-              <Button
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                className="gap-2"
-              >
-                <Camera className="h-4 w-4" />
-                Browse Photos
-              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                {selectedFiles.length} of {maxFiles} photos selected
+              </p>
             </div>
           )}
         </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Camera, Expand, Loader2, Plus, Trash2, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Camera, Crown, Expand, Loader2, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -11,8 +12,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { cn } from "@/lib/utils";
 import { useLeadPhotos } from "@/hooks/useLeadPhotos";
+import { useAuth } from "@/hooks/useAuth";
+import { hasPlanAccess, planNames, type PricingPlan } from "@/lib/planGating";
 import { AddPhotosModal } from "./AddPhotosModal";
 
 interface PhotoSectionProps {
@@ -25,9 +27,14 @@ interface PhotoSectionProps {
 export function PhotoSection({ leadId, photoType, title, onPhotosChange }: PhotoSectionProps) {
   const { photos, isLoading, uploadPhotos, deletePhoto, remaining } =
     useLeadPhotos(leadId, photoType);
+  const { currentAccount, role } = useAuth();
+  const navigate = useNavigate();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
+
+  const currentPlan: PricingPlan = currentAccount?.pricing_plan ?? "free";
+  const canUpload = hasPlanAccess(currentPlan, "basic");
 
   const prevCountRef = useState(() => ({ current: -1 }))[0];
   if (photos.length !== prevCountRef.current) {
@@ -68,14 +75,34 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange }: Photo
           <div className="text-center py-10 card-elevated rounded-lg">
             <Camera className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground text-sm mb-4">No {title.toLowerCase()} yet</p>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => setAddModalOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Add Photos
-            </Button>
+            {canUpload ? (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => setAddModalOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+                Add Photos
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 text-sm text-amber-600">
+                  <Crown className="h-4 w-4" />
+                  <span>{planNames.basic} plan required</span>
+                </div>
+                {role === "owner" && (
+                  <div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate("/settings/pricing")}
+                    >
+                      View Plans
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -109,7 +136,7 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange }: Photo
               ))}
             </div>
 
-            {remaining > 0 && (
+            {remaining > 0 && canUpload && (
               <Button
                 variant="outline"
                 size="sm"
