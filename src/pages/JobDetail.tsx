@@ -345,8 +345,17 @@ export default function JobDetail() {
               </DropdownMenu>
             </div>
             <h2 className="text-xl font-bold text-foreground">
-              {job.customer?.name || "Unknown Client"}{job.service_type ? `, ${job.service_type}` : ""}
+              {job.customer?.name || "Unknown Client"}
             </h2>
+            {job.service_type && (
+              <p className="text-sm text-muted-foreground mt-0.5">{job.service_type}</p>
+            )}
+            {clientAddress && (
+              <button onClick={openAddressDialog} className="flex items-center gap-1 text-sm text-muted-foreground mt-1 hover:text-foreground transition-colors">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{clientAddress}</span>
+              </button>
+            )}
           </div>
           <div className="text-right ml-4">
             <p className="text-2xl font-bold text-foreground">
@@ -431,24 +440,41 @@ export default function JobDetail() {
       <main className="px-4 py-4 pb-32">
         {activeTab === "details" && (
           <div className="space-y-4">
-            {/* Location */}
-            <button
-              onClick={openAddressDialog}
-              className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-            >
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <MapPin className="h-5 w-5 text-secondary-foreground" />
+            {/* Estimate */}
+            {estimate ? (
+              <button
+                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-secondary">
+                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">Estimate</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      ${Number(estimate.total).toLocaleString()} · {estimate.status}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {estimate.line_items?.length || 0} line items
+                    </p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">Job Location</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {clientAddress || "No address provided"}
-                  </p>
+              </button>
+            ) : !estimateLoading ? (
+              <div className="card-elevated rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-secondary">
+                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">Estimate</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">No estimate yet</p>
+                  </div>
                 </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
               </div>
-            </button>
+            ) : null}
 
             {/* Schedule */}
             <div className="card-elevated rounded-lg p-4">
@@ -527,42 +553,6 @@ export default function JobDetail() {
 
             {/* Crew Assignments */}
             {id && <JobAssignments leadId={id} />}
-
-            {/* Estimate */}
-            {estimate ? (
-              <button
-                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-                className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">Estimate</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      ${Number(estimate.total).toLocaleString()} · {estimate.status}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {estimate.line_items?.length || 0} line items
-                    </p>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </button>
-            ) : !estimateLoading ? (
-              <div className="card-elevated rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">Estimate</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">No estimate yet</p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
 
             {/* Crew */}
             {job.crew_lead && (
