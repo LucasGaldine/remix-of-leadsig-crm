@@ -169,12 +169,12 @@ export default function Settings() {
     {
       title: "Account",
       items: [
-        {
+        ...(role !== "crew" ? [{
           icon: <LayoutDashboard className="h-5 w-5" />,
           label: "Dashboard",
           description: "Customize your stat cards",
           onClick: () => navigate("/settings/dashboard"),
-        },
+        }] : []),
         {
           icon: <User className="h-5 w-5" />,
           label: "Profile",
