@@ -37,6 +37,14 @@ import { Users, UserPlus, X, Mail, Calendar, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 
+const roleLabels: Record<string, string> = {
+  owner: 'Owner',
+  admin: 'Admin',
+  sales: 'Sales',
+  crew_lead: 'Crew Lead',
+  crew_member: 'Crew Member',
+};
+
 interface JobAssignmentsProps {
   leadId: string;
 }
@@ -275,7 +283,7 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
                     availableMembers?.map((member) => (
                       <SelectItem key={member.user_id} value={member.user_id}>
                         {member.profiles?.full_name || 'Unknown'} -{' '}
-                        {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        {roleLabels[member.role] || member.role}
                       </SelectItem>
                     ))
                   )}
