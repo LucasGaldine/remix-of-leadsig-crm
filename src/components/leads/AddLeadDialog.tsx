@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
+import { CSVImportModal } from "./CSVImportModal";
 
 interface AddLeadDialogProps {
   open: boolean;
@@ -20,6 +21,7 @@ interface AddLeadDialogProps {
 export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDialogProps) {
   const { user, currentAccount } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [showCSVImport, setShowCSVImport] = useState(false);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -116,14 +118,30 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
   };
 
   return (
+    <>
+    <CSVImportModal
+      open={showCSVImport}
+      onOpenChange={setShowCSVImport}
+      onImportComplete={() => onLeadCreated?.("")}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add New Lead</DialogTitle>
           <DialogDescription>
-            Enter the lead's information below.
+            Enter the lead's information below, or import from a CSV file.
           </DialogDescription>
         </DialogHeader>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full gap-2"
+          onClick={() => { onOpenChange(false); setShowCSVImport(true); }}
+        >
+          <Upload className="h-4 w-4" />
+          Import from CSV
+        </Button>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -241,5 +259,6 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
         </form>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
