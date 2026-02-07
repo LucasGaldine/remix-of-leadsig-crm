@@ -8,18 +8,27 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@/hooks/useDashboardLeads";
+import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 import CrewDashboard from "./CrewDashboard";
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function Index() {
   const navigate = useNavigate();
-  const { user, isCrewMember } = useAuth();
+  const { user, isCrewMember, profile } = useAuth();
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
+  const firstName = profile?.full_name?.split(" ")[0] || "";
 
   const handleLeadClick = (leadId: string) => {
     navigate(`/leads/${leadId}`);
@@ -53,7 +62,10 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Good morning" subtitle="Monday, January 13" />
+      <PageHeader
+        title={`${getGreeting()}${firstName ? `, ${firstName}` : ""}`}
+        subtitle={format(new Date(), "EEEE, MMMM d")}
+      />
 
       <main className="px-4 py-4 space-y-6">
         {/* Email Verification Banner */}
