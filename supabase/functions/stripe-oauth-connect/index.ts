@@ -18,7 +18,7 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const stripeClientId = Deno.env.get("STRIPE_CLIENT_ID");
+    const stripeClientId = Deno.env.get("STRIPE_CLIENT_ID")?.trim();;
 
     if (!stripeClientId) {
       return new Response(
