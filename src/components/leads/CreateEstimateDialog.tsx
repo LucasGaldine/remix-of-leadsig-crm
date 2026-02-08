@@ -14,8 +14,6 @@ import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { format } from "date-fns";
-import { useJobSchedules } from "@/hooks/useJobSchedules";
-import { format } from "date-fns";
 
 interface CreateEstimateDialogProps {
   open: boolean;

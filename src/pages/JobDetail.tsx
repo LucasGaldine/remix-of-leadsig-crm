@@ -381,17 +381,33 @@ export default function JobDetail() {
     }
   };
 
+  const statusLabelMap: Record<string, string> = {
+    new: "New",
+    contacted: "Contacted",
+    qualified: "Qualified",
+    job: "Job",
+    unscheduled: "Unscheduled",
+    scheduled: "Scheduled",
+    in_progress: "In Progress",
+    "in-progress": "In Progress",
+    completed: "Completed",
+    paid: "Paid",
+  };
+
+  const displayStatus = (job as any).display_status || job.status;
+  const statusLabel = statusLabelMap[displayStatus] || displayStatus;
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Job Details" showBack backTo="/jobs" />
 
       {/* Status Banner */}
       <div className="bg-card border-b border-border px-4 py-4">
-        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <StatusBadge status={job.status} size="lg">
-                {job.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              <StatusBadge status={displayStatus as any} size="lg">
+                {statusLabel}
               </StatusBadge>
               {isManager() && (
                 <DropdownMenu>
