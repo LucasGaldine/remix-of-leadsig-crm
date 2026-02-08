@@ -197,17 +197,18 @@ export default function Auth() {
             Sign in to your account or create a new one
           </CardDescription>
         </CardHeader>
+
         <CardContent>
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'signin' | 'signup')} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
+              <TabsTrigger value="signin">Log In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
             
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4 mt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signin-email">Email</Label>
+                  <Label htmlFor="signin-email" >Email</Label>
                   <Input
                     id="signin-email"
                     type="email"
@@ -220,17 +221,26 @@ export default function Auth() {
                     <p className="text-sm text-destructive">{errors.email}</p>
                   )}
                 </div>
+                  
                 <div className="space-y-2">
+
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="signin-password">Password</Label>
-                    <button
-                      type="button"
-                      onClick={() => setShowForgotPassword(true)}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      Forgot password?
-                    </button>
+                    <Label htmlFor="signin-password" >Password</Label>
+                    <p
+
+                    tabIndex={0}
+                    onClick={() => setShowForgotPassword(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        setShowForgotPassword(true);
+                      }
+                    }}
+                    className="text-xs text-primary hover:underline cursor-pointer"
+                  >
+                    Forgot password?
+                  </p>
                   </div>
+
                   <Input
                     id="signin-password"
                     type="password"
@@ -243,6 +253,9 @@ export default function Auth() {
                     <p className="text-sm text-destructive">{errors.password}</p>
                   )}
                 </div>
+
+                <div className='block h-2'></div>
+
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
                     <>
@@ -253,6 +266,7 @@ export default function Auth() {
                     'Sign In'
                   )}
                 </Button>
+
               </form>
             </TabsContent>
             
