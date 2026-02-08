@@ -80,6 +80,7 @@ export default function JobDetail() {
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
   const [parentLeadId, setParentLeadId] = useState<string | null>(null);
+  const [parentLeadToken, setParentLeadToken] = useState<string | null>(null);
   const [hasAfterPhotos, setHasAfterPhotos] = useState(false);
   const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
   const [newNote, setNewNote] = useState("");
@@ -100,12 +101,13 @@ export default function JobDetail() {
     try {
       const { data } = await supabase
         .from("leads")
-        .select("id")
+        .select("id, client_share_token")
         .eq("estimate_job_id", id)
         .maybeSingle();
 
       if (data) {
         setParentLeadId(data.id);
+        setParentLeadToken(data.client_share_token);
       }
     } catch (error) {
       console.error("Error fetching parent lead:", error);
@@ -681,10 +683,10 @@ export default function JobDetail() {
             )}
 
             {/* Client Share Link */}
-            {!job.is_estimate_visit && isManager() && id && (
+            {isManager() && id && (
               <ClientShareLink
-                jobId={id}
-                existingToken={(job as any).client_share_token}
+                jobId={job.is_estimate_visit && parentLeadId ? parentLeadId : id}
+                existingToken={job.is_estimate_visit ? parentLeadToken : (job as any).client_share_token}
               />
             )}
           </div>

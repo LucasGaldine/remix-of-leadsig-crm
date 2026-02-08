@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Mail } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { QuickEstimatePanel, QuickEstimateBreakdown } from "@/components/leads/QuickEstimatePanel";
 import { CreateEstimateDialog } from "@/components/leads/CreateEstimateDialog";
@@ -1049,6 +1050,16 @@ export default function LeadDetail() {
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </div>
               </button>
+            </div>
+          )}
+
+          {/* Client Share Link */}
+          {hasEstimate && id && (
+            <div className="px-4 pb-4">
+              <ClientShareLink
+                jobId={id}
+                existingToken={(lead as any).client_share_token}
+              />
             </div>
           )}
 
