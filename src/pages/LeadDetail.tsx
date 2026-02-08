@@ -27,8 +27,6 @@ import { useDeleteLead } from "@/hooks/useLeads";
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
-import { PhotoSection } from "@/components/photos/PhotoSection";
-import { hasPlanAccess } from "@/lib/planGating";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
@@ -147,8 +145,7 @@ export default function LeadDetail() {
   });
   const [saving, setSaving] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"details" | "photos" | "notes">("details");
-  const [beforePhotoCount, setBeforePhotoCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<"details" | "notes">("details");
 
   // Create estimate dialog
   const [createEstimateDialogOpen, setCreateEstimateDialogOpen] = useState(false);
@@ -257,11 +254,6 @@ export default function LeadDetail() {
       }
       if (estimate?.status !== "accepted") {
         toast.error("The estimate must be approved before converting to a job");
-        return;
-      }
-      const requiresPhotos = hasPlanAccess(currentAccount?.pricing_plan ?? "free", "basic");
-      if (requiresPhotos && beforePhotoCount === 0) {
-        toast.error("Please add at least one before photo to convert this lead to a job");
         return;
       }
       setConvertJobDialogOpen(true);
@@ -441,7 +433,6 @@ export default function LeadDetail() {
     checkEstimate();
   };
 
-  const requiresPhotos = hasPlanAccess(currentAccount?.pricing_plan ?? "free", "basic");
   const hasAddress = !!(lead?.address && lead.address.trim() && lead?.city && lead.city.trim());
 
   const convertToJob = async () => {
@@ -451,10 +442,6 @@ export default function LeadDetail() {
     }
     if (estimate?.status !== "accepted") {
       toast.error("The estimate must be approved before converting to a job");
-      return;
-    }
-    if (requiresPhotos && beforePhotoCount === 0) {
-      toast.error("Please add at least one before photo to convert this lead to a job");
       return;
     }
 
@@ -750,7 +737,7 @@ export default function LeadDetail() {
               Schedule Estimate
             </Button>
           )}
-          {showConvertButton && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && (
+          {showConvertButton && hasEstimate && isEstimateApproved && (
             <Button
               size="sm"
               className="flex-1 gap-2"
@@ -972,7 +959,6 @@ export default function LeadDetail() {
         <div className="flex">
           {[
             { id: "details", label: "Details" },
-            { id: "photos", label: "Photos" },
             { id: "notes", label: "Notes" },
           ].map((tab) => (
             <button
@@ -1001,14 +987,9 @@ export default function LeadDetail() {
                 <p>
                   {lead.status === "new" && "Contact this lead to move them to the next stage."}
                   {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
-                  {lead.status === "qualified" && !hasEstimate && (requiresPhotos
-                    ? "Create an estimate and upload before photos to move forward."
-                    : "Create an estimate to send to the customer for approval.")}
-                  {lead.status === "qualified" && hasEstimate && !isEstimateApproved && (requiresPhotos && beforePhotoCount === 0
-                    ? "The estimate needs to be approved and before photos added to convert this lead to a job."
-                    : "The estimate needs to be approved before this lead can become a job.")}
-                  {lead.status === "qualified" && hasEstimate && isEstimateApproved && requiresPhotos && beforePhotoCount === 0 && "The estimate is approved. Add at least one before photo to convert this lead to a job."}
-                  {lead.status === "qualified" && hasEstimate && isEstimateApproved && (!requiresPhotos || beforePhotoCount > 0) && "The estimate is approved. Convert this lead to a job to get started."}
+                  {lead.status === "qualified" && !hasEstimate && "Create an estimate to send to the customer for approval."}
+                  {lead.status === "qualified" && hasEstimate && !isEstimateApproved && "The estimate needs to be approved before this lead can become a job."}
+                  {lead.status === "qualified" && hasEstimate && isEstimateApproved && "The estimate is approved. Convert this lead to a job to get started."}
                 </p>
               </div>
             </div>
@@ -1264,17 +1245,6 @@ export default function LeadDetail() {
             </div>
           </div>
         </>
-      )}
-
-      {activeTab === "photos" && (
-        <div className="px-4 py-4">
-          <PhotoSection
-            leadId={id!}
-            photoType="before"
-            title="Before Photos"
-            onPhotosChange={setBeforePhotoCount}
-          />
-        </div>
       )}
 
       {activeTab === "notes" && (
