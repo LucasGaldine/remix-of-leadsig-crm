@@ -1,19 +1,26 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Calendar, FileText } from "lucide-react";
+import { Calendar, FileText, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useJobSchedules } from "@/hooks/useJobSchedules";
+import { format } from "date-fns";
+import { useJobSchedules } from "@/hooks/useJobSchedules";
+import { format } from "date-fns";
 
 interface CreateEstimateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  hasEstimate?: boolean;
   lead: {
     id: string;
     name: string;
@@ -27,18 +34,56 @@ interface CreateEstimateDialogProps {
   onSuccess: () => void;
 }
 
-export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: CreateEstimateDialogProps) {
+export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, lead, onSuccess }: CreateEstimateDialogProps) {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  type CrewMember = { user_id: string; full_name: string | null; email: string | null; role: string | null };
 
   const [scheduling, setScheduling] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
+  const [selectedCrewId, setSelectedCrewId] = useState<string>("");
+  const [confirmNoCrewOpen, setConfirmNoCrewOpen] = useState(false);
+  const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
 
-  const handleSchedule = async () => {
+  const { data: crewMembers = [] } = useQuery<CrewMember[]>({
+    queryKey: ["crew-members", currentAccount?.id],
+    queryFn: async () => {
+      if (!currentAccount) return [];
+
+      const { data, error } = await supabase
+        .from("account_members_with_profiles")
+        .select("user_id, full_name, email, role")
+        .eq("account_id", currentAccount.id)
+        .eq("is_active", true)
+        .order("full_name", { ascending: true });
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!currentAccount,
+  });
+
+  const { data: schedules = [] } = useJobSchedules(lead?.id);
+
+  const toggleSchedule = (id: string) => {
+    setSelectedSchedules((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllSchedules = () => {
+    if (selectedSchedules.length === schedules.length) {
+      setSelectedSchedules([]);
+    } else {
+      setSelectedSchedules(schedules.map((s) => s.id));
+    }
+  };
+
+  const handleSchedule = async (forceWithoutCrew = false) => {
     if (!user || !currentAccount) {
       toast.error("Authentication required");
       return;
@@ -46,6 +91,15 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
     if (!scheduledDate) {
       toast.error("Please select a date for the estimate visit");
+      return;
+    }
+
+    if (!selectedCrewId && !forceWithoutCrew) {
+      setConfirmNoCrewOpen(true);
+      return;
+    }
+    if (selectedCrewId && selectedSchedules.length === 0) {
+      toast.error("Select at least one schedule date to assign the crew");
       return;
     }
 
@@ -99,7 +153,7 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
 
       if (convertError) throw new Error("Failed to convert lead to estimate job");
 
-      const { error: scheduleError } = await supabase
+      const { data: scheduleRow, error: scheduleError } = await supabase
         .from("job_schedules")
         .insert({
           lead_id: lead.id,
@@ -108,9 +162,28 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
           scheduled_time_end: scheduledTimeEnd || null,
           created_by: user.id,
           account_id: currentAccount.id,
-        });
+        })
+        .select()
+        .single();
 
       if (scheduleError) throw new Error("Failed to schedule estimate visit");
+
+      if (selectedCrewId) {
+        const scheduleIds = selectedSchedules.length > 0 ? selectedSchedules : [scheduleRow.id];
+        const assignments = scheduleIds.map((sid) => ({
+          lead_id: lead.id,
+          user_id: selectedCrewId,
+          job_schedule_id: sid,
+          account_id: currentAccount.id,
+          assigned_by: user.id,
+        }));
+
+        const { error: assignError } = await supabase
+          .from("job_assignments")
+          .insert(assignments);
+
+        if (assignError) throw new Error("Scheduled, but failed to assign crew");
+      }
 
       const { data: existingEstimate } = await supabase
         .from("estimates")
@@ -151,8 +224,12 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
       await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["job-assignments", lead.id] });
+      await queryClient.invalidateQueries({ queryKey: ["job-schedules", lead.id] });
 
       onOpenChange(false);
+      setSelectedCrewId("");
+      setSelectedSchedules([]);
       navigate(`/jobs/${lead.id}`);
     } catch (error) {
       console.error("Error scheduling estimate:", error);
@@ -164,6 +241,7 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
   };
 
   const handleCreateEstimateClick = () => {
+    if (hasEstimate) return;
     onOpenChange(false);
     setLineItemsOpen(true);
   };
@@ -221,16 +299,99 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
               </div>
             </div>
 
-            <div className="pt-2 border-t border-border">
-              <button
-                type="button"
-                onClick={handleCreateEstimateClick}
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <FileText className="h-4 w-4" />
-                Create estimate instead
-              </button>
+            <div className="space-y-4 pt-2 border-t border-border">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Assign Crew (optional)
+                </Label>
+                {schedules.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-sm text-primary hover:underline"
+                    onClick={toggleAllSchedules}
+                  >
+                    {selectedSchedules.length === schedules.length ? "Deselect All" : "Select All"}
+                  </button>
+                )}
+              </div>
+
+              {schedules.length === 0 ? (
+                <div className="text-sm text-muted-foreground border rounded-md p-3">
+                  No schedules created yet
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <Label className="text-sm font-medium mb-1 block">Crew Member</Label>
+                    {crewMembers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No active crew members available.</p>
+                    ) : (
+                      <Select value={selectedCrewId} onValueChange={setSelectedCrewId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select crew member" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {crewMembers.map((member) => (
+                            <SelectItem key={member.user_id} value={member.user_id}>
+                              {member.full_name || "Unnamed"} {member.role ? `• ${member.role}` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Schedules</Label>
+                    <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
+                      {schedules.map((schedule) => (
+                        <label
+                          key={schedule.id}
+                          className="flex items-start gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={selectedSchedules.includes(schedule.id)}
+                            onChange={() => toggleSchedule(schedule.id)}
+                          />
+                          <div>
+                            <div className="font-medium">
+                              {format(new Date(schedule.scheduled_date), "EEEE, MMM d, yyyy")}
+                            </div>
+                            {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                              <div className="text-xs text-muted-foreground">
+                                {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {selectedCrewId === "" && (
+                <p className="text-xs text-muted-foreground">
+                  You can schedule without assigning crew; we’ll ask for confirmation.
+                </p>
+              )}
             </div>
+
+            {!hasEstimate && (
+              <div className="pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={handleCreateEstimateClick}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <FileText className="h-4 w-4" />
+                  Create estimate instead
+                </button>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -253,6 +414,30 @@ export function CreateEstimateDialog({ open, onOpenChange, lead, onSuccess }: Cr
         lead={lead}
         onSuccess={handleLineItemsSuccess}
       />
+
+      <AlertDialog open={confirmNoCrewOpen} onOpenChange={setConfirmNoCrewOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>No crew assigned</AlertDialogTitle>
+            <AlertDialogDescription>
+              You’re about to schedule this estimate without assigning a crew. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConfirmNoCrewOpen(false)}>
+              Back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmNoCrewOpen(false);
+                handleSchedule(true);
+              }}
+            >
+              Yes, schedule
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

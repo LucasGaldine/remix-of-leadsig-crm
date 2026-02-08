@@ -30,6 +30,7 @@ export default function Jobs() {
 
   const jobs = useMemo(() => {
     if (selectedStatus === "all") return allJobs;
+    if (selectedStatus === "no_crew") return allJobs.filter((job: any) => (job.crew_count || 0) === 0);
     return allJobs.filter((job: any) => {
       const displayStatus = job.display_status || job.status;
       return displayStatus === selectedStatus;
@@ -44,12 +45,16 @@ export default function Jobs() {
       in_progress: 0,
       completed: 0,
       paid: 0,
+      no_crew: 0,
     };
 
     allJobs.forEach((job: any) => {
       const displayStatus = job.display_status || job.status;
       if (counts[displayStatus] !== undefined) {
         counts[displayStatus]++;
+      }
+      if ((job.crew_count || 0) === 0) {
+        counts.no_crew++;
       }
     });
 
@@ -59,6 +64,7 @@ export default function Jobs() {
   const statusTabs: { value: string; label: string }[] = [
     { value: "all", label: "All" },
     { value: "unscheduled", label: "Unscheduled" },
+    { value: "no_crew", label: "Unassigned" },
     { value: "scheduled", label: "Scheduled" },
     { value: "in_progress", label: "In Progress" },
     { value: "completed", label: "Completed" },

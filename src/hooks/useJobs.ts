@@ -55,7 +55,8 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           *,
           customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
-          job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
+          job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end),
+          job_assignments!lead_id(id)
         `)
         .eq("account_id", currentAccount.id)
         .in("status", ["job", "paid", "completed"])
@@ -97,6 +98,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
 
         const earliestSchedule = sortedSchedules[0] || null;
         const latestSchedule = sortedSchedules[sortedSchedules.length - 1] || null;
+        const crewCount = (job as any).job_assignments?.length || 0;
 
         let displayStatus = 'unscheduled';
         if (job.status === 'job' && sortedSchedules.length > 0) {
@@ -123,7 +125,9 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           scheduled_time_start: earliestSchedule?.scheduled_time_start,
           scheduled_time_end: earliestSchedule?.scheduled_time_end,
           display_status: displayStatus,
+          crew_count: crewCount,
           job_schedules: undefined,
+          job_assignments: undefined,
         };
       });
     },

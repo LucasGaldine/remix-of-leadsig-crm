@@ -873,6 +873,7 @@ export default function LeadDetail() {
         <CreateEstimateDialog
           open={createEstimateDialogOpen}
           onOpenChange={setCreateEstimateDialogOpen}
+          hasEstimate={hasEstimate}
           lead={lead}
           onSuccess={handleEstimateSuccess}
         />
