@@ -16,6 +16,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { format } from "date-fns";
 
+const roleLabels: Record<string, string> = {
+  owner: 'Owner',
+  admin: 'Admin',
+  sales: 'Sales',
+  crew_lead: 'Crew Lead',
+  crew_member: 'Crew Member',
+};
+
+const roleBadgeColors: Record<string, string> = {
+  owner: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+  admin: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  sales: 'bg-green-500/10 text-green-600 border-green-500/20',
+  crew_lead: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+  crew_member: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
+};
+
 interface CreateEstimateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -360,14 +376,14 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
                         <SelectContent>
                           {crewMembers.map((member) => (
                             <SelectItem key={member.user_id} value={member.user_id}>
-                              <div className="flex items-center gap-2">
-                                <span>{member.full_name || "Unnamed"}</span>
+                              <span className="flex items-center gap-2">
+                                {member.full_name || "Unnamed"}
                                 {member.role && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {member.role}
+                                  <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
+                                    {roleLabels[member.role] || member.role}
                                   </Badge>
                                 )}
-                              </div>
+                              </span>
                             </SelectItem>
                           ))}
                         </SelectContent>
