@@ -5,6 +5,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Calendar, FileText, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -96,7 +97,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       setConfirmNoCrewOpen(true);
       return;
     }
-    if (selectedCrewId && selectedSchedules.length === 0) {
+    if (selectedCrewId && schedules.length > 0 && selectedSchedules.length === 0) {
       toast.error("Select at least one schedule date to assign the crew");
       return;
     }
@@ -359,7 +360,14 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
                         <SelectContent>
                           {crewMembers.map((member) => (
                             <SelectItem key={member.user_id} value={member.user_id}>
-                              {member.full_name || "Unnamed"} {member.role ? `• ${member.role}` : ""}
+                              <div className="flex items-center gap-2">
+                                <span>{member.full_name || "Unnamed"}</span>
+                                {member.role && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {member.role}
+                                  </Badge>
+                                )}
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
