@@ -192,13 +192,15 @@ export default function EstimateDetail() {
       const jobId = estimate?.job_id;
 
       let estimateJobId: string | null = null;
+      let isEstimateVisit = false;
       if (jobId) {
         const { data: lead } = await supabase
           .from("leads")
-          .select("estimate_job_id")
+          .select("estimate_job_id, is_estimate_visit")
           .eq("id", jobId)
           .maybeSingle();
         estimateJobId = lead?.estimate_job_id ?? null;
+        isEstimateVisit = lead?.is_estimate_visit ?? false;
       }
 
       const { error } = await supabase
@@ -208,7 +210,19 @@ export default function EstimateDetail() {
 
       if (error) throw error;
 
-      if (estimateJobId) {
+      if (isEstimateVisit && jobId) {
+        await supabase.from("job_schedules").delete().eq("lead_id", jobId);
+        const { data: jobData } = await supabase
+          .from("leads")
+          .select("name")
+          .eq("id", jobId)
+          .maybeSingle();
+        const revertedName = (jobData?.name || "").replace(/, Estimate$/, "");
+        await supabase
+          .from("leads")
+          .update({ status: "qualified", is_estimate_visit: false, name: revertedName })
+          .eq("id", jobId);
+      } else if (estimateJobId) {
         await supabase.from("job_schedules").delete().eq("lead_id", estimateJobId);
         await supabase.from("leads").delete().eq("id", estimateJobId);
       }
@@ -216,8 +230,9 @@ export default function EstimateDetail() {
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
       toast.success("Estimate deleted");
-      navigate("/payments");
+      navigate(isEstimateVisit && jobId ? `/leads/${jobId}` : "/payments");
     } catch {
       toast.error("Failed to delete estimate");
     }

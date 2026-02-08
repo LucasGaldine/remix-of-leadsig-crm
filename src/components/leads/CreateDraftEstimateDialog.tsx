@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ interface CreateDraftEstimateDialogProps {
 export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems, onSuccess }: CreateDraftEstimateDialogProps) {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [creating, setCreating] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
@@ -85,46 +87,36 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
         customerId = newCustomer.id;
       }
 
-      await supabase
-        .from("leads")
-        .update({
-          customer_id: customerId,
-          estimated_value: estimateTotal,
-        })
-        .eq("id", lead.id);
-
       if (scheduledDate) {
-        const { data: estimateJob, error: estimateJobError } = await supabase
+        const { error: convertError } = await supabase
           .from("leads")
-          .insert({
-            name: `${lead.name}, Estimate`,
-            status: "job",
-            service_type: lead.service_type,
-            address: lead.address || lead.city || null,
-            city: lead.city,
+          .update({
             customer_id: customerId,
-            created_by: user.id,
-            account_id: currentAccount.id,
-            approval_status: "approved",
+            estimated_value: estimateTotal,
+            status: "job",
             is_estimate_visit: true,
+            name: `${lead.name}, Estimate`,
+            approval_status: "approved",
           })
-          .select()
-          .single();
+          .eq("id", lead.id);
 
-        if (estimateJobError) throw new Error("Failed to create estimate job");
+        if (convertError) throw new Error("Failed to convert lead to estimate job");
 
         await supabase.from("job_schedules").insert({
-          lead_id: estimateJob.id,
+          lead_id: lead.id,
           scheduled_date: scheduledDate,
           scheduled_time_start: scheduledTimeStart || null,
           scheduled_time_end: scheduledTimeEnd || null,
           created_by: user.id,
           account_id: currentAccount.id,
         });
-
+      } else {
         await supabase
           .from("leads")
-          .update({ estimate_job_id: estimateJob.id })
+          .update({
+            customer_id: customerId,
+            estimated_value: estimateTotal,
+          })
           .eq("id", lead.id);
       }
 
@@ -190,11 +182,17 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
       await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
 
+      const wasScheduled = !!scheduledDate;
       setScheduledDate("");
       setScheduledTimeStart("");
       setScheduledTimeEnd("");
-      onSuccess();
       onOpenChange(false);
+
+      if (wasScheduled) {
+        navigate(`/jobs/${lead.id}`);
+      } else {
+        onSuccess();
+      }
     } catch (error) {
       console.error("Error creating estimate:", error);
       toast.dismiss(loadingToast);
