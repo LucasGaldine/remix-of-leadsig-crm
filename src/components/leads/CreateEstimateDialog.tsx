@@ -101,10 +101,28 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       return;
     }
 
+    if (scheduling) {
+      return;
+    }
+
     setScheduling(true);
-    const loadingToast = toast.loading("Scheduling estimate...");
+    let loadingToast: string | number | undefined;
 
     try {
+      const { data: currentLead } = await supabase
+        .from("leads")
+        .select("status, is_estimate_visit")
+        .eq("id", lead.id)
+        .single();
+
+      if (currentLead?.status === "job" && currentLead?.is_estimate_visit) {
+        toast.error("This lead is already scheduled as an estimate visit");
+        setScheduling(false);
+        return;
+      }
+
+      loadingToast = toast.loading("Scheduling estimate...");
+
       let customerId = null;
 
       if (lead.phone) {
@@ -147,7 +165,8 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
           name: `${lead.name}, Estimate`,
           approval_status: "approved",
         })
-        .eq("id", lead.id);
+        .eq("id", lead.id)
+        .neq("status", "job");
 
       if (convertError) throw new Error("Failed to convert lead to estimate job");
 
@@ -183,14 +202,18 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         if (assignError) throw new Error("Scheduled, but failed to assign crew");
       }
 
-      const { data: existingEstimate } = await supabase
+      const { data: existingEstimate, error: estimateCheckError } = await supabase
         .from("estimates")
         .select("id")
         .eq("job_id", lead.id)
         .maybeSingle();
 
+      if (estimateCheckError) {
+        console.error("Error checking for existing estimate:", estimateCheckError);
+      }
+
       if (!existingEstimate) {
-        await supabase
+        const { error: estimateError } = await supabase
           .from("estimates")
           .insert({
             customer_id: customerId,
@@ -204,6 +227,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
             created_by: user.id,
             account_id: currentAccount.id,
           });
+
+        if (estimateError && !estimateError.message.includes("duplicate key")) {
+          console.error("Error creating estimate:", estimateError);
+        }
       }
 
       await supabase.from("interactions").insert({
@@ -231,7 +258,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       navigate(`/jobs/${lead.id}`);
     } catch (error) {
       console.error("Error scheduling estimate:", error);
-      toast.dismiss(loadingToast);
+      if (loadingToast) toast.dismiss(loadingToast);
       toast.error(error instanceof Error ? error.message : "Failed to schedule estimate");
     } finally {
       setScheduling(false);
@@ -314,9 +341,9 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
                 )}
               </div>
 
-              {schedules.length === 0 ? (
+              {!scheduledDate ? (
                 <div className="text-sm text-muted-foreground border rounded-md p-3">
-                  No schedules created yet
+                  Select a date above to assign crew
                 </div>
               ) : (
                 <>
@@ -340,40 +367,42 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Schedules</Label>
-                    <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
-                      {schedules.map((schedule) => (
-                        <label
-                          key={schedule.id}
-                          className="flex items-start gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-1"
-                            checked={selectedSchedules.includes(schedule.id)}
-                            onChange={() => toggleSchedule(schedule.id)}
-                          />
-                          <div>
-                            <div className="font-medium">
-                              {format(new Date(schedule.scheduled_date), "EEEE, MMM d, yyyy")}
-                            </div>
-                            {schedule.scheduled_time_start && schedule.scheduled_time_end && (
-                              <div className="text-xs text-muted-foreground">
-                                {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                  {schedules.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Existing Schedules</Label>
+                      <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
+                        {schedules.map((schedule) => (
+                          <label
+                            key={schedule.id}
+                            className="flex items-start gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={selectedSchedules.includes(schedule.id)}
+                              onChange={() => toggleSchedule(schedule.id)}
+                            />
+                            <div>
+                              <div className="font-medium">
+                                {format(new Date(schedule.scheduled_date), "EEEE, MMM d, yyyy")}
                               </div>
-                            )}
-                          </div>
-                        </label>
-                      ))}
+                              {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                                <div className="text-xs text-muted-foreground">
+                                  {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                                </div>
+                              )}
+                            </div>
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </>
               )}
 
-              {selectedCrewId === "" && (
+              {selectedCrewId === "" && scheduledDate && (
                 <p className="text-xs text-muted-foreground">
-                  You can schedule without assigning crew; we’ll ask for confirmation.
+                  You can schedule without assigning crew; we'll ask for confirmation.
                 </p>
               )}
             </div>
