@@ -739,7 +739,7 @@ export default function LeadDetail() {
             <MessageSquare className="h-4 w-4" />
             Text
           </Button>
-          {showConvertButton && !hasEstimate && (
+          {showConvertButton && (
             <Button
               size="sm"
               className="flex-1 gap-2"
