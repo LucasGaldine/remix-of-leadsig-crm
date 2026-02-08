@@ -18,13 +18,12 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const stripeClientId = Deno.env.get("STRIPE_CLIENT_ID");
-    const stripeClientSecret = Deno.env.get("STRIPE_CLIENT_SECRET");
+    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 
-    if (!stripeClientId || !stripeClientSecret) {
+    if (!stripeSecretKey) {
       return new Response(
         JSON.stringify({
-          error: "Stripe OAuth is not configured",
+          error: "Stripe OAuth is not configured. Please add STRIPE_SECRET_KEY to your environment variables.",
           setup_required: true,
         }),
         {
@@ -53,7 +52,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        client_secret: stripeClientSecret,
+        client_secret: stripeSecretKey,
         code: code,
         grant_type: "authorization_code",
       }).toString(),
