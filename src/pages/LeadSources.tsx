@@ -277,6 +277,12 @@ export default function LeadSources() {
 
     setFacebookConnecting(true);
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error("Please sign in again to connect Facebook");
+      }
+
       const redirectUri = `${window.location.origin}/facebook-callback`;
       const { data, error } = await supabase.functions.invoke(
         "facebook-oauth-connect",
@@ -284,6 +290,9 @@ export default function LeadSources() {
           body: {
             accountId: currentAccount.id,
             redirectUri,
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
           },
         }
       );
