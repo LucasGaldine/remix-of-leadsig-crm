@@ -10,29 +10,6 @@ const corsHeaders = {
 const FB_GRAPH_VERSION = "v21.0";
 const FB_GRAPH_BASE = `https://graph.facebook.com/${FB_GRAPH_VERSION}`;
 
-async function exchangeCodeForToken(
-  code: string,
-  redirectUri: string,
-  appId: string,
-  appSecret: string
-): Promise<{ access_token: string; token_type: string }> {
-  const url =
-    `${FB_GRAPH_BASE}/oauth/access_token?` +
-    new URLSearchParams({
-      client_id: appId,
-      client_secret: appSecret,
-      redirect_uri: redirectUri,
-      code,
-    }).toString();
-
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) {
-    throw new Error(data.error.message || "Failed to exchange code");
-  }
-  return data;
-}
-
 async function getLongLivedUserToken(
   shortToken: string,
   appId: string,
@@ -132,7 +109,7 @@ Deno.serve(async (req) => {
       return await handlePageSelection(supabase, user.id, body);
     }
 
-    return await handleCodeExchange(supabase, user.id, body, appId, appSecret);
+    return await handleTokenExchange(supabase, user.id, body, appId, appSecret);
   } catch (error) {
     console.error("facebook-oauth-callback error:", error);
     const message =
@@ -144,39 +121,22 @@ Deno.serve(async (req) => {
   }
 });
 
-async function handleCodeExchange(
+async function handleTokenExchange(
   supabase: ReturnType<typeof createClient>,
   userId: string,
-  body: { code: string; state: string; redirectUri: string },
+  body: { accessToken: string; nonce: string },
   appId: string,
   appSecret: string
 ) {
-  const { code, state, redirectUri } = body;
-  if (!code || !state || !redirectUri) {
+  const { accessToken, nonce } = body;
+  if (!accessToken || !nonce) {
     return new Response(
-      JSON.stringify({ error: "code, state, and redirectUri are required" }),
+      JSON.stringify({ error: "accessToken and nonce are required" }),
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-  }
-
-  let stateData: { userId: string; accountId: string; nonce: string };
-  try {
-    stateData = JSON.parse(atob(state));
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid state parameter" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  if (stateData.userId !== userId) {
-    return new Response(JSON.stringify({ error: "State mismatch" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
   }
 
   const { data: connection } = await supabase
@@ -188,8 +148,7 @@ async function handleCodeExchange(
 
   if (
     !connection ||
-    (connection.settings_json as Record<string, string>)?.oauth_nonce !==
-      stateData.nonce
+    (connection.settings_json as Record<string, string>)?.oauth_nonce !== nonce
   ) {
     return new Response(
       JSON.stringify({ error: "Invalid or expired OAuth state" }),
@@ -200,14 +159,8 @@ async function handleCodeExchange(
     );
   }
 
-  const tokenData = await exchangeCodeForToken(
-    code,
-    redirectUri,
-    appId,
-    appSecret
-  );
   const longLivedToken = await getLongLivedUserToken(
-    tokenData.access_token,
+    accessToken,
     appId,
     appSecret
   );

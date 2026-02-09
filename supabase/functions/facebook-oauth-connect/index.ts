@@ -7,14 +7,6 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const FB_GRAPH_VERSION = "v21.0";
-const FB_SCOPES = [
-  "pages_show_list",
-  "pages_read_engagement",
-  "leads_retrieval",
-  "pages_manage_metadata",
-].join(",");
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -47,14 +39,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { accountId, redirectUri } = await req.json();
+    const { accountId } = await req.json();
 
-    console.log("Redirect URI being sent to Facebook:", redirectUri);
-
-    
-    if (!accountId || !redirectUri) {
+    if (!accountId) {
       return new Response(
-        JSON.stringify({ error: "accountId and redirectUri are required" }),
+        JSON.stringify({ error: "accountId is required" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -74,12 +63,6 @@ Deno.serve(async (req) => {
     }
 
     const nonce = crypto.randomUUID();
-    const statePayload = JSON.stringify({
-      userId: user.id,
-      accountId,
-      nonce,
-    });
-    const state = btoa(statePayload);
 
     await supabase.from("lead_source_connections").upsert(
       {
@@ -93,17 +76,7 @@ Deno.serve(async (req) => {
       { onConflict: "user_id,platform" }
     );
 
-    const oauthUrl =
-      `https://www.facebook.com/${FB_GRAPH_VERSION}/dialog/oauth?` +
-      new URLSearchParams({
-        client_id: appId,
-        redirect_uri: redirectUri,
-        state,
-        scope: FB_SCOPES,
-        response_type: "code",
-      }).toString();
-
-    return new Response(JSON.stringify({ url: oauthUrl }), {
+    return new Response(JSON.stringify({ appId, nonce }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

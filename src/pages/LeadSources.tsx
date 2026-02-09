@@ -7,6 +7,7 @@ import { PlanGate } from "@/components/features/PlanGate";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { loadFacebookSdk, fbLogin } from "@/lib/facebookSdk";
 import {
   Dialog,
   DialogContent,
@@ -251,6 +252,16 @@ export default function LeadSources() {
 
   const [facebookConnecting, setFacebookConnecting] = useState(false);
 
+  const [fbPageDialog, setFbPageDialog] = useState<{
+    open: boolean;
+    pages: Array<{ id: string; name: string }>;
+    selecting: boolean;
+  }>({
+    open: false,
+    pages: [],
+    selecting: false,
+  });
+
   const handleConnect = async (platform: PlatformInfo) => {
     if (!user || !currentAccount) return;
 
@@ -283,14 +294,10 @@ export default function LeadSources() {
         throw new Error("Please sign in again to connect Facebook");
       }
 
-      const redirectUri = `${window.location.origin}/facebook-callback`;
       const { data, error } = await supabase.functions.invoke(
         "facebook-oauth-connect",
         {
-          body: {
-            accountId: currentAccount.id,
-            redirectUri,
-          },
+          body: { accountId: currentAccount.id },
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
@@ -299,17 +306,78 @@ export default function LeadSources() {
 
       if (error) throw error;
 
-      if (data?.url) {
-        window.location.href = data.url;
-      } else {
+      if (!data?.appId || !data?.nonce) {
         throw new Error(data?.error || "Failed to start Facebook connection");
+      }
+
+      await loadFacebookSdk(data.appId);
+      const accessToken = await fbLogin();
+
+      const { data: cbData, error: cbError } = await supabase.functions.invoke(
+        "facebook-oauth-callback",
+        {
+          body: { accessToken, nonce: data.nonce },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (cbError) throw cbError;
+
+      if (!cbData?.success) {
+        throw new Error(cbData?.error || "Failed to complete authorization");
+      }
+
+      if (cbData.pages && cbData.pages.length > 0) {
+        setFbPageDialog({ open: true, pages: cbData.pages, selecting: false });
+      } else {
+        throw new Error(
+          "No Facebook Pages found. You need at least one Facebook Page with admin access."
+        );
       }
     } catch (err) {
       console.error("Facebook connect error:", err);
       toast.error(
         err instanceof Error ? err.message : "Failed to connect Facebook"
       );
+    } finally {
       setFacebookConnecting(false);
+    }
+  };
+
+  const handleSelectFbPage = async (page: { id: string; name: string }) => {
+    if (!currentAccount) return;
+
+    setFbPageDialog((prev) => ({ ...prev, selecting: true }));
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "facebook-oauth-callback",
+        {
+          body: {
+            action: "select_page",
+            pageId: page.id,
+            pageName: page.name,
+            accountId: currentAccount.id,
+          },
+        }
+      );
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to connect page");
+      }
+
+      setFbPageDialog({ open: false, pages: [], selecting: false });
+      toast.success("Facebook Page connected!");
+      fetchData();
+    } catch (err) {
+      console.error("Facebook page selection error:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to connect Facebook Page"
+      );
+      setFbPageDialog((prev) => ({ ...prev, selecting: false }));
     }
   };
 
@@ -1227,6 +1295,62 @@ export default function LeadSources() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={fbPageDialog.open}
+        onOpenChange={(open) => {
+          if (!open && !fbPageDialog.selecting) {
+            setFbPageDialog({ open: false, pages: [], selecting: false });
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="#1877F2">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+              </svg>
+              Select a Page
+            </DialogTitle>
+            <DialogDescription>
+              Choose which Facebook Page to receive leads from
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            {fbPageDialog.pages.map((page) => (
+              <button
+                key={page.id}
+                onClick={() => handleSelectFbPage(page)}
+                disabled={fbPageDialog.selecting}
+                className="w-full p-4 border border-border rounded-lg text-left hover:bg-muted/50 transition-colors disabled:opacity-50"
+              >
+                <p className="font-medium">{page.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Page ID: {page.id}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          {fbPageDialog.selecting && (
+            <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Subscribing to lead events...
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setFbPageDialog({ open: false, pages: [], selecting: false })}
+              disabled={fbPageDialog.selecting}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MobileNav />
     </div>
