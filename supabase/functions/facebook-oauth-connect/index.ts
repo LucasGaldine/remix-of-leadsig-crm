@@ -48,6 +48,10 @@ Deno.serve(async (req) => {
     }
 
     const { accountId, redirectUri } = await req.json();
+
+    console.log("Redirect URI being sent to Facebook:", redirectUri);
+
+    
     if (!accountId || !redirectUri) {
       return new Response(
         JSON.stringify({ error: "accountId and redirectUri are required" }),
