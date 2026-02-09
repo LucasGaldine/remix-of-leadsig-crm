@@ -17,7 +17,10 @@ import {
   LayoutDashboard,
   Calculator,
   Ruler,
-  Crown
+  Crown,
+  FileText,
+  Scale,
+  Trash2
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -193,6 +196,22 @@ export default function Settings() {
           description: "Get assistance",
           onClick: handleHelpSupport,
           external: true,
+        },
+        {
+          icon: <FileText className="h-5 w-5" />,
+          label: "Privacy Policy",
+          onClick: () => navigate("/privacy"),
+        },
+        {
+          icon: <Scale className="h-5 w-5" />,
+          label: "Terms of Service",
+          onClick: () => navigate("/terms"),
+        },
+        {
+          icon: <Trash2 className="h-5 w-5" />,
+          label: "Data Deletion",
+          description: "Request data removal",
+          onClick: () => navigate("/data-deletion"),
         },
         {
           icon: <LogOut className="h-5 w-5" />,

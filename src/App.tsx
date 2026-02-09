@@ -49,6 +49,9 @@ import NotFound from "./pages/NotFound";
 import CrewDashboard from "./pages/CrewDashboard";
 import EstimateApproval from "./pages/EstimateApproval";
 import ClientJobPortal from "./pages/ClientJobPortal";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import DataDeletion from "./pages/DataDeletion";
 
 const queryClient = new QueryClient();
 
@@ -78,6 +81,9 @@ const router = createBrowserRouter([
       { path: "/reset-password", element: <ResetPassword /> },
       { path: "/approve-estimate", element: <EstimateApproval /> },
       { path: "/client/job", element: <ClientJobPortal /> },
+      { path: "/privacy", element: <PrivacyPolicy /> },
+      { path: "/terms", element: <TermsOfService /> },
+      { path: "/data-deletion", element: <DataDeletion /> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
       { path: "/facebook-callback", element: <Protected><FacebookCallback /></Protected> },
       { path: "/", element: <Protected><Index /></Protected> },
