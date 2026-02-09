@@ -4,7 +4,7 @@ declare global {
       init: (params: { appId: string; cookie: boolean; xfbml: boolean; version: string }) => void;
       login: (
         callback: (response: { authResponse?: { accessToken: string; userID: string } | null; status: string }) => void,
-        options?: { scope: string }
+        options?: { scope: string; auth_type?: string }
       ) => void;
       getLoginStatus: (callback: (response: { status: string; authResponse?: { accessToken: string } | null }) => void) => void;
     };
@@ -68,7 +68,7 @@ export function fbLogin(): Promise<string> {
           reject(new Error("Facebook login was cancelled or failed"));
         }
       },
-      { scope: FB_SCOPES }
+      { scope: FB_SCOPES, auth_type: "rerequest" }
     );
   });
 }

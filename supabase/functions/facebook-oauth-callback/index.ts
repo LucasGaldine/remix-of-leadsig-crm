@@ -38,9 +38,19 @@ async function getUserPages(
   const url = `${FB_GRAPH_BASE}/me/accounts?access_token=${userToken}&fields=id,name,access_token`;
   const res = await fetch(url);
   const data = await res.json();
+  console.log("getUserPages response:", JSON.stringify({ data: data.data?.length, error: data.error }));
   if (data.error) {
     throw new Error(data.error.message || "Failed to get pages");
   }
+  return data.data || [];
+}
+
+async function getTokenPermissions(
+  userToken: string
+): Promise<Array<{ permission: string; status: string }>> {
+  const url = `${FB_GRAPH_BASE}/me/permissions?access_token=${userToken}`;
+  const res = await fetch(url);
+  const data = await res.json();
   return data.data || [];
 }
 
@@ -164,6 +174,10 @@ async function handleTokenExchange(
     appId,
     appSecret
   );
+
+  const permissions = await getTokenPermissions(longLivedToken);
+  console.log("Token permissions:", JSON.stringify(permissions));
+
   const pages = await getUserPages(longLivedToken);
 
   await supabase
@@ -175,6 +189,27 @@ async function handleTokenExchange(
       },
     })
     .eq("id", connection.id);
+
+  if (pages.length === 0) {
+    const grantedPerms = permissions
+      .filter((p) => p.status === "granted")
+      .map((p) => p.permission);
+    const missingScopes = ["pages_show_list", "pages_read_engagement", "leads_retrieval"]
+      .filter((s) => !grantedPerms.includes(s));
+
+    if (missingScopes.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Facebook did not grant required permissions: ${missingScopes.join(", ")}. Please remove the app from your Facebook settings (Settings > Business Integrations) and try connecting again.`,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+  }
 
   return new Response(
     JSON.stringify({
