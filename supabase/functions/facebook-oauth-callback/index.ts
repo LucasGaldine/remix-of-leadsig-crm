@@ -169,47 +169,67 @@ async function handleTokenExchange(
     );
   }
 
+  let pages = await getUserPages(accessToken);
+  console.log("Pages from short-lived token:", pages.length);
+
   const longLivedToken = await getLongLivedUserToken(
     accessToken,
     appId,
     appSecret
   );
 
-  const permissions = await getTokenPermissions(longLivedToken);
-  console.log("Token permissions:", JSON.stringify(permissions));
-
-  const pages = await getUserPages(longLivedToken);
-
-  await supabase
-    .from("lead_source_connections")
-    .update({
-      settings_json: {
-        user_access_token: longLivedToken,
-        oauth_nonce: null,
-      },
-    })
-    .eq("id", connection.id);
+  if (pages.length === 0) {
+    pages = await getUserPages(longLivedToken);
+    console.log("Pages from long-lived token:", pages.length);
+  }
 
   if (pages.length === 0) {
+    const permissions = await getTokenPermissions(longLivedToken);
+    console.log("Token permissions:", JSON.stringify(permissions));
     const grantedPerms = permissions
       .filter((p) => p.status === "granted")
       .map((p) => p.permission);
     const missingScopes = ["pages_show_list", "pages_read_engagement", "leads_retrieval"]
       .filter((s) => !grantedPerms.includes(s));
 
-    if (missingScopes.length > 0) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Facebook did not grant required permissions: ${missingScopes.join(", ")}. Please remove the app from your Facebook settings (Settings > Business Integrations) and try connecting again.`,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+    await supabase
+      .from("lead_source_connections")
+      .update({
+        settings_json: {
+          user_access_token: longLivedToken,
+          oauth_nonce: null,
+        },
+      })
+      .eq("id", connection.id);
+
+    const detail = missingScopes.length > 0
+      ? `Missing permissions: ${missingScopes.join(", ")}. Please remove LeadSig CRM from Facebook (Settings > Business Integrations) and try again.`
+      : "Your Facebook account has no Pages with admin access, or the pages could not be retrieved.";
+
+    return new Response(
+      JSON.stringify({ success: false, error: detail }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   }
+
+  const pageTokenMap: Record<string, string> = {};
+  for (const p of pages) {
+    pageTokenMap[p.id] = p.access_token;
+  }
+
+  await supabase
+    .from("lead_source_connections")
+    .update({
+      settings_json: {
+        user_access_token: longLivedToken,
+        page_tokens: pageTokenMap,
+        oauth_nonce: null,
+      },
+    })
+    .eq("id", connection.id);
 
   return new Response(
     JSON.stringify({
@@ -258,26 +278,22 @@ async function handlePageSelection(
     );
   }
 
-  const settings = connection.settings_json as Record<string, string>;
-  const userToken = settings?.user_access_token;
-  if (!userToken) {
-    return new Response(
-      JSON.stringify({
-        error: "Missing access token. Please restart the connection process.",
-      }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+  const settings = connection.settings_json as Record<string, unknown>;
+  const pageTokens = settings?.page_tokens as Record<string, string> | undefined;
+  const userToken = settings?.user_access_token as string | undefined;
+
+  let pageAccessToken = pageTokens?.[pageId];
+
+  if (!pageAccessToken && userToken) {
+    const pages = await getUserPages(userToken);
+    const selectedPage = pages.find((p) => p.id === pageId);
+    pageAccessToken = selectedPage?.access_token;
   }
 
-  const pages = await getUserPages(userToken);
-  const selectedPage = pages.find((p) => p.id === pageId);
-  if (!selectedPage) {
+  if (!pageAccessToken) {
     return new Response(
       JSON.stringify({
-        error: "Page not found or you don't have access to it",
+        error: "Page not found or you don't have access to it. Please restart the connection process.",
       }),
       {
         status: 404,
@@ -286,7 +302,7 @@ async function handlePageSelection(
     );
   }
 
-  await subscribePage(pageId, selectedPage.access_token);
+  await subscribePage(pageId, pageAccessToken);
 
   await supabase
     .from("lead_source_connections")
@@ -298,7 +314,7 @@ async function handlePageSelection(
       settings_json: {
         page_id: pageId,
         page_name: pageName,
-        page_access_token: selectedPage.access_token,
+        page_access_token: pageAccessToken,
       },
     })
     .eq("id", connection.id);
