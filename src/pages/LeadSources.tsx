@@ -316,11 +316,11 @@ export default function LeadSources() {
       }
 
       await loadFacebookSdk(data.appId);
-      const accessToken = await fbLogin();
+      const loginResult = await fbLogin();
 
       let pages: FbPage[] = [];
       try {
-        pages = await fbGetPages(accessToken);
+        pages = await fbGetPages(loginResult.accessToken, loginResult.userId);
       } catch (e) {
         console.warn("Client-side page listing failed:", e);
       }
@@ -330,7 +330,8 @@ export default function LeadSources() {
           "facebook-oauth-callback",
           {
             body: {
-              accessToken,
+              accessToken: loginResult.accessToken,
+              fbUserId: loginResult.userId,
               nonce: data.nonce,
               accountId: currentAccount.id,
               listPages: true,
@@ -356,7 +357,7 @@ export default function LeadSources() {
         open: true,
         pages,
         selecting: false,
-        accessToken,
+        accessToken: loginResult.accessToken,
         nonce: data.nonce,
       });
     } catch (err) {

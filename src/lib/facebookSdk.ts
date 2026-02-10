@@ -24,8 +24,13 @@ export interface FbPage {
   access_token: string;
 }
 
+export interface FbLoginResult {
+  accessToken: string;
+  userId: string;
+}
+
 const FB_VERSION = "v21.0";
-const FB_SCOPES = "pages_show_list,pages_read_engagement,leads_retrieval";
+const FB_SCOPES = "pages_show_list,pages_manage_metadata,pages_read_engagement,leads_retrieval";
 
 let sdkLoaded = false;
 let sdkReady = false;
@@ -65,7 +70,7 @@ export function loadFacebookSdk(appId: string): Promise<void> {
   return readyPromise;
 }
 
-export function fbLogin(): Promise<string> {
+export function fbLogin(): Promise<FbLoginResult> {
   return new Promise((resolve, reject) => {
     if (!window.FB) {
       reject(new Error("Facebook SDK not loaded"));
@@ -74,8 +79,11 @@ export function fbLogin(): Promise<string> {
 
     window.FB.login(
       (response) => {
-        if (response.authResponse?.accessToken) {
-          resolve(response.authResponse.accessToken);
+        if (response.authResponse?.accessToken && response.authResponse?.userID) {
+          resolve({
+            accessToken: response.authResponse.accessToken,
+            userId: response.authResponse.userID,
+          });
         } else {
           reject(new Error("Facebook login was cancelled or failed"));
         }
@@ -85,8 +93,8 @@ export function fbLogin(): Promise<string> {
   });
 }
 
-export async function fbGetPages(accessToken: string): Promise<FbPage[]> {
-  const url = `https://graph.facebook.com/${FB_VERSION}/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(accessToken)}`;
+export async function fbGetPages(accessToken: string, userId: string): Promise<FbPage[]> {
+  const url = `https://graph.facebook.com/${FB_VERSION}/${userId}/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(accessToken)}`;
   const res = await fetch(url);
   const data = await res.json();
   if (data.error) {
