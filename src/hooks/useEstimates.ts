@@ -15,6 +15,7 @@ export interface EstimateWithDetails extends Estimate {
   job: {
     id: string;
     name: string;
+    status: string;
   } | null;
   line_items: {
     id: string;
