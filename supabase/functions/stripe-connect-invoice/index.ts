@@ -91,6 +91,8 @@ Deno.serve(async (req: Request) => {
       apiVersion: "2024-12-18.acacia",
     });
 
+    const connectOpts = { stripeAccount: stripeAccount.stripe_user_id };
+
     const stripeCustomer = await stripe.customers.create(
       {
         email: customerEmail || undefined,
@@ -100,28 +102,12 @@ Deno.serve(async (req: Request) => {
           account_id: membership.account_id,
         },
       },
-      { stripeAccount: stripeAccount.stripe_user_id }
+      connectOpts
     );
 
     const activeLineItems = (estimate.line_items || []).filter(
       (li: any) => !li.is_change_order || li.change_order_type !== "deleted"
     );
-
-    for (const item of activeLineItems) {
-      const unitAmountCents = Math.round(Number(item.unit_price) * 100);
-      await stripe.invoiceItems.create(
-        {
-          customer: stripeCustomer.id,
-          description: item.description
-            ? `${item.name} - ${item.description}`
-            : item.name,
-          quantity: Math.round(Number(item.quantity)),
-          unit_amount: unitAmountCents,
-          currency: "usd",
-        },
-        { stripeAccount: stripeAccount.stripe_user_id }
-      );
-    }
 
     const invoiceParams: Stripe.InvoiceCreateParams = {
       customer: stripeCustomer.id,
@@ -142,29 +128,56 @@ Deno.serve(async (req: Request) => {
           percentage: Number(estimate.tax_rate) * 100,
           inclusive: false,
         },
-        { stripeAccount: stripeAccount.stripe_user_id }
+        connectOpts
       );
       invoiceParams.default_tax_rates = [taxRate.id];
     }
 
-    const stripeInvoice = await stripe.invoices.create(
-      invoiceParams,
-      { stripeAccount: stripeAccount.stripe_user_id }
-    );
+    for (const item of activeLineItems) {
+      const unitAmountCents = Math.round(Number(item.unit_price) * 100);
+      await stripe.invoiceItems.create(
+        {
+          customer: stripeCustomer.id,
+          description: item.description
+            ? `${item.name} - ${item.description}`
+            : item.name,
+          quantity: Math.round(Number(item.quantity)),
+          unit_amount: unitAmountCents,
+          currency: "usd",
+        },
+        connectOpts
+      );
+    }
+
+    const stripeInvoice = await stripe.invoices.create(invoiceParams, connectOpts);
 
     const finalizedInvoice = await stripe.invoices.finalizeInvoice(
       stripeInvoice.id,
       {},
-      { stripeAccount: stripeAccount.stripe_user_id }
+      connectOpts
     );
 
-    await stripe.invoices.sendInvoice(
-      finalizedInvoice.id,
-      {},
-      { stripeAccount: stripeAccount.stripe_user_id }
-    );
+    let hostedUrl = finalizedInvoice.hosted_invoice_url || null;
 
-    const hostedUrl = finalizedInvoice.hosted_invoice_url;
+    try {
+      const sentInvoice = await stripe.invoices.sendInvoice(
+        finalizedInvoice.id,
+        {},
+        connectOpts
+      );
+      hostedUrl = sentInvoice.hosted_invoice_url || hostedUrl;
+    } catch (sendErr) {
+      console.warn("sendInvoice failed (non-fatal):", sendErr);
+    }
+
+    if (!hostedUrl) {
+      const refreshed = await stripe.invoices.retrieve(
+        finalizedInvoice.id,
+        {},
+        connectOpts
+      );
+      hostedUrl = refreshed.hosted_invoice_url || null;
+    }
 
     const { data: newInvoice, error: invoiceError } = await supabase
       .from("invoices")
@@ -222,9 +235,10 @@ Deno.serve(async (req: Request) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   } catch (error) {
-    console.error("Error creating Stripe invoice:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Error creating Stripe invoice:", msg, error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: msg }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
     );
   }
