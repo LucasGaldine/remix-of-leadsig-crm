@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, DollarSign, FileText, CreditCard, Clock } from "lucide-react";
+import { Search, DollarSign, FileText, CreditCard, Clock, ClipboardCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
@@ -14,7 +14,7 @@ import { useInvoices } from "@/hooks/useInvoices";
 import { usePayments } from "@/hooks/usePayments";
 import { format } from "date-fns";
 
-type ActiveTab = "estimates" | "invoices" | "charge";
+type ActiveTab = "needs_review" | "estimates" | "invoices" | "charge";
 type AgingFilter = "all" | "0-7" | "8-30" | "31+";
 
 export default function Payments() {
@@ -41,6 +41,10 @@ export default function Payments() {
     .filter(e => e.status === "sent" || e.status === "viewed")
     .reduce((sum, e) => sum + Number(e.total || 0), 0);
 
+  const allNeedsReview = allEstimates.filter(
+    e => !e.is_finalized && e.estimate_visit_completed && e.status !== "accepted" && e.status !== "declined"
+  );
+
   const filteredEstimates = allEstimates.filter(e => {
     if (e.is_finalized) return false;
     const customerName = e.customer?.name || "";
@@ -51,12 +55,14 @@ export default function Payments() {
     );
   });
 
-  const needsReviewEstimates = filteredEstimates.filter(
-    e => e.estimate_visit_completed && e.status !== "accepted" && e.status !== "declined"
-  );
-  const regularEstimates = filteredEstimates.filter(
-    e => !(e.estimate_visit_completed && e.status !== "accepted" && e.status !== "declined")
-  );
+  const filteredNeedsReview = allNeedsReview.filter(e => {
+    const customerName = e.customer?.name || "";
+    const jobName = e.job?.name || "";
+    return (
+      customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      jobName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
 
   const filteredInvoices = allInvoices.filter(i => {
     const customerName = i.customer?.name || "";
@@ -118,6 +124,13 @@ export default function Payments() {
     );
   }
 
+  const tabs: { id: ActiveTab; label: string; icon: typeof FileText; badge?: number }[] = [
+    { id: "needs_review", label: "Needs Review", icon: ClipboardCheck, badge: allNeedsReview.length },
+    { id: "estimates", label: "Estimates", icon: FileText },
+    { id: "invoices", label: "Invoices", icon: DollarSign },
+    { id: "charge", label: "Charge", icon: CreditCard },
+  ];
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
@@ -125,7 +138,6 @@ export default function Payments() {
         subtitle={`$${totalCollected.toLocaleString()} collected this month`}
       />
 
-      {/* Summary Cards */}
       <div className="px-4 py-3 bg-card border-b border-border">
         <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-4 px-4">
           <div className="flex-shrink-0 p-3 rounded-lg bg-[hsl(var(--status-confirmed-bg))] border border-[hsl(var(--status-confirmed))]/20 min-w-[140px]">
@@ -152,14 +164,9 @@ export default function Payments() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="bg-card border-b border-border px-4 overflow-x-auto scrollbar-hide">
         <div className="flex">
-          {[
-            { id: "estimates" as const, label: "Estimates", icon: FileText },
-            { id: "invoices" as const, label: "Invoices", icon: DollarSign },
-            { id: "charge" as const, label: "Charge", icon: CreditCard },
-          ].map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -172,26 +179,31 @@ export default function Payments() {
             >
               <tab.icon className="h-4 w-4" />
               {tab.label}
+              {tab.badge != null && tab.badge > 0 && (
+                <span className="ml-1 min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-2xs font-bold inline-flex items-center justify-center">
+                  {tab.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Search */}
-      <div className="px-4 py-3 bg-card border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder={`Search ${activeTab}...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      {activeTab !== "needs_review" && (
+        <div className="px-4 py-3 bg-card border-b border-border">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder={`Search ${activeTab}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Aging Filter for Invoices */}
       {activeTab === "invoices" && (
         <div className="px-4 py-3 bg-card border-b border-border overflow-x-auto scrollbar-hide">
           <div className="flex gap-2">
@@ -218,39 +230,54 @@ export default function Payments() {
         </div>
       )}
 
-      {/* Content */}
       <main className="px-4 py-4">
-        {activeTab === "estimates" && (
+        {activeTab === "needs_review" && (
           <div className="space-y-3">
-            {needsReviewEstimates.length > 0 && (
-              <>
-                <div className="flex items-center gap-2 pt-1 pb-1">
-                  <div className="h-2 w-2 rounded-full bg-amber-500" />
-                  <h3 className="text-sm font-semibold text-foreground">
-                    Needs Review ({needsReviewEstimates.length})
-                  </h3>
-                </div>
-                {needsReviewEstimates.map((estimate) => (
-                  <EstimateCard
-                    key={estimate.id}
-                    estimate={transformEstimate(estimate, true)}
-                    onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+            {activeTab === "needs_review" && (
+              <div className="px-0 pb-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Search needs review..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
                   />
-                ))}
-                {regularEstimates.length > 0 && (
-                  <div className="pt-2 pb-1">
-                    <h3 className="text-sm font-semibold text-muted-foreground">All Estimates</h3>
-                  </div>
-                )}
-              </>
+                </div>
+              </div>
             )}
-            {regularEstimates.map((estimate) => (
+            {filteredNeedsReview.map((estimate) => (
               <EstimateCard
                 key={estimate.id}
-                estimate={transformEstimate(estimate, false)}
+                estimate={transformEstimate(estimate, true)}
                 onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
               />
             ))}
+            {filteredNeedsReview.length === 0 && (
+              <div className="text-center py-12">
+                <ClipboardCheck className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">No estimates to review</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">
+                  Estimates will appear here when their visit is completed
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "estimates" && (
+          <div className="space-y-3">
+            {filteredEstimates.map((estimate) => {
+              const isNeedsReview = estimate.estimate_visit_completed && estimate.status !== "accepted" && estimate.status !== "declined";
+              return (
+                <EstimateCard
+                  key={estimate.id}
+                  estimate={transformEstimate(estimate, !!isNeedsReview)}
+                  onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                />
+              );
+            })}
             {filteredEstimates.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">No estimates found</p>
