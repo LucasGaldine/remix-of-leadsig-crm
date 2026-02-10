@@ -318,12 +318,38 @@ export default function LeadSources() {
       await loadFacebookSdk(data.appId);
       const accessToken = await fbLogin();
 
-      const pages = await fbGetPages();
+      let pages: FbPage[] = [];
+      try {
+        pages = await fbGetPages(accessToken);
+      } catch (e) {
+        console.warn("Client-side page listing failed:", e);
+      }
 
       if (pages.length === 0) {
-        throw new Error(
-          "No Facebook Pages found. You need at least one Facebook Page with admin access."
+        const { data: cbData, error: cbError } = await supabase.functions.invoke(
+          "facebook-oauth-callback",
+          {
+            body: {
+              accessToken,
+              nonce: data.nonce,
+              accountId: currentAccount.id,
+              listPages: true,
+            },
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          }
         );
+
+        if (cbError) throw cbError;
+
+        if (cbData?.pages && cbData.pages.length > 0) {
+          pages = cbData.pages;
+        } else {
+          throw new Error(
+            cbData?.error || "No Facebook Pages found. You need at least one Facebook Page with admin access."
+          );
+        }
       }
 
       setFbPageDialog({

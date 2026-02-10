@@ -85,24 +85,12 @@ export function fbLogin(): Promise<string> {
   });
 }
 
-export function fbGetPages(): Promise<FbPage[]> {
-  return new Promise((resolve, reject) => {
-    if (!window.FB) {
-      reject(new Error("Facebook SDK not loaded"));
-      return;
-    }
-
-    window.FB.api(
-      "/me/accounts",
-      "GET",
-      { fields: "id,name,access_token" },
-      (response) => {
-        if (response.error) {
-          reject(new Error(response.error.message || "Failed to get Facebook pages"));
-          return;
-        }
-        resolve(response.data || []);
-      }
-    );
-  });
+export async function fbGetPages(accessToken: string): Promise<FbPage[]> {
+  const url = `https://graph.facebook.com/${FB_VERSION}/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(accessToken)}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.error) {
+    throw new Error(data.error.message || "Failed to get Facebook pages");
+  }
+  return data.data || [];
 }
