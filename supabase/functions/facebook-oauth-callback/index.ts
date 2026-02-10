@@ -32,7 +32,21 @@ async function getLongLivedUserToken(
   return data.access_token;
 }
 
-async function getPageToken(
+async function validatePageToken(
+  pageId: string,
+  pageToken: string
+): Promise<boolean> {
+  const url = `${FB_GRAPH_BASE}/${pageId}?fields=id&access_token=${pageToken}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.error) {
+    console.log("validatePageToken error:", JSON.stringify(data.error));
+    return false;
+  }
+  return data.id === pageId;
+}
+
+async function getPageTokenFromUser(
   pageId: string,
   userToken: string
 ): Promise<string | null> {
@@ -40,7 +54,7 @@ async function getPageToken(
   const res = await fetch(url);
   const data = await res.json();
   if (data.error) {
-    console.log("getPageToken error:", JSON.stringify(data.error));
+    console.log("getPageTokenFromUser error:", JSON.stringify(data.error));
     return null;
   }
   return data.access_token || null;
@@ -70,6 +84,7 @@ async function subscribePage(pageId: string, pageToken: string): Promise<void> {
     }),
   });
   const data = await res.json();
+  console.log("subscribePage response:", JSON.stringify(data));
   if (data.error) {
     throw new Error(
       data.error.message || "Failed to subscribe page to leadgen"
@@ -151,26 +166,63 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log("Exchanging for long-lived user token...");
     const longLivedToken = await getLongLivedUserToken(accessToken, appId, appSecret);
+    console.log("Got long-lived user token");
 
     let finalPageToken: string | null = null;
+    let tokenSource = "";
 
-    finalPageToken = await getPageToken(pageId, longLivedToken);
+    const serverPageToken = await getPageTokenFromUser(pageId, longLivedToken);
+    if (serverPageToken) {
+      const valid = await validatePageToken(pageId, serverPageToken);
+      if (valid) {
+        finalPageToken = serverPageToken;
+        tokenSource = "server_long_lived";
+        console.log("Using long-lived page token from server");
+      }
+    }
 
     if (!finalPageToken) {
       const pages = await getUserPages(longLivedToken);
       const match = pages.find((p) => p.id === pageId);
-      finalPageToken = match?.access_token || null;
+      if (match?.access_token) {
+        const valid = await validatePageToken(pageId, match.access_token);
+        if (valid) {
+          finalPageToken = match.access_token;
+          tokenSource = "server_user_pages";
+          console.log("Using page token from /me/accounts");
+        }
+      }
     }
 
     if (!finalPageToken) {
-      console.log("Using client-provided page token as fallback");
-      finalPageToken = pageAccessToken;
+      console.log("Server-side methods failed, validating client-provided page token...");
+      const valid = await validatePageToken(pageId, pageAccessToken);
+      if (valid) {
+        finalPageToken = pageAccessToken;
+        tokenSource = "client_provided";
+        console.log("Client-provided page token is valid");
+      }
     }
 
-    await subscribePage(pageId, finalPageToken);
+    if (!finalPageToken) {
+      return new Response(
+        JSON.stringify({
+          error: "Could not obtain a valid page access token. Please ensure you have admin access to this Facebook Page.",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
-    await supabase
+    console.log(`Subscribing page ${pageId} to leadgen (token source: ${tokenSource})...`);
+    await subscribePage(pageId, finalPageToken);
+    console.log("Page subscribed successfully");
+
+    const { error: updateError } = await supabase
       .from("lead_source_connections")
       .update({
         status: "connected",
@@ -181,9 +233,24 @@ Deno.serve(async (req) => {
           page_id: pageId,
           page_name: pageName,
           page_access_token: finalPageToken,
+          user_access_token: longLivedToken,
+          token_source: tokenSource,
         },
       })
       .eq("id", connection.id);
+
+    if (updateError) {
+      console.error("DB update error:", JSON.stringify(updateError));
+      return new Response(
+        JSON.stringify({ error: "Failed to save connection: " + updateError.message }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    console.log("Connection saved successfully");
 
     return new Response(
       JSON.stringify({ success: true }),
