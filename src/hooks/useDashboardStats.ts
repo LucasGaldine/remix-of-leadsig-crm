@@ -144,6 +144,46 @@ export function useDashboardStats(cardIds: string[]) {
         stats.paid_jobs = count || 0;
       }
 
+      if (needed.has("unassigned_jobs")) {
+        const { data } = await supabase
+          .from("leads")
+          .select("id, job_schedules!lead_id(id), job_assignments!lead_id(id)")
+          .eq("account_id", currentAccount.id)
+          .eq("status", "job");
+
+        let count = 0;
+        (data || []).forEach((job: any) => {
+          const hasSchedules = (job.job_schedules || []).length > 0;
+          const hasAssignments = (job.job_assignments || []).length > 0;
+          if (hasSchedules && !hasAssignments) count++;
+        });
+        stats.unassigned_jobs = count;
+      }
+
+      if (needed.has("overdue_jobs")) {
+        const { data } = await supabase
+          .from("leads")
+          .select("id, status, job_schedules!lead_id(scheduled_date, scheduled_time_end)")
+          .eq("account_id", currentAccount.id)
+          .eq("status", "job");
+
+        let count = 0;
+        const now = new Date();
+        (data || []).forEach((job: any) => {
+          const schedules = job.job_schedules || [];
+          if (schedules.length === 0) return;
+          const sorted = schedules.sort((a: any, b: any) =>
+            a.scheduled_date.localeCompare(b.scheduled_date)
+          );
+          const last = sorted[sorted.length - 1];
+          const endDt = new Date(
+            `${last.scheduled_date}T${last.scheduled_time_end || "23:59:59"}`
+          );
+          if (now > endDt) count++;
+        });
+        stats.overdue_jobs = count;
+      }
+
       return stats;
     },
     enabled: !!user && !!currentAccount && cardIds.length > 0,

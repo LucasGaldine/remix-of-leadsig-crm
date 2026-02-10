@@ -10,6 +10,8 @@ import {
   CircleCheckBig,
   BadgeDollarSign,
   ClipboardList,
+  UserX,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -97,6 +99,20 @@ export const DASHBOARD_CARDS: DashboardCardConfig[] = [
     label: "Paid Jobs",
     description: "Jobs that have been paid",
     icon: BadgeDollarSign,
+    navigateTo: "/jobs",
+  },
+  {
+    id: "unassigned_jobs",
+    label: "Unassigned Jobs",
+    description: "Scheduled jobs with no crew assigned",
+    icon: UserX,
+    navigateTo: "/jobs",
+  },
+  {
+    id: "overdue_jobs",
+    label: "Overdue Jobs",
+    description: "Jobs past their last scheduled date",
+    icon: AlertTriangle,
     navigateTo: "/jobs",
   },
 ];

@@ -1,5 +1,6 @@
-import { MapPin, Clock, User, ChevronRight } from "lucide-react";
+import { MapPin, Clock, User, ChevronRight, Users } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Database } from "@/integrations/supabase/types";
 import { format } from "date-fns";
@@ -61,6 +62,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
   };
 
   const badgeStatus = (job.display_status || job.status) as string;
+  const isUnassigned = (job.crew_count || 0) === 0 && badgeStatus === "scheduled";
   const scheduledDateTime = formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date);
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
@@ -81,6 +83,12 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
             <StatusBadge status={badgeStatus as JobStatus}>
               {statusLabels[badgeStatus] || badgeStatus}
             </StatusBadge>
+            {isUnassigned && (
+              <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
+                <Users className="h-3 w-3 mr-1" />
+                Unassigned
+              </Badge>
+            )}
           </div>
 
           <h3 className="font-semibold text-foreground truncate text-lg">

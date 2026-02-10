@@ -4,6 +4,7 @@ import {
   MapPin,
   Clock,
   User,
+  Users,
   Phone,
   MessageSquare,
   Navigation,
@@ -34,6 +35,7 @@ import { useJob, useUpdateJob, useDeleteJob } from "@/hooks/useJobs";
 import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useAuth } from "@/hooks/useAuth";
 import { JobAssignments } from "@/components/jobs/JobAssignments";
+import { useJobAssignments } from "@/hooks/useJobAssignments";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,6 +78,7 @@ export default function JobDetail() {
   const { data: schedules = [], isLoading: schedulesLoading } = useJobSchedules(id);
   const { businessHours } = useBusinessHours();
   const { scheduleJob, deleteSchedule, isScheduling } = useScheduleJob();
+  const { assignments: jobAssignments = [] } = useJobAssignments(id);
   const updateJobMutation = useUpdateJob();
   const deleteJobMutation = useDeleteJob();
 
@@ -407,6 +410,7 @@ export default function JobDetail() {
 
   const displayStatus = (job as any).display_status || job.status;
   const statusLabel = statusLabelMap[displayStatus] || displayStatus;
+  const isUnassigned = hasSchedules && jobAssignments.length === 0;
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -420,6 +424,12 @@ export default function JobDetail() {
               <StatusBadge status={displayStatus as any} size="lg">
                 {statusLabel}
               </StatusBadge>
+              {isUnassigned && (
+                <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
+                  <Users className="h-3 w-3 mr-1" />
+                  Unassigned
+                </Badge>
+              )}
               {isManager() && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
