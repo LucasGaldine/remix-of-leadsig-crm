@@ -46,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { PhotoSection } from "@/components/photos/PhotoSection";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
+import { JobChecklist } from "@/components/jobs/JobChecklist";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -711,14 +712,18 @@ export default function JobDetail() {
           </div>
         )}
 
-        {activeTab === "checklist" && (
-          <div className="space-y-2">
-            <div className="text-center py-12">
-              <CheckSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground mb-4">No checklist items yet</p>
-              <Button variant="outline">Add Checklist Item</Button>
-            </div>
-          </div>
+        {activeTab === "checklist" && id && (
+          <JobChecklist
+            jobId={id}
+            isEstimateVisit={job?.is_estimate_visit}
+            clientPortalUrl={
+              (() => {
+                const token = job?.is_estimate_visit ? parentLeadToken : (job as any).client_share_token;
+                return token ? `${window.location.origin}/client/job?token=${token}` : null;
+              })()
+            }
+            isManager={isManager()}
+          />
         )}
 
         {activeTab === "photos" && id && (
