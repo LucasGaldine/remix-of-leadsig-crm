@@ -30,7 +30,7 @@ export interface FbLoginResult {
 }
 
 const FB_VERSION = "v21.0";
-const FB_SCOPES = "pages_show_list,pages_manage_metadata,pages_read_engagement,leads_retrieval";
+const FB_SCOPES = "pages_show_list,pages_read_engagement,leads_retrieval";
 
 let sdkLoaded = false;
 let sdkReady = false;
