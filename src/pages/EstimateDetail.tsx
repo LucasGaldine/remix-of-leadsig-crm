@@ -237,7 +237,6 @@ export default function EstimateDetail() {
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
       toast.success("Invoice created and marked as sent");
-      navigate(`/payments/invoices/${newInvoice.id}`);
     } catch {
       toast.error("Failed to create invoice");
     } finally {
@@ -277,9 +276,6 @@ export default function EstimateDetail() {
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
       toast.success("Stripe invoice created and sent to customer");
-      if (data?.invoiceId) {
-        navigate(`/payments/invoices/${data.invoiceId}`);
-      }
     } catch {
       toast.error("Failed to create Stripe invoice");
     } finally {
