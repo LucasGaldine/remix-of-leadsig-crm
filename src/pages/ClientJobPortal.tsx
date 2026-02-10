@@ -53,6 +53,9 @@ interface LineItem {
   unit: string;
   unit_price: number;
   total: number;
+  is_change_order?: boolean;
+  change_order_type?: 'added' | 'edited' | 'deleted';
+  changed_at?: string;
 }
 
 interface EstimateData {

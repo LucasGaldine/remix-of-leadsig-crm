@@ -9,6 +9,9 @@ interface LineItem {
   unit: string;
   unit_price: number;
   total: number;
+  is_change_order?: boolean;
+  change_order_type?: 'added' | 'edited' | 'deleted';
+  changed_at?: string;
 }
 
 interface ClientPortalEstimateProps {
@@ -91,7 +94,27 @@ export function ClientPortalEstimate({
               <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex justify-between items-start">
                   <div className="flex-1 min-w-0 mr-4">
-                    <p className="font-medium text-slate-900">{item.name}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-medium text-slate-900">{item.name}</p>
+                      {item.is_change_order && item.changed_at && (() => {
+                        const changedDate = new Date(item.changed_at);
+                        const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
+                        return hoursSinceChange < 24;
+                      })() && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            item.change_order_type === 'added'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : item.change_order_type === 'edited'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-800'
+                          }`}
+                        >
+                          {item.change_order_type === 'added' && 'New'}
+                          {item.change_order_type === 'edited' && 'Modified'}
+                        </span>
+                      )}
+                    </div>
                     {item.description && (
                       <p className="text-sm text-slate-500 mt-0.5">
                         {item.description}

@@ -129,7 +129,7 @@ Deno.serve(async (req: Request) => {
           id, subtotal, tax_rate, tax, discount, total, notes, status, created_at,
           line_items:estimate_line_items(
             id, name, description, quantity, unit, unit_price, total,
-            sort_order, is_change_order, change_order_type
+            sort_order, is_change_order, change_order_type, changed_at
           )
         `
         )
