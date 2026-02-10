@@ -79,16 +79,7 @@ export function fbLogin(): Promise<FbLoginResult> {
 
     window.FB.login(
   (response) => {
-    console.log("FB.login response:", response);
-
     if (response.authResponse?.accessToken && response.authResponse?.userID) {
-      window.FB.api(
-        "/me/accounts",
-        "GET",
-        {},
-        (res) => console.log("CLIENT /me/accounts:", res)
-      );
-
       resolve({
         accessToken: response.authResponse.accessToken,
         userId: response.authResponse.userID,
@@ -100,7 +91,7 @@ export function fbLogin(): Promise<FbLoginResult> {
   {
     scope: FB_SCOPES,
     auth_type: "reauthorize",
-    return_scopes: true, // 🔴 IMPORTANT
+    return_scopes: true,
   }
 );
 

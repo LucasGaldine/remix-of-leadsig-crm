@@ -317,15 +317,11 @@ export default function LeadSources() {
 
       await loadFacebookSdk(data.appId);
       const loginResult = await fbLogin();
-      console.log("FB Login userId:", loginResult.userId);
-      console.log("FB Login accessToken:", loginResult.accessToken);
 
       let pages: FbPage[] = [];
       try {
         pages = await fbGetPages(loginResult.accessToken, loginResult.userId);
-        console.log("Client-side pages result:", pages);
-      } catch (e) {
-        console.warn("Client-side page listing failed:", e);
+      } catch {
       }
 
       if (pages.length === 0) {

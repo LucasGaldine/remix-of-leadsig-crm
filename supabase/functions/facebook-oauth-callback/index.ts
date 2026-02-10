@@ -40,7 +40,6 @@ async function validatePageToken(
   const res = await fetch(url);
   const data = await res.json();
   if (data.error) {
-    console.log("validatePageToken error:", JSON.stringify(data.error));
     return false;
   }
   return data.id === pageId;
@@ -54,7 +53,6 @@ async function getPageTokenFromUser(
   const res = await fetch(url);
   const data = await res.json();
   if (data.error) {
-    console.log("getPageTokenFromUser error:", JSON.stringify(data.error));
     return null;
   }
   return data.access_token || null;
@@ -65,12 +63,9 @@ async function getUserPages(
   fbUserId: string
 ): Promise<Array<{ id: string; name: string; access_token: string }>> {
   const url = `${FB_GRAPH_BASE}/${fbUserId}/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`;
-  console.log(`getUserPages calling: ${fbUserId}/accounts`);
   const res = await fetch(url);
   const data = await res.json();
-  console.log("getUserPages raw response:", JSON.stringify({ fbUserId, dataLength: data.data?.length, error: data.error, paging: data.paging }));
   if (data.error) {
-    console.log("getUserPages error:", JSON.stringify(data.error));
     return [];
   }
   return data.data || [];
@@ -86,7 +81,6 @@ async function getPagesByIds(
     const res = await fetch(url);
     const data = await res.json();
     if (data.error) {
-      console.log(`getPagesByIds error for ${pageId}:`, JSON.stringify(data.error));
       continue;
     }
     if (data.id && data.access_token) {
@@ -107,7 +101,6 @@ async function subscribePage(pageId: string, pageToken: string): Promise<void> {
     }),
   });
   const data = await res.json();
-  console.log("subscribePage response:", JSON.stringify(data));
   if (data.error) {
     throw new Error(
       data.error.message || "Failed to subscribe page to leadgen"
@@ -219,11 +212,7 @@ async function handleListPages(
   }
 
   const debugInfo = await getTokenDebugInfo(accessToken, appId, appSecret);
-  console.log("Token debug info:", JSON.stringify(debugInfo));
-  console.log("Using FB user ID for accounts lookup:", fbUserId);
-
   let pages = await getUserPages(accessToken, fbUserId);
-  console.log("Pages from short-lived token:", pages.length);
 
   let longLivedToken: string | null = null;
 
@@ -231,7 +220,6 @@ async function handleListPages(
     longLivedToken = await getLongLivedUserToken(accessToken, appId, appSecret);
 
     pages = await getUserPages(longLivedToken, fbUserId);
-    console.log("Pages from long-lived token:", pages.length);
 
     if (pages.length > 0) {
       await supabase
@@ -252,12 +240,9 @@ async function handleListPages(
     const pageIds = granularScopes
       ?.find((s) => s.scope === "pages_show_list")
       ?.target_ids || [];
-    console.log("Granular scope page IDs:", pageIds);
-
     if (pageIds.length > 0) {
       const tokenToUse = longLivedToken || accessToken;
       pages = await getPagesByIds(pageIds, tokenToUse);
-      console.log("Pages from granular_scopes fallback:", pages.length);
 
       if (pages.length > 0 && longLivedToken) {
         await supabase
@@ -339,9 +324,7 @@ async function handleConnect(
   let longLivedToken = settings?.user_access_token || null;
 
   if (!longLivedToken) {
-    console.log("Exchanging for long-lived user token...");
     longLivedToken = await getLongLivedUserToken(accessToken, appId, appSecret);
-    console.log("Got long-lived user token");
   }
 
   let finalPageToken: string | null = null;
@@ -353,7 +336,6 @@ async function handleConnect(
     if (valid) {
       finalPageToken = serverPageToken;
       tokenSource = "server_long_lived";
-      console.log("Using long-lived page token from server");
     }
   }
 
@@ -365,18 +347,15 @@ async function handleConnect(
       if (valid) {
         finalPageToken = match.access_token;
         tokenSource = "server_user_pages";
-        console.log("Using page token from /{userId}/accounts");
       }
     }
   }
 
   if (!finalPageToken) {
-    console.log("Server-side methods failed, validating client-provided page token...");
     const valid = await validatePageToken(pageId, pageAccessToken);
     if (valid) {
       finalPageToken = pageAccessToken;
       tokenSource = "client_provided";
-      console.log("Client-provided page token is valid");
     }
   }
 
@@ -389,9 +368,7 @@ async function handleConnect(
     );
   }
 
-  console.log(`Subscribing page ${pageId} to leadgen (token source: ${tokenSource})...`);
   await subscribePage(pageId, finalPageToken);
-  console.log("Page subscribed successfully");
 
   const { error: updateError } = await supabase
     .from("lead_source_connections")
@@ -411,14 +388,11 @@ async function handleConnect(
     .eq("id", connection.id);
 
   if (updateError) {
-    console.error("DB update error:", JSON.stringify(updateError));
     return new Response(
       JSON.stringify({ error: "Failed to save connection: " + updateError.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-
-  console.log("Connection saved successfully");
 
   return new Response(
     JSON.stringify({ success: true }),
