@@ -17,6 +17,7 @@ export interface EstimateWithDetails extends Estimate {
     name: string;
     status: string;
     estimate_job_id?: string | null;
+    is_estimate_visit?: boolean;
   } | null;
   line_items: {
     id: string;
@@ -72,7 +73,7 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
         .select(`
           *,
           customer:customers(id, name),
-          job:leads!estimates_job_id_fkey(id, name, status, scheduled_date, estimate_job_id),
+          job:leads!estimates_job_id_fkey(id, name, status, scheduled_date, estimate_job_id, is_estimate_visit),
           line_items:estimate_line_items(
             id,
             name,
@@ -105,26 +106,11 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
 
       const estimates = data as EstimateWithDetails[];
 
-      const estimateJobIds = estimates
-        .map(e => e.job?.estimate_job_id)
-        .filter((id): id is string => !!id);
-
-      if (estimateJobIds.length > 0) {
-        const uniqueIds = [...new Set(estimateJobIds)];
-        const { data: ejData } = await supabase
-          .from("leads")
-          .select("id, status")
-          .in("id", uniqueIds);
-
-        const statusMap = new Map((ejData || []).map(ej => [ej.id, ej.status]));
-
-        estimates.forEach(e => {
-          const ejId = e.job?.estimate_job_id;
-          if (ejId && statusMap.has(ejId)) {
-            e.estimate_visit_completed = statusMap.get(ejId) === "completed";
-          }
-        });
-      }
+      estimates.forEach(e => {
+        if (e.job?.is_estimate_visit && e.job.status === 'completed') {
+          e.estimate_visit_completed = true;
+        }
+      });
 
       return estimates;
     },
