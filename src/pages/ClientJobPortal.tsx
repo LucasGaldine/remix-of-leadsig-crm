@@ -78,12 +78,18 @@ interface ActivityItem {
   created_at: string;
 }
 
+interface InvoiceData {
+  stripe_invoice_url: string | null;
+  status: string;
+}
+
 export interface PortalData {
   job: JobData;
   company: CompanyData;
   schedules: ScheduleItem[];
   estimate_visit_schedules: ScheduleItem[];
   estimate: EstimateData | null;
+  invoice: InvoiceData | null;
   photos: { before: PhotoItem[]; after: PhotoItem[] };
   activity: ActivityItem[];
 }
@@ -160,7 +166,7 @@ export default function ClientJobPortal() {
 
   if (!data) return null;
 
-  const { job, company, schedules, estimate_visit_schedules, estimate, photos, activity } = data;
+  const { job, company, schedules, estimate_visit_schedules, estimate, invoice, photos, activity } = data;
 
   const statusLabel = getStatusLabel(job.status, schedules);
   const statusColor = getStatusColor(job.status, schedules);
@@ -191,6 +197,37 @@ export default function ClientJobPortal() {
             apiHeaders={apiHeaders}
             onRefresh={fetchJobData}
           />
+        )}
+
+        {invoice?.stripe_invoice_url && (
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-slate-400" />
+                <h2 className="text-lg font-semibold text-slate-900">Invoice</h2>
+                {invoice.status === "paid" ? (
+                  <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                    Paid
+                  </span>
+                ) : (
+                  <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                    Payment Due
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="px-6 sm:px-8 py-5">
+              <a
+                href={invoice.stripe_invoice_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full px-4 py-3.5 rounded-xl bg-slate-800 text-white font-medium text-sm hover:bg-slate-900 transition-colors"
+              >
+                <DollarSign className="h-4 w-4" />
+                {invoice.status === "paid" ? "View Receipt" : "Pay Invoice"}
+              </a>
+            </div>
+          </div>
         )}
 
         {(photos.before.length > 0 || photos.after.length > 0) && (

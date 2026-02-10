@@ -185,6 +185,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const { data: invoice } = await supabase
+      .from("invoices")
+      .select("id, stripe_invoice_url, status")
+      .eq("lead_id", job.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     let estimateVisitSchedules: any[] = [];
     if (job.estimate_job_id) {
       const { data: evSchedules } = await supabase
@@ -246,6 +254,10 @@ Deno.serve(async (req: Request) => {
         before: buildPhotoUrls(beforePhotos),
         after: buildPhotoUrls(afterPhotos),
       },
+      invoice: invoice ? {
+        stripe_invoice_url: invoice.stripe_invoice_url,
+        status: invoice.status,
+      } : null,
       estimate_visit_schedules: estimateVisitSchedules.map((s: any) => ({
         scheduled_date: s.scheduled_date,
         scheduled_time_start: s.scheduled_time_start,

@@ -17,6 +17,8 @@ import {
   Link2,
   Copy,
   CheckCheck,
+  CreditCard,
+  FileCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -78,6 +80,8 @@ export default function EstimateDetail() {
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [markingAsSent, setMarkingAsSent] = useState(false);
+  const [creatingStripeInvoice, setCreatingStripeInvoice] = useState(false);
 
   if (isLoading) {
     return (
@@ -175,16 +179,112 @@ export default function EstimateDetail() {
     }
   };
 
-  const handleSend = () => {
-    toast.info("Email/SMS sending functionality coming soon!");
-  };
-
-  const handleConvertToInvoice = () => {
+  const handleMarkAsSent = async () => {
     if (estimate.is_finalized) {
       toast.error("This estimate has already been converted to an invoice");
       return;
     }
-    navigate("/payments/invoices/new", { state: { fromEstimate: estimate } });
+    setMarkingAsSent(true);
+    try {
+      const activeLineItems = estimate.line_items.filter(
+        (item: any) => !item.is_change_order || item.change_order_type !== "deleted"
+      );
+
+      const { data: newInvoice, error: invoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          customer_id: estimate.customer?.id,
+          lead_id: estimate.job?.id,
+          estimate_id: estimate.id,
+          subtotal: estimate.subtotal,
+          tax_rate: estimate.tax_rate,
+          tax: estimate.tax,
+          discount: estimate.discount,
+          total: estimate.total,
+          balance_due: estimate.total,
+          notes: estimate.notes,
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          created_by: (await supabase.auth.getUser()).data.user?.id,
+          account_id: estimate.account_id,
+        })
+        .select("id")
+        .single();
+
+      if (invoiceError) throw invoiceError;
+
+      for (const item of activeLineItems) {
+        await supabase.from("invoice_line_items").insert({
+          invoice_id: newInvoice.id,
+          name: item.name,
+          description: item.description || null,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total: item.total,
+          sort_order: item.sort_order || 0,
+          account_id: estimate.account_id,
+        });
+      }
+
+      await supabase
+        .from("estimates")
+        .update({ is_finalized: true, updated_at: new Date().toISOString() })
+        .eq("id", id);
+
+      await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Invoice created and marked as sent");
+      navigate(`/payments/invoices/${newInvoice.id}`);
+    } catch {
+      toast.error("Failed to create invoice");
+    } finally {
+      setMarkingAsSent(false);
+    }
+  };
+
+  const handleConvertToStripeInvoice = async () => {
+    if (estimate.is_finalized) {
+      toast.error("This estimate has already been converted to an invoice");
+      return;
+    }
+    setCreatingStripeInvoice(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("stripe-connect-invoice", {
+        body: {
+          estimateId: estimate.id,
+          customerEmail: estimate.customer?.email || undefined,
+          customerName: estimate.customer?.name || undefined,
+        },
+      });
+
+      if (error) {
+        const body = error.context?.body ?? error.body;
+        let msg = "Failed to create Stripe invoice";
+        if (body) {
+          try {
+            const parsed = typeof body === "string" ? JSON.parse(body) : body;
+            if (parsed?.error) msg = parsed.error;
+          } catch { /* use default */ }
+        }
+        toast.error(msg);
+        return;
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Stripe invoice created and sent to customer");
+      if (data?.invoiceId) {
+        navigate(`/payments/invoices/${data.invoiceId}`);
+      }
+    } catch {
+      toast.error("Failed to create Stripe invoice");
+    } finally {
+      setCreatingStripeInvoice(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -899,13 +999,22 @@ export default function EstimateDetail() {
               )}
               {!estimate.is_finalized && estimate.status === "accepted" && (
                 <>
-                  <Button variant="outline" className="flex-1 h-14 gap-2" onClick={handleSend}>
-                    <Send className="h-4 w-4" />
-                    Send
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-14 gap-2"
+                    onClick={handleMarkAsSent}
+                    disabled={markingAsSent || creatingStripeInvoice}
+                  >
+                    <FileCheck className="h-4 w-4" />
+                    {markingAsSent ? "Creating..." : "Mark as Sent"}
                   </Button>
-                  <Button className="flex-1 h-14 gap-2" onClick={handleConvertToInvoice}>
-                    <ArrowRightLeft className="h-4 w-4" />
-                    Convert to Invoice
+                  <Button
+                    className="flex-1 h-14 gap-2"
+                    onClick={handleConvertToStripeInvoice}
+                    disabled={creatingStripeInvoice || markingAsSent}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    {creatingStripeInvoice ? "Creating..." : "Stripe Invoice"}
                   </Button>
                 </>
               )}
