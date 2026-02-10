@@ -723,27 +723,18 @@ export default function JobDetail() {
 
         {activeTab === "photos" && id && (
           <div className="space-y-8">
-            {job?.is_estimate_visit && parentLeadId ? (
+            <PhotoSection
+              leadId={job?.is_estimate_visit && parentLeadId ? parentLeadId : id}
+              photoType="before"
+              title="Before Photos"
+              onJobConverted={handleJobConverted}
+            />
+            {!job?.is_estimate_visit && (
               <PhotoSection
-                leadId={parentLeadId}
-                photoType="before"
-                title="Before Photos"
-                onJobConverted={handleJobConverted}
+                leadId={id}
+                photoType="after"
+                title="After Photos"
               />
-            ) : (
-              <>
-                <PhotoSection
-                  leadId={id}
-                  photoType="before"
-                  title="Before Photos"
-                  onJobConverted={handleJobConverted}
-                />
-                <PhotoSection
-                  leadId={id}
-                  photoType="after"
-                  title="After Photos"
-                />
-              </>
             )}
           </div>
         )}
