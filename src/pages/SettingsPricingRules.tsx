@@ -43,9 +43,13 @@ export default function SettingsPricingRules() {
   const blocker = useUnsavedChanges(isDirty);
   const [rules, setRules] = useState<Record<ServiceType, PricingRule>>({} as Record<ServiceType, PricingRule>);
   const [activeTab, setActiveTab] = useState<ServiceType>("pavers");
+  const [taxRate, setTaxRate] = useState<string>("");
 
   useEffect(() => {
     fetchRules();
+    if (currentAccount) {
+      setTaxRate(String(currentAccount.default_tax_rate ?? 8));
+    }
   }, [user?.id, currentAccount?.id]);
 
   const fetchRules = async () => {
@@ -100,6 +104,14 @@ export default function SettingsPricingRules() {
     setSaving(true);
 
     try {
+      const parsedTax = parseFloat(taxRate) || 0;
+      const { error: taxError } = await supabase
+        .from("accounts")
+        .update({ default_tax_rate: parsedTax })
+        .eq("id", currentAccount.id);
+
+      if (taxError) throw taxError;
+
       for (const serviceType of Object.keys(rules) as ServiceType[]) {
         const rule = rules[serviceType];
 
@@ -194,6 +206,32 @@ export default function SettingsPricingRules() {
                   Set your labor and material rates per unit. Quick Estimate will automatically 
                   calculate ranges including waste, overhead, and profit margin.
                 </p>
+              </div>
+            </div>
+
+            {/* Tax Rate */}
+            <div className="card-elevated rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">Default Tax Rate</h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Applied automatically to new estimates
+                  </p>
+                </div>
+                <div className="relative w-28">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={taxRate}
+                    onChange={(e) => {
+                      setTaxRate(e.target.value);
+                      setIsDirty(true);
+                    }}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                </div>
               </div>
             </div>
 

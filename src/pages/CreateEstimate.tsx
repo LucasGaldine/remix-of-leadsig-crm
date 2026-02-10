@@ -46,7 +46,9 @@ export default function CreateEstimate() {
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState("");
-  const [taxRate, setTaxRate] = useState("8.00");
+  const [taxRate, setTaxRate] = useState(
+    String(currentAccount?.default_tax_rate ?? 8)
+  );
   const [discount, setDiscount] = useState("0");
   const [notes, setNotes] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
