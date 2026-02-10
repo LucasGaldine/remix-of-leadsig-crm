@@ -42,6 +42,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { OtherPaymentOptionsModal } from "@/components/payments/OtherPaymentOptionsModal";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -82,6 +83,8 @@ export default function EstimateDetail() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [markingAsSent, setMarkingAsSent] = useState(false);
   const [creatingStripeInvoice, setCreatingStripeInvoice] = useState(false);
+  const [showPaymentOptions, setShowPaymentOptions] = useState(false);
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   if (isLoading) {
     return (
@@ -236,6 +239,7 @@ export default function EstimateDetail() {
       await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      setShowPaymentOptions(false);
       toast.success("Invoice created and marked as sent");
     } catch {
       toast.error("Failed to create invoice");
@@ -280,6 +284,87 @@ export default function EstimateDetail() {
       toast.error("Failed to create Stripe invoice");
     } finally {
       setCreatingStripeInvoice(false);
+    }
+  };
+
+  const handleRecordPayment = async (method: "cash" | "check" | "ach", amount: number) => {
+    if (estimate.is_finalized) {
+      toast.error("This estimate has already been converted to an invoice");
+      return;
+    }
+    setRecordingPayment(true);
+    try {
+      const activeLineItems = estimate.line_items.filter(
+        (item: any) => !item.is_change_order || item.change_order_type !== "deleted"
+      );
+
+      const user = (await supabase.auth.getUser()).data.user;
+
+      const { data: newInvoice, error: invoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          customer_id: estimate.customer?.id,
+          lead_id: estimate.job?.id,
+          estimate_id: estimate.id,
+          subtotal: estimate.subtotal,
+          tax_rate: estimate.tax_rate,
+          tax: estimate.tax,
+          discount: estimate.discount,
+          total: estimate.total,
+          balance_due: 0,
+          notes: estimate.notes,
+          status: "paid",
+          sent_at: new Date().toISOString(),
+          paid_at: new Date().toISOString(),
+          due_date: new Date().toISOString().split("T")[0],
+          created_by: user?.id,
+          account_id: estimate.account_id,
+        })
+        .select("id")
+        .single();
+
+      if (invoiceError) throw invoiceError;
+
+      for (const item of activeLineItems) {
+        await supabase.from("invoice_line_items").insert({
+          invoice_id: newInvoice.id,
+          name: item.name,
+          description: item.description || null,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total: item.total,
+          sort_order: item.sort_order || 0,
+          account_id: estimate.account_id,
+        });
+      }
+
+      await supabase.from("payments").insert({
+        invoice_id: newInvoice.id,
+        customer_id: estimate.customer?.id,
+        lead_id: estimate.job?.id,
+        amount,
+        method,
+        status: "completed",
+        processed_by: user?.id,
+        account_id: estimate.account_id,
+      });
+
+      await supabase
+        .from("estimates")
+        .update({ is_finalized: true, updated_at: new Date().toISOString() })
+        .eq("id", id);
+
+      await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      await queryClient.invalidateQueries({ queryKey: ["payments"] });
+      setShowPaymentOptions(false);
+      toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${amount.toLocaleString()} recorded`);
+    } catch {
+      toast.error("Failed to record payment");
+    } finally {
+      setRecordingPayment(false);
     }
   };
 
@@ -998,16 +1083,16 @@ export default function EstimateDetail() {
                   <Button
                     variant="outline"
                     className="flex-1 h-14 gap-2"
-                    onClick={handleMarkAsSent}
-                    disabled={markingAsSent || creatingStripeInvoice}
+                    onClick={() => setShowPaymentOptions(true)}
+                    disabled={markingAsSent || creatingStripeInvoice || recordingPayment}
                   >
                     <FileCheck className="h-4 w-4" />
-                    {markingAsSent ? "Creating..." : "Mark as Sent"}
+                    Other Payment Options
                   </Button>
                   <Button
                     className="flex-1 h-14 gap-2"
                     onClick={handleConvertToStripeInvoice}
-                    disabled={creatingStripeInvoice || markingAsSent}
+                    disabled={creatingStripeInvoice || markingAsSent || recordingPayment}
                   >
                     <CreditCard className="h-4 w-4" />
                     {creatingStripeInvoice ? "Creating..." : "Stripe Invoice"}
@@ -1059,6 +1144,16 @@ export default function EstimateDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <OtherPaymentOptionsModal
+        open={showPaymentOptions}
+        onOpenChange={setShowPaymentOptions}
+        estimateTotal={Number(estimate.total)}
+        onMarkAsSent={handleMarkAsSent}
+        onRecordPayment={handleRecordPayment}
+        markingAsSent={markingAsSent}
+        recordingPayment={recordingPayment}
+      />
 
       <MobileNav />
     </div>

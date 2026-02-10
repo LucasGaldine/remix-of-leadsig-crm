@@ -44,6 +44,7 @@ export default function Payments() {
     .reduce((sum, e) => sum + Number(e.total || 0), 0);
 
   const filteredEstimates = allEstimates.filter(e => {
+    if (e.is_finalized) return false;
     const customerName = e.customer?.name || "";
     const jobName = e.job?.name || "";
     return (
