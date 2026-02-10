@@ -99,7 +99,7 @@ export function fbLogin(): Promise<FbLoginResult> {
   },
   {
     scope: FB_SCOPES,
-    auth_type: "rerequest",
+    auth_type: "reauthorize",
     return_scopes: true, // 🔴 IMPORTANT
   }
 );
