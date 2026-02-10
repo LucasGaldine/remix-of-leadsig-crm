@@ -32,16 +32,6 @@ async function getLongLivedUserToken(
   return data.access_token;
 }
 
-async function getFbUserId(accessToken: string): Promise<string> {
-  const url = `${FB_GRAPH_BASE}/me?fields=id&access_token=${accessToken}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) {
-    throw new Error(data.error.message || "Failed to get Facebook user ID");
-  }
-  return data.id;
-}
-
 async function validatePageToken(
   pageId: string,
   pageToken: string
@@ -72,14 +62,13 @@ async function getPageTokenFromUser(
 
 async function getUserPages(
   userToken: string,
-  fbUserId?: string
+  fbUserId: string
 ): Promise<Array<{ id: string; name: string; access_token: string }>> {
-  const endpoint = fbUserId ? `${fbUserId}/accounts` : "me/accounts";
-  const url = `${FB_GRAPH_BASE}/${endpoint}?access_token=${userToken}&fields=id,name,access_token&limit=100`;
-  console.log(`getUserPages calling: ${endpoint}`);
+  const url = `${FB_GRAPH_BASE}/${fbUserId}/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`;
+  console.log(`getUserPages calling: ${fbUserId}/accounts`);
   const res = await fetch(url);
   const data = await res.json();
-  console.log("getUserPages raw response:", JSON.stringify({ endpoint, dataLength: data.data?.length, error: data.error, paging: data.paging }));
+  console.log("getUserPages raw response:", JSON.stringify({ fbUserId, dataLength: data.data?.length, error: data.error, paging: data.paging }));
   if (data.error) {
     console.log("getUserPages error:", JSON.stringify(data.error));
     return [];
@@ -179,16 +168,15 @@ Deno.serve(async (req) => {
 async function handleListPages(
   supabase: ReturnType<typeof createClient>,
   userId: string,
-  body: { accessToken: string; fbUserId?: string; nonce: string; accountId: string },
+  body: { accessToken: string; fbUserId: string; nonce: string; accountId: string },
   appId: string,
   appSecret: string
 ) {
-  const { accessToken, nonce } = body;
-  let { fbUserId } = body;
+  const { accessToken, nonce, fbUserId } = body;
 
-  if (!accessToken || !nonce) {
+  if (!accessToken || !nonce || !fbUserId) {
     return new Response(
-      JSON.stringify({ error: "accessToken and nonce are required" }),
+      JSON.stringify({ error: "accessToken, fbUserId, and nonce are required" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -212,44 +200,16 @@ async function handleListPages(
 
   const debugInfo = await getTokenDebugInfo(accessToken, appId, appSecret);
   console.log("Token debug info:", JSON.stringify(debugInfo));
-
-  if (!fbUserId) {
-    try {
-      fbUserId = await getFbUserId(accessToken);
-      console.log("Resolved FB user ID from /me:", fbUserId);
-    } catch (e) {
-      console.warn("Failed to get FB user ID:", e);
-    }
-  }
-
   console.log("Using FB user ID for accounts lookup:", fbUserId);
 
   let pages = await getUserPages(accessToken, fbUserId);
   console.log("Pages from short-lived token:", pages.length);
 
   if (pages.length === 0) {
-    pages = await getUserPages(accessToken);
-    console.log("Pages from /me/accounts fallback:", pages.length);
-  }
-
-  if (pages.length === 0) {
     const longLivedToken = await getLongLivedUserToken(accessToken, appId, appSecret);
 
-    let llFbUserId: string | undefined;
-    try {
-      llFbUserId = await getFbUserId(longLivedToken);
-      console.log("Long-lived token FB user ID:", llFbUserId);
-    } catch (e) {
-      console.warn("Failed to get FB user ID from long-lived token:", e);
-    }
-
-    pages = await getUserPages(longLivedToken, llFbUserId || fbUserId);
-    console.log("Pages from long-lived token with userId:", pages.length);
-
-    if (pages.length === 0) {
-      pages = await getUserPages(longLivedToken);
-      console.log("Pages from long-lived /me/accounts:", pages.length);
-    }
+    pages = await getUserPages(longLivedToken, fbUserId);
+    console.log("Pages from long-lived token:", pages.length);
 
     if (pages.length > 0) {
       await supabase
@@ -269,7 +229,7 @@ async function handleListPages(
       JSON.stringify({
         error: "No Facebook Pages found. Your token has these scopes: " +
           JSON.stringify((debugInfo as Record<string, unknown>)?.scopes || []) +
-          ". FB User ID: " + (fbUserId || "unknown") +
+          ". FB User ID: " + fbUserId +
           ". Please ensure you have admin access to a Facebook Page and that you selected pages to share during Facebook login.",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -300,7 +260,7 @@ async function handleConnect(
   appId: string,
   appSecret: string
 ) {
-  const { accessToken, nonce, pageId, pageName, pageAccessToken, accountId } = body;
+  const { accessToken, nonce, pageId, pageName, pageAccessToken, accountId, fbUserId } = body;
 
   if (!accessToken || !nonce || !pageId || !pageName || !pageAccessToken || !accountId) {
     return new Response(
@@ -348,12 +308,7 @@ async function handleConnect(
     }
   }
 
-  if (!finalPageToken) {
-    let fbUserId: string | undefined;
-    try {
-      fbUserId = await getFbUserId(longLivedToken);
-    } catch (_e) { /* ignore */ }
-
+  if (!finalPageToken && fbUserId) {
     const pages = await getUserPages(longLivedToken, fbUserId);
     const match = pages.find((p) => p.id === pageId);
     if (match?.access_token) {
