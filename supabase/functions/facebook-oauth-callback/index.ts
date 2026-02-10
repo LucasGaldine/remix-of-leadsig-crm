@@ -32,25 +32,30 @@ async function getLongLivedUserToken(
   return data.access_token;
 }
 
+async function getPageToken(
+  pageId: string,
+  userToken: string
+): Promise<string | null> {
+  const url = `${FB_GRAPH_BASE}/${pageId}?fields=access_token&access_token=${userToken}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.error) {
+    console.log("getPageToken error:", JSON.stringify(data.error));
+    return null;
+  }
+  return data.access_token || null;
+}
+
 async function getUserPages(
   userToken: string
 ): Promise<Array<{ id: string; name: string; access_token: string }>> {
-  const url = `${FB_GRAPH_BASE}/me/accounts?access_token=${userToken}&fields=id,name,access_token`;
+  const url = `${FB_GRAPH_BASE}/me/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`;
   const res = await fetch(url);
   const data = await res.json();
-  console.log("getUserPages response:", JSON.stringify({ data: data.data?.length, error: data.error }));
   if (data.error) {
-    throw new Error(data.error.message || "Failed to get pages");
+    console.log("getUserPages error:", JSON.stringify(data.error));
+    return [];
   }
-  return data.data || [];
-}
-
-async function getTokenPermissions(
-  userToken: string
-): Promise<Array<{ permission: string; status: string }>> {
-  const url = `${FB_GRAPH_BASE}/me/permissions?access_token=${userToken}`;
-  const res = await fetch(url);
-  const data = await res.json();
   return data.data || [];
 }
 
@@ -114,12 +119,79 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
+    const { accessToken, nonce, pageId, pageName, pageAccessToken, accountId } = body;
 
-    if (body.action === "select_page") {
-      return await handlePageSelection(supabase, user.id, body);
+    if (!accessToken || !nonce || !pageId || !pageName || !pageAccessToken || !accountId) {
+      return new Response(
+        JSON.stringify({ error: "accessToken, nonce, pageId, pageName, pageAccessToken, and accountId are required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
-    return await handleTokenExchange(supabase, user.id, body, appId, appSecret);
+    const { data: connection } = await supabase
+      .from("lead_source_connections")
+      .select("id, settings_json")
+      .eq("user_id", user.id)
+      .eq("platform", "facebook")
+      .maybeSingle();
+
+    if (
+      !connection ||
+      (connection.settings_json as Record<string, string>)?.oauth_nonce !== nonce
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Invalid or expired OAuth state" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const longLivedToken = await getLongLivedUserToken(accessToken, appId, appSecret);
+
+    let finalPageToken: string | null = null;
+
+    finalPageToken = await getPageToken(pageId, longLivedToken);
+
+    if (!finalPageToken) {
+      const pages = await getUserPages(longLivedToken);
+      const match = pages.find((p) => p.id === pageId);
+      finalPageToken = match?.access_token || null;
+    }
+
+    if (!finalPageToken) {
+      console.log("Using client-provided page token as fallback");
+      finalPageToken = pageAccessToken;
+    }
+
+    await subscribePage(pageId, finalPageToken);
+
+    await supabase
+      .from("lead_source_connections")
+      .update({
+        status: "connected",
+        connected_at: new Date().toISOString(),
+        connection_method: "oauth",
+        account_id: accountId,
+        settings_json: {
+          page_id: pageId,
+          page_name: pageName,
+          page_access_token: finalPageToken,
+        },
+      })
+      .eq("id", connection.id);
+
+    return new Response(
+      JSON.stringify({ success: true }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
     console.error("facebook-oauth-callback error:", error);
     const message =
@@ -130,197 +202,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-
-async function handleTokenExchange(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  body: { accessToken: string; nonce: string },
-  appId: string,
-  appSecret: string
-) {
-  const { accessToken, nonce } = body;
-  if (!accessToken || !nonce) {
-    return new Response(
-      JSON.stringify({ error: "accessToken and nonce are required" }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  const { data: connection } = await supabase
-    .from("lead_source_connections")
-    .select("id, settings_json")
-    .eq("user_id", userId)
-    .eq("platform", "facebook")
-    .maybeSingle();
-
-  if (
-    !connection ||
-    (connection.settings_json as Record<string, string>)?.oauth_nonce !== nonce
-  ) {
-    return new Response(
-      JSON.stringify({ error: "Invalid or expired OAuth state" }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  let pages = await getUserPages(accessToken);
-  console.log("Pages from short-lived token:", pages.length);
-
-  const longLivedToken = await getLongLivedUserToken(
-    accessToken,
-    appId,
-    appSecret
-  );
-
-  if (pages.length === 0) {
-    pages = await getUserPages(longLivedToken);
-    console.log("Pages from long-lived token:", pages.length);
-  }
-
-  if (pages.length === 0) {
-    const permissions = await getTokenPermissions(longLivedToken);
-    console.log("Token permissions:", JSON.stringify(permissions));
-    const grantedPerms = permissions
-      .filter((p) => p.status === "granted")
-      .map((p) => p.permission);
-    const missingScopes = ["pages_show_list", "pages_read_engagement", "leads_retrieval"]
-      .filter((s) => !grantedPerms.includes(s));
-
-    await supabase
-      .from("lead_source_connections")
-      .update({
-        settings_json: {
-          user_access_token: longLivedToken,
-          oauth_nonce: null,
-        },
-      })
-      .eq("id", connection.id);
-
-    const detail = missingScopes.length > 0
-      ? `Missing permissions: ${missingScopes.join(", ")}. Please remove LeadSig CRM from Facebook (Settings > Business Integrations) and try again.`
-      : "Your Facebook account has no Pages with admin access, or the pages could not be retrieved.";
-
-    return new Response(
-      JSON.stringify({ success: false, error: detail }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  const pageTokenMap: Record<string, string> = {};
-  for (const p of pages) {
-    pageTokenMap[p.id] = p.access_token;
-  }
-
-  await supabase
-    .from("lead_source_connections")
-    .update({
-      settings_json: {
-        user_access_token: longLivedToken,
-        page_tokens: pageTokenMap,
-        oauth_nonce: null,
-      },
-    })
-    .eq("id", connection.id);
-
-  return new Response(
-    JSON.stringify({
-      success: true,
-      pages: pages.map((p) => ({ id: p.id, name: p.name })),
-    }),
-    {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    }
-  );
-}
-
-async function handlePageSelection(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  body: { action: string; pageId: string; pageName: string; accountId: string }
-) {
-  const { pageId, pageName, accountId } = body;
-  if (!pageId || !pageName || !accountId) {
-    return new Response(
-      JSON.stringify({
-        error: "pageId, pageName, and accountId are required",
-      }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  const { data: connection, error: connError } = await supabase
-    .from("lead_source_connections")
-    .select("id, settings_json")
-    .eq("user_id", userId)
-    .eq("platform", "facebook")
-    .maybeSingle();
-
-  if (connError || !connection) {
-    return new Response(
-      JSON.stringify({ error: "No Facebook connection found" }),
-      {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  const settings = connection.settings_json as Record<string, unknown>;
-  const pageTokens = settings?.page_tokens as Record<string, string> | undefined;
-  const userToken = settings?.user_access_token as string | undefined;
-
-  let pageAccessToken = pageTokens?.[pageId];
-
-  if (!pageAccessToken && userToken) {
-    const pages = await getUserPages(userToken);
-    const selectedPage = pages.find((p) => p.id === pageId);
-    pageAccessToken = selectedPage?.access_token;
-  }
-
-  if (!pageAccessToken) {
-    return new Response(
-      JSON.stringify({
-        error: "Page not found or you don't have access to it. Please restart the connection process.",
-      }),
-      {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  }
-
-  await subscribePage(pageId, pageAccessToken);
-
-  await supabase
-    .from("lead_source_connections")
-    .update({
-      status: "connected",
-      connected_at: new Date().toISOString(),
-      connection_method: "oauth",
-      account_id: accountId,
-      settings_json: {
-        page_id: pageId,
-        page_name: pageName,
-        page_access_token: pageAccessToken,
-      },
-    })
-    .eq("id", connection.id);
-
-  return new Response(JSON.stringify({ success: true }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}

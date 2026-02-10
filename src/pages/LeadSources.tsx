@@ -7,7 +7,8 @@ import { PlanGate } from "@/components/features/PlanGate";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { loadFacebookSdk, fbLogin } from "@/lib/facebookSdk";
+import { loadFacebookSdk, fbLogin, fbGetPages } from "@/lib/facebookSdk";
+import type { FbPage } from "@/lib/facebookSdk";
 import {
   Dialog,
   DialogContent,
@@ -254,12 +255,16 @@ export default function LeadSources() {
 
   const [fbPageDialog, setFbPageDialog] = useState<{
     open: boolean;
-    pages: Array<{ id: string; name: string }>;
+    pages: FbPage[];
     selecting: boolean;
+    accessToken: string | null;
+    nonce: string | null;
   }>({
     open: false,
     pages: [],
     selecting: false,
+    accessToken: null,
+    nonce: null,
   });
 
   const handleConnect = async (platform: PlatformInfo) => {
@@ -313,29 +318,21 @@ export default function LeadSources() {
       await loadFacebookSdk(data.appId);
       const accessToken = await fbLogin();
 
-      const { data: cbData, error: cbError } = await supabase.functions.invoke(
-        "facebook-oauth-callback",
-        {
-          body: { accessToken, nonce: data.nonce },
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        }
-      );
+      const pages = await fbGetPages();
 
-      if (cbError) throw cbError;
-
-      if (!cbData?.success) {
-        throw new Error(cbData?.error || "Failed to complete authorization");
-      }
-
-      if (cbData.pages && cbData.pages.length > 0) {
-        setFbPageDialog({ open: true, pages: cbData.pages, selecting: false });
-      } else {
+      if (pages.length === 0) {
         throw new Error(
           "No Facebook Pages found. You need at least one Facebook Page with admin access."
         );
       }
+
+      setFbPageDialog({
+        open: true,
+        pages,
+        selecting: false,
+        accessToken,
+        nonce: data.nonce,
+      });
     } catch (err) {
       console.error("Facebook connect error:", err);
       toast.error(
@@ -346,19 +343,27 @@ export default function LeadSources() {
     }
   };
 
-  const handleSelectFbPage = async (page: { id: string; name: string }) => {
-    if (!currentAccount) return;
+  const handleSelectFbPage = async (page: FbPage) => {
+    if (!currentAccount || !fbPageDialog.accessToken || !fbPageDialog.nonce) return;
 
     setFbPageDialog((prev) => ({ ...prev, selecting: true }));
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Please sign in again");
+
       const { data, error } = await supabase.functions.invoke(
         "facebook-oauth-callback",
         {
           body: {
-            action: "select_page",
+            accessToken: fbPageDialog.accessToken,
+            nonce: fbPageDialog.nonce,
             pageId: page.id,
             pageName: page.name,
+            pageAccessToken: page.access_token,
             accountId: currentAccount.id,
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
           },
         }
       );
@@ -369,7 +374,7 @@ export default function LeadSources() {
         throw new Error(data?.error || "Failed to connect page");
       }
 
-      setFbPageDialog({ open: false, pages: [], selecting: false });
+      setFbPageDialog({ open: false, pages: [], selecting: false, accessToken: null, nonce: null });
       toast.success("Facebook Page connected!");
       fetchData();
     } catch (err) {
@@ -1300,7 +1305,7 @@ export default function LeadSources() {
         open={fbPageDialog.open}
         onOpenChange={(open) => {
           if (!open && !fbPageDialog.selecting) {
-            setFbPageDialog({ open: false, pages: [], selecting: false });
+            setFbPageDialog({ open: false, pages: [], selecting: false, accessToken: null, nonce: null });
           }
         }}
       >
@@ -1343,7 +1348,7 @@ export default function LeadSources() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setFbPageDialog({ open: false, pages: [], selecting: false })}
+              onClick={() => setFbPageDialog({ open: false, pages: [], selecting: false, accessToken: null, nonce: null })}
               disabled={fbPageDialog.selecting}
             >
               Cancel

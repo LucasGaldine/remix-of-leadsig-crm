@@ -6,10 +6,22 @@ declare global {
         callback: (response: { authResponse?: { accessToken: string; userID: string } | null; status: string }) => void,
         options?: { scope: string; auth_type?: string }
       ) => void;
+      api: (
+        path: string,
+        method: string,
+        params: Record<string, string>,
+        callback: (response: { data?: Array<{ id: string; name: string; access_token: string }>; error?: { message: string } }) => void
+      ) => void;
       getLoginStatus: (callback: (response: { status: string; authResponse?: { accessToken: string } | null }) => void) => void;
     };
     fbAsyncInit: () => void;
   }
+}
+
+export interface FbPage {
+  id: string;
+  name: string;
+  access_token: string;
 }
 
 const FB_VERSION = "v21.0";
@@ -69,6 +81,28 @@ export function fbLogin(): Promise<string> {
         }
       },
       { scope: FB_SCOPES, auth_type: "rerequest" }
+    );
+  });
+}
+
+export function fbGetPages(): Promise<FbPage[]> {
+  return new Promise((resolve, reject) => {
+    if (!window.FB) {
+      reject(new Error("Facebook SDK not loaded"));
+      return;
+    }
+
+    window.FB.api(
+      "/me/accounts",
+      "GET",
+      { fields: "id,name,access_token" },
+      (response) => {
+        if (response.error) {
+          reject(new Error(response.error.message || "Failed to get Facebook pages"));
+          return;
+        }
+        resolve(response.data || []);
+      }
     );
   });
 }
