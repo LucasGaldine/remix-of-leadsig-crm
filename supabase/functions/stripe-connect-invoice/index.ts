@@ -128,6 +128,7 @@ Deno.serve(async (req: Request) => {
       collection_method: "send_invoice",
       days_until_due: 30,
       auto_advance: true,
+      pending_invoice_items_behavior: "include",
       metadata: {
         estimate_id: estimateId,
         account_id: membership.account_id,
