@@ -82,6 +82,7 @@ export interface PortalData {
   job: JobData;
   company: CompanyData;
   schedules: ScheduleItem[];
+  estimate_visit_schedules: ScheduleItem[];
   estimate: EstimateData | null;
   photos: { before: PhotoItem[]; after: PhotoItem[] };
   activity: ActivityItem[];
@@ -159,7 +160,7 @@ export default function ClientJobPortal() {
 
   if (!data) return null;
 
-  const { job, company, schedules, estimate, photos, activity } = data;
+  const { job, company, schedules, estimate_visit_schedules, estimate, photos, activity } = data;
 
   const statusLabel = getStatusLabel(job.status, schedules);
   const statusColor = getStatusColor(job.status, schedules);
@@ -175,8 +176,11 @@ export default function ClientJobPortal() {
           statusColor={statusColor}
         />
 
-        {schedules.length > 0 && (
-          <ClientPortalSchedule schedules={schedules} />
+        {(schedules.length > 0 || estimate_visit_schedules?.length > 0) && (
+          <ClientPortalSchedule
+            schedules={schedules}
+            estimateVisitSchedules={estimate_visit_schedules}
+          />
         )}
 
         {estimate && (

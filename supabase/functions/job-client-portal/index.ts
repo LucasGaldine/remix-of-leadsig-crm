@@ -43,6 +43,7 @@ Deno.serve(async (req: Request) => {
         description,
         actual_value,
         is_estimate_visit,
+        estimate_job_id,
         account_id,
         created_at,
         updated_at,
@@ -184,6 +185,16 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    let estimateVisitSchedules: any[] = [];
+    if (job.estimate_job_id) {
+      const { data: evSchedules } = await supabase
+        .from("job_schedules")
+        .select("scheduled_date, scheduled_time_start, scheduled_time_end, is_completed")
+        .eq("lead_id", job.estimate_job_id)
+        .order("scheduled_date", { ascending: true });
+      estimateVisitSchedules = evSchedules || [];
+    }
+
     const buildPhotoUrls = (photos: any[] | null) =>
       (photos || []).map((p: any) => ({
         id: p.id,
@@ -235,6 +246,12 @@ Deno.serve(async (req: Request) => {
         before: buildPhotoUrls(beforePhotos),
         after: buildPhotoUrls(afterPhotos),
       },
+      estimate_visit_schedules: estimateVisitSchedules.map((s: any) => ({
+        scheduled_date: s.scheduled_date,
+        scheduled_time_start: s.scheduled_time_start,
+        scheduled_time_end: s.scheduled_time_end,
+        is_completed: s.is_completed,
+      })),
       activity: (interactions || []).map((i: any) => ({
         type: i.type,
         summary: i.summary,
