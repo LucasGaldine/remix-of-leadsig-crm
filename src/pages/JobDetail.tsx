@@ -36,6 +36,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { JobAssignments } from "@/components/jobs/JobAssignments";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useBusinessHours } from "@/hooks/useBusinessHours";
 import { isOutsideBusinessHours } from "@/lib/businessHours";
@@ -70,6 +71,7 @@ export default function JobDetail() {
     customer_email: "",
   });
 
+  const queryClient = useQueryClient();
   const { data: job, isLoading, error } = useJob(id);
   const { data: schedules = [], isLoading: schedulesLoading } = useJobSchedules(id);
   const { businessHours } = useBusinessHours();
@@ -94,6 +96,13 @@ export default function JobDetail() {
       fetchNotes();
     }
   }, [id]);
+
+  const handleJobConverted = () => {
+    queryClient.invalidateQueries({ queryKey: ["job", id] });
+    queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    queryClient.invalidateQueries({ queryKey: ["leads"] });
+    toast.success("Photos uploaded and lead has been converted to a job!");
+  };
 
   const fetchParentLead = async () => {
     if (!id) return;
@@ -709,6 +718,7 @@ export default function JobDetail() {
                 leadId={parentLeadId}
                 photoType="before"
                 title="Before Photos"
+                onJobConverted={handleJobConverted}
               />
             ) : (
               <>
@@ -716,6 +726,7 @@ export default function JobDetail() {
                   leadId={id}
                   photoType="before"
                   title="Before Photos"
+                  onJobConverted={handleJobConverted}
                 />
                 <PhotoSection
                   leadId={id}

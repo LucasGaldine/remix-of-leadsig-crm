@@ -116,9 +116,21 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
 
       await fetchPhotos();
       toast.success("Photos uploaded");
+
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("status")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      if (lead?.status === "job") {
+        return { converted: true };
+      }
+      return { converted: false };
     } catch (err) {
       console.error("Upload error:", err);
       toast.error("An error occurred while uploading");
+      return { converted: false };
     } finally {
       setIsUploading(false);
     }

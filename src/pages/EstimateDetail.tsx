@@ -1148,7 +1148,7 @@ export default function EstimateDetail() {
       <OtherPaymentOptionsModal
         open={showPaymentOptions}
         onOpenChange={setShowPaymentOptions}
-        estimateTotal={Number(estimate.total)}
+        totalAmount={Number(estimate.total)}
         onMarkAsSent={handleMarkAsSent}
         onRecordPayment={handleRecordPayment}
         markingAsSent={markingAsSent}

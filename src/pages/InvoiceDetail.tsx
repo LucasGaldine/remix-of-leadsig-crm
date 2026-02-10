@@ -9,10 +9,6 @@ import {
   User,
   Calendar,
   ChevronRight,
-  DollarSign,
-  Check,
-  Loader2,
-  AlertTriangle,
   ExternalLink,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -20,8 +16,10 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { InvoiceStatus } from "@/types/payments";
-import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { useInvoice } from "@/hooks/useInvoices";
+import { OtherPaymentOptionsModal, type PaymentOption } from "@/components/payments/OtherPaymentOptionsModal";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -37,9 +35,10 @@ const statusConfig: Record<InvoiceStatus, { label: string; className: string }> 
 export default function InvoiceDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: invoice, isLoading } = useInvoice(id);
-  const [sendingPayLink, setSendingPayLink] = useState(false);
-  const { isReady: stripeReady, createPaymentSession, startOnboarding } = useStripeConnect();
+  const [showChargeOptions, setShowChargeOptions] = useState(false);
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   if (isLoading) {
     return (
@@ -81,33 +80,6 @@ export default function InvoiceDetail() {
     toast.info("Send functionality coming soon");
   };
 
-  const handleChargeNow = async () => {
-    if (!stripeReady) {
-      navigate("/payments/charge", { state: { invoice } });
-      return;
-    }
-
-    setSendingPayLink(true);
-    try {
-      const result = await createPaymentSession({
-        amount: balanceDue,
-        invoiceId: invoice.id,
-        customerId: invoice.customer_id,
-        customerEmail: (invoice.customer as any)?.email || "",
-        customerName: invoice.customer?.name || "",
-        description: `Invoice for ${invoice.job?.name || "services"}`,
-        jobId: invoice.lead_id || undefined,
-      });
-
-      if (result?.url) {
-        window.open(result.url, "_blank");
-        toast.success("Payment page opened");
-      }
-    } finally {
-      setSendingPayLink(false);
-    }
-  };
-
   const handleCopyPayLink = () => {
     const payLink = `${window.location.origin}/pay/invoice/${invoice.id}`;
     navigator.clipboard.writeText(payLink);
@@ -118,8 +90,46 @@ export default function InvoiceDetail() {
     navigate("/payments/invoices/new", { state: { duplicate: invoice } });
   };
 
+  const handleRecordPayment = async (method: PaymentOption, amount: number) => {
+    setRecordingPayment(true);
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+
+      await supabase.from("payments").insert({
+        invoice_id: invoice.id,
+        customer_id: invoice.customer_id,
+        lead_id: invoice.lead_id,
+        amount,
+        method,
+        status: "completed",
+        processed_by: user?.id,
+        account_id: invoice.account_id,
+      });
+
+      const newBalance = Math.max(0, balanceDue - amount);
+      await supabase
+        .from("invoices")
+        .update({
+          balance_due: newBalance,
+          status: newBalance <= 0 ? "paid" : "partial",
+          ...(newBalance <= 0 ? { paid_at: new Date().toISOString() } : {}),
+        })
+        .eq("id", invoice.id);
+
+      await queryClient.invalidateQueries({ queryKey: ["invoice", id] });
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      await queryClient.invalidateQueries({ queryKey: ["payments"] });
+      setShowChargeOptions(false);
+      toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${amount.toLocaleString()} recorded`);
+    } catch {
+      toast.error("Failed to record payment");
+    } finally {
+      setRecordingPayment(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-surface-sunken pb-32">
+    <div className="min-h-screen bg-surface-sunken pb-48">
       <PageHeader title="Invoice" showBack backTo="/payments" />
 
       <div className="bg-card border-b border-border px-4 py-4">
@@ -283,7 +293,7 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
+      <div className="fixed bottom-[4.5rem] left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
         <div className="flex gap-3">
           <Button variant="outline" className="flex-1 h-14 gap-2" onClick={handleSend}>
             <Send className="h-4 w-4" />
@@ -292,32 +302,22 @@ export default function InvoiceDetail() {
           {hasBalance && (
             <Button
               className="flex-1 h-14 gap-2"
-              onClick={handleChargeNow}
-              disabled={sendingPayLink}
+              onClick={() => setShowChargeOptions(true)}
             >
-              {sendingPayLink ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : stripeReady ? (
-                <CreditCard className="h-4 w-4" />
-              ) : (
-                <AlertTriangle className="h-4 w-4" />
-              )}
+              <CreditCard className="h-4 w-4" />
               Charge Now
             </Button>
           )}
         </div>
-        {hasBalance && !stripeReady && (
-          <p className="text-xs text-center text-muted-foreground mt-2">
-            <button
-              className="text-primary hover:underline"
-              onClick={() => startOnboarding()}
-            >
-              Connect Stripe
-            </button>
-            {" "}to accept card payments
-          </p>
-        )}
       </div>
+
+      <OtherPaymentOptionsModal
+        open={showChargeOptions}
+        onOpenChange={setShowChargeOptions}
+        totalAmount={balanceDue}
+        onRecordPayment={handleRecordPayment}
+        recordingPayment={recordingPayment}
+      />
 
       <MobileNav />
     </div>

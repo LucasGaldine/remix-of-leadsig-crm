@@ -11,15 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-type PaymentOption = "cash" | "check" | "ach";
+export type PaymentOption = "cash" | "check" | "ach";
 
 interface OtherPaymentOptionsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  estimateTotal: number;
-  onMarkAsSent: () => Promise<void>;
+  totalAmount: number;
+  onMarkAsSent?: () => Promise<void>;
   onRecordPayment: (method: PaymentOption, amount: number) => Promise<void>;
-  markingAsSent: boolean;
+  markingAsSent?: boolean;
   recordingPayment: boolean;
 }
 
@@ -32,10 +32,10 @@ const paymentOptions: { id: PaymentOption; label: string; icon: typeof Banknote 
 export function OtherPaymentOptionsModal({
   open,
   onOpenChange,
-  estimateTotal,
+  totalAmount,
   onMarkAsSent,
   onRecordPayment,
-  markingAsSent,
+  markingAsSent = false,
   recordingPayment,
 }: OtherPaymentOptionsModalProps) {
   const [selectedMethod, setSelectedMethod] = useState<PaymentOption | null>(null);
@@ -51,7 +51,7 @@ export function OtherPaymentOptionsModal({
 
   const handleSelectMethod = (method: PaymentOption) => {
     setSelectedMethod(method);
-    setAmount(estimateTotal.toFixed(2));
+    setAmount(totalAmount.toFixed(2));
   };
 
   const handleBack = () => {
@@ -66,10 +66,6 @@ export function OtherPaymentOptionsModal({
     await onRecordPayment(selectedMethod, parsedAmount);
     setSelectedMethod(null);
     setAmount("");
-  };
-
-  const handleMarkAsSent = async () => {
-    await onMarkAsSent();
   };
 
   if (selectedMethod) {
@@ -130,25 +126,27 @@ export function OtherPaymentOptionsModal({
           <DialogTitle>Payment Options</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 pt-2">
-          <button
-            onClick={handleMarkAsSent}
-            disabled={busy}
-            className={cn(
-              "w-full flex items-center gap-3 p-4 rounded-lg border border-border text-left",
-              "hover:bg-secondary/50 transition-colors active:scale-[0.98]",
-              busy && "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <div className="p-2 rounded-lg bg-secondary">
-              <ArrowRightLeft className="h-5 w-5 text-secondary-foreground" />
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-foreground">
-                {markingAsSent ? "Creating Invoice..." : "Mark as Sent"}
-              </p>
-              <p className="text-sm text-muted-foreground">Convert to invoice</p>
-            </div>
-          </button>
+          {onMarkAsSent && (
+            <button
+              onClick={onMarkAsSent}
+              disabled={busy}
+              className={cn(
+                "w-full flex items-center gap-3 p-4 rounded-lg border border-border text-left",
+                "hover:bg-secondary/50 transition-colors active:scale-[0.98]",
+                busy && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <div className="p-2 rounded-lg bg-secondary">
+                <ArrowRightLeft className="h-5 w-5 text-secondary-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-foreground">
+                  {markingAsSent ? "Creating Invoice..." : "Mark as Sent"}
+                </p>
+                <p className="text-sm text-muted-foreground">Convert to invoice</p>
+              </div>
+            </button>
+          )}
 
           {paymentOptions.map((option) => (
             <button

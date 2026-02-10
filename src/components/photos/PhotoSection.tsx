@@ -22,9 +22,10 @@ interface PhotoSectionProps {
   photoType: "before" | "after";
   title: string;
   onPhotosChange?: (count: number) => void;
+  onJobConverted?: () => void;
 }
 
-export function PhotoSection({ leadId, photoType, title, onPhotosChange }: PhotoSectionProps) {
+export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobConverted }: PhotoSectionProps) {
   const { photos, isLoading, uploadPhotos, deletePhoto, remaining } =
     useLeadPhotos(leadId, photoType);
   const { currentAccount, role } = useAuth();
@@ -152,7 +153,12 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange }: Photo
       <AddPhotosModal
         open={addModalOpen}
         onOpenChange={setAddModalOpen}
-        onSave={uploadPhotos}
+        onSave={async (files) => {
+          const result = await uploadPhotos(files);
+          if (result?.converted) {
+            onJobConverted?.();
+          }
+        }}
         maxFiles={remaining}
         title={`Add ${title}`}
       />
