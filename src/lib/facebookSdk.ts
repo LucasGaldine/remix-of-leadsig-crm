@@ -78,18 +78,32 @@ export function fbLogin(): Promise<FbLoginResult> {
     }
 
     window.FB.login(
-      (response) => {
-        if (response.authResponse?.accessToken && response.authResponse?.userID) {
-          resolve({
-            accessToken: response.authResponse.accessToken,
-            userId: response.authResponse.userID,
-          });
-        } else {
-          reject(new Error("Facebook login was cancelled or failed"));
-        }
-      },
-      { scope: FB_SCOPES, auth_type: "rerequest" }
-    );
+  (response) => {
+    console.log("FB.login response:", response);
+
+    if (response.authResponse?.accessToken && response.authResponse?.userID) {
+      window.FB.api(
+        "/me/accounts",
+        "GET",
+        {},
+        (res) => console.log("CLIENT /me/accounts:", res)
+      );
+
+      resolve({
+        accessToken: response.authResponse.accessToken,
+        userId: response.authResponse.userID,
+      });
+    } else {
+      reject(new Error("Facebook login was cancelled or failed"));
+    }
+  },
+  {
+    scope: FB_SCOPES,
+    auth_type: "rerequest",
+    return_scopes: true, // 🔴 IMPORTANT
+  }
+);
+
   });
 }
 
