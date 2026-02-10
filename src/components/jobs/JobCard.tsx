@@ -1,10 +1,7 @@
 import { MapPin, Clock, User, ChevronRight } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Database } from "@/integrations/supabase/types";
-import { useBusinessHours } from "@/hooks/useBusinessHours";
-import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { format } from "date-fns";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
@@ -23,7 +20,9 @@ export interface Job extends DbJob {
     full_name?: string | null;
   } | null;
   scheduled_date?: string;
+  last_scheduled_date?: string;
   display_status?: string;
+  crew_count?: number;
 }
 
 interface JobCardProps {
@@ -32,47 +31,23 @@ interface JobCardProps {
   className?: string;
 }
 
-function formatTime(time: string | null): string {
-  if (!time) return "";
-
-  const [hours, minutes] = time.split(":");
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-
-  return `${displayHour}:${minutes} ${ampm}`;
-}
-
-function formatScheduledDateTime(
-  date: string | null | undefined,
-  timeStart: string | null | undefined,
-  timeEnd: string | null | undefined
+function formatScheduledDateRange(
+  firstDate: string | null | undefined,
+  lastDate: string | null | undefined,
 ): string {
-  if (!date) return "Not scheduled";
+  if (!firstDate) return "Not scheduled";
 
-  const dateFormatted = format(new Date(date + "T00:00:00"), "EEE, MMM d");
+  const first = format(new Date(firstDate + "T00:00:00"), "EEE, MMM d");
 
-  if (!timeStart && !timeEnd) {
-    return dateFormatted;
+  if (!lastDate || lastDate === firstDate) {
+    return first;
   }
 
-  const startFormatted = formatTime(timeStart);
-  const endFormatted = formatTime(timeEnd);
-
-  if (startFormatted && endFormatted) {
-    return `${dateFormatted} at ${startFormatted} - ${endFormatted}`;
-  } else if (startFormatted) {
-    return `${dateFormatted} at ${startFormatted}`;
-  } else if (endFormatted) {
-    return `${dateFormatted} until ${endFormatted}`;
-  }
-
-  return dateFormatted;
+  const last = format(new Date(lastDate + "T00:00:00"), "EEE, MMM d");
+  return `${first} - ${last}`;
 }
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
-  const { businessHours } = useBusinessHours();
-
   const statusLabels: Record<string, string> = {
     new: "New",
     contacted: "Contacted",
@@ -86,19 +61,9 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
   };
 
   const badgeStatus = (job.display_status || job.status) as string;
-  const displayStatus = badgeStatus;
-  const scheduledDateTime = formatScheduledDateTime(job.scheduled_date, job.scheduled_time_start, job.scheduled_time_end);
+  const scheduledDateTime = formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date);
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
-
-  const outsideHours = job.scheduled_date
-    ? isOutsideBusinessHours(
-        businessHours,
-        job.scheduled_date,
-        job.scheduled_time_start,
-        job.scheduled_time_end
-      )
-    : false;
 
   return (
     <button
@@ -116,11 +81,6 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
             <StatusBadge status={badgeStatus as JobStatus}>
               {statusLabels[badgeStatus] || badgeStatus}
             </StatusBadge>
-            {outsideHours && (
-              <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
-                Outside normal hours
-              </Badge>
-            )}
           </div>
 
           <h3 className="font-semibold text-foreground truncate text-lg">

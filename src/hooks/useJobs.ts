@@ -124,6 +124,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           scheduled_date: earliestSchedule?.scheduled_date,
           scheduled_time_start: earliestSchedule?.scheduled_time_start,
           scheduled_time_end: earliestSchedule?.scheduled_time_end,
+          last_scheduled_date: latestSchedule?.scheduled_date,
           display_status: displayStatus,
           crew_count: crewCount,
           job_schedules: undefined,
