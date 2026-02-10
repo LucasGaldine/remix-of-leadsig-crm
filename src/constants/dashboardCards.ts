@@ -12,6 +12,7 @@ import {
   ClipboardList,
   UserX,
   AlertTriangle,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -114,6 +115,13 @@ export const DASHBOARD_CARDS: DashboardCardConfig[] = [
     description: "Jobs past their last scheduled date",
     icon: AlertTriangle,
     navigateTo: "/jobs",
+  },
+  {
+    id: "estimates_needs_review",
+    label: "Estimates to Review",
+    description: "Estimate visits completed, awaiting your review",
+    icon: ClipboardCheck,
+    navigateTo: "/payments",
   },
 ];
 

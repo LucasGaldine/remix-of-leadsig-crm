@@ -1,9 +1,9 @@
-import { FileText, Check, Clock, AlertCircle, Receipt, XCircle } from "lucide-react";
+import { FileText, Check, Clock, AlertCircle, Receipt, XCircle, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Estimate } from "@/types/payments";
 
 interface EstimateCardProps {
-  estimate: Estimate & { isFinalized?: boolean };
+  estimate: Estimate & { isFinalized?: boolean; needsReview?: boolean };
   onClick?: () => void;
 }
 
@@ -32,15 +32,24 @@ export function EstimateCard({ estimate, onClick }: EstimateCardProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
+      className={cn(
+        "w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all",
+        estimate.needsReview && "ring-1 ring-amber-400/50"
+      )}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className={cn("text-2xs px-2 py-0.5 rounded-full inline-flex items-center gap-1", config.className)}>
               {config.icon}
               {config.label}
             </span>
+            {estimate.needsReview && (
+              <span className="text-2xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-amber-100 text-amber-800">
+                <ClipboardCheck className="h-3 w-3" />
+                Visit Complete
+              </span>
+            )}
           </div>
           <h3 className="font-semibold text-foreground truncate">{estimate.customerName}</h3>
           <p className="text-sm text-muted-foreground truncate">

@@ -184,6 +184,33 @@ export function useDashboardStats(cardIds: string[]) {
         stats.overdue_jobs = count;
       }
 
+      if (needed.has("estimates_needs_review")) {
+        const { data: estimates } = await supabase
+          .from("estimates")
+          .select("id, status, job:leads!estimates_job_id_fkey(estimate_job_id)")
+          .eq("account_id", currentAccount.id)
+          .not("status", "in", '("accepted","declined")');
+
+        const estimateJobIds = (estimates || [])
+          .map((e: any) => e.job?.estimate_job_id)
+          .filter(Boolean);
+
+        if (estimateJobIds.length > 0) {
+          const { data: ejData } = await supabase
+            .from("leads")
+            .select("id")
+            .in("id", [...new Set(estimateJobIds)])
+            .eq("status", "completed");
+
+          const completedIds = new Set((ejData || []).map((ej: any) => ej.id));
+          stats.estimates_needs_review = (estimates || []).filter(
+            (e: any) => e.job?.estimate_job_id && completedIds.has(e.job.estimate_job_id)
+          ).length;
+        } else {
+          stats.estimates_needs_review = 0;
+        }
+      }
+
       return stats;
     },
     enabled: !!user && !!currentAccount && cardIds.length > 0,

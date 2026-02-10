@@ -9,7 +9,7 @@ import { EstimateCard } from "@/components/payments/EstimateCard";
 import { InvoiceCard } from "@/components/payments/InvoiceCard";
 import { PaymentCard } from "@/components/payments/PaymentCard";
 import { cn } from "@/lib/utils";
-import { useEstimates } from "@/hooks/useEstimates";
+import { useEstimates, EstimateWithDetails } from "@/hooks/useEstimates";
 import { useInvoices } from "@/hooks/useInvoices";
 import { usePayments } from "@/hooks/usePayments";
 import { format } from "date-fns";
@@ -51,6 +51,13 @@ export default function Payments() {
     );
   });
 
+  const needsReviewEstimates = filteredEstimates.filter(
+    e => e.estimate_visit_completed && e.status !== "accepted" && e.status !== "declined"
+  );
+  const regularEstimates = filteredEstimates.filter(
+    e => !(e.estimate_visit_completed && e.status !== "accepted" && e.status !== "declined")
+  );
+
   const filteredInvoices = allInvoices.filter(i => {
     const customerName = i.customer?.name || "";
     const jobName = i.job?.name || "";
@@ -68,6 +75,35 @@ export default function Payments() {
   const filteredPayments = allPayments.filter(p => {
     const customerName = p.customer?.name || "";
     return customerName.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  const transformEstimate = (estimate: EstimateWithDetails, needsReview: boolean) => ({
+    id: estimate.id,
+    customerId: estimate.customer_id,
+    customerName: estimate.customer?.name || "Unknown",
+    jobId: estimate.job_id || undefined,
+    jobName: estimate.job?.name || undefined,
+    lineItems: estimate.line_items.map(item => ({
+      id: item.id,
+      name: item.name,
+      qty: Number(item.quantity),
+      unit: item.unit,
+      unitPrice: Number(item.unit_price),
+      total: Number(item.total),
+    })),
+    subtotal: Number(estimate.subtotal),
+    taxRate: Number(estimate.tax_rate),
+    tax: Number(estimate.tax),
+    discount: Number(estimate.discount),
+    total: Number(estimate.total),
+    status: estimate.status,
+    isFinalized: estimate.is_finalized,
+    needsReview,
+    createdAt: estimate.created_at ? format(new Date(estimate.created_at), "MMM d") : "",
+    sentAt: estimate.sent_at ? format(new Date(estimate.sent_at), "MMM d") : undefined,
+    viewedAt: estimate.viewed_at ? format(new Date(estimate.viewed_at), "MMM d") : undefined,
+    acceptedAt: estimate.accepted_at ? format(new Date(estimate.accepted_at), "MMM d") : undefined,
+    expiresAt: estimate.expires_at ? format(new Date(estimate.expires_at), "MMM d") : undefined,
   });
 
   const handleCreateInvoice = () => {
@@ -186,42 +222,35 @@ export default function Payments() {
       <main className="px-4 py-4">
         {activeTab === "estimates" && (
           <div className="space-y-3">
-            {filteredEstimates.map((estimate) => {
-              const transformedEstimate = {
-                id: estimate.id,
-                customerId: estimate.customer_id,
-                customerName: estimate.customer?.name || "Unknown",
-                jobId: estimate.job_id || undefined,
-                jobName: estimate.job?.name || undefined,
-                lineItems: estimate.line_items.map(item => ({
-                  id: item.id,
-                  name: item.name,
-                  qty: Number(item.quantity),
-                  unit: item.unit,
-                  unitPrice: Number(item.unit_price),
-                  total: Number(item.total),
-                })),
-                subtotal: Number(estimate.subtotal),
-                taxRate: Number(estimate.tax_rate),
-                tax: Number(estimate.tax),
-                discount: Number(estimate.discount),
-                total: Number(estimate.total),
-                status: estimate.status,
-                isFinalized: estimate.is_finalized,
-                createdAt: estimate.created_at ? format(new Date(estimate.created_at), "MMM d") : "",
-                sentAt: estimate.sent_at ? format(new Date(estimate.sent_at), "MMM d") : undefined,
-                viewedAt: estimate.viewed_at ? format(new Date(estimate.viewed_at), "MMM d") : undefined,
-                acceptedAt: estimate.accepted_at ? format(new Date(estimate.accepted_at), "MMM d") : undefined,
-                expiresAt: estimate.expires_at ? format(new Date(estimate.expires_at), "MMM d") : undefined,
-              };
-              return (
-                <EstimateCard
-                  key={estimate.id}
-                  estimate={transformedEstimate}
-                  onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-                />
-              );
-            })}
+            {needsReviewEstimates.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 pt-1 pb-1">
+                  <div className="h-2 w-2 rounded-full bg-amber-500" />
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Needs Review ({needsReviewEstimates.length})
+                  </h3>
+                </div>
+                {needsReviewEstimates.map((estimate) => (
+                  <EstimateCard
+                    key={estimate.id}
+                    estimate={transformEstimate(estimate, true)}
+                    onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                  />
+                ))}
+                {regularEstimates.length > 0 && (
+                  <div className="pt-2 pb-1">
+                    <h3 className="text-sm font-semibold text-muted-foreground">All Estimates</h3>
+                  </div>
+                )}
+              </>
+            )}
+            {regularEstimates.map((estimate) => (
+              <EstimateCard
+                key={estimate.id}
+                estimate={transformEstimate(estimate, false)}
+                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+              />
+            ))}
             {filteredEstimates.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">No estimates found</p>
