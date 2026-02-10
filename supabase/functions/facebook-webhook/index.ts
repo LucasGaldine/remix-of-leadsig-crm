@@ -29,6 +29,70 @@ interface FacebookLeadField {
   values: string[];
 }
 
+interface ParsedLead {
+  full_name?: string;
+  email?: string;
+  phone_number?: string;
+  budget?: number;
+  service_type?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  notes?: string;
+}
+
+const RELEVANCE_AI_STUDIO_ID = "d50e7c9d-7933-47c5-b284-9295b3faf020";
+const RELEVANCE_AI_PROJECT_ID = "a8f61433-8567-40b3-a274-8c65d6d9a062";
+
+async function parseLeadWithAI(rawPayload: unknown): Promise<ParsedLead> {
+  const apiKey = Deno.env.get("RELEVANCE_AI_API_KEY");
+  if (!apiKey) {
+    throw new Error("RELEVANCE_AI_API_KEY not configured");
+  }
+
+  const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook?project=${RELEVANCE_AI_PROJECT_ID}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": apiKey,
+      },
+      body: JSON.stringify({ lead_data: rawPayload }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`AI API returned ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    if (result.answer) {
+      try {
+        return JSON.parse(result.answer);
+      } catch {
+        throw new Error("AI returned invalid JSON format");
+      }
+    }
+
+    return result.output || result;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Relevance AI API timeout after 45 seconds");
+    }
+    throw error;
+  }
+}
+
 async function fetchLeadData(
   leadgenId: string,
   pageAccessToken: string
@@ -134,19 +198,54 @@ async function processLeadgenEvent(
       continue;
     }
 
-    const parsed = parseFacebookFieldData(leadData.field_data);
+    let leadName: string | null = null;
+    let leadEmail: string | null = null;
+    let leadPhone: string | null = null;
+    let leadCity: string | null = null;
+    let leadState: string | null = null;
+    let leadAddress: string | null = null;
+    let leadServiceType: string | null = null;
+    let leadNotes: string | null = null;
+    let leadBudget: number | null = null;
+    let parsingMethod = "manual";
+
+    try {
+      const aiParsed = await parseLeadWithAI(leadData);
+      leadName = aiParsed.full_name || null;
+      leadEmail = aiParsed.email || null;
+      leadPhone = aiParsed.phone_number || null;
+      leadCity = aiParsed.city || null;
+      leadState = aiParsed.state || null;
+      leadAddress = aiParsed.address || null;
+      leadServiceType = aiParsed.service_type || null;
+      leadNotes = aiParsed.notes || null;
+      leadBudget = aiParsed.budget || null;
+      parsingMethod = "ai";
+    } catch {
+      const fallback = parseFacebookFieldData(leadData.field_data);
+      leadName = fallback.name;
+      leadEmail = fallback.email;
+      leadPhone = fallback.phone;
+      leadCity = fallback.city;
+      leadState = fallback.state;
+      leadAddress = fallback.address;
+      leadServiceType = fallback.service_type;
+      leadNotes = fallback.notes;
+      parsingMethod = "manual";
+    }
 
     const { data: lead, error: leadError } = await supabase
       .from("leads")
       .insert({
-        name: parsed.name || "Facebook Lead",
-        email: parsed.email || null,
-        phone: parsed.phone || null,
-        city: parsed.city || null,
-        state: parsed.state || null,
-        address: parsed.address || null,
-        service_type: parsed.service_type || null,
-        notes: parsed.notes || null,
+        name: leadName || "Facebook Lead",
+        email: leadEmail,
+        phone: leadPhone,
+        city: leadCity,
+        state: leadState,
+        address: leadAddress,
+        service_type: leadServiceType,
+        estimated_value: leadBudget,
+        notes: leadNotes,
         source: "facebook",
         external_source_id: leadgen_id,
         external_payload: leadData,
@@ -175,6 +274,7 @@ async function processLeadgenEvent(
           leadgen_id,
           page_id,
           form_id: change.value.form_id,
+          parsing_method: parsingMethod,
         },
       });
     }
@@ -183,8 +283,6 @@ async function processLeadgenEvent(
       .from("lead_source_connections")
       .update({ last_sync_at: new Date().toISOString() })
       .eq("id", connection.id);
-
-    console.log(`Facebook lead ${leadgen_id} created as ${lead?.id}`);
   }
 }
 
@@ -202,7 +300,6 @@ Deno.serve(async (req) => {
     const verifyToken = Deno.env.get("FACEBOOK_WEBHOOK_VERIFY_TOKEN");
 
     if (mode === "subscribe" && token === verifyToken && challenge) {
-      console.log("Facebook webhook verified");
       return new Response(challenge, {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "text/plain" },
@@ -221,7 +318,6 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("Facebook webhook received:", JSON.stringify(body));
 
     if (body.object !== "page") {
       return new Response(JSON.stringify({ error: "Not a page event" }), {
