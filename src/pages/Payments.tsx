@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, Download, DollarSign, FileText, CreditCard, Clock } from "lucide-react";
-import { toast } from "sonner";
+import { Search, DollarSign, FileText, CreditCard, Clock } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EstimateCard } from "@/components/payments/EstimateCard";
 import { InvoiceCard } from "@/components/payments/InvoiceCard";
@@ -71,16 +69,6 @@ export default function Payments() {
     const customerName = p.customer?.name || "";
     return customerName.toLowerCase().includes(searchQuery.toLowerCase());
   });
-
-  const handleExport = () => {
-    toast.info("Export coming soon", {
-      description: "This feature is under development.",
-    });
-  };
-
-  const handleCreateEstimate = () => {
-    navigate("/payments/estimates/new");
-  };
 
   const handleCreateInvoice = () => {
     navigate("/payments/invoices/new");
@@ -153,8 +141,8 @@ export default function Payments() {
         </div>
       </div>
 
-      {/* Search & Actions */}
-      <div className="px-4 py-3 bg-card border-b border-border space-y-3">
+      {/* Search */}
+      <div className="px-4 py-3 bg-card border-b border-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -164,36 +152,6 @@ export default function Payments() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
-        </div>
-        <div className="flex gap-2">
-          {activeTab === "estimates" && (
-            <Button className="flex-1 gap-2" onClick={handleCreateEstimate}>
-              <Plus className="h-4 w-4" />
-              Create Estimate
-            </Button>
-          )}
-          {activeTab === "invoices" && (
-            <>
-              <Button className="flex-1 gap-2" onClick={handleCreateInvoice}>
-                <Plus className="h-4 w-4" />
-                Create Invoice
-              </Button>
-              <Button variant="outline" size="icon" onClick={handleExport}>
-                <Download className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-          {activeTab === "charge" && (
-            <>
-              <Button className="flex-1 gap-2" onClick={() => navigate("/payments/charge")}>
-                <CreditCard className="h-4 w-4" />
-                Charge Now
-              </Button>
-              <Button variant="outline" size="icon" onClick={handleExport}>
-                <Download className="h-4 w-4" />
-              </Button>
-            </>
-          )}
         </div>
       </div>
 
@@ -355,16 +313,7 @@ export default function Payments() {
 
       <FloatingActionButton
         actions={
-          activeTab === "estimates"
-            ? [
-                {
-                  icon: <FileText className="h-5 w-5" />,
-                  label: "New Estimate",
-                  onClick: handleCreateEstimate,
-                  primary: true,
-                },
-              ]
-            : activeTab === "invoices"
+          activeTab === "invoices"
             ? [
                 {
                   icon: <DollarSign className="h-5 w-5" />,
@@ -373,7 +322,8 @@ export default function Payments() {
                   primary: true,
                 },
               ]
-            : [
+            : activeTab === "charge"
+            ? [
                 {
                   icon: <CreditCard className="h-5 w-5" />,
                   label: "Charge Now",
@@ -381,6 +331,7 @@ export default function Payments() {
                   primary: true,
                 },
               ]
+            : []
         }
       />
 

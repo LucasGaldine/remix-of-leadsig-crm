@@ -1,29 +1,20 @@
 import { useState } from "react";
-import { Search, Clock, XCircle } from "lucide-react";
+import { Clock, XCircle, UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
+import { ListPageFilters } from "@/components/layout/ListPageFilters";
 import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
 import { LeadCard, Lead, LeadStatus } from "@/components/leads/LeadCard";
-import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
-import { Input } from "@/components/ui/input";
 import { useLeads, useLeadCounts } from "@/hooks/useLeads";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 import { useRejectedLeads } from "@/hooks/useRejectedLeads";
 import { formatDistanceToNow } from "date-fns";
-import { UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 type FilterStatus = "all" | LeadStatus;
-
-const filterOptions: { value: FilterStatus; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "new", label: "New" },
-  { value: "contacted", label: "Contacted" },
-  { value: "qualified", label: "Qualified" },
-];
 
 export default function Leads() {
   const navigate = useNavigate();
@@ -127,55 +118,19 @@ export default function Leads() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="px-4 py-3 bg-card border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search leads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="px-4 py-3 bg-card border-b border-border overflow-x-auto scrollbar-hide">
-        <div className="flex gap-2">
-          {filterOptions.map((option) => {
-            const count = option.value === "all" 
-              ? (counts?.all || 0) 
-              : (counts?.[option.value] || 0);
-
-            return (
-              <button
-                key={option.value}
-                onClick={() => setActiveFilter(option.value)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors min-h-touch",
-                  activeFilter === option.value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                )}
-              >
-                {option.label}
-                <span
-                  className={cn(
-                    "text-2xs px-1.5 py-0.5 rounded-full",
-                    activeFilter === option.value
-                      ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  )}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <ListPageFilters
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search leads..."
+        tabs={[
+          { value: "all", label: "All", count: counts?.all || 0 },
+          { value: "new", label: "New", count: counts?.new || 0 },
+          { value: "contacted", label: "Contacted", count: counts?.contacted || 0 },
+          { value: "qualified", label: "Qualified", count: counts?.qualified || 0 },
+        ]}
+        activeTab={activeFilter}
+        onTabChange={(v) => setActiveFilter(v as FilterStatus)}
+      />
 
       {/* Leads List */}
       <main className="px-4 py-4">

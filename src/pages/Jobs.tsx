@@ -1,22 +1,18 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { Input } from "@/components/ui/input";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { JobCard } from "@/components/jobs/JobCard";
-import { Search, Bell, Briefcase } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useJobs, useJobCounts, useJobRevenue } from "@/hooks/useJobs";
+import { ListPageFilters } from "@/components/layout/ListPageFilters";
+import { Briefcase } from "lucide-react";
+import { useJobs, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
-import { Database } from "@/integrations/supabase/types";
 import { PageHeader } from "@/components/layout/PageHeader";
-
-type JobStatus = Database["public"]["Enums"]["unified_status"];
 
 export default function Jobs() {
   const navigate = useNavigate();
-  const { user, isManager } = useAuth();
+  const { isManager } = useAuth();
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
@@ -61,96 +57,66 @@ export default function Jobs() {
     return counts;
   }, [allJobs]);
 
-  const statusTabs: { value: string; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "unscheduled", label: "Unscheduled" },
-    { value: "no_crew", label: "Unassigned" },
-    { value: "scheduled", label: "Scheduled" },
-    { value: "in_progress", label: "In Progress" },
-    { value: "completed", label: "Completed" },
-    { value: "paid", label: "Paid" },
+  const statusTabs = [
+    { value: "all", label: "All", count: statusCounts.all },
+    { value: "unscheduled", label: "Unscheduled", count: statusCounts.unscheduled },
+    { value: "no_crew", label: "Unassigned", count: statusCounts.no_crew },
+    { value: "scheduled", label: "Scheduled", count: statusCounts.scheduled },
+    { value: "in_progress", label: "In Progress", count: statusCounts.in_progress },
+    { value: "completed", label: "Completed", count: statusCounts.completed },
+    { value: "paid", label: "Paid", count: statusCounts.paid },
   ];
 
-  const handleCreateJob = () => {
-    setIsCreateJobOpen(true);
-  };
-
-  const handleJobClick = (jobId: string) => {
-    navigate(`/jobs/${jobId}`);
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-
+    <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
         title="Jobs"
-        subtitle= {`${revenue.toLocaleString()} collected this month`}
+        subtitle={`$${revenue.toLocaleString()} collected this month`}
       />
 
-      <main className="px-4 py-4 space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <Input
-            type="text"
-            placeholder="Search jobs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-white border-gray-200 h-12"
-          />
-        </div>
+      <ListPageFilters
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search jobs..."
+        tabs={statusTabs}
+        activeTab={selectedStatus}
+        onTabChange={setSelectedStatus}
+      />
 
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          {statusTabs.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setSelectedStatus(tab.value)}
-              className={cn(
-                "px-4 py-2 rounded-full whitespace-nowrap text-sm font-medium transition-colors flex-shrink-0",
-                selectedStatus === tab.value
-                  ? "bg-emerald-700 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              )}
-            >
-              {tab.label} {statusCounts[tab.value]}
-            </button>
-          ))}
-        </div>
-
+      <main className="px-4 py-4">
         {isLoading ? (
-          <div className="flex items-center justify-center py-32">
-            <p className="text-gray-500 text-base">Loading jobs...</p>
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
           </div>
         ) : jobs.length === 0 ? (
-          <div className="flex items-center justify-center py-32">
-            <p className="text-gray-500 text-base">
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">
               {searchQuery ? "No jobs match your search" : "No jobs found"}
             </p>
           </div>
         ) : (
-          <div className="space-y-3 pb-4">
+          <div className="space-y-3">
             {jobs.map((job) => (
-              <JobCard key={job.id} job={job} onClick={() => handleJobClick(job.id)} />
+              <JobCard key={job.id} job={job} onClick={() => navigate(`/jobs/${job.id}`)} />
             ))}
           </div>
         )}
       </main>
-      
-    {isManager() &&  (
-      <FloatingActionButton
-        actions={[
-          {
-            icon: <Briefcase className="h-5 w-5" />,
-            label: "Create Job",
-            onClick: handleCreateJob,
-            primary: true,
-          },
-        ]}
-      />
-)}
-      
-     <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
 
-      
+      {isManager() && (
+        <FloatingActionButton
+          actions={[
+            {
+              icon: <Briefcase className="h-5 w-5" />,
+              label: "Create Job",
+              onClick: () => setIsCreateJobOpen(true),
+              primary: true,
+            },
+          ]}
+        />
+      )}
+
+      <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
       <MobileNav />
     </div>
   );
