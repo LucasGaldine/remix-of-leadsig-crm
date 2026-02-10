@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
       .eq("account_id", membership.account_id)
       .maybeSingle();
 
-    if (!stripeAccount || !stripeAccount.stripe_account_id || !stripeAccount.charges_enabled) {
+    if (!stripeAccount || !stripeAccount.stripe_user_id || !stripeAccount.charges_enabled) {
       throw new Error("Stripe account not connected or not enabled for charges");
     }
 
@@ -100,7 +100,7 @@ Deno.serve(async (req: Request) => {
           account_id: membership.account_id,
         },
       },
-      { stripeAccount: stripeAccount.stripe_account_id }
+      { stripeAccount: stripeAccount.stripe_user_id }
     );
 
     const activeLineItems = (estimate.line_items || []).filter(
@@ -119,7 +119,7 @@ Deno.serve(async (req: Request) => {
           unit_amount: unitAmountCents,
           currency: "usd",
         },
-        { stripeAccount: stripeAccount.stripe_account_id }
+        { stripeAccount: stripeAccount.stripe_user_id }
       );
     }
 
@@ -141,26 +141,26 @@ Deno.serve(async (req: Request) => {
           percentage: Number(estimate.tax_rate) * 100,
           inclusive: false,
         },
-        { stripeAccount: stripeAccount.stripe_account_id }
+        { stripeAccount: stripeAccount.stripe_user_id }
       );
       invoiceParams.default_tax_rates = [taxRate.id];
     }
 
     const stripeInvoice = await stripe.invoices.create(
       invoiceParams,
-      { stripeAccount: stripeAccount.stripe_account_id }
+      { stripeAccount: stripeAccount.stripe_user_id }
     );
 
     const finalizedInvoice = await stripe.invoices.finalizeInvoice(
       stripeInvoice.id,
       {},
-      { stripeAccount: stripeAccount.stripe_account_id }
+      { stripeAccount: stripeAccount.stripe_user_id }
     );
 
     await stripe.invoices.sendInvoice(
       finalizedInvoice.id,
       {},
-      { stripeAccount: stripeAccount.stripe_account_id }
+      { stripeAccount: stripeAccount.stripe_user_id }
     );
 
     const hostedUrl = finalizedInvoice.hosted_invoice_url;

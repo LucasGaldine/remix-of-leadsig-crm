@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
       .eq("account_id", membership.account_id)
       .maybeSingle();
 
-    if (!stripeAccount || !stripeAccount.stripe_account_id || !stripeAccount.charges_enabled) {
+    if (!stripeAccount || !stripeAccount.stripe_user_id || !stripeAccount.charges_enabled) {
       throw new Error("Stripe account not connected or not enabled for charges");
     }
 
@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
       description: description || `Payment for invoice ${invoiceId}`,
       receipt_email: customerEmail,
       transfer_data: {
-        destination: stripeAccount.stripe_account_id,
+        destination: stripeAccount.stripe_user_id,
       },
     });
 
@@ -113,7 +113,7 @@ Deno.serve(async (req: Request) => {
         method: "card",
         status: "pending",
         stripe_payment_intent_id: paymentIntent.id,
-        stripe_account_id: stripeAccount.stripe_account_id,
+        stripe_account_id: stripeAccount.stripe_user_id,
         processed_by: user.id,
       });
 
