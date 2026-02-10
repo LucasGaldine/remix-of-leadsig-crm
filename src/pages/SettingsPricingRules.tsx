@@ -35,7 +35,7 @@ interface PricingRule {
 
 export default function SettingsPricingRules() {
   const navigate = useNavigate();
-  const { user, currentAccount } = useAuth();
+  const { user, currentAccount, refreshProfile } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -153,6 +153,7 @@ export default function SettingsPricingRules() {
 
       setIsDirty(false);
       toast.success("Pricing rules saved");
+      await refreshProfile();
       fetchRules();
     } catch (error) {
       console.error("Error saving rules:", error);
