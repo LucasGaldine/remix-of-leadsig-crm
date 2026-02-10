@@ -76,6 +76,26 @@ async function getUserPages(
   return data.data || [];
 }
 
+async function getPagesByIds(
+  pageIds: string[],
+  userToken: string
+): Promise<Array<{ id: string; name: string; access_token: string }>> {
+  const pages: Array<{ id: string; name: string; access_token: string }> = [];
+  for (const pageId of pageIds) {
+    const url = `${FB_GRAPH_BASE}/${pageId}?fields=id,name,access_token&access_token=${userToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.log(`getPagesByIds error for ${pageId}:`, JSON.stringify(data.error));
+      continue;
+    }
+    if (data.id && data.access_token) {
+      pages.push({ id: data.id, name: data.name || `Page ${data.id}`, access_token: data.access_token });
+    }
+  }
+  return pages;
+}
+
 async function subscribePage(pageId: string, pageToken: string): Promise<void> {
   const url = `${FB_GRAPH_BASE}/${pageId}/subscribed_apps`;
   const res = await fetch(url, {
@@ -205,8 +225,10 @@ async function handleListPages(
   let pages = await getUserPages(accessToken, fbUserId);
   console.log("Pages from short-lived token:", pages.length);
 
+  let longLivedToken: string | null = null;
+
   if (pages.length === 0) {
-    const longLivedToken = await getLongLivedUserToken(accessToken, appId, appSecret);
+    longLivedToken = await getLongLivedUserToken(accessToken, appId, appSecret);
 
     pages = await getUserPages(longLivedToken, fbUserId);
     console.log("Pages from long-lived token:", pages.length);
@@ -221,6 +243,33 @@ async function handleListPages(
           },
         })
         .eq("id", connection.id);
+    }
+  }
+
+  if (pages.length === 0) {
+    const granularScopes = (debugInfo as Record<string, unknown>)?.granular_scopes as
+      Array<{ scope: string; target_ids?: string[] }> | undefined;
+    const pageIds = granularScopes
+      ?.find((s) => s.scope === "pages_show_list")
+      ?.target_ids || [];
+    console.log("Granular scope page IDs:", pageIds);
+
+    if (pageIds.length > 0) {
+      const tokenToUse = longLivedToken || accessToken;
+      pages = await getPagesByIds(pageIds, tokenToUse);
+      console.log("Pages from granular_scopes fallback:", pages.length);
+
+      if (pages.length > 0 && longLivedToken) {
+        await supabase
+          .from("lead_source_connections")
+          .update({
+            settings_json: {
+              oauth_nonce: nonce,
+              user_access_token: longLivedToken,
+            },
+          })
+          .eq("id", connection.id);
+      }
     }
   }
 
