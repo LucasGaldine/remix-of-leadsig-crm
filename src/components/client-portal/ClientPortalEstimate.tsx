@@ -23,6 +23,7 @@ interface ClientPortalEstimateProps {
     discount: number;
     notes?: string;
     status: string;
+    updated_at: string;
     line_items: LineItem[];
   };
   token: string;
@@ -50,7 +51,10 @@ export function ClientPortalEstimate({
       const response = await fetch(`${apiUrl}?token=${token}`, {
         method: "POST",
         headers: apiHeaders,
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({
+          action,
+          updated_at: estimate.updated_at
+        }),
       });
 
       const result = await response.json();

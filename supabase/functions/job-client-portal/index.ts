@@ -60,6 +60,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST") {
       const body = await req.json();
       const action = body.action;
+      const clientUpdatedAt = body.updated_at;
 
       if (action !== "approve" && action !== "decline") {
         return jsonResponse({ error: "Invalid action" }, 400);
@@ -67,7 +68,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: estimate, error: estError } = await supabase
         .from("estimates")
-        .select("id, status, expires_at, job_id")
+        .select("id, status, expires_at, job_id, updated_at")
         .eq("job_id", job.id)
         .maybeSingle();
 
@@ -84,7 +85,7 @@ Deno.serve(async (req: Request) => {
 
         const { data: parentEstimate, error: peError } = await supabase
           .from("estimates")
-          .select("id, status, expires_at, job_id")
+          .select("id, status, expires_at, job_id, updated_at")
           .eq("job_id", parentLead.id)
           .maybeSingle();
 
@@ -92,10 +93,10 @@ Deno.serve(async (req: Request) => {
           return jsonResponse({ error: "No estimate found for this job" }, 404);
         }
 
-        return await handleEstimateAction(supabase, parentEstimate, action, job.id);
+        return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt);
       }
 
-      return await handleEstimateAction(supabase, estimate, action, job.id);
+      return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt);
     }
 
     if (req.method !== "GET") {
@@ -126,7 +127,7 @@ Deno.serve(async (req: Request) => {
         .from("estimates")
         .select(
           `
-          id, subtotal, tax_rate, tax, discount, total, notes, status, created_at,
+          id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
           line_items:estimate_line_items(
             id, name, description, quantity, unit, unit_price, total,
             sort_order, is_change_order, change_order_type, changed_at
@@ -247,6 +248,7 @@ Deno.serve(async (req: Request) => {
             discount: parentEstimate.discount,
             notes: parentEstimate.notes,
             status: parentEstimate.status,
+            updated_at: parentEstimate.updated_at,
             line_items: filteredLineItems,
           }
         : null,
@@ -278,10 +280,17 @@ Deno.serve(async (req: Request) => {
 
 async function handleEstimateAction(
   supabase: any,
-  estimate: { id: string; status: string; expires_at: string | null; job_id: string },
+  estimate: { id: string; status: string; expires_at: string | null; job_id: string; updated_at: string },
   action: "approve" | "decline",
-  portalJobId: string
+  portalJobId: string,
+  clientUpdatedAt?: string
 ) {
+  if (clientUpdatedAt && estimate.updated_at !== clientUpdatedAt) {
+    return jsonResponse({
+      error: "This estimate has been updated since you loaded this page. Please refresh the page to see the latest version before approving."
+    }, 409);
+  }
+
   if (estimate.status === "accepted") {
     return jsonResponse({ error: "This estimate has already been approved" }, 400);
   }

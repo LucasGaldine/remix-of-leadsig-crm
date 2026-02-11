@@ -66,6 +66,7 @@ interface EstimateData {
   discount: number;
   notes?: string;
   status: string;
+  updated_at: string;
   line_items: LineItem[];
 }
 
