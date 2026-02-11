@@ -433,6 +433,11 @@ export default function EstimateDetail() {
   };
 
   const enterEditMode = () => {
+    if (estimate.is_finalized) {
+      toast.error("Cannot edit estimate after it has been invoiced");
+      return;
+    }
+
     const activeItems = estimate.line_items.filter(
       (item: any) => !item.is_change_order || item.change_order_type !== 'deleted'
     );
@@ -482,14 +487,7 @@ export default function EstimateDetail() {
     try {
       setSaving(true);
 
-      // Check job status to determine if we should track changes
-      const { data: jobData } = await supabase
-        .from('leads')
-        .select('status')
-        .eq('id', estimate.job_id)
-        .single();
-
-      const shouldTrackChanges = jobData && ['job', 'paid'].includes(jobData.status);
+      const shouldTrackChanges = estimate.status === 'accepted';
 
       const existingIds = new Set(
         estimate.line_items
