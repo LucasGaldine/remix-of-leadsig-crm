@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -12,17 +14,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCreateJob } from "@/hooks/useJobs";
+import { useCreateRecurringJob, RecurrenceFrequency } from "@/hooks/useRecurringJobs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Repeat, Users } from "lucide-react";
 
 interface CreateJobDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+const FREQUENCY_LABELS: Record<RecurrenceFrequency, string> = {
+  weekly: "Weekly",
+  biweekly: "Every 2 Weeks",
+  monthly: "Monthly",
+};
+
 export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
-  const { user, currentAccount } = useAuth();
+  const { user, currentAccount, isManager } = useAuth();
   const [jobName, setJobName] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -34,7 +45,32 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const [scheduledTime, setScheduledTime] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>("weekly");
+  const [hasEndDate, setHasEndDate] = useState(false);
+  const [endDate, setEndDate] = useState("");
+  const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
+  const [selectedCrew, setSelectedCrew] = useState<string[]>([]);
+
   const createJob = useCreateJob();
+  const createRecurringJob = useCreateRecurringJob();
+
+  const { data: crewMembers = [] } = useQuery({
+    queryKey: ["crew-members", currentAccount?.id],
+    queryFn: async () => {
+      if (!currentAccount) return [];
+      const { data, error } = await supabase
+        .from("account_members_with_profiles")
+        .select("user_id, role, full_name, email")
+        .eq("account_id", currentAccount.id)
+        .eq("is_active", true)
+        .order("full_name", { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!currentAccount && isRecurring,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,38 +102,52 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
       if (customerError) throw customerError;
 
-      let scheduledDateTime: string | null = null;
+      if (isRecurring) {
+        if (!scheduledDate) {
+          toast.error("Start date is required for recurring jobs");
+          setIsLoading(false);
+          return;
+        }
 
-      if (scheduledDate) {
-        scheduledDateTime = scheduledTime
-          ? `${scheduledDate}T${scheduledTime}:00`
-          : `${scheduledDate}T09:00:00`;
+        await createRecurringJob.mutateAsync({
+          customer_id: customer.id,
+          name: jobName,
+          service_type: serviceType || null,
+          address: jobAddress || null,
+          description: description || null,
+          frequency,
+          scheduled_time_start: scheduledTime || null,
+          scheduled_time_end: scheduledTimeEnd || null,
+          start_date: scheduledDate,
+          end_date: hasEndDate && endDate ? endDate : null,
+          default_crew_user_ids: selectedCrew,
+        });
+
+        toast.success("Recurring job created with upcoming instances!");
+      } else {
+        let scheduledDateTime: string | null = null;
+        if (scheduledDate) {
+          scheduledDateTime = scheduledTime
+            ? `${scheduledDate}T${scheduledTime}:00`
+            : `${scheduledDate}T09:00:00`;
+        }
+
+        await createJob.mutateAsync({
+          name: jobName,
+          customer_id: customer.id,
+          phone: phone || null,
+          email: email || null,
+          service_type: serviceType || null,
+          address: jobAddress || null,
+          description: description || null,
+          scheduled_date: scheduledDateTime,
+          status: "job",
+        });
+
+        toast.success("Job and estimate created successfully!");
       }
 
-      await createJob.mutateAsync({
-        name: jobName,
-        customer_id: customer.id,
-        phone: phone || null,
-        email: email || null,
-        service_type: serviceType || null,
-        address: jobAddress || null,
-        description: description || null,
-        scheduled_date: scheduledDateTime,
-        status: "job",
-      });
-
-      toast.success("Job and estimate created successfully!");
-
-      setJobName("");
-      setCustomerName("");
-      setPhone("");
-      setEmail("");
-      setServiceType("");
-      setJobAddress("");
-      setDescription("");
-      setScheduledDate("");
-      setScheduledTime("");
-
+      resetForm();
       onOpenChange(false);
     } catch (error) {
       console.error("Error creating job:", error);
@@ -107,7 +157,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     }
   };
 
-  const handleCancel = () => {
+  const resetForm = () => {
     setJobName("");
     setCustomerName("");
     setPhone("");
@@ -117,7 +167,25 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setDescription("");
     setScheduledDate("");
     setScheduledTime("");
+    setIsRecurring(false);
+    setFrequency("weekly");
+    setHasEndDate(false);
+    setEndDate("");
+    setScheduledTimeEnd("");
+    setSelectedCrew([]);
+  };
+
+  const handleCancel = () => {
+    resetForm();
     onOpenChange(false);
+  };
+
+  const toggleCrewMember = (userId: string) => {
+    setSelectedCrew((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
   };
 
   return (
@@ -225,6 +293,154 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-base font-semibold text-gray-900">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Project scope and details..."
+                className="min-h-24 text-base border-gray-300 rounded-lg resize-none"
+              />
+            </div>
+          </div>
+
+          {/* Recurring Toggle */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-3">
+                <Repeat className="h-5 w-5 text-gray-600" />
+                <div>
+                  <p className="font-semibold text-gray-900">Recurring Job</p>
+                  <p className="text-sm text-gray-500">Automatically create future instances</p>
+                </div>
+              </div>
+              <Switch
+                checked={isRecurring}
+                onCheckedChange={setIsRecurring}
+              />
+            </div>
+
+            {isRecurring && (
+              <div className="space-y-4 p-4 rounded-lg border border-gray-200">
+                <div className="space-y-2">
+                  <Label className="text-base font-semibold text-gray-900">Frequency</Label>
+                  <Select value={frequency} onValueChange={(v) => setFrequency(v as RecurrenceFrequency)}>
+                    <SelectTrigger className="h-12 text-base border-gray-300 rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(FREQUENCY_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold text-gray-900">
+                      Start Date <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      className="h-12 text-base border-gray-300 rounded-lg"
+                      required={isRecurring}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-semibold text-gray-900">End Date</Label>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="hasEndDate"
+                          checked={hasEndDate}
+                          onCheckedChange={(checked) => setHasEndDate(checked === true)}
+                        />
+                        <label htmlFor="hasEndDate" className="text-sm text-gray-500 cursor-pointer">
+                          Set end date
+                        </label>
+                      </div>
+                    </div>
+                    {hasEndDate ? (
+                      <Input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        min={scheduledDate}
+                        className="h-12 text-base border-gray-300 rounded-lg"
+                      />
+                    ) : (
+                      <div className="h-12 flex items-center px-3 text-sm text-gray-500 border border-gray-300 rounded-lg bg-gray-50">
+                        Runs indefinitely
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold text-gray-900">Start Time</Label>
+                    <Input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      className="h-12 text-base border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold text-gray-900">End Time</Label>
+                    <Input
+                      type="time"
+                      value={scheduledTimeEnd}
+                      onChange={(e) => setScheduledTimeEnd(e.target.value)}
+                      className="h-12 text-base border-gray-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                {/* Default Crew Selection */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-gray-600" />
+                    <Label className="text-base font-semibold text-gray-900">Default Crew</Label>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    These crew members will be automatically assigned to each instance. You can change the crew on individual jobs later.
+                  </p>
+                  {crewMembers.length > 0 ? (
+                    <div className="space-y-2">
+                      {crewMembers.map((member: any) => (
+                        <label
+                          key={member.user_id}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                        >
+                          <Checkbox
+                            checked={selectedCrew.includes(member.user_id)}
+                            onCheckedChange={() => toggleCrewMember(member.user_id)}
+                          />
+                          <div>
+                            <p className="font-medium text-gray-900">{member.full_name || member.email}</p>
+                            <p className="text-xs text-gray-500 capitalize">{member.role?.replace("_", " ")}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic">No crew members available</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Non-recurring schedule */}
+          {!isRecurring && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="scheduledDate" className="text-base font-semibold text-gray-900">
@@ -252,20 +468,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 />
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description" className="text-base font-semibold text-gray-900">
-                Description
-              </Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Project scope and details..."
-                className="min-h-24 text-base border-gray-300 rounded-lg resize-none"
-              />
-            </div>
-          </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-4">
             <Button
@@ -282,7 +485,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               disabled={isLoading}
               className="px-8 h-12 text-base bg-emerald-700 hover:bg-emerald-800 rounded-lg"
             >
-              {isLoading ? "Creating..." : "Create Job"}
+              {isLoading ? "Creating..." : isRecurring ? "Create Recurring Job" : "Create Job"}
             </Button>
           </div>
         </form>

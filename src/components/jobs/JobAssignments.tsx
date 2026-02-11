@@ -55,6 +55,7 @@ const roleBadgeColors: Record<string, string> = {
 
 interface JobAssignmentsProps {
   leadId: string;
+  onCrewChanged?: () => void;
 }
 
 interface CrewMember {
@@ -66,7 +67,7 @@ interface CrewMember {
   };
 }
 
-export function JobAssignments({ leadId }: JobAssignmentsProps) {
+export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
   const { currentAccount, isManager } = useAuth();
   const { assignments, isLoading, assignCrew, unassignCrew, isAssigning, isUnassigning } =
     useJobAssignments(leadId);
@@ -134,6 +135,7 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
       setSelectedMember('');
       setSelectedSchedules([]);
       setShowAssignDialog(false);
+      onCrewChanged?.();
     }
   };
 
@@ -141,6 +143,7 @@ export function JobAssignments({ leadId }: JobAssignmentsProps) {
     if (assignmentToRemove) {
       unassignCrew(assignmentToRemove);
       setAssignmentToRemove(null);
+      onCrewChanged?.();
     }
   };
 

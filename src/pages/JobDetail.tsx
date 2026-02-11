@@ -47,6 +47,8 @@ import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { PhotoSection } from "@/components/photos/PhotoSection";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
+import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew } from "@/hooks/useRecurringJobs";
+import { Repeat } from "lucide-react";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -82,6 +84,11 @@ export default function JobDetail() {
   const { assignments: jobAssignments = [] } = useJobAssignments(id);
   const updateJobMutation = useUpdateJob();
   const deleteJobMutation = useDeleteJob();
+  const { data: recurringJobData } = useRecurringJob((job as any)?.recurring_job_id ?? undefined);
+  const generateNextInstances = useGenerateNextInstances();
+  const updateRecurringCrew = useUpdateRecurringJobCrew();
+  const [crewSavePromptOpen, setCrewSavePromptOpen] = useState(false);
+  const [pendingCrewUserIds, setPendingCrewUserIds] = useState<string[]>([]);
 
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
@@ -234,6 +241,7 @@ export default function JobDetail() {
     );
   }
 
+  const jobAny = job as any;
   const clientPhone = job.customer?.phone || "";
   const clientAddress = [job.address, job.city].filter(Boolean).join(", ");
   const hasSchedules = schedules && schedules.length > 0;
@@ -266,11 +274,32 @@ export default function JobDetail() {
         id,
         status: "paid"
       });
+
+      if (job?.recurring_job_id) {
+        generateNextInstances.mutate(jobAny.recurring_job_id);
+      }
+
       toast.success("Payment recorded successfully!");
       setCompleteDialogOpen(false);
     } catch (error) {
       console.error("Error recording payment:", error);
       toast.error("Failed to record payment");
+    }
+  };
+
+  const handleSaveCrewForFuture = async () => {
+    if (!job?.recurring_job_id || pendingCrewUserIds.length === 0) return;
+    try {
+      await updateRecurringCrew.mutateAsync({
+        recurringJobId: jobAny.recurring_job_id,
+        crewUserIds: pendingCrewUserIds,
+      });
+      toast.success("Default crew updated for future instances");
+    } catch {
+      toast.error("Failed to update default crew");
+    } finally {
+      setCrewSavePromptOpen(false);
+      setPendingCrewUserIds([]);
     }
   };
 
@@ -425,6 +454,12 @@ export default function JobDetail() {
               <StatusBadge status={displayStatus as any} size="lg">
                 {statusLabel}
               </StatusBadge>
+              {jobAny.recurring_job_id && (
+                <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
+                  <Repeat className="h-3 w-3 mr-1" />
+                  Recurring #{jobAny.recurring_instance_number || ""}
+                </Badge>
+              )}
               {isUnassigned && (
                 <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
                   <Users className="h-3 w-3 mr-1" />
@@ -664,7 +699,23 @@ export default function JobDetail() {
             </div>
 
             {/* Crew Assignments */}
-            {id && <JobAssignments leadId={id} />}
+            {id && (
+              <JobAssignments
+                leadId={id}
+                onCrewChanged={jobAny.recurring_job_id ? () => {
+                  setTimeout(async () => {
+                    if (!id) return;
+                    const { data: currentAssignments } = await supabase
+                      .from("job_assignments")
+                      .select("user_id")
+                      .eq("lead_id", id);
+                    const crewIds = [...new Set((currentAssignments || []).map((a: any) => a.user_id))];
+                    setPendingCrewUserIds(crewIds);
+                    setCrewSavePromptOpen(true);
+                  }, 500);
+                } : undefined}
+              />
+            )}
 
             {/* Crew */}
             {job.crew_lead && (
@@ -696,6 +747,32 @@ export default function JobDetail() {
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {job.description || job.notes}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Recurring Job Info */}
+            {recurringJobData && (
+              <div className="card-elevated rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-100">
+                    <Repeat className="h-5 w-5 text-emerald-700" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">Recurring Job</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {recurringJobData.frequency === "weekly" && "Every week"}
+                      {recurringJobData.frequency === "biweekly" && "Every 2 weeks"}
+                      {recurringJobData.frequency === "monthly" && "Every month"}
+                      {recurringJobData.end_date
+                        ? ` until ${format(new Date(recurringJobData.end_date + "T00:00:00"), "MMM d, yyyy")}`
+                        : " (ongoing)"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Instance #{jobAny.recurring_instance_number || ""}
+                      {recurringJobData.is_active ? "" : " - Series paused"}
                     </p>
                   </div>
                 </div>
@@ -1028,6 +1105,26 @@ export default function JobDetail() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteJobMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Crew Save for Future Prompt */}
+      <AlertDialog open={crewSavePromptOpen} onOpenChange={setCrewSavePromptOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update Default Crew?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You changed the crew on this recurring job instance. Would you like to save this crew as the default for all future instances?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setCrewSavePromptOpen(false); setPendingCrewUserIds([]); }}>
+              No, just this one
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveCrewForFuture}>
+              Yes, save for future
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,4 +1,4 @@
-import { MapPin, Clock, User, ChevronRight, Users } from "lucide-react";
+import { MapPin, Clock, User, ChevronRight, Users, Repeat } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,8 @@ export interface Job extends DbJob {
   last_scheduled_date?: string;
   display_status?: string;
   crew_count?: number;
+  recurring_job_id?: string | null;
+  recurring_instance_number?: number | null;
 }
 
 interface JobCardProps {
@@ -83,6 +85,12 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
             <StatusBadge status={badgeStatus as JobStatus}>
               {statusLabels[badgeStatus] || badgeStatus}
             </StatusBadge>
+            {job.recurring_job_id && (
+              <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
+                <Repeat className="h-3 w-3 mr-1" />
+                Recurring
+              </Badge>
+            )}
             {isUnassigned && (
               <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
                 <Users className="h-3 w-3 mr-1" />
