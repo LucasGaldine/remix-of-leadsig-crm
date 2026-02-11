@@ -20,6 +20,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Repeat, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -31,6 +32,16 @@ const FREQUENCY_LABELS: Record<RecurrenceFrequency, string> = {
   biweekly: "Every 2 Weeks",
   monthly: "Monthly",
 };
+
+const DAYS_OF_WEEK = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+];
 
 export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const { user, currentAccount, isManager } = useAuth();
@@ -51,6 +62,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const [endDate, setEndDate] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [selectedCrew, setSelectedCrew] = useState<string[]>([]);
+  const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
+  const [selectedDayOfMonth, setSelectedDayOfMonth] = useState<string>("");
 
   const createJob = useCreateJob();
   const createRecurringJob = useCreateRecurringJob();
@@ -93,7 +106,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           name: customerName,
           phone: phone || null,
           email: email || null,
-          address: jobAddress || null,
+          address: jobAddress,
           created_by: user.id,
           account_id: currentAccount.id,
         })
@@ -113,7 +126,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           customer_id: customer.id,
           name: jobName,
           service_type: serviceType || null,
-          address: jobAddress || null,
+          address: jobAddress,
           description: description || null,
           frequency,
           scheduled_time_start: scheduledTime || null,
@@ -121,6 +134,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           start_date: scheduledDate,
           end_date: hasEndDate && endDate ? endDate : null,
           default_crew_user_ids: selectedCrew,
+          preferred_days_of_week: (frequency === "weekly" || frequency === "biweekly") ? selectedDaysOfWeek : [],
+          preferred_day_of_month: frequency === "monthly" && selectedDayOfMonth ? parseInt(selectedDayOfMonth) : null,
         });
 
         toast.success("Recurring job created with upcoming instances!");
@@ -138,13 +153,13 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           phone: phone || null,
           email: email || null,
           service_type: serviceType || null,
-          address: jobAddress || null,
+          address: jobAddress,
           description: description || null,
           scheduled_date: scheduledDateTime,
           status: "job",
         });
 
-        toast.success("Job and estimate created successfully!");
+        toast.success("Job created successfully!");
       }
 
       resetForm();
@@ -173,6 +188,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setEndDate("");
     setScheduledTimeEnd("");
     setSelectedCrew([]);
+    setSelectedDaysOfWeek([]);
+    setSelectedDayOfMonth("");
   };
 
   const handleCancel = () => {
@@ -185,6 +202,14 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       prev.includes(userId)
         ? prev.filter((id) => id !== userId)
         : [...prev, userId]
+    );
+  };
+
+  const toggleDayOfWeek = (day: number) => {
+    setSelectedDaysOfWeek((prev) =>
+      prev.includes(day)
+        ? prev.filter((d) => d !== day)
+        : [...prev, day]
     );
   };
 
@@ -282,7 +307,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
             <div className="space-y-2">
               <Label htmlFor="jobAddress" className="text-base font-semibold text-gray-900">
-                Job Address
+                Job Address <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="jobAddress"
@@ -290,6 +315,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 onChange={(e) => setJobAddress(e.target.value)}
                 placeholder="123 Main St, Austin, TX"
                 className="h-12 text-base border-gray-300 rounded-lg"
+                required
               />
             </div>
 
@@ -327,7 +353,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               <div className="space-y-4 p-4 rounded-lg border border-gray-200">
                 <div className="space-y-2">
                   <Label className="text-base font-semibold text-gray-900">Frequency</Label>
-                  <Select value={frequency} onValueChange={(v) => setFrequency(v as RecurrenceFrequency)}>
+                  <Select value={frequency} onValueChange={(v) => { setFrequency(v as RecurrenceFrequency); setSelectedDaysOfWeek([]); setSelectedDayOfMonth(""); }}>
                     <SelectTrigger className="h-12 text-base border-gray-300 rounded-lg">
                       <SelectValue />
                     </SelectTrigger>
@@ -338,6 +364,56 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Day of Week selector for weekly/biweekly */}
+                {(frequency === "weekly" || frequency === "biweekly") && (
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold text-gray-900">
+                      Days of the Week <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="flex gap-1.5">
+                      {DAYS_OF_WEEK.map((day) => (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => toggleDayOfWeek(day.value)}
+                          className={cn(
+                            "flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors",
+                            selectedDaysOfWeek.includes(day.value)
+                              ? "bg-emerald-700 text-white border-emerald-700"
+                              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                          )}
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Day of Month selector for monthly */}
+                {frequency === "monthly" && (
+                  <div className="space-y-2">
+                    <Label className="text-base font-semibold text-gray-900">
+                      Day of the Month <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={selectedDayOfMonth} onValueChange={setSelectedDayOfMonth}>
+                      <SelectTrigger className="h-12 text-base border-gray-300 rounded-lg">
+                        <SelectValue placeholder="Select day" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                          <SelectItem key={day} value={String(day)}>
+                            {day === 1 ? "1st" : day === 2 ? "2nd" : day === 3 ? "3rd" : day === 21 ? "21st" : day === 22 ? "22nd" : day === 23 ? "23rd" : day === 31 ? "31st" : `${day}th`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">
+                      For months with fewer days, the job will be scheduled on the last day.
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">

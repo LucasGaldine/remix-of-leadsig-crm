@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { addWeeks, addMonths, format, isAfter, parseISO } from "date-fns";
+import { addWeeks, addMonths, addDays, format, isAfter, parseISO, getDay, setDay, setDate, getDaysInMonth } from "date-fns";
 
 export type RecurrenceFrequency = "weekly" | "biweekly" | "monthly";
 
@@ -22,6 +22,8 @@ export interface RecurringJob {
   estimated_value: number;
   is_active: boolean;
   instances_ahead: number;
+  preferred_days_of_week: number[];
+  preferred_day_of_month: number | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -40,9 +42,40 @@ export interface CreateRecurringJobInput {
   end_date?: string | null;
   default_crew_user_ids?: string[];
   estimated_value?: number;
+  preferred_days_of_week?: number[];
+  preferred_day_of_month?: number | null;
 }
 
-function getNextDate(currentDate: Date, frequency: RecurrenceFrequency): Date {
+function getNextDate(
+  currentDate: Date,
+  frequency: RecurrenceFrequency,
+  preferredDaysOfWeek?: number[],
+  preferredDayOfMonth?: number | null,
+): Date {
+  if (frequency === "monthly") {
+    const next = addMonths(currentDate, 1);
+    if (preferredDayOfMonth) {
+      const maxDay = getDaysInMonth(next);
+      const day = Math.min(preferredDayOfMonth, maxDay);
+      return setDate(next, day);
+    }
+    return next;
+  }
+
+  if ((frequency === "weekly" || frequency === "biweekly") && preferredDaysOfWeek && preferredDaysOfWeek.length > 0) {
+    const currentDay = getDay(currentDate);
+    const sorted = [...preferredDaysOfWeek].sort((a, b) => a - b);
+    const nextDayInWeek = sorted.find((d) => d > currentDay);
+
+    if (nextDayInWeek !== undefined) {
+      return setDay(currentDate, nextDayInWeek);
+    }
+
+    const weeksToAdd = frequency === "biweekly" ? 2 : 1;
+    const nextWeek = addWeeks(currentDate, weeksToAdd);
+    return setDay(nextWeek, sorted[0]);
+  }
+
   switch (frequency) {
     case "weekly":
       return addWeeks(currentDate, 1);
@@ -51,6 +84,34 @@ function getNextDate(currentDate: Date, frequency: RecurrenceFrequency): Date {
     case "monthly":
       return addMonths(currentDate, 1);
   }
+}
+
+function getFirstDate(
+  startDate: Date,
+  frequency: RecurrenceFrequency,
+  preferredDaysOfWeek?: number[],
+  preferredDayOfMonth?: number | null,
+): Date {
+  if (frequency === "monthly" && preferredDayOfMonth) {
+    const maxDay = getDaysInMonth(startDate);
+    const day = Math.min(preferredDayOfMonth, maxDay);
+    const adjusted = setDate(startDate, day);
+    return isAfter(adjusted, startDate) || adjusted.getTime() === startDate.getTime()
+      ? adjusted
+      : setDate(addMonths(startDate, 1), Math.min(preferredDayOfMonth, getDaysInMonth(addMonths(startDate, 1))));
+  }
+
+  if ((frequency === "weekly" || frequency === "biweekly") && preferredDaysOfWeek && preferredDaysOfWeek.length > 0) {
+    const currentDay = getDay(startDate);
+    const sorted = [...preferredDaysOfWeek].sort((a, b) => a - b);
+    const sameOrFuture = sorted.find((d) => d >= currentDay);
+    if (sameOrFuture !== undefined) {
+      return setDay(startDate, sameOrFuture);
+    }
+    return setDay(addWeeks(startDate, 1), sorted[0]);
+  }
+
+  return startDate;
 }
 
 export function useRecurringJobs() {
@@ -120,6 +181,8 @@ export function useCreateRecurringJob() {
           end_date: input.end_date || null,
           default_crew_user_ids: input.default_crew_user_ids || [],
           estimated_value: input.estimated_value || 0,
+          preferred_days_of_week: input.preferred_days_of_week || [],
+          preferred_day_of_month: input.preferred_day_of_month || null,
           created_by: user.id,
         })
         .select()
@@ -206,9 +269,17 @@ async function generateInstances(recurringJob: RecurringJob, accountId: string, 
     ? Math.max(...existingInstances.map((i: any) => i.recurring_instance_number || 0))
     : 0;
 
+  const daysOfWeek = recurringJob.preferred_days_of_week || [];
+  const dayOfMonth = recurringJob.preferred_day_of_month || null;
+
   let nextDate: Date;
   if (maxInstanceNumber === 0) {
-    nextDate = parseISO(recurringJob.start_date);
+    nextDate = getFirstDate(
+      parseISO(recurringJob.start_date),
+      recurringJob.frequency as RecurrenceFrequency,
+      daysOfWeek,
+      dayOfMonth,
+    );
   } else {
     const lastInstance = existingInstances?.find(
       (i: any) => i.recurring_instance_number === maxInstanceNumber
@@ -227,9 +298,14 @@ async function generateInstances(recurringJob: RecurringJob, accountId: string, 
         ? parseISO(lastSchedule.scheduled_date)
         : parseISO(recurringJob.start_date);
 
-      nextDate = getNextDate(lastDate, recurringJob.frequency as RecurrenceFrequency);
+      nextDate = getNextDate(lastDate, recurringJob.frequency as RecurrenceFrequency, daysOfWeek, dayOfMonth);
     } else {
-      nextDate = parseISO(recurringJob.start_date);
+      nextDate = getFirstDate(
+        parseISO(recurringJob.start_date),
+        recurringJob.frequency as RecurrenceFrequency,
+        daysOfWeek,
+        dayOfMonth,
+      );
     }
   }
 
@@ -307,8 +383,82 @@ async function generateInstances(recurringJob: RecurringJob, accountId: string, 
       }
     }
 
-    nextDate = getNextDate(nextDate, recurringJob.frequency as RecurrenceFrequency);
+    nextDate = getNextDate(nextDate, recurringJob.frequency as RecurrenceFrequency, daysOfWeek, dayOfMonth);
   }
+}
+
+export interface ConvertToRecurringInput {
+  jobId: string;
+  frequency: RecurrenceFrequency;
+  start_date: string;
+  end_date?: string | null;
+  scheduled_time_start?: string | null;
+  scheduled_time_end?: string | null;
+  preferred_days_of_week?: number[];
+  preferred_day_of_month?: number | null;
+  default_crew_user_ids?: string[];
+}
+
+export function useConvertToRecurring() {
+  const queryClient = useQueryClient();
+  const { user, currentAccount } = useAuth();
+
+  return useMutation({
+    mutationFn: async (input: ConvertToRecurringInput) => {
+      if (!user || !currentAccount) throw new Error("Not authenticated");
+
+      const { data: existingJob, error: fetchErr } = await supabase
+        .from("leads")
+        .select("*, customer:customers(*)")
+        .eq("id", input.jobId)
+        .maybeSingle();
+
+      if (fetchErr || !existingJob) throw fetchErr || new Error("Job not found");
+
+      const { data: recurringJob, error: createError } = await supabase
+        .from("recurring_jobs")
+        .insert({
+          account_id: currentAccount.id,
+          customer_id: existingJob.customer_id,
+          name: existingJob.name || existingJob.customer?.name || "Recurring Job",
+          service_type: existingJob.service_type || null,
+          address: existingJob.address || null,
+          description: existingJob.description || null,
+          frequency: input.frequency,
+          scheduled_time_start: input.scheduled_time_start || null,
+          scheduled_time_end: input.scheduled_time_end || null,
+          start_date: input.start_date,
+          end_date: input.end_date || null,
+          default_crew_user_ids: input.default_crew_user_ids || [],
+          preferred_days_of_week: input.preferred_days_of_week || [],
+          preferred_day_of_month: input.preferred_day_of_month || null,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      await supabase
+        .from("leads")
+        .update({
+          recurring_job_id: recurringJob.id,
+          recurring_instance_number: 1,
+        })
+        .eq("id", input.jobId);
+
+      await generateInstances(recurringJob as RecurringJob, currentAccount.id, user.id);
+
+      return recurringJob;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recurring-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring-job"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["job"] });
+      queryClient.invalidateQueries({ queryKey: ["job-counts"] });
+    },
+  });
 }
 
 export function usePauseRecurringJob() {

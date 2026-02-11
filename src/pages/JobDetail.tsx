@@ -48,6 +48,7 @@ import { PhotoSection } from "@/components/photos/PhotoSection";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
 import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew } from "@/hooks/useRecurringJobs";
+import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
 import { Repeat } from "lucide-react";
 
 export default function JobDetail() {
@@ -89,6 +90,7 @@ export default function JobDetail() {
   const updateRecurringCrew = useUpdateRecurringJobCrew();
   const [crewSavePromptOpen, setCrewSavePromptOpen] = useState(false);
   const [pendingCrewUserIds, setPendingCrewUserIds] = useState<string[]>([]);
+  const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
 
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
@@ -482,6 +484,12 @@ export default function JobDetail() {
                       <Edit className="h-4 w-4 mr-2" />
                       Edit Job
                     </DropdownMenuItem>
+                    {!jobAny.recurring_job_id && (
+                      <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
+                        <Repeat className="h-4 w-4 mr-2" />
+                        Make Recurring
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
                       onClick={() => setDeleteDialogOpen(true)}
@@ -1129,6 +1137,16 @@ export default function JobDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Make Recurring Dialog */}
+      {id && (
+        <MakeRecurringDialog
+          open={makeRecurringOpen}
+          onOpenChange={setMakeRecurringOpen}
+          jobId={id}
+          jobSchedules={schedules}
+        />
+      )}
 
       <MobileNav />
     </div>
