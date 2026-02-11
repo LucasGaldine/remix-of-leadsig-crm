@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   Send,
   ArrowRightLeft,
-  Trash2,
   User,
   Calendar,
   ChevronRight,
@@ -20,6 +19,7 @@ import {
   CreditCard,
   FileCheck,
   Download,
+  Calculator,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -82,7 +82,6 @@ export default function EstimateDetail() {
   const [copied, setCopied] = useState(false);
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [markingAsSent, setMarkingAsSent] = useState(false);
   const [creatingStripeInvoice, setCreatingStripeInvoice] = useState(false);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
@@ -415,58 +414,6 @@ export default function EstimateDetail() {
     } finally {
       setRecordingPayment(false);
     }
-  };
-
-  const handleDelete = async () => {
-    try {
-      const jobId = estimate?.job_id;
-
-      let estimateJobId: string | null = null;
-      let isEstimateVisit = false;
-      if (jobId) {
-        const { data: lead } = await supabase
-          .from("leads")
-          .select("estimate_job_id, is_estimate_visit")
-          .eq("id", jobId)
-          .maybeSingle();
-        estimateJobId = lead?.estimate_job_id ?? null;
-        isEstimateVisit = lead?.is_estimate_visit ?? false;
-      }
-
-      const { error } = await supabase
-        .from("estimates")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
-
-      if (isEstimateVisit && jobId) {
-        await supabase.from("job_schedules").delete().eq("lead_id", jobId);
-        const { data: jobData } = await supabase
-          .from("leads")
-          .select("name")
-          .eq("id", jobId)
-          .maybeSingle();
-        const revertedName = (jobData?.name || "").replace(/, Estimate$/, "");
-        await supabase
-          .from("leads")
-          .update({ status: "qualified", is_estimate_visit: false, name: revertedName })
-          .eq("id", jobId);
-      } else if (estimateJobId) {
-        await supabase.from("job_schedules").delete().eq("lead_id", estimateJobId);
-        await supabase.from("leads").delete().eq("id", estimateJobId);
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
-      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      await queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-      await queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Estimate deleted");
-      navigate(isEstimateVisit && jobId ? `/leads/${jobId}` : "/payments");
-    } catch {
-      toast.error("Failed to delete estimate");
-    }
-    setShowDeleteDialog(false);
   };
 
   const enterEditMode = () => {
@@ -824,10 +771,23 @@ export default function EstimateDetail() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-foreground">Line Items</h3>
           {!estimate.is_finalized && !editMode && (
-            <Button variant="outline" size="sm" onClick={enterEditMode}>
-              <Edit2 className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const isJob = estimate.job?.status === 'job' || estimate.job?.status === 'paid';
+                  navigate(isJob ? `/jobs/${estimate.job_id}` : `/leads/${estimate.job_id}`);
+                }}
+              >
+                <Calculator className="h-4 w-4 mr-2" />
+                Quick Estimate
+              </Button>
+              <Button variant="outline" size="sm" onClick={enterEditMode}>
+                <Edit2 className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            </div>
           )}
         </div>
 
@@ -1073,22 +1033,6 @@ export default function EstimateDetail() {
 
       {!editMode && (
         <>
-          {estimate.status !== "accepted" && !estimate.is_finalized && (
-            <div className="px-4 mt-4">
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-destructive w-full"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </Button>
-              </div>
-            </div>
-          )}
-
           <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
             {portalLink && (
               <div className="flex items-center gap-2 bg-card border border-border rounded-xl p-3 mb-3 shadow-sm">
@@ -1190,23 +1134,6 @@ export default function EstimateDetail() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => { setShowApproveDialog(false); handleManualApprove(); }}>
               Approve
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Estimate</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this estimate? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
