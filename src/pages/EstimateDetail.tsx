@@ -420,7 +420,7 @@ export default function EstimateDetail() {
     }
   };
 
-  const handleQuickEstimateDraft = (breakdown: QuickEstimateBreakdown) => {
+  const handleQuickEstimateSave = async (breakdown: QuickEstimateBreakdown) => {
     const { serviceType, measurements, result } = breakdown;
     const label = SERVICE_LABELS[serviceType];
     const qty = serviceType === "fencing"
@@ -429,36 +429,56 @@ export default function EstimateDetail() {
     const unit = serviceType === "fencing" ? "linear ft" : "sq ft";
     const overheadAmount = result.totalMid - result.laborTotal - result.materialTotal;
 
-    const items: LineItemForm[] = [
-      {
-        name: `${label} - Labor`,
-        description: "",
-        quantity: qty.toString(),
-        unit,
-        unit_price: qty > 0 ? (result.laborTotal / qty).toFixed(2) : "0",
-        isNew: true,
-      },
-      {
-        name: `${label} - Materials`,
-        description: "Includes waste factor",
-        quantity: qty.toString(),
-        unit,
-        unit_price: qty > 0 ? (result.materialTotal / qty).toFixed(2) : "0",
-        isNew: true,
-      },
-      {
-        name: "Overhead & Profit",
-        description: "",
-        quantity: "1",
-        unit: "item",
-        unit_price: overheadAmount.toFixed(2),
-        isNew: true,
-      },
+    const newItems = [
+      { name: `${label} - Labor`, description: null as string | null, quantity: qty, unit, unit_price: qty > 0 ? parseFloat((result.laborTotal / qty).toFixed(2)) : 0 },
+      { name: `${label} - Materials`, description: "Includes waste factor", quantity: qty, unit, unit_price: qty > 0 ? parseFloat((result.materialTotal / qty).toFixed(2)) : 0 },
+      { name: "Overhead & Profit", description: null as string | null, quantity: 1, unit: "item", unit_price: parseFloat(overheadAmount.toFixed(2)) },
     ];
 
-    setLineItems(items);
-    setShowQuickEstimate(false);
-    setEditMode(true);
+    try {
+      const existingItems = estimate.line_items.filter(
+        (item: any) => !item.is_change_order || item.change_order_type !== 'deleted'
+      );
+      for (const item of existingItems) {
+        await supabase.from('estimate_line_items').delete().eq('id', item.id);
+      }
+
+      for (let i = 0; i < newItems.length; i++) {
+        const item = newItems[i];
+        const total = item.quantity * item.unit_price;
+        const { error } = await supabase.from('estimate_line_items').insert({
+          estimate_id: id,
+          account_id: estimate.account_id,
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total,
+          sort_order: i,
+          is_change_order: false,
+        });
+        if (error) throw error;
+      }
+
+      const newSubtotal = newItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+      const newTax = newSubtotal * parseFloat(estimate.tax_rate.toString());
+      const newTotal = newSubtotal + newTax - parseFloat(estimate.discount.toString());
+
+      await supabase
+        .from('estimates')
+        .update({ subtotal: newSubtotal, tax: newTax, total: newTotal, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      await queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      await queryClient.invalidateQueries({ queryKey: ['estimates'] });
+
+      setShowQuickEstimate(false);
+      toast.success('Estimate updated from quick estimate');
+    } catch (error) {
+      console.error('Error saving quick estimate:', error);
+      toast.error('Failed to save quick estimate');
+    }
   };
 
   const enterEditMode = () => {
@@ -1198,11 +1218,8 @@ export default function EstimateDetail() {
           </DialogHeader>
           <QuickEstimatePanel
             leadId={estimate.job_id}
-            onEstimateSaved={() => {
-              setShowQuickEstimate(false);
-              queryClient.invalidateQueries({ queryKey: ["estimate", id] });
-            }}
-            onCreateDraft={handleQuickEstimateDraft}
+            variant="flat"
+            onSaveToEstimate={handleQuickEstimateSave}
           />
         </DialogContent>
       </Dialog>
