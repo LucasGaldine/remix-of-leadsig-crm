@@ -24,6 +24,7 @@ export interface RecurringJob {
   instances_ahead: number;
   preferred_days_of_week: number[];
   preferred_day_of_month: number | null;
+  client_share_token: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -165,6 +166,8 @@ export function useCreateRecurringJob() {
       if (!user) throw new Error("Not authenticated");
       if (!currentAccount) throw new Error("No account selected");
 
+      const shareToken = crypto.randomUUID();
+
       const { data: recurringJob, error: createError } = await supabase
         .from("recurring_jobs")
         .insert({
@@ -183,12 +186,23 @@ export function useCreateRecurringJob() {
           estimated_value: input.estimated_value || 0,
           preferred_days_of_week: input.preferred_days_of_week || [],
           preferred_day_of_month: input.preferred_day_of_month || null,
+          client_share_token: shareToken,
           created_by: user.id,
         })
         .select()
         .single();
 
       if (createError) throw createError;
+
+      await supabase
+        .from("estimates")
+        .insert({
+          recurring_job_id: recurringJob.id,
+          customer_id: input.customer_id,
+          account_id: currentAccount.id,
+          status: "draft",
+          created_by: user.id,
+        });
 
       await generateInstances(recurringJob as RecurringJob, currentAccount.id, user.id);
 
@@ -415,6 +429,9 @@ export function useConvertToRecurring() {
 
       if (fetchErr || !existingJob) throw fetchErr || new Error("Job not found");
 
+      const existingToken = existingJob.client_share_token;
+      const shareToken = existingToken || crypto.randomUUID();
+
       const { data: recurringJob, error: createError } = await supabase
         .from("recurring_jobs")
         .insert({
@@ -432,12 +449,20 @@ export function useConvertToRecurring() {
           default_crew_user_ids: input.default_crew_user_ids || [],
           preferred_days_of_week: input.preferred_days_of_week || [],
           preferred_day_of_month: input.preferred_day_of_month || null,
+          client_share_token: shareToken,
           created_by: user.id,
         })
         .select()
         .single();
 
       if (createError) throw createError;
+
+      if (existingToken) {
+        await supabase
+          .from("leads")
+          .update({ client_share_token: null })
+          .eq("id", input.jobId);
+      }
 
       await supabase
         .from("leads")
@@ -446,6 +471,32 @@ export function useConvertToRecurring() {
           recurring_instance_number: 1,
         })
         .eq("id", input.jobId);
+
+      const { data: existingEstimate } = await supabase
+        .from("estimates")
+        .select("id")
+        .eq("job_id", input.jobId)
+        .maybeSingle();
+
+      if (existingEstimate) {
+        await supabase
+          .from("estimates")
+          .update({
+            recurring_job_id: recurringJob.id,
+            job_id: null,
+          })
+          .eq("id", existingEstimate.id);
+      } else {
+        await supabase
+          .from("estimates")
+          .insert({
+            recurring_job_id: recurringJob.id,
+            customer_id: existingJob.customer_id,
+            account_id: currentAccount.id,
+            status: "draft",
+            created_by: user.id,
+          });
+      }
 
       await generateInstances(recurringJob as RecurringJob, currentAccount.id, user.id);
 
@@ -458,6 +509,27 @@ export function useConvertToRecurring() {
       queryClient.invalidateQueries({ queryKey: ["job"] });
       queryClient.invalidateQueries({ queryKey: ["job-counts"] });
     },
+  });
+}
+
+export function useRecurringJobEstimate(recurringJobId: string | undefined) {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ["recurring-job-estimate", recurringJobId],
+    queryFn: async () => {
+      if (!recurringJobId) return null;
+
+      const { data, error } = await supabase
+        .from("estimates")
+        .select("id, total, subtotal, tax, discount, status, line_items:estimate_line_items(id, name, quantity, unit_price, total)")
+        .eq("recurring_job_id", recurringJobId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && !!recurringJobId,
   });
 }
 

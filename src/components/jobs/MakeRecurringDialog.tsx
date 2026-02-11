@@ -117,11 +117,11 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
         default_crew_user_ids: selectedCrew,
       });
 
-      toast.success("Job is now recurring! Future instances have been created.");
+      toast.success("Job schedule created! Future visits and a shared quote have been set up.");
       onOpenChange(false);
     } catch (error) {
-      console.error("Error converting to recurring:", error);
-      toast.error("Failed to set up recurring job");
+      console.error("Error creating job schedule:", error);
+      toast.error("Failed to create job schedule");
     }
   };
 
@@ -136,9 +136,9 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Make This a Recurring Job</DialogTitle>
+          <DialogTitle>Create Job Schedule</DialogTitle>
           <DialogDescription>
-            Set up a recurring schedule and future instances will be generated automatically.
+            Set up a recurring schedule. A shared quote and client portal will be created for all visits.
           </DialogDescription>
         </DialogHeader>
 
@@ -282,7 +282,7 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
             disabled={convertToRecurring.isPending}
             className="bg-emerald-700 hover:bg-emerald-800"
           >
-            {convertToRecurring.isPending ? "Setting up..." : "Make Recurring"}
+            {convertToRecurring.isPending ? "Setting up..." : "Create Schedule"}
           </Button>
         </DialogFooter>
       </DialogContent>

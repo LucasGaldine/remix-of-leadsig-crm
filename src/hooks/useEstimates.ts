@@ -20,6 +20,11 @@ export interface EstimateWithDetails extends Estimate {
     estimate_job_id?: string | null;
     is_estimate_visit?: boolean;
   } | null;
+  recurring_job: {
+    id: string;
+    name: string;
+    client_share_token: string | null;
+  } | null;
   account: {
     company_name?: string;
     company_email?: string;
@@ -80,6 +85,7 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
           *,
           customer:customers(id, name),
           job:leads!estimates_job_id_fkey(id, name, status, scheduled_date, estimate_job_id, is_estimate_visit),
+          recurring_job:recurring_jobs(id, name, client_share_token),
           line_items:estimate_line_items(
             id,
             name,
@@ -163,6 +169,7 @@ export function useEstimate(id: string | undefined) {
           *,
           customer:customers(id, name, email, phone, address),
           job:leads!estimates_job_id_fkey(id, name, status, scheduled_date, address, service_type),
+          recurring_job:recurring_jobs(id, name, client_share_token),
           account:accounts(company_name, company_email, company_phone),
           line_items:estimate_line_items(
             id,

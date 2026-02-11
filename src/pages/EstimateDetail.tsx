@@ -152,6 +152,10 @@ export default function EstimateDetail() {
 
   const config = statusConfig[estimate.status] || { label: estimate.status, className: "bg-secondary text-secondary-foreground" };
   const hasChangeOrders = estimate.line_items.some((item: any) => item.is_change_order);
+  const isRecurringQuote = !!estimate.recurring_job_id && !estimate.job_id;
+  const displayTitle = isRecurringQuote
+    ? `${estimate.customer?.name || "Unknown"} Quote`
+    : `${estimate.customer?.name || "Unknown"}, Estimate`;
 
   const handleManualApprove = async () => {
     setManualApproving(true);
@@ -183,26 +187,48 @@ export default function EstimateDetail() {
   const handleGeneratePortalLink = async () => {
     setGeneratingLink(true);
     try {
-      const { data: lead } = await supabase
-        .from("leads")
-        .select("client_share_token")
-        .eq("id", estimate.job_id)
-        .maybeSingle();
+      let token: string | null = null;
 
-      let token = lead?.client_share_token;
+      if (isRecurringQuote && estimate.recurring_job_id) {
+        const { data: rj } = await supabase
+          .from("recurring_jobs")
+          .select("client_share_token")
+          .eq("id", estimate.recurring_job_id)
+          .maybeSingle();
 
-      if (!token) {
-        token = crypto.randomUUID();
-        const { error } = await supabase
+        token = rj?.client_share_token || null;
+
+        if (!token) {
+          token = crypto.randomUUID();
+          const { error } = await supabase
+            .from("recurring_jobs")
+            .update({ client_share_token: token })
+            .eq("id", estimate.recurring_job_id);
+          if (error) throw error;
+        }
+      } else if (estimate.job_id) {
+        const { data: lead } = await supabase
           .from("leads")
-          .update({ client_share_token: token })
-          .eq("id", estimate.job_id);
+          .select("client_share_token")
+          .eq("id", estimate.job_id)
+          .maybeSingle();
 
-        if (error) throw error;
+        token = lead?.client_share_token || null;
+
+        if (!token) {
+          token = crypto.randomUUID();
+          const { error } = await supabase
+            .from("leads")
+            .update({ client_share_token: token })
+            .eq("id", estimate.job_id);
+          if (error) throw error;
+        }
       }
 
-      const link = `${window.location.origin}/client/job?token=${token}`;
-      setPortalLink(link);
+      if (token) {
+        const link = `${window.location.origin}/client/job?token=${token}`;
+        setPortalLink(link);
+      }
     } catch {
       toast.error("Failed to generate client portal link");
     } finally {
@@ -727,7 +753,7 @@ export default function EstimateDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-48">
-      <PageHeader title={`${estimate.customer?.name || "Unknown"}, Estimate`} showBack backTo="/payments" />
+      <PageHeader title={displayTitle} showBack backTo="/payments" />
 
       {estimate.is_finalized && (
         <div className="px-4 pt-4">
@@ -749,7 +775,11 @@ export default function EstimateDetail() {
             <h2 className="text-xl font-bold text-foreground mt-2">
               {estimate.customer?.name || "Unknown Customer"}
             </h2>
-            <p className="text-muted-foreground">{estimate.job?.name || "Unknown Job"}</p>
+            <p className="text-muted-foreground">
+              {isRecurringQuote
+                ? (estimate.recurring_job?.name || "Job Schedule")
+                : (estimate.job?.name || "Unknown Job")}
+            </p>
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-foreground">
@@ -774,13 +804,8 @@ export default function EstimateDetail() {
       </div>
 
       <div className="px-4 py-4 space-y-3">
-        <button
-          className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-          onClick={() => {
-            if (!estimate.job) return;
-            const isJob = estimate.job.status === 'job' || estimate.job.status === 'paid';
-            navigate(isJob ? `/jobs/${estimate.job.id}` : `/leads/${estimate.job.id}`);
-          }}
+        <div
+          className="w-full card-elevated rounded-lg p-4 text-left"
         >
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-secondary">
@@ -790,25 +815,38 @@ export default function EstimateDetail() {
               <p className="font-medium text-foreground">Customer</p>
               <p className="text-sm text-muted-foreground">{estimate.customer?.name || "Unknown"}</p>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
-        </button>
+        </div>
 
-        <button
-          className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-          onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-secondary">
-              <Calendar className="h-5 w-5 text-secondary-foreground" />
+        {isRecurringQuote ? (
+          <div className="card-elevated rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <Calendar className="h-5 w-5 text-secondary-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-foreground">Job Schedule</p>
+                <p className="text-sm text-muted-foreground">{estimate.recurring_job?.name || "Unknown"}</p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="font-medium text-foreground">Job</p>
-              <p className="text-sm text-muted-foreground">{estimate.job?.name || "Unknown"}</p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
-        </button>
+        ) : (
+          <button
+            className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+            onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-secondary">
+                <Calendar className="h-5 w-5 text-secondary-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-foreground">Job</p>
+                <p className="text-sm text-muted-foreground">{estimate.job?.name || "Unknown"}</p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </button>
+        )}
       </div>
 
       {estimate.status === "accepted" && (
@@ -1143,7 +1181,16 @@ export default function EstimateDetail() {
                 </>
               )}
               {!estimate.is_finalized && estimate.status === "accepted" && (
-                estimate.job?.status === "completed" ? (
+                isRecurringQuote ? (
+                  <Button
+                    className="flex-1 h-14 gap-2"
+                    onClick={handleGeneratePortalLink}
+                    disabled={generatingLink}
+                  >
+                    <Link2 className="h-4 w-4" />
+                    {generatingLink ? "Generating..." : "Client Portal"}
+                  </Button>
+                ) : estimate.job?.status === "completed" ? (
                   <>
                     <Button
                       variant="outline"
@@ -1189,9 +1236,11 @@ export default function EstimateDetail() {
       <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Approve Estimate</AlertDialogTitle>
+            <AlertDialogTitle>{isRecurringQuote ? "Approve Quote" : "Approve Estimate"}</AlertDialogTitle>
             <AlertDialogDescription>
-              Mark this estimate as approved by the customer?
+              {isRecurringQuote
+                ? "Mark this quote as approved by the customer?"
+                : "Mark this estimate as approved by the customer?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1219,7 +1268,7 @@ export default function EstimateDetail() {
             <DialogTitle>Quick Estimate</DialogTitle>
           </DialogHeader>
           <QuickEstimatePanel
-            leadId={estimate.job_id}
+            leadId={estimate.job_id || estimate.recurring_job_id || ""}
             variant="flat"
             onSaveToEstimate={handleQuickEstimateSave}
           />

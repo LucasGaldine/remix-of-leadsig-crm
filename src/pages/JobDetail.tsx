@@ -47,7 +47,7 @@ import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { PhotoSection } from "@/components/photos/PhotoSection";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
-import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew } from "@/hooks/useRecurringJobs";
+import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, useRecurringJobEstimate } from "@/hooks/useRecurringJobs";
 import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
 import { Repeat } from "lucide-react";
 
@@ -86,6 +86,7 @@ export default function JobDetail() {
   const updateJobMutation = useUpdateJob();
   const deleteJobMutation = useDeleteJob();
   const { data: recurringJobData } = useRecurringJob((job as any)?.recurring_job_id ?? undefined);
+  const { data: recurringJobEstimate } = useRecurringJobEstimate((job as any)?.recurring_job_id ?? undefined);
   const generateNextInstances = useGenerateNextInstances();
   const updateRecurringCrew = useUpdateRecurringJobCrew();
   const [crewSavePromptOpen, setCrewSavePromptOpen] = useState(false);
@@ -188,6 +189,25 @@ export default function JobDetail() {
 
     setEstimateLoading(true);
     try {
+      const { data: currentJob } = await supabase
+        .from("leads")
+        .select("recurring_job_id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (currentJob?.recurring_job_id) {
+        const { data: masterQuote, error: quoteError } = await supabase
+          .from("estimates")
+          .select("id, total, status, line_items:estimate_line_items(id)")
+          .eq("recurring_job_id", currentJob.recurring_job_id)
+          .maybeSingle();
+
+        if (quoteError) throw quoteError;
+        setEstimate(masterQuote);
+        setEstimateLoading(false);
+        return;
+      }
+
       let { data, error } = await supabase
         .from("estimates")
         .select("id, total, status, line_items:estimate_line_items(id)")
@@ -459,7 +479,7 @@ export default function JobDetail() {
               {jobAny.recurring_job_id && (
                 <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
                   <Repeat className="h-3 w-3 mr-1" />
-                  Recurring #{jobAny.recurring_instance_number || ""}
+                  Visit #{jobAny.recurring_instance_number || ""}
                 </Badge>
               )}
               {isUnassigned && (
@@ -487,7 +507,7 @@ export default function JobDetail() {
                     {!jobAny.recurring_job_id && (
                       <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
                         <Repeat className="h-4 w-4 mr-2" />
-                        Make Recurring
+                        Create Job Schedule
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem
@@ -516,7 +536,7 @@ export default function JobDetail() {
             <p className="text-2xl font-bold text-foreground">
               ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
             </p>
-            <p className="text-xs text-muted-foreground">Estimate Total</p>
+            <p className="text-xs text-muted-foreground">{jobAny.recurring_job_id ? "Quote Total" : "Estimate Total"}</p>
           </div>
         </div>
 
@@ -595,7 +615,7 @@ export default function JobDetail() {
       <main className="px-4 py-4 pb-32">
         {activeTab === "details" && (
           <div className="space-y-4">
-            {/* Estimate */}
+            {/* Estimate / Quote */}
             {estimate ? (
               <button
                 onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
@@ -606,7 +626,9 @@ export default function JobDetail() {
                     <DollarSign className="h-5 w-5 text-secondary-foreground" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-foreground">Estimate</p>
+                    <p className="font-medium text-foreground">
+                      {jobAny.recurring_job_id ? `${job.customer?.name || ""} Quote` : "Estimate"}
+                    </p>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       ${Number(estimate.total).toLocaleString()} · {estimate.status}
                     </p>
@@ -624,8 +646,12 @@ export default function JobDetail() {
                     <DollarSign className="h-5 w-5 text-secondary-foreground" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-foreground">Estimate</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">No estimate yet</p>
+                    <p className="font-medium text-foreground">
+                      {jobAny.recurring_job_id ? "Quote" : "Estimate"}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {jobAny.recurring_job_id ? "No quote yet" : "No estimate yet"}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -761,7 +787,7 @@ export default function JobDetail() {
               </div>
             )}
 
-            {/* Recurring Job Info */}
+            {/* Job Schedule Info */}
             {recurringJobData && (
               <div className="card-elevated rounded-lg p-4">
                 <div className="flex items-start gap-3">
@@ -769,7 +795,7 @@ export default function JobDetail() {
                     <Repeat className="h-5 w-5 text-emerald-700" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-foreground">Recurring Job</p>
+                    <p className="font-medium text-foreground">Job Schedule</p>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       {recurringJobData.frequency === "weekly" && "Every week"}
                       {recurringJobData.frequency === "biweekly" && "Every 2 weeks"}
@@ -779,8 +805,8 @@ export default function JobDetail() {
                         : " (ongoing)"}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Instance #{jobAny.recurring_instance_number || ""}
-                      {recurringJobData.is_active ? "" : " - Series paused"}
+                      Visit #{jobAny.recurring_instance_number || ""}
+                      {recurringJobData.is_active ? "" : " - Schedule paused"}
                     </p>
                   </div>
                 </div>
@@ -789,10 +815,17 @@ export default function JobDetail() {
 
             {/* Client Share Link */}
             {isManager() && id && (
-              <ClientShareLink
-                jobId={job.is_estimate_visit && parentLeadId ? parentLeadId : id}
-                existingToken={job.is_estimate_visit ? parentLeadToken : (job as any).client_share_token}
-              />
+              jobAny.recurring_job_id ? (
+                <ClientShareLink
+                  recurringJobId={jobAny.recurring_job_id}
+                  existingToken={recurringJobData?.client_share_token}
+                />
+              ) : (
+                <ClientShareLink
+                  jobId={job.is_estimate_visit && parentLeadId ? parentLeadId : id}
+                  existingToken={job.is_estimate_visit ? parentLeadToken : jobAny.client_share_token}
+                />
+              )
             )}
           </div>
         )}
@@ -803,7 +836,9 @@ export default function JobDetail() {
             isEstimateVisit={job?.is_estimate_visit}
             clientPortalUrl={
               (() => {
-                const token = job?.is_estimate_visit ? parentLeadToken : (job as any).client_share_token;
+                const token = jobAny.recurring_job_id
+                  ? recurringJobData?.client_share_token
+                  : job?.is_estimate_visit ? parentLeadToken : jobAny.client_share_token;
                 return token ? `${window.location.origin}/client/job?token=${token}` : null;
               })()
             }

@@ -5,11 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface ClientShareLinkProps {
-  jobId: string;
+  jobId?: string;
+  recurringJobId?: string;
   existingToken?: string | null;
 }
 
-export function ClientShareLink({ jobId, existingToken }: ClientShareLinkProps) {
+export function ClientShareLink({ jobId, recurringJobId, existingToken }: ClientShareLinkProps) {
   const [token, setToken] = useState<string | null>(existingToken || null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -22,12 +23,20 @@ export function ClientShareLink({ jobId, existingToken }: ClientShareLinkProps) 
     setGenerating(true);
     try {
       const newToken = crypto.randomUUID();
-      const { error } = await supabase
-        .from("leads")
-        .update({ client_share_token: newToken })
-        .eq("id", jobId);
 
-      if (error) throw error;
+      if (recurringJobId) {
+        const { error } = await supabase
+          .from("recurring_jobs")
+          .update({ client_share_token: newToken })
+          .eq("id", recurringJobId);
+        if (error) throw error;
+      } else if (jobId) {
+        const { error } = await supabase
+          .from("leads")
+          .update({ client_share_token: newToken })
+          .eq("id", jobId);
+        if (error) throw error;
+      }
 
       setToken(newToken);
       toast.success("Share link created");
@@ -59,7 +68,10 @@ export function ClientShareLink({ jobId, existingToken }: ClientShareLinkProps) 
         <div className="flex-1 min-w-0">
           <p className="font-medium text-foreground">Client Portal Link</p>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Share a link so your client can view their job status, estimate, photos, and schedule.
+            {recurringJobId
+              ? "Share a link so your client can view their job schedule, quote, photos, and all visits."
+              : "Share a link so your client can view their job status, estimate, photos, and schedule."
+            }
           </p>
 
           {shareUrl ? (

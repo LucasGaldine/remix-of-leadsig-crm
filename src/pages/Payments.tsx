@@ -78,7 +78,9 @@ export default function Payments() {
     customerId: estimate.customer_id,
     customerName: estimate.customer?.name || "Unknown",
     jobId: estimate.job_id || undefined,
-    jobName: estimate.job?.name || undefined,
+    jobName: estimate.recurring_job_id
+      ? `${estimate.customer?.name || "Unknown"} Quote`
+      : (estimate.job?.name || undefined),
     lineItems: estimate.line_items.map(item => ({
       id: item.id,
       name: item.name,

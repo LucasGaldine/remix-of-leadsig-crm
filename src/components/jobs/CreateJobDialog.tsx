@@ -138,7 +138,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           preferred_day_of_month: frequency === "monthly" && selectedDayOfMonth ? parseInt(selectedDayOfMonth) : null,
         });
 
-        toast.success("Recurring job created with upcoming instances!");
+        toast.success("Job schedule created! A quote and client portal have been set up.");
       } else {
         let scheduledDateTime: string | null = null;
         if (scheduledDate) {
@@ -339,8 +339,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               <div className="flex items-center gap-3">
                 <Repeat className="h-5 w-5 text-gray-600" />
                 <div>
-                  <p className="font-semibold text-gray-900">Recurring Job</p>
-                  <p className="text-sm text-gray-500">Automatically create future instances</p>
+                  <p className="font-semibold text-gray-900">Job Schedule</p>
+                  <p className="text-sm text-gray-500">Set up a recurring schedule with a shared quote and client portal</p>
                 </div>
               </div>
               <Switch
@@ -561,7 +561,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               disabled={isLoading}
               className="px-8 h-12 text-base bg-emerald-700 hover:bg-emerald-800 rounded-lg"
             >
-              {isLoading ? "Creating..." : isRecurring ? "Create Recurring Job" : "Create Job"}
+              {isLoading ? "Creating..." : isRecurring ? "Create Job Schedule" : "Create Job"}
             </Button>
           </div>
         </form>
