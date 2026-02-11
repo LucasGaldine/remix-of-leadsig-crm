@@ -44,6 +44,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { OtherPaymentOptionsModal } from "@/components/payments/OtherPaymentOptionsModal";
+import { QuickEstimatePanel, QuickEstimateBreakdown } from "@/components/leads/QuickEstimatePanel";
+import { SERVICE_LABELS } from "@/hooks/useQuickEstimate";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
@@ -86,6 +89,7 @@ export default function EstimateDetail() {
   const [creatingStripeInvoice, setCreatingStripeInvoice] = useState(false);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [showQuickEstimate, setShowQuickEstimate] = useState(false);
 
   const handleDownloadPDF = () => {
     if (!estimate) return;
@@ -414,6 +418,47 @@ export default function EstimateDetail() {
     } finally {
       setRecordingPayment(false);
     }
+  };
+
+  const handleQuickEstimateDraft = (breakdown: QuickEstimateBreakdown) => {
+    const { serviceType, measurements, result } = breakdown;
+    const label = SERVICE_LABELS[serviceType];
+    const qty = serviceType === "fencing"
+      ? (measurements.linearFeet || 0)
+      : (measurements.sqft || 0);
+    const unit = serviceType === "fencing" ? "linear ft" : "sq ft";
+    const overheadAmount = result.totalMid - result.laborTotal - result.materialTotal;
+
+    const items: LineItemForm[] = [
+      {
+        name: `${label} - Labor`,
+        description: "",
+        quantity: qty.toString(),
+        unit,
+        unit_price: qty > 0 ? (result.laborTotal / qty).toFixed(2) : "0",
+        isNew: true,
+      },
+      {
+        name: `${label} - Materials`,
+        description: "Includes waste factor",
+        quantity: qty.toString(),
+        unit,
+        unit_price: qty > 0 ? (result.materialTotal / qty).toFixed(2) : "0",
+        isNew: true,
+      },
+      {
+        name: "Overhead & Profit",
+        description: "",
+        quantity: "1",
+        unit: "item",
+        unit_price: overheadAmount.toFixed(2),
+        isNew: true,
+      },
+    ];
+
+    setLineItems(items);
+    setShowQuickEstimate(false);
+    setEditMode(true);
   };
 
   const enterEditMode = () => {
@@ -775,10 +820,7 @@ export default function EstimateDetail() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  const isJob = estimate.job?.status === 'job' || estimate.job?.status === 'paid';
-                  navigate(isJob ? `/jobs/${estimate.job_id}` : `/leads/${estimate.job_id}`);
-                }}
+                onClick={() => setShowQuickEstimate(true)}
               >
                 <Calculator className="h-4 w-4 mr-2" />
                 Quick Estimate
@@ -1148,6 +1190,22 @@ export default function EstimateDetail() {
         markingAsSent={markingAsSent}
         recordingPayment={recordingPayment}
       />
+
+      <Dialog open={showQuickEstimate} onOpenChange={setShowQuickEstimate}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Quick Estimate</DialogTitle>
+          </DialogHeader>
+          <QuickEstimatePanel
+            leadId={estimate.job_id}
+            onEstimateSaved={() => {
+              setShowQuickEstimate(false);
+              queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+            }}
+            onCreateDraft={handleQuickEstimateDraft}
+          />
+        </DialogContent>
+      </Dialog>
 
       <MobileNav />
     </div>
