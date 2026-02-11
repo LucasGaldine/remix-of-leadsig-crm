@@ -720,16 +720,30 @@ export default function JobDetail() {
 
 
               
-              {isManager() && (<Button
-                variant="outline"
-                size="sm"
-                onClick={openScheduleDialog}
-                className="w-full gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Add Schedule Date
-              </Button>)}
-              
+              {isManager() && (
+                <div className="space-y-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openScheduleDialog}
+                    className="w-full gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Schedule Date
+                  </Button>
+                  {!jobAny.recurring_job_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMakeRecurringOpen(true)}
+                      className="w-full gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    >
+                      <Repeat className="h-4 w-4" />
+                      Create Job Schedule
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Crew Assignments */}
