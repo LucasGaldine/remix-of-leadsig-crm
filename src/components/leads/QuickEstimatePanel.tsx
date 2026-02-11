@@ -188,17 +188,19 @@ export function QuickEstimatePanel({
           </div>
         )}
 
-        <div>
-          <Label htmlFor="notes">Notes (optional)</Label>
-          <Textarea
-            id="notes"
-            placeholder="Any special considerations..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="mt-1.5"
-          />
-        </div>
+        {variant !== "flat" && (
+          <div>
+            <Label htmlFor="notes">Notes (optional)</Label>
+            <Textarea
+              id="notes"
+              placeholder="Any special considerations..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="mt-1.5"
+            />
+          </div>
+        )}
       </div>
 
       {result && hasValidInput && (

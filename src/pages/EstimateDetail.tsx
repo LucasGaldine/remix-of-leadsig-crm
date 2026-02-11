@@ -837,14 +837,16 @@ export default function EstimateDetail() {
           <h3 className="font-semibold text-foreground">Line Items</h3>
           {!estimate.is_finalized && !editMode && (
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowQuickEstimate(true)}
-              >
-                <Calculator className="h-4 w-4 mr-2" />
-                Quick Estimate
-              </Button>
+              {estimate.line_items.filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted').length === 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowQuickEstimate(true)}
+                >
+                  <Calculator className="h-4 w-4 mr-2" />
+                  Quick Estimate
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={enterEditMode}>
                 <Edit2 className="h-4 w-4 mr-2" />
                 Edit
