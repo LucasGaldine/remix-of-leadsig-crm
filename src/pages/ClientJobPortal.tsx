@@ -200,6 +200,13 @@ export default function ClientJobPortal() {
             apiUrl={apiUrl}
             apiHeaders={apiHeaders}
             onRefresh={fetchJobData}
+            customerName={job.customer?.name || ""}
+            jobName={job.name}
+            address={job.address}
+            companyName={company.company_name}
+            companyEmail={company.company_email}
+            companyPhone={company.company_phone}
+            createdAt={job.created_at}
           />
         )}
 

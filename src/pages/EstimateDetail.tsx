@@ -19,6 +19,7 @@ import {
   CheckCheck,
   CreditCard,
   FileCheck,
+  Download,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -45,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { OtherPaymentOptionsModal } from "@/components/payments/OtherPaymentOptionsModal";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { generateEstimatePDF } from "@/lib/pdfGenerator";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
@@ -85,6 +87,41 @@ export default function EstimateDetail() {
   const [creatingStripeInvoice, setCreatingStripeInvoice] = useState(false);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
+
+  const handleDownloadPDF = () => {
+    if (!estimate) return;
+
+    const activeLineItems = estimate.line_items.filter(
+      (item: any) => !item.is_change_order || item.change_order_type !== "deleted"
+    );
+
+    generateEstimatePDF({
+      customerName: estimate.customer?.name || "Unknown Customer",
+      jobName: estimate.job?.name || "",
+      address: estimate.job?.address || "",
+      companyName: estimate.account?.company_name || "",
+      companyEmail: estimate.account?.company_email || "",
+      companyPhone: estimate.account?.company_phone || "",
+      lineItems: activeLineItems.map((item: any) => ({
+        name: item.name,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        unit_price: item.unit_price,
+        total: item.total,
+      })),
+      subtotal: estimate.subtotal,
+      taxRate: estimate.tax_rate,
+      tax: estimate.tax,
+      discount: estimate.discount,
+      total: estimate.total,
+      notes: estimate.notes,
+      createdAt: estimate.created_at,
+      expiresAt: estimate.expires_at,
+    });
+
+    toast.success("PDF downloaded");
+  };
 
   if (isLoading) {
     return (
@@ -713,6 +750,15 @@ export default function EstimateDetail() {
             )}
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-2"
+          onClick={handleDownloadPDF}
+        >
+          <Download className="h-4 w-4" />
+          Download PDF
+        </Button>
       </div>
 
       <div className="px-4 py-4 space-y-3">

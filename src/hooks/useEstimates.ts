@@ -16,8 +16,14 @@ export interface EstimateWithDetails extends Estimate {
     id: string;
     name: string;
     status: string;
+    address?: string;
     estimate_job_id?: string | null;
     is_estimate_visit?: boolean;
+  } | null;
+  account: {
+    company_name?: string;
+    company_email?: string;
+    company_phone?: string;
   } | null;
   line_items: {
     id: string;
@@ -157,6 +163,7 @@ export function useEstimate(id: string | undefined) {
           *,
           customer:customers(id, name, email, phone, address),
           job:leads!estimates_job_id_fkey(id, name, status, scheduled_date, address, service_type),
+          account:accounts(company_name, company_email, company_phone),
           line_items:estimate_line_items(
             id,
             name,

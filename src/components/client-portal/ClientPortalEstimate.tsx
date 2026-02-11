@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, DollarSign, X } from "lucide-react";
+import { Check, DollarSign, X, Download } from "lucide-react";
+import { generateEstimatePDF } from "@/lib/pdfGenerator";
 
 interface LineItem {
   id: string;
@@ -30,6 +31,14 @@ interface ClientPortalEstimateProps {
   apiUrl: string;
   apiHeaders: Record<string, string>;
   onRefresh: () => void;
+  customerName?: string;
+  jobName?: string;
+  address?: string;
+  companyName?: string;
+  companyEmail?: string;
+  companyPhone?: string;
+  createdAt?: string;
+  expiresAt?: string;
 }
 
 export function ClientPortalEstimate({
@@ -38,11 +47,39 @@ export function ClientPortalEstimate({
   apiUrl,
   apiHeaders,
   onRefresh,
+  customerName = "Customer",
+  jobName = "",
+  address = "",
+  companyName = "",
+  companyEmail = "",
+  companyPhone = "",
+  createdAt,
+  expiresAt,
 }: ClientPortalEstimateProps) {
   const [submitting, setSubmitting] = useState<"approve" | "decline" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const isPending = estimate.status !== "accepted" && estimate.status !== "declined";
+
+  const handleDownloadPDF = () => {
+    generateEstimatePDF({
+      customerName,
+      jobName,
+      address,
+      companyName,
+      companyEmail,
+      companyPhone,
+      lineItems: estimate.line_items,
+      subtotal: estimate.subtotal,
+      taxRate: estimate.tax_rate,
+      tax: estimate.tax,
+      discount: estimate.discount,
+      total: estimate.total,
+      notes: estimate.notes,
+      createdAt,
+      expiresAt,
+    });
+  };
 
   const handleAction = async (action: "approve" | "decline") => {
     setSubmitting(action);
@@ -75,7 +112,7 @@ export function ClientPortalEstimate({
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
       <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-3">
           <DollarSign className="h-5 w-5 text-slate-400" />
           <h2 className="text-lg font-semibold text-slate-900">Estimate</h2>
           {estimate.status === "accepted" && (
@@ -89,6 +126,13 @@ export function ClientPortalEstimate({
             </span>
           )}
         </div>
+        <button
+          onClick={handleDownloadPDF}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm hover:bg-slate-50 transition-colors"
+        >
+          <Download className="h-4 w-4" />
+          Download PDF
+        </button>
       </div>
 
       {estimate.line_items.length > 0 && (
