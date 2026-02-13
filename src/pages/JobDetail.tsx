@@ -440,12 +440,51 @@ export default function JobDetail() {
     try {
       const jobAny = job as any;
       if (jobAny.recurring_job_id) {
-        const { error } = await supabase
+        const { data: allJobs, error: fetchError } = await supabase
+          .from("leads")
+          .select("id")
+          .eq("recurring_job_id", jobAny.recurring_job_id);
+
+        if (fetchError) throw fetchError;
+
+        if (allJobs && allJobs.length > 0) {
+          const jobIds = allJobs.map((j) => j.id);
+
+          const { error: assignmentsError } = await supabase
+            .from("job_assignments")
+            .delete()
+            .in("lead_id", jobIds);
+
+          if (assignmentsError) throw assignmentsError;
+
+          const { error: schedulesError } = await supabase
+            .from("job_schedules")
+            .delete()
+            .in("lead_id", jobIds);
+
+          if (schedulesError) throw schedulesError;
+
+          const { error: estimatesError } = await supabase
+            .from("estimates")
+            .delete()
+            .in("job_id", jobIds);
+
+          if (estimatesError) throw estimatesError;
+        }
+
+        const { error: masterEstimateError } = await supabase
+          .from("estimates")
+          .delete()
+          .eq("recurring_job_id", jobAny.recurring_job_id);
+
+        if (masterEstimateError) throw masterEstimateError;
+
+        const { error: leadsError } = await supabase
           .from("leads")
           .delete()
           .eq("recurring_job_id", jobAny.recurring_job_id);
 
-        if (error) throw error;
+        if (leadsError) throw leadsError;
 
         const { error: recurError } = await supabase
           .from("recurring_jobs")
