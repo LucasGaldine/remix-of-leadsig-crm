@@ -799,7 +799,7 @@ export default function JobDetail() {
                       className="w-full gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
                     >
                       <Repeat className="h-4 w-4" />
-                      Create Job Schedule
+                      Create Recurring Schedule
                     </Button>
                   </div>
                 )}
