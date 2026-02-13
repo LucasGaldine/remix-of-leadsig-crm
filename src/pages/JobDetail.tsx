@@ -569,7 +569,7 @@ export default function JobDetail() {
                     {!jobAny.recurring_job_id && (
                       <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
                         <Repeat className="h-4 w-4 mr-2" />
-                        Create Job Schedule
+                        Create Recurring Schedule
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem
