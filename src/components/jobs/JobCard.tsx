@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { MapPin, Clock, User, ChevronRight, Users, Repeat } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Database } from "@/integrations/supabase/types";
 import { format } from "date-fns";
+import { RecurringJobDetailModal } from "./RecurringJobDetailModal";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 type DbJob = Database["public"]["Tables"]["leads"]["Row"];
@@ -51,6 +53,8 @@ function formatScheduledDateRange(
 }
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
+
   const statusLabels: Record<string, string> = {
     new: "New",
     contacted: "Contacted",
@@ -69,35 +73,45 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);
 
+  const handleRecurringBadgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowRecurringModal(true);
+  };
+
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "w-full text-left card-elevated rounded-lg p-4 transition-all",
-        "active:scale-[0.98] hover:shadow-md",
-        "focus:outline-none focus:ring-2 focus:ring-primary/20",
-        className
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <StatusBadge status={badgeStatus as JobStatus}>
-              {statusLabels[badgeStatus] || badgeStatus}
-            </StatusBadge>
-            {job.recurring_job_id && (
-              <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
-                <Repeat className="h-3 w-3 mr-1" />
-                Recurring
-              </Badge>
-            )}
-            {isUnassigned && (
-              <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
-                <Users className="h-3 w-3 mr-1" />
-                Unassigned
-              </Badge>
-            )}
-          </div>
+    <>
+      <button
+        onClick={onClick}
+        className={cn(
+          "w-full text-left card-elevated rounded-lg p-4 transition-all",
+          "active:scale-[0.98] hover:shadow-md",
+          "focus:outline-none focus:ring-2 focus:ring-primary/20",
+          className
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <StatusBadge status={badgeStatus as JobStatus}>
+                {statusLabels[badgeStatus] || badgeStatus}
+              </StatusBadge>
+              {job.recurring_job_id && (
+                <Badge
+                  variant="outline"
+                  className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700 cursor-pointer hover:bg-emerald-100 transition-colors"
+                  onClick={handleRecurringBadgeClick}
+                >
+                  <Repeat className="h-3 w-3 mr-1" />
+                  Recurring
+                </Badge>
+              )}
+              {isUnassigned && (
+                <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
+                  <Users className="h-3 w-3 mr-1" />
+                  Unassigned
+                </Badge>
+              )}
+            </div>
 
           <h3 className="font-semibold text-foreground truncate text-lg">
             {job.name || job.customer?.name || "Unnamed Job"}
@@ -138,6 +152,19 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </div>
-    </button>
+      </button>
+
+      {job.recurring_job_id && (
+        <RecurringJobDetailModal
+          open={showRecurringModal}
+          onOpenChange={setShowRecurringModal}
+          recurringJobId={job.recurring_job_id}
+          jobId={job.id}
+          onMadeUnique={() => {
+            onClick?.();
+          }}
+        />
+      )}
+    </>
   );
 }

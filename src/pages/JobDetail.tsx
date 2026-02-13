@@ -50,6 +50,7 @@ import { JobChecklist } from "@/components/jobs/JobChecklist";
 import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, useRecurringJobEstimate } from "@/hooks/useRecurringJobs";
 import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
 import { EditJobScheduleDialog } from "@/components/jobs/EditJobScheduleDialog";
+import { RecurringJobDetailModal } from "@/components/jobs/RecurringJobDetailModal";
 import { Repeat } from "lucide-react";
 
 export default function JobDetail() {
@@ -94,6 +95,7 @@ export default function JobDetail() {
   const [pendingCrewUserIds, setPendingCrewUserIds] = useState<string[]>([]);
   const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
   const [editScheduleOpen, setEditScheduleOpen] = useState(false);
+  const [recurringDetailModalOpen, setRecurringDetailModalOpen] = useState(false);
 
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
@@ -566,7 +568,12 @@ export default function JobDetail() {
                       <Edit className="h-4 w-4 mr-2" />
                       Edit Job
                     </DropdownMenuItem>
-                    {!jobAny.recurring_job_id && (
+                    {jobAny.recurring_job_id ? (
+                      <DropdownMenuItem onClick={() => setRecurringDetailModalOpen(true)}>
+                        <Repeat className="h-4 w-4 mr-2" />
+                        View Schedule Details
+                      </DropdownMenuItem>
+                    ) : (
                       <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
                         <Repeat className="h-4 w-4 mr-2" />
                         Create Recurring Schedule
@@ -1297,6 +1304,26 @@ export default function JobDetail() {
           onOpenChange={setEditScheduleOpen}
           recurringJobId={jobAny.recurring_job_id}
           recurringJobData={recurringJobData}
+        />
+      )}
+
+      {/* Recurring Job Detail Modal */}
+      {jobAny.recurring_job_id && id && (
+        <RecurringJobDetailModal
+          open={recurringDetailModalOpen}
+          onOpenChange={setRecurringDetailModalOpen}
+          recurringJobId={jobAny.recurring_job_id}
+          jobId={id}
+          onEdit={() => {
+            setRecurringDetailModalOpen(false);
+            setEditScheduleOpen(true);
+          }}
+          onDelete={() => {
+            setDeleteDialogOpen(true);
+          }}
+          onMadeUnique={() => {
+            window.location.reload();
+          }}
         />
       )}
 

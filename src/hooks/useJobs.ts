@@ -421,3 +421,27 @@ export function useJobRevenue() {
     enabled: !!user && !!currentAccount,
   });
 }
+
+export function useMakeJobUnique() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (jobId: string) => {
+      const { error } = await supabase
+        .from("leads")
+        .update({
+          recurring_job_id: null,
+          recurring_instance_number: null,
+        })
+        .eq("id", jobId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["job"] });
+      queryClient.invalidateQueries({ queryKey: ["job-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+    },
+  });
+}
