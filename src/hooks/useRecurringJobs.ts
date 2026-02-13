@@ -469,8 +469,46 @@ export function useConvertToRecurring() {
         .update({
           recurring_job_id: recurringJob.id,
           recurring_instance_number: 1,
+          status: "job",
         })
         .eq("id", input.jobId);
+
+      const { data: existingSchedule } = await supabase
+        .from("job_schedules")
+        .select("id")
+        .eq("lead_id", input.jobId)
+        .maybeSingle();
+
+      if (!existingSchedule) {
+        const { data: newSchedule, error: schedError } = await supabase
+          .from("job_schedules")
+          .insert({
+            lead_id: input.jobId,
+            scheduled_date: input.start_date,
+            scheduled_time_start: input.scheduled_time_start || null,
+            scheduled_time_end: input.scheduled_time_end || null,
+            created_by: user.id,
+            account_id: currentAccount.id,
+          })
+          .select()
+          .single();
+
+        if (schedError) throw schedError;
+
+        if (input.default_crew_user_ids && input.default_crew_user_ids.length > 0 && newSchedule) {
+          const assignments = input.default_crew_user_ids.map((crewUserId: string) => ({
+            lead_id: input.jobId,
+            user_id: crewUserId,
+            job_schedule_id: newSchedule.id,
+            account_id: currentAccount.id,
+            assigned_by: user.id,
+          }));
+
+          await supabase
+            .from("job_assignments")
+            .insert(assignments);
+        }
+      }
 
       const { data: existingEstimate } = await supabase
         .from("estimates")
@@ -508,6 +546,8 @@ export function useConvertToRecurring() {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job"] });
       queryClient.invalidateQueries({ queryKey: ["job-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["job-schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["job-assignments"] });
     },
   });
 }

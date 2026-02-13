@@ -438,12 +438,33 @@ export default function JobDetail() {
     if (!id) return;
 
     try {
-      await deleteJobMutation.mutateAsync(id);
-      toast.success("Job deleted successfully");
+      const jobAny = job as any;
+      if (jobAny.recurring_job_id) {
+        const { error } = await supabase
+          .from("leads")
+          .delete()
+          .eq("recurring_job_id", jobAny.recurring_job_id);
+
+        if (error) throw error;
+
+        const { error: recurError } = await supabase
+          .from("recurring_jobs")
+          .delete()
+          .eq("id", jobAny.recurring_job_id);
+
+        if (recurError) throw recurError;
+
+        queryClient.invalidateQueries({ queryKey: ["recurring-jobs"] });
+        queryClient.invalidateQueries({ queryKey: ["jobs"] });
+        toast.success("Job schedule and all associated jobs deleted successfully");
+      } else {
+        await deleteJobMutation.mutateAsync(id);
+        toast.success("Job deleted successfully");
+      }
       navigate("/jobs");
     } catch (error) {
-      console.error("Error deleting job:", error);
-      toast.error("Failed to delete job");
+      console.error("Error deleting:", error);
+      toast.error("Failed to delete");
     } finally {
       setDeleteDialogOpen(false);
     }
@@ -811,7 +832,7 @@ export default function JobDetail() {
             {/* Job Schedule Info */}
             {recurringJobData && (
               <div className="card-elevated rounded-lg p-4">
-                <div className="flex items-start gap-3 mb-3">
+                <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-emerald-100">
                     <Repeat className="h-5 w-5 text-emerald-700" />
                   </div>
@@ -830,18 +851,29 @@ export default function JobDetail() {
                       {recurringJobData.is_active ? "" : " - Schedule paused"}
                     </p>
                   </div>
+                  {isManager() && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setEditScheduleOpen(true)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Schedule
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setDeleteDialogOpen(true)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Schedule
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
-                {isManager() && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEditScheduleOpen(true)}
-                    className="w-full gap-2"
-                  >
-                    <Edit className="h-4 w-4" />
-                    Edit Schedule Settings
-                  </Button>
-                )}
               </div>
             )}
 
@@ -1167,9 +1199,13 @@ export default function JobDetail() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Job</AlertDialogTitle>
+            <AlertDialogTitle>
+              {jobAny?.recurring_job_id ? "Delete Job Schedule" : "Delete Job"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this job? This action cannot be undone and will remove all associated data including the estimate.
+              {jobAny?.recurring_job_id
+                ? "Are you sure you want to delete this job schedule? This will permanently delete all jobs associated with this schedule. This action cannot be undone."
+                : "Are you sure you want to delete this job? This action cannot be undone and will remove all associated data including the estimate."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
