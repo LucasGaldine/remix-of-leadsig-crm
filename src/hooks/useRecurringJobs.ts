@@ -480,11 +480,20 @@ export function useConvertToRecurring() {
         .maybeSingle();
 
       if (!existingSchedule) {
+        const startDateObj = parseISO(input.start_date + "T00:00:00");
+        const firstScheduledDate = getFirstDate(
+          startDateObj,
+          input.frequency,
+          input.preferred_days_of_week,
+          input.preferred_day_of_month
+        );
+        const formattedDate = format(firstScheduledDate, "yyyy-MM-dd");
+
         const { data: newSchedule, error: schedError } = await supabase
           .from("job_schedules")
           .insert({
             lead_id: input.jobId,
-            scheduled_date: input.start_date,
+            scheduled_date: formattedDate,
             scheduled_time_start: input.scheduled_time_start || null,
             scheduled_time_end: input.scheduled_time_end || null,
             created_by: user.id,
