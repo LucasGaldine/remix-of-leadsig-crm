@@ -39,11 +39,6 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.name.trim()) {
-      toast.error("Job name is required");
-      return;
-    }
 
     if (!formData.customerName.trim()) {
       toast.error("Customer name is required");
@@ -77,7 +72,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
       const { data: job, error: jobError } = await supabase
         .from("leads")
         .insert([{
-          name: formData.name.trim(),
+          name: formData.name.trim() || null,
           customer_id: customer.id,
           service_type: formData.serviceType || null,
           address: formData.address.trim() || null,
@@ -130,15 +125,16 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Job Name *</Label>
+            <Label htmlFor="name">Job Name</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => handleChange("name", e.target.value)}
-              placeholder="Smith Patio Project"
+              placeholder="Smith Patio Project (optional)"
               className="mt-1.5"
               autoFocus
             />
+            <p className="text-xs text-muted-foreground mt-1">If left empty, the customer name will be used</p>
           </div>
 
           <div className="border-t border-border pt-4">

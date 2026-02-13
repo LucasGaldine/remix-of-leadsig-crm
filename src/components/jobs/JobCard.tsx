@@ -100,7 +100,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
           </div>
 
           <h3 className="font-semibold text-foreground truncate text-lg">
-            {job.customer?.name || job.name}
+            {job.name || job.customer?.name || "Unnamed Job"}
           </h3>
 
           <p className="text-sm text-muted-foreground font-medium mt-0.5">

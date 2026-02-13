@@ -45,7 +45,7 @@ export function ClientPortalHeader({
               </div>
             ) : null}
             <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              {job.customer?.name || job.name}
+              {job.name || job.customer?.name || "Unnamed Job"}
             </h1>
             {job.service_type && (
               <div className="flex items-center gap-1.5 mt-2 text-slate-300">

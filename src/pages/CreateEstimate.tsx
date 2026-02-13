@@ -318,7 +318,7 @@ export default function CreateEstimate() {
                   <SelectContent>
                     {jobs.map((job) => (
                       <SelectItem key={job.id} value={job.id}>
-                        {job.name} - {job.customer.name}
+                        {job.name ? `${job.name} - ${job.customer.name}` : job.customer.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

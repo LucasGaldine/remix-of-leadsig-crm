@@ -272,7 +272,9 @@ export default function EstimateApproval() {
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">
                     Job
                   </p>
-                  <p className="font-semibold text-slate-900">{estimate.job.name}</p>
+                  <p className="font-semibold text-slate-900">
+                    {estimate.job.name || estimate.customer?.name || "Unnamed Job"}
+                  </p>
                   {estimate.job.address && (
                     <p className="text-sm text-slate-500">{estimate.job.address}</p>
                   )}

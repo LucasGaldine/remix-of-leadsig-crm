@@ -124,7 +124,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
         await createRecurringJob.mutateAsync({
           customer_id: customer.id,
-          name: jobName,
+          name: jobName || null,
           service_type: serviceType || null,
           address: jobAddress,
           description: description || null,
@@ -148,7 +148,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         }
 
         await createJob.mutateAsync({
-          name: jobName,
+          name: jobName || null,
           customer_id: customer.id,
           phone: phone || null,
           email: email || null,
@@ -224,16 +224,16 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="jobName" className="text-base font-semibold text-gray-900">
-              Job Name <span className="text-red-500">*</span>
+              Job Name
             </Label>
             <Input
               id="jobName"
               value={jobName}
               onChange={(e) => setJobName(e.target.value)}
-              placeholder="Smith Patio Project"
+              placeholder="Smith Patio Project (optional)"
               className="h-14 text-base border-2 border-gray-300 focus-visible:border-emerald-600 focus-visible:ring-0 rounded-xl"
-              required
             />
+            <p className="text-sm text-gray-500">If left empty, the customer name will be used</p>
           </div>
 
           <div className="space-y-4">

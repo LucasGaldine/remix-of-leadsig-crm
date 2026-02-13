@@ -584,7 +584,7 @@ export default function JobDetail() {
               )}
             </div>
             <h2 className="text-xl font-bold text-foreground">
-              {job.customer?.name || "Unknown Client"}
+              {job.name || job.customer?.name || "Unknown Client"}
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
