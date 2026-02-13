@@ -423,7 +423,7 @@ export function useConvertToRecurring() {
 
       const { data: existingJob, error: fetchErr } = await supabase
         .from("leads")
-        .select("*, customer:customers(*)")
+        .select("*, customer:customers!leads_customer_id_fkey(*)")
         .eq("id", input.jobId)
         .maybeSingle();
 
