@@ -49,6 +49,7 @@ import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
 import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, useRecurringJobEstimate } from "@/hooks/useRecurringJobs";
 import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
+import { EditJobScheduleDialog } from "@/components/jobs/EditJobScheduleDialog";
 import { Repeat } from "lucide-react";
 
 export default function JobDetail() {
@@ -92,6 +93,7 @@ export default function JobDetail() {
   const [crewSavePromptOpen, setCrewSavePromptOpen] = useState(false);
   const [pendingCrewUserIds, setPendingCrewUserIds] = useState<string[]>([]);
   const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
+  const [editScheduleOpen, setEditScheduleOpen] = useState(false);
 
   const [estimate, setEstimate] = useState<any>(null);
   const [estimateLoading, setEstimateLoading] = useState(true);
@@ -657,81 +659,79 @@ export default function JobDetail() {
               </div>
             ) : null}
 
-            {/* Schedule */}
-            <div className="card-elevated rounded-lg p-4">
-              <div className="flex items-start gap-3 mb-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <Clock className="h-5 w-5 text-secondary-foreground" />
+            {/* Schedule or Job Schedule Info */}
+            {!jobAny.recurring_job_id ? (
+              <div className="card-elevated rounded-lg p-4">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="p-2 rounded-lg bg-secondary">
+                    <Clock className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">Schedule</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {scheduledDatesText}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">Schedule</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {scheduledDatesText}
-                  </p>
-                </div>
-              </div>
 
-              {schedulesLoading ? (
-                <div className="flex justify-center py-2">
-                  <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-                </div>
-              ) : hasSchedules ? (
-                <div className="space-y-2 mb-3">
-                  {schedules.map((schedule) => {
-                    const outsideHours = isOutsideBusinessHours(
-                      businessHours,
-                      schedule.scheduled_date,
-                      schedule.scheduled_time_start,
-                      schedule.scheduled_time_end
-                    );
+                {schedulesLoading ? (
+                  <div className="flex justify-center py-2">
+                    <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+                  </div>
+                ) : hasSchedules ? (
+                  <div className="space-y-2 mb-3">
+                    {schedules.map((schedule) => {
+                      const outsideHours = isOutsideBusinessHours(
+                        businessHours,
+                        schedule.scheduled_date,
+                        schedule.scheduled_time_start,
+                        schedule.scheduled_time_end
+                      );
 
-                    return (
-                      <div key={schedule.id} className="flex items-center justify-between p-2 bg-secondary/50 rounded-md">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-foreground">
-                              {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d, yyyy")}
-                            </p>
-                            {outsideHours && (
-                              <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
-                                Outside normal hours
-                              </Badge>
+                      return (
+                        <div key={schedule.id} className="flex items-center justify-between p-2 bg-secondary/50 rounded-md">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-foreground">
+                                {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d, yyyy")}
+                              </p>
+                              {outsideHours && (
+                                <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
+                                  Outside normal hours
+                                </Badge>
+                              )}
+                            </div>
+                            {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                              <p className="text-xs text-muted-foreground">
+                                {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                              </p>
                             )}
                           </div>
-                          {schedule.scheduled_time_start && schedule.scheduled_time_end && (
-                            <p className="text-xs text-muted-foreground">
-                              {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
-                            </p>
-                          )}
+                          {isManager() && (<Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteSchedule(schedule.id)}
+                            className="h-7 w-7 p-0"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>)}
                         </div>
-                        {isManager() && (<Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteSchedule(schedule.id)}
-                          className="h-7 w-7 p-0"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>)}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
+                      );
+                    })}
+                  </div>
+                ) : null}
 
-
-              
-              {isManager() && (
-                <div className="space-y-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openScheduleDialog}
-                    className="w-full gap-2"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Schedule Date
-                  </Button>
-                  {!jobAny.recurring_job_id && (
+                {isManager() && (
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openScheduleDialog}
+                      className="w-full gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Schedule Date
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -741,16 +741,23 @@ export default function JobDetail() {
                       <Repeat className="h-4 w-4" />
                       Create Job Schedule
                     </Button>
-                  )}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             {/* Crew Assignments */}
-            {id && (
+            {id && !jobAny.recurring_job_id && (
               <JobAssignments
                 leadId={id}
-                onCrewChanged={jobAny.recurring_job_id ? () => {
+              />
+            )}
+
+            {/* Crew info for recurring jobs */}
+            {id && jobAny.recurring_job_id && (
+              <JobAssignments
+                leadId={id}
+                onCrewChanged={() => {
                   setTimeout(async () => {
                     if (!id) return;
                     const { data: currentAssignments } = await supabase
@@ -761,7 +768,7 @@ export default function JobDetail() {
                     setPendingCrewUserIds(crewIds);
                     setCrewSavePromptOpen(true);
                   }, 500);
-                } : undefined}
+                }}
               />
             )}
 
@@ -804,7 +811,7 @@ export default function JobDetail() {
             {/* Job Schedule Info */}
             {recurringJobData && (
               <div className="card-elevated rounded-lg p-4">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-emerald-100">
                     <Repeat className="h-5 w-5 text-emerald-700" />
                   </div>
@@ -824,6 +831,17 @@ export default function JobDetail() {
                     </p>
                   </div>
                 </div>
+                {isManager() && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditScheduleOpen(true)}
+                    className="w-full gap-2"
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edit Schedule Settings
+                  </Button>
+                )}
               </div>
             )}
 
@@ -1194,6 +1212,16 @@ export default function JobDetail() {
           onOpenChange={setMakeRecurringOpen}
           jobId={id}
           jobSchedules={schedules}
+        />
+      )}
+
+      {/* Edit Job Schedule Dialog */}
+      {jobAny.recurring_job_id && (
+        <EditJobScheduleDialog
+          open={editScheduleOpen}
+          onOpenChange={setEditScheduleOpen}
+          recurringJobId={jobAny.recurring_job_id}
+          recurringJobData={recurringJobData}
         />
       )}
 
