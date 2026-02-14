@@ -4,12 +4,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useCreateCustomer, type Customer, type CreateCustomerInput } from "@/hooks/useCustomers";
 import { toast } from "sonner";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { CSVImportModal } from "./CSVImportModal";
+import { ClientSelector } from "@/components/clients/ClientSelector";
 
 interface AddLeadDialogProps {
   open: boolean;
@@ -17,32 +20,52 @@ interface AddLeadDialogProps {
   onLeadCreated?: (leadId: string) => void;
 }
 
+const INITIAL_CLIENT_DATA: CreateCustomerInput = {
+  name: "",
+  phone: "",
+  email: "",
+  address: "",
+  city: "",
+};
+
 export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDialogProps) {
   const { user, currentAccount } = useAuth();
+  const createCustomer = useCreateCustomer();
   const [saving, setSaving] = useState(false);
   const [showCSVImport, setShowCSVImport] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    name: "",
-    phone: "",
-    email: "",
+
+  const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [newClientData, setNewClientData] = useState<CreateCustomerInput>({ ...INITIAL_CLIENT_DATA });
+
+  const [leadData, setLeadData] = useState({
     serviceType: "",
-    city: "",
-    address: "",
     estimatedBudget: "",
     source: "Manual",
     notes: "",
   });
 
-  const handleChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleLeadChange = (field: string, value: string) => {
+    setLeadData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const resetForm = () => {
+    setClientMode("existing");
+    setSelectedCustomer(null);
+    setNewClientData({ ...INITIAL_CLIENT_DATA });
+    setLeadData({ serviceType: "", estimatedBudget: "", source: "Manual", notes: "" });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.name.trim()) {
-      toast.error("Name is required");
+
+    if (clientMode === "new" && !newClientData.name.trim()) {
+      toast.error("Client name is required");
+      return;
+    }
+
+    if (clientMode === "existing" && !selectedCustomer) {
+      toast.error("Please select a client or create a new one");
       return;
     }
 
@@ -59,17 +82,48 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
     setSaving(true);
 
     try {
+      let customerId: string;
+      let customerName: string;
+      let customerPhone: string | null = null;
+      let customerEmail: string | null = null;
+      let customerAddress: string | null = null;
+      let customerCity: string | null = null;
+
+      if (clientMode === "existing" && selectedCustomer) {
+        customerId = selectedCustomer.id;
+        customerName = selectedCustomer.name;
+        customerPhone = selectedCustomer.phone;
+        customerEmail = selectedCustomer.email;
+        customerAddress = selectedCustomer.address;
+        customerCity = selectedCustomer.city;
+      } else {
+        const customer = await createCustomer.mutateAsync({
+          name: newClientData.name.trim(),
+          phone: newClientData.phone?.trim() || null,
+          email: newClientData.email?.trim() || null,
+          address: newClientData.address?.trim() || null,
+          city: newClientData.city?.trim() || null,
+        });
+        customerId = customer.id;
+        customerName = customer.name;
+        customerPhone = customer.phone;
+        customerEmail = customer.email;
+        customerAddress = customer.address;
+        customerCity = customer.city;
+      }
+
       const { data, error } = await supabase
         .from("leads")
         .insert([{
-          name: formData.name.trim(),
-          phone: formData.phone.trim() || null,
-          email: formData.email.trim() || null,
-          service_type: formData.serviceType || null,
-          city: formData.city.trim() || null,
-          address: formData.address.trim() || null,
-          estimated_value: formData.estimatedBudget ? parseFloat(formData.estimatedBudget) : null,
-          source: formData.source || "Manual",
+          name: customerName,
+          phone: customerPhone,
+          email: customerEmail,
+          address: customerAddress,
+          city: customerCity,
+          customer_id: customerId,
+          service_type: leadData.serviceType || null,
+          estimated_value: leadData.estimatedBudget ? parseFloat(leadData.estimatedBudget) : null,
+          source: leadData.source || "Manual",
           created_by: user.id,
           account_id: currentAccount.id,
           status: "new",
@@ -89,33 +143,20 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
         created_by: user.id,
       });
 
-      if (formData.notes.trim()) {
+      if (leadData.notes.trim()) {
         await supabase.from("interactions").insert({
           lead_id: data.id,
           account_id: currentAccount.id,
           type: "note",
           direction: "na",
-          summary: formData.notes.trim().slice(0, 100),
-          body: formData.notes.trim(),
+          summary: leadData.notes.trim().slice(0, 100),
+          body: leadData.notes.trim(),
           created_by: user.id,
         });
       }
 
       toast.success("Lead created successfully");
-      
-      // Reset form
-      setFormData({
-        name: "",
-        phone: "",
-        email: "",
-        serviceType: "",
-        city: "",
-        address: "",
-        estimatedBudget: "",
-        source: "Manual",
-        notes: "",
-      });
-      
+      resetForm();
       onOpenChange(false);
       onLeadCreated?.(data.id);
     } catch (error) {
@@ -128,134 +169,98 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
 
   return (
     <>
-    <CSVImportModal
-      open={showCSVImport}
-      onOpenChange={setShowCSVImport}
-      onImportComplete={() => onLeadCreated?.("")}
-    />
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add New Lead</DialogTitle>
-          <DialogDescription>
-            Enter the lead's information below, or import from a CSV file.
-          </DialogDescription>
-        </DialogHeader>
+      <CSVImportModal
+        open={showCSVImport}
+        onOpenChange={setShowCSVImport}
+        onImportComplete={() => onLeadCreated?.("")}
+      />
+      <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); onOpenChange(v); }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add New Lead</DialogTitle>
+            <DialogDescription>
+              Select an existing client or create a new one, then enter the lead details.
+            </DialogDescription>
+          </DialogHeader>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full gap-2"
-          onClick={() => { onOpenChange(false); setShowCSVImport(true); }}
-        >
-          <Upload className="h-4 w-4" />
-          Import from CSV
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => { onOpenChange(false); setShowCSVImport(true); }}
+          >
+            <Upload className="h-4 w-4" />
+            Import from CSV
+          </Button>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="name">Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => handleChange("name", e.target.value)}
-              placeholder="John Smith"
-              className="mt-1.5"
-              autoFocus
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <ClientSelector
+              selectedCustomer={selectedCustomer}
+              onSelect={setSelectedCustomer}
+              newClientData={newClientData}
+              onNewClientDataChange={setNewClientData}
+              mode={clientMode}
+              onModeChange={setClientMode}
             />
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleChange("phone", e.target.value)}
-                placeholder="(555) 123-4567"
-                className="mt-1.5"
-              />
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-sm font-medium text-muted-foreground">Lead Details</p>
+
+              <div>
+                <Label htmlFor="serviceType">Service Type</Label>
+                <Select
+                  value={leadData.serviceType}
+                  onValueChange={(v) => handleLeadChange("serviceType", v)}
+                >
+                  <SelectTrigger id="serviceType" className="mt-1.5">
+                    <SelectValue placeholder="Select service type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SERVICE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="estimatedBudget">Budget ($)</Label>
+                <Input
+                  id="estimatedBudget"
+                  type="number"
+                  value={leadData.estimatedBudget}
+                  onChange={(e) => handleLeadChange("estimatedBudget", e.target.value)}
+                  placeholder="5000"
+                  className="mt-1.5"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={leadData.notes}
+                  onChange={(e) => handleLeadChange("notes", e.target.value)}
+                  placeholder="Any additional notes..."
+                  className="mt-1.5 min-h-[60px] resize-none"
+                />
+              </div>
             </div>
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleChange("email", e.target.value)}
-                placeholder="john@email.com"
-                className="mt-1.5"
-              />
-            </div>
-          </div>
 
-          <div>
-            <Label htmlFor="serviceType">Service Type</Label>
-            <Select 
-              value={formData.serviceType} 
-              onValueChange={(v) => handleChange("serviceType", v)}
-            >
-              <SelectTrigger id="serviceType" className="mt-1.5">
-                <SelectValue placeholder="Select service type" />
-              </SelectTrigger>
-              <SelectContent>
-                {SERVICE_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="address">Address</Label>
-            <Input
-              id="address"
-              value={formData.address}
-              onChange={(e) => handleChange("address", e.target.value)}
-              placeholder="123 Main St"
-              className="mt-1.5"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="city">City</Label>
-              <Input
-                id="city"
-                value={formData.city}
-                onChange={(e) => handleChange("city", e.target.value)}
-                placeholder="Austin"
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label htmlFor="estimatedBudget">Budget ($)</Label>
-              <Input
-                id="estimatedBudget"
-                type="number"
-                value={formData.estimatedBudget}
-                onChange={(e) => handleChange("estimatedBudget", e.target.value)}
-                placeholder="5000"
-                className="mt-1.5"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Add Lead
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <DialogFooter className="pt-4">
+              <Button type="button" variant="outline" onClick={() => { resetForm(); onOpenChange(false); }}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Add Lead
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

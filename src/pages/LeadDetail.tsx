@@ -177,7 +177,7 @@ export default function LeadDetail() {
     try {
       const { data, error } = await supabase
         .from("leads")
-        .select("*")
+        .select("*, customer:customers!customer_id(id, name, email, phone, address, city)")
         .eq("id", id)
         .single();
 
@@ -186,7 +186,16 @@ export default function LeadDetail() {
         return;
       }
 
-      setLead(data);
+      const leadData = data as any;
+      setLead({
+        ...leadData,
+        name: leadData.customer?.name || leadData.name,
+        phone: leadData.customer?.phone || leadData.phone,
+        email: leadData.customer?.email || leadData.email,
+        address: leadData.customer?.address || leadData.address,
+        city: leadData.customer?.city || leadData.city,
+        customer: undefined,
+      });
     } catch (err) {
       setNotFound(true);
     } finally {

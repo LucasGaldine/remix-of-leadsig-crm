@@ -15,12 +15,14 @@ import {
 } from "@/components/ui/select";
 import { useCreateJob } from "@/hooks/useJobs";
 import { useCreateRecurringJob, RecurrenceFrequency } from "@/hooks/useRecurringJobs";
+import { useCreateCustomer, type Customer, type CreateCustomerInput } from "@/hooks/useCustomers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Repeat, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ClientSelector } from "@/components/clients/ClientSelector";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -43,12 +45,23 @@ const DAYS_OF_WEEK = [
   { value: 6, label: "Sat" },
 ];
 
+const INITIAL_CLIENT_DATA: CreateCustomerInput = {
+  name: "",
+  phone: "",
+  email: "",
+  address: "",
+  city: "",
+};
+
 export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const { user, currentAccount, isManager } = useAuth();
+  const createCustomerMutation = useCreateCustomer();
+
+  const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [newClientData, setNewClientData] = useState<CreateCustomerInput>({ ...INITIAL_CLIENT_DATA });
+
   const [jobName, setJobName] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [serviceType, setServiceType] = useState("");
   const [jobAddress, setJobAddress] = useState("");
   const [description, setDescription] = useState("");
@@ -85,6 +98,34 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     enabled: !!currentAccount && isRecurring,
   });
 
+  const resolveCustomer = async (): Promise<{ id: string; name: string; phone: string | null; email: string | null; address: string | null }> => {
+    if (clientMode === "existing" && selectedCustomer) {
+      return {
+        id: selectedCustomer.id,
+        name: selectedCustomer.name,
+        phone: selectedCustomer.phone,
+        email: selectedCustomer.email,
+        address: selectedCustomer.address,
+      };
+    }
+
+    const customer = await createCustomerMutation.mutateAsync({
+      name: newClientData.name.trim(),
+      phone: newClientData.phone?.trim() || null,
+      email: newClientData.email?.trim() || null,
+      address: newClientData.address?.trim() || null,
+      city: newClientData.city?.trim() || null,
+    });
+
+    return {
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      address: customer.address,
+    };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
@@ -97,23 +138,26 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       return;
     }
 
+    if (clientMode === "new" && !newClientData.name.trim()) {
+      toast.error("Client name is required");
+      return;
+    }
+
+    if (clientMode === "existing" && !selectedCustomer) {
+      toast.error("Please select a client or create a new one");
+      return;
+    }
+
+    const address = jobAddress || (clientMode === "existing" ? selectedCustomer?.address : newClientData.address) || "";
+    if (!address.trim()) {
+      toast.error("Job address is required");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const { data: customer, error: customerError } = await supabase
-        .from("customers")
-        .insert({
-          name: customerName,
-          phone: phone || null,
-          email: email || null,
-          address: jobAddress,
-          created_by: user.id,
-          account_id: currentAccount.id,
-        })
-        .select()
-        .single();
-
-      if (customerError) throw customerError;
+      const customer = await resolveCustomer();
 
       if (isRecurring) {
         if (!scheduledDate) {
@@ -126,7 +170,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           customer_id: customer.id,
           name: jobName || null,
           service_type: serviceType || null,
-          address: jobAddress,
+          address: jobAddress || customer.address || "",
           description: description || null,
           frequency,
           scheduled_time_start: scheduledTime || null,
@@ -150,10 +194,10 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         await createJob.mutateAsync({
           name: jobName || null,
           customer_id: customer.id,
-          phone: phone || null,
-          email: email || null,
+          phone: customer.phone,
+          email: customer.email,
           service_type: serviceType || null,
-          address: jobAddress,
+          address: jobAddress || customer.address || "",
           description: description || null,
           scheduled_date: scheduledDateTime,
           status: "job",
@@ -173,10 +217,10 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   };
 
   const resetForm = () => {
+    setClientMode("existing");
+    setSelectedCustomer(null);
+    setNewClientData({ ...INITIAL_CLIENT_DATA });
     setJobName("");
-    setCustomerName("");
-    setPhone("");
-    setEmail("");
     setServiceType("");
     setJobAddress("");
     setDescription("");
@@ -218,10 +262,19 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold">Create New Job</DialogTitle>
-          <p className="text-gray-500 text-base">Enter job and customer details below.</p>
+          <p className="text-gray-500 text-base">Select a client and enter job details below.</p>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <ClientSelector
+            selectedCustomer={selectedCustomer}
+            onSelect={setSelectedCustomer}
+            newClientData={newClientData}
+            onNewClientDataChange={setNewClientData}
+            mode={clientMode}
+            onModeChange={setClientMode}
+          />
+
           <div className="space-y-2">
             <Label htmlFor="jobName" className="text-base font-semibold text-gray-900">
               Job Name
@@ -234,53 +287,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               className="h-14 text-base border-2 border-gray-300 focus-visible:border-emerald-600 focus-visible:ring-0 rounded-xl"
             />
             <p className="text-sm text-gray-500">If left empty, the customer name will be used</p>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Customer Info</h3>
-
-            <div className="space-y-2">
-              <Label htmlFor="customerName" className="text-base font-semibold text-gray-900">
-                Customer Name <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="customerName"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="John Smith"
-                className="h-12 text-base border-gray-300 rounded-lg"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-base font-semibold text-gray-900">
-                  Phone
-                </Label>
-                <Input
-                  id="phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(555) 123-4567"
-                  className="h-12 text-base border-gray-300 rounded-lg"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-base font-semibold text-gray-900">
-                  Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="john@email.com"
-                  className="h-12 text-base border-gray-300 rounded-lg"
-                />
-              </div>
-            </div>
           </div>
 
           <div className="space-y-4">
@@ -313,10 +319,18 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 id="jobAddress"
                 value={jobAddress}
                 onChange={(e) => setJobAddress(e.target.value)}
-                placeholder="123 Main St, Austin, TX"
+                placeholder={
+                  selectedCustomer?.address
+                    ? `Default: ${selectedCustomer.address}`
+                    : "123 Main St, Austin, TX"
+                }
                 className="h-12 text-base border-gray-300 rounded-lg"
-                required
               />
+              {selectedCustomer?.address && !jobAddress && (
+                <p className="text-xs text-muted-foreground">
+                  Will use client's address: {selectedCustomer.address}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -333,7 +347,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             </div>
           </div>
 
-          {/* Recurring Toggle */}
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-gray-50">
               <div className="flex items-center gap-3">
@@ -365,7 +378,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                   </Select>
                 </div>
 
-                {/* Day of Week selector for weekly/biweekly */}
                 {(frequency === "weekly" || frequency === "biweekly") && (
                   <div className="space-y-2">
                     <Label className="text-base font-semibold text-gray-900">
@@ -391,7 +403,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                   </div>
                 )}
 
-                {/* Day of Month selector for monthly */}
                 {frequency === "monthly" && (
                   <div className="space-y-2">
                     <Label className="text-base font-semibold text-gray-900">
@@ -480,7 +491,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                   </div>
                 </div>
 
-                {/* Default Crew Selection */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-gray-600" />
@@ -515,7 +525,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             )}
           </div>
 
-          {/* Non-recurring schedule */}
           {!isRecurring && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

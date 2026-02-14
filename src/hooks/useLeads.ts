@@ -58,7 +58,7 @@ export function useLeads(filter?: LeadStatus | "all") {
 
       let query = supabase
         .from("leads")
-        .select("*")
+        .select("*, customer:customers!customer_id(id, name, email, phone, address, city)")
         .eq("account_id", currentAccount.id)
         .eq("approval_status", "approved")
         .in("status", ["new", "contacted", "qualified"])
@@ -71,7 +71,14 @@ export function useLeads(filter?: LeadStatus | "all") {
       const { data, error } = await query;
 
       if (error) throw error;
-      return data as Lead[];
+      return (data || []).map((lead: any) => ({
+        ...lead,
+        name: lead.customer?.name || lead.name,
+        phone: lead.customer?.phone || lead.phone,
+        email: lead.customer?.email || lead.email,
+        address: lead.customer?.address || lead.address,
+        city: lead.customer?.city || lead.city,
+      })) as Lead[];
     },
     enabled: !!user && !!currentAccount,
   });
@@ -115,12 +122,20 @@ export function useLead(id: string | undefined) {
 
       const { data, error } = await supabase
         .from("leads")
-        .select("*")
+        .select("*, customer:customers!customer_id(id, name, email, phone, address, city)")
         .eq("id", id)
         .single();
 
       if (error) throw error;
-      return data as Lead;
+      const lead = data as any;
+      return {
+        ...lead,
+        name: lead.customer?.name || lead.name,
+        phone: lead.customer?.phone || lead.phone,
+        email: lead.customer?.email || lead.email,
+        address: lead.customer?.address || lead.address,
+        city: lead.customer?.city || lead.city,
+      } as Lead;
     },
     enabled: !!user && !!id,
   });
