@@ -18,6 +18,7 @@ import {
   MoreVertical,
   Plus,
   Info,
+  Unlink,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -31,7 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useJob, useUpdateJob, useDeleteJob } from "@/hooks/useJobs";
+import { useJob, useUpdateJob, useDeleteJob, useMakeJobUnique } from "@/hooks/useJobs";
 import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useAuth } from "@/hooks/useAuth";
 import { JobAssignments } from "@/components/jobs/JobAssignments";
@@ -96,8 +97,10 @@ export default function JobDetail() {
   const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
   const [editScheduleOpen, setEditScheduleOpen] = useState(false);
   const [recurringDetailModalOpen, setRecurringDetailModalOpen] = useState(false);
+  const [makeUniqueDialogOpen, setMakeUniqueDialogOpen] = useState(false);
 
   const [estimate, setEstimate] = useState<any>(null);
+  const makeUnique = useMakeJobUnique();
   const [estimateLoading, setEstimateLoading] = useState(true);
   const [parentLeadId, setParentLeadId] = useState<string | null>(null);
   const [parentLeadToken, setParentLeadToken] = useState<string | null>(null);
@@ -365,6 +368,19 @@ export default function JobDetail() {
     } catch (error) {
       console.error("Error removing schedule:", error);
       toast.error("Failed to remove schedule");
+    }
+  };
+
+  const handleMakeUnique = async () => {
+    if (!id) return;
+
+    try {
+      await makeUnique.mutateAsync(id);
+      toast.success("Job detached from schedule");
+      setMakeUniqueDialogOpen(false);
+    } catch (error) {
+      console.error("Error making job unique:", error);
+      toast.error("Failed to detach job from schedule");
     }
   };
 
@@ -910,17 +926,17 @@ export default function JobDetail() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation();
-                          setRecurringDetailModalOpen(true);
-                        }}>
-                          <Repeat className="h-4 w-4 mr-2" />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => {
-                          e.stopPropagation();
                           setEditScheduleOpen(true);
                         }}>
                           <Edit className="h-4 w-4 mr-2" />
                           Edit Schedule
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          setMakeUniqueDialogOpen(true);
+                        }}>
+                          <Unlink className="h-4 w-4 mr-2" />
+                          Make Unique
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={(e) => {
@@ -1342,6 +1358,25 @@ export default function JobDetail() {
           }}
         />
       )}
+
+      {/* Make Unique Alert Dialog */}
+      <AlertDialog open={makeUniqueDialogOpen} onOpenChange={setMakeUniqueDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Make Job Unique</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will detach this job from the recurring schedule, allowing you to modify its
+              dates and details independently. The current date will be preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleMakeUnique} disabled={makeUnique.isPending}>
+              {makeUnique.isPending ? "Processing..." : "Make Unique"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MobileNav />
     </div>
