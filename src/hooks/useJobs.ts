@@ -294,17 +294,43 @@ export function useDeleteJob() {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      const { data: job } = await supabase
+        .from("leads")
+        .select("recurring_job_id")
+        .eq("id", id)
+        .maybeSingle();
+
+      const recurringJobId = job?.recurring_job_id;
+
       const { error } = await supabase
         .from("leads")
         .delete()
         .eq("id", id);
 
       if (error) throw error;
+
+      if (recurringJobId) {
+        const { data: remaining } = await supabase
+          .from("leads")
+          .select("id")
+          .eq("recurring_job_id", recurringJobId)
+          .limit(1);
+
+        if (!remaining || remaining.length === 0) {
+          await supabase
+            .from("recurring_jobs")
+            .update({ is_active: false, updated_at: new Date().toISOString() })
+            .eq("id", recurringJobId);
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job-counts"] });
       queryClient.invalidateQueries({ queryKey: ["job-revenue"] });
+      queryClient.invalidateQueries({ queryKey: ["projected-recurring-dates"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring-jobs"] });
     },
   });
 }

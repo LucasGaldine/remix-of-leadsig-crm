@@ -521,11 +521,15 @@ export default function JobDetail() {
 
         queryClient.invalidateQueries({ queryKey: ["recurring-jobs"] });
         queryClient.invalidateQueries({ queryKey: ["jobs"] });
+        queryClient.invalidateQueries({ queryKey: ["projected-recurring-dates"] });
+        queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
         toast.success("Job schedule and all associated jobs deleted successfully");
       } else {
         await deleteJobMutation.mutateAsync(id);
         toast.success("Job deleted successfully");
       }
+      queryClient.invalidateQueries({ queryKey: ["projected-recurring-dates"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
       navigate("/jobs");
     } catch (error) {
       console.error("Error deleting:", error);
