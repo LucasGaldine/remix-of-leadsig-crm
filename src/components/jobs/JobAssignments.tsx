@@ -214,7 +214,7 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
                 <div>
                   <div className="flex items-center gap-2 font-medium">
                     <Calendar className="h-4 w-4" />
-                    {format(new Date(schedule.scheduled_date), 'EEEE, MMMM d, yyyy')}
+                    {format(new Date(schedule.scheduled_date + 'T00:00:00'), 'EEEE, MMMM d, yyyy')}
                   </div>
                   {schedule.scheduled_time_start && schedule.scheduled_time_end && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
@@ -331,7 +331,7 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
                       className="text-sm flex-1 cursor-pointer"
                     >
                       <div className="font-medium">
-                        {format(new Date(schedule.scheduled_date), 'EEEE, MMM d')}
+                        {format(new Date(schedule.scheduled_date + 'T00:00:00'), 'EEEE, MMM d')}
                       </div>
                       {schedule.scheduled_time_start && schedule.scheduled_time_end && (
                         <div className="text-xs text-muted-foreground">
