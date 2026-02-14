@@ -208,6 +208,36 @@ export function useDeleteLead() {
   });
 }
 
+export function useArchivedLeads() {
+  const { user, currentAccount } = useAuth();
+
+  return useQuery({
+    queryKey: ["archived-leads", currentAccount?.id],
+    queryFn: async () => {
+      if (!currentAccount) return [];
+
+      const { data, error } = await supabase
+        .from("leads")
+        .select("*, customer:customers!customer_id(id, name, email, phone, address, city)")
+        .eq("account_id", currentAccount.id)
+        .eq("approval_status", "approved")
+        .in("status", ["lost", "archived"])
+        .order("updated_at", { ascending: false });
+
+      if (error) throw error;
+      return (data || []).map((lead: any) => ({
+        ...lead,
+        name: lead.customer?.name || lead.name,
+        phone: lead.customer?.phone || lead.phone,
+        email: lead.customer?.email || lead.email,
+        address: lead.customer?.address || lead.address,
+        city: lead.customer?.city || lead.city,
+      })) as Lead[];
+    },
+    enabled: !!user && !!currentAccount,
+  });
+}
+
 export function useLeadCounts() {
   const { user, currentAccount } = useAuth();
 
@@ -219,6 +249,7 @@ export function useLeadCounts() {
         new: 0,
         contacted: 0,
         qualified: 0,
+        archive: 0,
       };
 
       const { data, error } = await supabase
@@ -226,20 +257,26 @@ export function useLeadCounts() {
         .select("status")
         .eq("account_id", currentAccount.id)
         .eq("approval_status", "approved")
-        .in("status", ["new", "contacted", "qualified"]);
+        .in("status", ["new", "contacted", "qualified", "lost", "archived"]);
 
       if (error) throw error;
 
       const counts: Record<string, number> = {
-        all: data.length,
+        all: 0,
         new: 0,
         contacted: 0,
         qualified: 0,
+        archive: 0,
       };
 
       data.forEach((lead) => {
-        if (lead.status && counts[lead.status] !== undefined) {
-          counts[lead.status]++;
+        if (lead.status === "lost" || lead.status === "archived") {
+          counts.archive++;
+        } else {
+          counts.all++;
+          if (lead.status && counts[lead.status] !== undefined) {
+            counts[lead.status]++;
+          }
         }
       });
 

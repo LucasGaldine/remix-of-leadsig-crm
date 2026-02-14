@@ -15,6 +15,7 @@ import {
   Calendar,
   Edit,
   Trash2,
+  Archive,
   MoreVertical,
   Plus,
   Info,
@@ -63,6 +64,7 @@ export default function JobDetail() {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [addressDialogOpen, setAddressDialogOpen] = useState(false);
   const [addressValue, setAddressValue] = useState("");
   const [scheduleForm, setScheduleForm] = useState({
@@ -566,6 +568,34 @@ export default function JobDetail() {
     }
   };
 
+  const archiveJob = async () => {
+    if (!id || !job) return;
+    const isCompleted = job.status === "completed" || job.status === "paid";
+    const newStatus = isCompleted ? "archived" : "lost";
+
+    try {
+      const { error } = await supabase
+        .from("leads")
+        .update({ status: newStatus })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["lead-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["archived-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      toast.success(isCompleted ? "Job archived" : "Job marked as lost");
+      navigate("/jobs");
+    } catch (error) {
+      console.error("Error archiving:", error);
+      toast.error("Failed to archive");
+    } finally {
+      setArchiveDialogOpen(false);
+    }
+  };
+
   const statusLabelMap: Record<string, string> = {
     new: "New",
     contacted: "Contacted",
@@ -634,13 +664,19 @@ export default function JobDetail() {
                         Create Recurring Schedule
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete Job
+                    <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
+                      <Archive className="h-4 w-4 mr-2" />
+                      {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
                     </DropdownMenuItem>
+                    {jobAny.recurring_job_id && (
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setDeleteDialogOpen(true)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Job Schedule
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -1312,17 +1348,35 @@ export default function JobDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      {/* Archive / Mark as Lost Dialog */}
+      <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {jobAny?.recurring_job_id ? "Delete Job Schedule" : "Delete Job"}
+              {job?.status === "completed" || job?.status === "paid" ? "Archive Job" : "Mark as Lost"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {jobAny?.recurring_job_id
-                ? "Are you sure you want to delete this job schedule? This will permanently delete all jobs associated with this schedule. This action cannot be undone."
-                : "Are you sure you want to delete this job? This action cannot be undone and will remove all associated data including the estimate."}
+              {job?.status === "completed" || job?.status === "paid"
+                ? `This will archive "${job?.name || "this job"}" and send it to the archive. You can restore it later from the Archive section on the Leads page.`
+                : `This will mark "${job?.name || "this job"}" as lost and send it to the archive. You can restore it later from the Archive section on the Leads page.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={archiveJob}>
+              {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Recurring Schedule Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Job Schedule</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this job schedule? This will permanently delete all jobs associated with this schedule. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

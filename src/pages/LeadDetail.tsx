@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Archive } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -25,7 +25,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateJob } from "@/hooks/useJobs";
-import { useDeleteLead } from "@/hooks/useLeads";
+
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
@@ -109,7 +109,7 @@ export default function LeadDetail() {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
-  const deleteLeadMutation = useDeleteLead();
+
   const { scheduleJob, isScheduling } = useScheduleJob();
 
   const [lead, setLead] = useState<Lead | null>(null);
@@ -134,8 +134,8 @@ export default function LeadDetail() {
   const [disqualifyOpen, setDisqualifyOpen] = useState(false);
   const [disqualifyReason, setDisqualifyReason] = useState<DisqualifyReason | null>(null);
 
-  // Delete dialog
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  // Mark as lost dialog
+  const [markLostDialogOpen, setMarkLostDialogOpen] = useState(false);
 
   // Edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -582,18 +582,36 @@ export default function LeadDetail() {
     }
   };
 
-  const deleteLead = async () => {
+  const markAsLost = async () => {
     if (!lead?.id) return;
 
     try {
-      await deleteLeadMutation.mutateAsync(lead.id);
-      toast.success("Lead deleted successfully");
+      const { error } = await supabase
+        .from("leads")
+        .update({ status: "lost" })
+        .eq("id", lead.id);
+
+      if (error) throw error;
+
+      await supabase.from("interactions").insert({
+        lead_id: lead.id,
+        account_id: currentAccount?.id,
+        type: "status_change" as InteractionType,
+        direction: "na" as InteractionDirection,
+        summary: "Marked as lost and sent to archive",
+        created_by: user?.id,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["lead-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["archived-leads"] });
+      toast.success("Lead marked as lost");
       navigate("/leads");
     } catch (error) {
-      console.error("Error deleting lead:", error);
-      toast.error("Failed to delete lead");
+      console.error("Error marking lead as lost:", error);
+      toast.error("Failed to mark lead as lost");
     } finally {
-      setDeleteDialogOpen(false);
+      setMarkLostDialogOpen(false);
     }
   };
 
@@ -700,12 +718,9 @@ export default function LeadDetail() {
                   <Edit className="h-4 w-4 mr-2" />
                   Edit Lead
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => setDeleteDialogOpen(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Lead
+                <DropdownMenuItem onClick={() => setMarkLostDialogOpen(true)}>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Mark as Lost
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -796,23 +811,19 @@ export default function LeadDetail() {
         </div>
       </div>
       
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      {/* Mark as Lost Dialog */}
+      <AlertDialog open={markLostDialogOpen} onOpenChange={setMarkLostDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Lead</AlertDialogTitle>
+            <AlertDialogTitle>Mark as Lost</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this lead? This will remove the lead and its associated interactions and estimates. The client record for "{lead.name}" will be preserved.
+              This will mark "{lead.name}" as lost and send it to the archive. You can restore it later from the Archive section on the Leads page.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteLeadMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={deleteLead}
-              disabled={deleteLeadMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteLeadMutation.isPending ? "Deleting..." : "Delete"}
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={markAsLost}>
+              Mark as Lost
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
