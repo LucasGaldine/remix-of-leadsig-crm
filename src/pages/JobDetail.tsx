@@ -378,6 +378,7 @@ export default function JobDetail() {
       await makeUnique.mutateAsync(id);
       toast.success("Job detached from schedule");
       setMakeUniqueDialogOpen(false);
+      window.location.reload();
     } catch (error) {
       console.error("Error making job unique:", error);
       toast.error("Failed to detach job from schedule");
