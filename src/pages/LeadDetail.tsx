@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, Info, MapPin, Mail } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -52,6 +53,7 @@ interface Lead {
   created_at: string;
   updated_at: string;
   estimate_job_id: string | null;
+  customer_id?: string | null;
 }
 
 interface Interaction {
@@ -111,6 +113,8 @@ export default function LeadDetail() {
   const { scheduleJob, isScheduling } = useScheduleJob();
 
   const [lead, setLead] = useState<Lead | null>(null);
+  const [customer, setCustomer] = useState<any>(null);
+  const [clientInfoExpanded, setClientInfoExpanded] = useState(false);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [qualification, setQualification] = useState<Qualification | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,6 +191,7 @@ export default function LeadDetail() {
       }
 
       const leadData = data as any;
+      setCustomer(leadData.customer || null);
       setLead({
         ...leadData,
         name: leadData.customer?.name || leadData.name,
@@ -536,6 +541,21 @@ export default function LeadDetail() {
 
     setSaving(true);
     try {
+      if (customer?.id) {
+        const { error: customerError } = await supabase
+          .from("customers")
+          .update({
+            name: editForm.name,
+            phone: editForm.phone || null,
+            email: editForm.email || null,
+            address: editForm.address || null,
+            city: editForm.city || null,
+          })
+          .eq("id", customer.id);
+
+        if (customerError) throw customerError;
+      }
+
       const { error } = await supabase
         .from("leads")
         .update({
@@ -654,110 +674,125 @@ export default function LeadDetail() {
       <PageHeader title="Lead Details" showBack backTo="/leads" />
 
       <div className="bg-card border-b border-border px-4 py-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              
-                <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
-                  {lead.status.replace("_", " ")}
-                </StatusBadge>
-              
-              {lead.source && (
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                  via {lead.source}
-                </span>
-              )}
+        <div className="flex items-center gap-2 mb-3">
+          <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
+            {lead.status.replace("_", " ")}
+          </StatusBadge>
+          {lead.source && (
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+              VIA {lead.source}
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {lead.estimated_value != null && (
+              <p className="text-2xl font-bold text-foreground">
+                ${lead.estimated_value.toLocaleString()}
+              </p>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreVertical className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={openEditDialog}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Lead
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Lead
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
 
-              
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="ml-auto">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={openEditDialog}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Lead
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => setDeleteDialogOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Lead
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            <h2 className="text-xl font-bold text-foreground">{lead.name}</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {lead.service_type || "No service type"}
-            </p>
-            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+        <h2 className="text-xl font-bold text-foreground">{lead.name}</h2>
+
+        <button
+          onClick={() => setClientInfoExpanded(!clientInfoExpanded)}
+          className="flex items-center gap-1 mt-1 group"
+        >
+          <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+            {lead.service_type || "No service type"}
+          </span>
+          <ChevronDown className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform duration-200",
+            clientInfoExpanded && "rotate-180"
+          )} />
+        </button>
+
+        {clientInfoExpanded && (
+          <div className="mt-3 space-y-1.5 text-sm text-muted-foreground animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex items-center gap-2">
               <Phone className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{lead.phone || "No phone number"}</span>
+              <span className="truncate">{lead.phone || "No phone"}</span>
             </div>
-            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+            <div className="flex items-center gap-2">
               <Mail className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{lead.email || "No email"}</span>
             </div>
-            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+            <div className="flex items-center gap-2">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
             </div>
           </div>
-          {lead.estimated_value && (
-            <div className="text-right ml-4">
-              <p className="text-2xl font-bold text-foreground">
-                ${lead.estimated_value.toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground">Estimated Value</p>
-            </div>
-          )}
-        </div>
+        )}
 
-        <div className="flex gap-2 mt-4">
+        <div className="flex items-center gap-2 mt-4">
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1 gap-2"
+            size="icon"
+            className="h-9 w-9 rounded-full"
             onClick={() => logCall("outbound")}
           >
             <Phone className="h-4 w-4" />
-            Call
           </Button>
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1 gap-2"
+            size="icon"
+            className="h-9 w-9 rounded-full"
             onClick={logText}
           >
             <MessageSquare className="h-4 w-4" />
-            Text
           </Button>
-          {showConvertButton && (
-            <Button
-              size="sm"
-              className="flex-1 gap-2"
-              disabled={!hasAddress}
-              onClick={() => setCreateEstimateDialogOpen(true)}
-            >
-              <FileText className="h-4 w-4" />
-              Schedule Estimate
-            </Button>
-          )}
-          {showConvertButton && hasEstimate && isEstimateApproved && (
-            <Button
-              size="sm"
-              className="flex-1 gap-2"
-              disabled={!hasAddress}
-              onClick={() => setConvertJobDialogOpen(true)}
-            >
-              <Briefcase className="h-4 w-4" />
-              Convert to Job
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 rounded-full"
+            onClick={() => { if (lead.email) window.open(`mailto:${lead.email}`); }}
+          >
+            <Mail className="h-4 w-4" />
+          </Button>
+
+          <div className="ml-auto flex gap-2">
+            {showConvertButton && (
+              <Button
+                size="sm"
+                className="gap-2 bg-emerald-700 hover:bg-emerald-800 text-white"
+                disabled={!hasAddress}
+                onClick={() => setCreateEstimateDialogOpen(true)}
+              >
+                Schedule Estimate
+              </Button>
+            )}
+            {showConvertButton && hasEstimate && isEstimateApproved && (
+              <Button
+                size="sm"
+                className="gap-2"
+                disabled={!hasAddress}
+                onClick={() => setConvertJobDialogOpen(true)}
+              >
+                <Briefcase className="h-4 w-4" />
+                Convert to Job
+              </Button>
+            )}
+          </div>
         </div>
       </div>
       
@@ -767,7 +802,7 @@ export default function LeadDetail() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Lead</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{lead.name}"? This action cannot be undone and will remove all associated data including interactions and quick estimates.
+              Are you sure you want to delete this lead? This will remove the lead and its associated interactions and estimates. The client record for "{lead.name}" will be preserved.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -789,82 +824,95 @@ export default function LeadDetail() {
           <DialogHeader>
             <DialogTitle>Edit Lead</DialogTitle>
             <DialogDescription>
-              Update the lead information below.
+              Update lead and client information below.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Name *</Label>
-              <Input
-                id="edit-name"
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                placeholder="Customer name"
-              />
+          <div className="space-y-5 py-4">
+            <div>
+              <h4 className="text-sm font-semibold text-foreground mb-3">Lead Information</h4>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-service">Service Type</Label>
+                  <Select
+                    value={editForm.service_type}
+                    onValueChange={(value) => setEditForm({ ...editForm, service_type: value })}
+                  >
+                    <SelectTrigger id="edit-service">
+                      <SelectValue placeholder="Select service type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SERVICE_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-value">Budget</Label>
+                  <Input
+                    id="edit-value"
+                    type="number"
+                    value={editForm.estimated_value}
+                    onChange={(e) => setEditForm({ ...editForm, estimated_value: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-phone">Phone</Label>
-              <Input
-                id="edit-phone"
-                type="tel"
-                value={editForm.phone}
-                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                placeholder="(555) 555-5555"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input
-                id="edit-email"
-                type="email"
-                value={editForm.email}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                placeholder="email@example.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-service">Service Type</Label>
-              <Select
-                value={editForm.service_type}
-                onValueChange={(value) => setEditForm({ ...editForm, service_type: value })}
-              >
-                <SelectTrigger id="edit-service">
-                  <SelectValue placeholder="Select service type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SERVICE_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-address">Address</Label>
-              <Input
-                id="edit-address"
-                value={editForm.address}
-                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                placeholder="Street address"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-city">City</Label>
-              <Input
-                id="edit-city"
-                value={editForm.city}
-                onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                placeholder="City"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-value">Budget</Label>
-              <Input
-                id="edit-value"
-                type="number"
-                value={editForm.estimated_value}
-                onChange={(e) => setEditForm({ ...editForm, estimated_value: e.target.value })}
-                placeholder="0"
-              />
+
+            <Separator />
+
+            <div>
+              <h4 className="text-sm font-semibold text-foreground mb-3">Client Information</h4>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-name">Name *</Label>
+                  <Input
+                    id="edit-name"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    placeholder="Customer name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-phone">Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    placeholder="(555) 555-5555"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    placeholder="email@example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-address">Address</Label>
+                  <Input
+                    id="edit-address"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    placeholder="Street address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-city">City</Label>
+                  <Input
+                    id="edit-city"
+                    value={editForm.city}
+                    onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                    placeholder="City"
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
