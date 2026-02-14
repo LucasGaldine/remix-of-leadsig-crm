@@ -63,9 +63,9 @@ export function DashboardStatCards() {
           opts={{ align: "start", loop: false }}
           className="w-full"
         >
-          <CarouselContent className="ml-2">
+          <CarouselContent className="-ml-2 pl-4">
             {cards.map(({ cardId, config, value }) => (
-              <CarouselItem key={cardId} className="basis-[70%] pl-2 pr-1">
+              <CarouselItem key={cardId} className="basis-[45%] pl-2">
                 <StatCard
                   label={config.label}
                   value={value}
