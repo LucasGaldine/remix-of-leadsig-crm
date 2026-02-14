@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useAuth } from "./useAuth";
+import { generateInstances, type RecurringJob } from "./useRecurringJobs";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
 type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
@@ -424,9 +425,22 @@ export function useJobRevenue() {
 
 export function useMakeJobUnique() {
   const queryClient = useQueryClient();
+  const { user, currentAccount } = useAuth();
 
   return useMutation({
     mutationFn: async (jobId: string) => {
+      if (!user || !currentAccount) throw new Error("Not authenticated");
+
+      const { data: job, error: fetchError } = await supabase
+        .from("leads")
+        .select("recurring_job_id")
+        .eq("id", jobId)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+
+      const recurringJobId = job?.recurring_job_id;
+
       const { error } = await supabase
         .from("leads")
         .update({
@@ -436,12 +450,26 @@ export function useMakeJobUnique() {
         .eq("id", jobId);
 
       if (error) throw error;
+
+      if (recurringJobId) {
+        const { data: recurringJob, error: rjError } = await supabase
+          .from("recurring_jobs")
+          .select("*")
+          .eq("id", recurringJobId)
+          .maybeSingle();
+
+        if (!rjError && recurringJob && recurringJob.is_active) {
+          await generateInstances(recurringJob as RecurringJob, currentAccount.id, user.id);
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job"] });
       queryClient.invalidateQueries({ queryKey: ["job-counts"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring-job"] });
     },
   });
 }

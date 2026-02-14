@@ -265,18 +265,18 @@ export function useGenerateNextInstances() {
   });
 }
 
-async function generateInstances(recurringJob: RecurringJob, accountId: string, userId: string) {
+export async function generateInstances(recurringJob: RecurringJob, accountId: string, userId: string) {
   const { data: existingInstances } = await supabase
     .from("leads")
     .select("id, recurring_instance_number, status")
     .eq("recurring_job_id", recurringJob.id)
     .order("recurring_instance_number", { ascending: false });
 
-  const unpaidInstances = (existingInstances || []).filter(
-    (i: any) => i.status !== "paid"
+  const activeInstances = (existingInstances || []).filter(
+    (i: any) => i.status === "job"
   );
 
-  const instancesNeeded = recurringJob.instances_ahead - unpaidInstances.length;
+  const instancesNeeded = recurringJob.instances_ahead - activeInstances.length;
   if (instancesNeeded <= 0) return;
 
   const maxInstanceNumber = existingInstances && existingInstances.length > 0

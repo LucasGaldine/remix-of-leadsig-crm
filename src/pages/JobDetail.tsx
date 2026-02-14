@@ -118,6 +118,13 @@ export default function JobDetail() {
     }
   }, [id]);
 
+  useEffect(() => {
+    const jobAny = job as any;
+    if (jobAny?.recurring_job_id && (jobAny.status === "completed" || jobAny.status === "paid")) {
+      generateNextInstances.mutate(jobAny.recurring_job_id);
+    }
+  }, [job?.status, (job as any)?.recurring_job_id]);
+
   const handleJobConverted = () => {
     queryClient.invalidateQueries({ queryKey: ["job", id] });
     queryClient.invalidateQueries({ queryKey: ["jobs"] });
