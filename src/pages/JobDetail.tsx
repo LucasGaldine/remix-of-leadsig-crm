@@ -490,20 +490,47 @@ export default function JobDetail() {
 
           if (schedulesError) throw schedulesError;
 
-          const { error: estimatesError } = await supabase
+          const { data: jobEstimates } = await supabase
             .from("estimates")
-            .delete()
+            .select("id")
             .in("job_id", jobIds);
 
-          if (estimatesError) throw estimatesError;
+          if (jobEstimates && jobEstimates.length > 0) {
+            const estIds = jobEstimates.map((e) => e.id);
+            await supabase
+              .from("estimate_line_items")
+              .delete()
+              .in("estimate_id", estIds);
+
+            const { error: estimatesError } = await supabase
+              .from("estimates")
+              .delete()
+              .in("id", estIds);
+
+            if (estimatesError) throw estimatesError;
+          }
         }
 
-        const { error: masterEstimateError } = await supabase
+        const { data: masterEstimates } = await supabase
           .from("estimates")
-          .delete()
+          .select("id")
           .eq("recurring_job_id", jobAny.recurring_job_id);
 
-        if (masterEstimateError) throw masterEstimateError;
+        if (masterEstimates && masterEstimates.length > 0) {
+          const estimateIds = masterEstimates.map((e) => e.id);
+
+          await supabase
+            .from("estimate_line_items")
+            .delete()
+            .in("estimate_id", estimateIds);
+
+          const { error: masterEstimateError } = await supabase
+            .from("estimates")
+            .delete()
+            .in("id", estimateIds);
+
+          if (masterEstimateError) throw masterEstimateError;
+        }
 
         const { error: leadsError } = await supabase
           .from("leads")
