@@ -47,7 +47,7 @@ export interface CreateRecurringJobInput {
   preferred_day_of_month?: number | null;
 }
 
-function getNextDate(
+export function getNextDate(
   currentDate: Date,
   frequency: RecurrenceFrequency,
   preferredDaysOfWeek?: number[],
@@ -87,7 +87,7 @@ function getNextDate(
   }
 }
 
-function getFirstDate(
+export function getFirstDate(
   startDate: Date,
   frequency: RecurrenceFrequency,
   preferredDaysOfWeek?: number[],
