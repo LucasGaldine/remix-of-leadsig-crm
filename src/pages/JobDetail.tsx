@@ -877,7 +877,10 @@ export default function JobDetail() {
 
             {/* Job Schedule Info */}
             {recurringJobData && (
-              <div className="card-elevated rounded-lg p-4">
+              <button
+                onClick={() => setRecurringDetailModalOpen(true)}
+                className="card-elevated rounded-lg p-4 w-full text-left transition-all hover:shadow-md active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-emerald-100">
                     <Repeat className="h-5 w-5 text-emerald-700" />
@@ -899,18 +902,31 @@ export default function JobDetail() {
                   </div>
                   {isManager() && (
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditScheduleOpen(true)}>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          setRecurringDetailModalOpen(true);
+                        }}>
+                          <Repeat className="h-4 w-4 mr-2" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          setEditScheduleOpen(true);
+                        }}>
                           <Edit className="h-4 w-4 mr-2" />
                           Edit Schedule
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => setDeleteDialogOpen(true)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteDialogOpen(true);
+                          }}
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
@@ -920,7 +936,7 @@ export default function JobDetail() {
                     </DropdownMenu>
                   )}
                 </div>
-              </div>
+              </button>
             )}
 
             {/* Client Share Link */}
