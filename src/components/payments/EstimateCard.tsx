@@ -1,4 +1,4 @@
-import { FileText, Check, Clock, AlertCircle, Receipt, XCircle, ClipboardCheck } from "lucide-react";
+import { FileText, Check, Clock, AlertCircle, Receipt, XCircle, ClipboardCheck, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Estimate } from "@/types/payments";
 
@@ -51,24 +51,38 @@ export function EstimateCard({ estimate, onClick }: EstimateCardProps) {
               </span>
             )}
           </div>
-          <h3 className="font-semibold text-foreground truncate">{estimate.customerName}</h3>
-          <p className="text-sm text-muted-foreground truncate">
+          
+         
+          <p className="text-2">
             {estimate.jobName || "No job assigned"}
-          </p>
-          <p className="text-2xs text-muted-foreground mt-1">
-            {estimate.lineItems.length} item{estimate.lineItems.length !== 1 ? 's' : ''} • Created {estimate.createdAt}
-          </p>
+           </p>
+            
+          <div className="flex flex-col text-5 gap-1 mt-2">
+            <p>
+              {estimate.lineItems.length} item{estimate.lineItems.length !== 1 ? 's' : ''}
+            </p>
+
+            <p>
+              Created {estimate.createdAt}
+            </p>
+          </div>
+
         </div>
-        <div className="text-right ml-3">
-          <p className="text-lg font-bold text-foreground">
+
+         <div className="flex gap-4 items-center text-right ml-3">
+          <p className="text-2">
             ${estimate.total.toLocaleString()}
           </p>
+
+
           {estimate.expiresAt && (
             <p className="text-2xs text-muted-foreground">
               Expires {estimate.expiresAt}
             </p>
           )}
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
+
       </div>
     </button>
   );

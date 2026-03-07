@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Archive } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Archive, FileTextIcon, Trophy } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateJob } from "@/hooks/useJobs";
+import { format } from "date-fns";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/integrations/supabase/types";
@@ -80,10 +81,10 @@ interface Qualification {
   notes: string | null;
 }
 
-const PIPELINE_STAGES: { value: string; label: string; color: string }[] = [
-  { value: "new", label: "New", color: "bg-blue-500" },
-  { value: "contacted", label: "Contacted", color: "bg-yellow-500" },
-  { value: "qualified", label: "Qualified", color: "bg-primary" },
+const PIPELINE_STAGES: { value: string; label: string; color: string, bg_color: string}[] = [
+  { value: "new", label: "New", color: "text-status-progress", bg_color: "status-progress-bg"},
+  { value: "contacted", label: "Contacted", color: "text-status-progress",  bg_color: "status-progress-bg"},
+  { value: "qualified", label: "Qualified", color: "text-status-progress",  bg_color: "status-progress-bg" },
 ];
 
 const TIMELINE_OPTIONS: { value: TimelinePeriod; label: string }[] = [
@@ -114,11 +115,11 @@ export default function LeadDetail() {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [customer, setCustomer] = useState<any>(null);
-  const [clientInfoExpanded, setClientInfoExpanded] = useState(false);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [qualification, setQualification] = useState<Qualification | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [pipelineInfo, setPipelineInfo] = useState(false);
   const [hasEstimate, setHasEstimate] = useState(false);
   const [estimate, setEstimate] = useState<any>(null);
 
@@ -375,6 +376,8 @@ export default function LeadDetail() {
     else if (qual.timeline === "2_4_weeks") fitScore += 10;
     else if (qual.timeline === "1_3_months") fitScore += 5;
 
+    if (lead.status === "qualified") fitScore=100;
+    
     return fitScore;
   };
 
@@ -643,6 +646,31 @@ export default function LeadDetail() {
     }
   };
 
+  const formatPhone = (phone: string | null) => {
+    if (!phone) return "No phone";
+
+    const trimmed = phone.trim();
+    const digits = trimmed.replace(/\D/g, "");
+    if (!digits) return trimmed;
+
+    // Separate an optional country code from the last 10 local digits.
+    const hasCountryCode = digits.length > 10;
+    const countryCode = hasCountryCode ? digits.slice(0, digits.length - 10) : "";
+    const area = digits.slice(-10, -7);
+    const prefix = digits.slice(-7, -4);
+    const line = digits.slice(-4);
+
+    if (digits.length >= 10) {
+      const localFormatted = `(${area}) ${prefix}-${line}`;
+      return countryCode ? `+${countryCode} ${localFormatted}` : localFormatted;
+    }
+
+    if (digits.length === 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+
+    // Fallback to original text when we can't confidently format.
+    return trimmed;
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -688,129 +716,160 @@ export default function LeadDetail() {
   const isEstimateApproved = estimate?.status === "accepted";
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Lead Details" showBack backTo="/leads" />
+    <div className="min-h-screen  bg-surface-sunken pb-24 ">
 
-      <div className="bg-card border-b border-border px-4 py-4">
-        <div className="flex items-center gap-2 mb-3">
-          <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
-            {lead.status.replace("_", " ")}
-          </StatusBadge>
-          {lead.source && (
-            <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
-              VIA {lead.source}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-3">
-            {lead.estimated_value != null && (
-              <p className="text-2xl font-bold text-foreground">
-                ${lead.estimated_value.toLocaleString()}
-              </p>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreVertical className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={openEditDialog}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Lead
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setMarkLostDialogOpen(true)}>
-                  <Archive className="h-4 w-4 mr-2" />
-                  Mark as Lost
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+        <PageHeader title="" showBack backTo="/leads" />
+
+        {/* Main Info */}
+        <div className=" max-w-[var(--content-max-width)] m-auto p-4 pb-0">
+          <div className="bg-card rounded-lg border border-border">
+          <div className="flex p-4 pt-8 pb-8">
+              {/*Left Column*/}
+              <div className="flex flex-col w-full justify-between gap-4">
+                {/*Customer Info*/}
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2 items-center">
+                    <p className="text-1">{lead.name}</p>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-5 w-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={openEditDialog}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Lead
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setMarkLostDialogOpen(true)}>
+                            <Archive className="h-4 w-4 mr-2" />
+                            Mark as Lost
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                  </DropdownMenu>
+                  </div>
+                  
+
+                  <div className="text-5 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{formatPhone(lead.phone)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{lead.email || "No email"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/*Contact Buttons*/}
+                <div className="flex gap-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => logCall("outbound")}
+                  >
+                    <Phone className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={logText}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => { if (lead.email) window.open(`mailto:${lead.email}`); }}
+                  >
+                    <Mail className="h-4 w-4" />
+                  </Button>
+                </div>
+              
+              </div>
+
+
+              {/*Right Column*/}
+              <div className="flex flex-col w-full justify-between ">
+                {/*Job Info*/}
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-end">
+                    
+                  <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
+                    {lead.status.replace("_", " ")}
+                  </StatusBadge>
+                  </div>
+
+                  <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
+                    <p className="text-2">${lead.estimated_value}</p>
+                    <p>{lead.service_type || "No service type"}</p>
+                  </div>
+                </div>
+
+                {/*CTA*/}
+                <div className="flex justify-end gap-2">
+                  {showConvertButton && (
+                  <Button
+                    size="lg"
+                    disabled={!hasAddress}
+                    onClick={() => setCreateEstimateDialogOpen(true)}
+                  >
+                    <FileTextIcon></FileTextIcon>
+                    Schedule Estimate
+                  </Button>
+                )}
+                {showConvertButton && hasEstimate && isEstimateApproved && (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={!hasAddress}
+                    onClick={() => setConvertJobDialogOpen(true)}
+                  >
+                    <Briefcase className="h-4 w-4" />
+                    Convert to Job
+                  </Button>
+                )}
+                </div>
+              
+              </div>
+
+          
           </div>
-        </div>
 
-        <h2 className="text-xl font-bold text-foreground">{lead.name}</h2>
-
-        <button
-          onClick={() => setClientInfoExpanded(!clientInfoExpanded)}
-          className="flex items-center gap-1 mt-1 group"
-        >
-          <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-            {lead.service_type || "No service type"}
-          </span>
-          <ChevronDown className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform duration-200",
-            clientInfoExpanded && "rotate-180"
-          )} />
-        </button>
-
-        {clientInfoExpanded && (
-          <div className="mt-3 space-y-1.5 text-sm text-muted-foreground animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="flex items-center gap-2">
-              <Phone className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{lead.phone || "No phone"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Mail className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{lead.email || "No email"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 mt-4">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 rounded-full"
-            onClick={() => logCall("outbound")}
-          >
-            <Phone className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 rounded-full"
-            onClick={logText}
-          >
-            <MessageSquare className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 rounded-full"
-            onClick={() => { if (lead.email) window.open(`mailto:${lead.email}`); }}
-          >
-            <Mail className="h-4 w-4" />
-          </Button>
-
-          <div className="ml-auto flex gap-2">
-            {showConvertButton && (
-              <Button
-                size="sm"
-                className="gap-2 bg-emerald-700 hover:bg-emerald-800 text-white"
-                disabled={!hasAddress}
-                onClick={() => setCreateEstimateDialogOpen(true)}
+          {/* Tabs */}
+          <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4 ">
+            {[
+              { id: "details", label: "Details" },
+              { id: "notes", label: "Notes" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                className={cn(
+                  "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                  activeTab === tab.id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
               >
-                Schedule Estimate
-              </Button>
-            )}
-            {showConvertButton && hasEstimate && isEstimateApproved && (
-              <Button
-                size="sm"
-                className="gap-2"
-                disabled={!hasAddress}
-                onClick={() => setConvertJobDialogOpen(true)}
-              >
-                <Briefcase className="h-4 w-4" />
-                Convert to Job
-              </Button>
-            )}
+                {tab.label}
+              </button>
+            ))}
           </div>
-        </div>
+          </div>
       </div>
       
+
+      
+
+
+
+
       {/* Mark as Lost Dialog */}
       <AlertDialog open={markLostDialogOpen} onOpenChange={setMarkLostDialogOpen}>
         <AlertDialogContent>
@@ -1024,73 +1083,14 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Tabs */}
-      <div className="bg-card border-b border-border px-4 overflow-x-auto scrollbar-hide">
-        <div className="flex">
-          {[
-            { id: "details", label: "Details" },
-            { id: "notes", label: "Notes" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className={cn(
-                "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
-                activeTab === tab.id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      
 
       {activeTab === "details" && (
-        <>
-          {/* Next Step Guidance */}
-          {!["job", "paid", "completed"].includes(lead.status) && (
-            <div className="px-4 pt-4">
-              <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                <p>
-                  {lead.status === "new" && "Contact this lead to move them to the next stage."}
-                  {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
-                  {lead.status === "qualified" && !hasEstimate && "Create an estimate to send to the customer for approval."}
-                  {lead.status === "qualified" && hasEstimate && !isEstimateApproved && "The estimate needs to be approved before this lead can become a job."}
-                  {lead.status === "qualified" && hasEstimate && isEstimateApproved && "The estimate is approved. Convert this lead to a job to get started."}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Pipeline Stage Selector */}
-          {!["job", "paid", "completed"].includes(lead.status) && (
-            <div className="px-4 pt-4 pb-4">
-              <h3 className="text-sm font-medium mb-2">Pipeline Stage</h3>
-              <div className="flex flex-wrap gap-2">
-                {PIPELINE_STAGES.map((stage) => (
-                  <button
-                    key={stage.value}
-                    onClick={() => updateLeadStatus(stage.value)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
-                      lead.status === stage.value
-                        ? `${stage.color} text-white`
-                        : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    )}
-                  >
-                    {stage.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
+          
 
           {/* Estimate */}
           {hasEstimate && estimate && (
-            <div className="px-4 pb-4">
               <button
                 onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
                 className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
@@ -1118,7 +1118,7 @@ export default function LeadDetail() {
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </div>
               </button>
-            </div>
+            
           )}
 
           {/* Client Share Link */}
@@ -1133,7 +1133,6 @@ export default function LeadDetail() {
 
           {/* Quick Estimate Panel */}
           {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
-            <div className="px-4 pb-4">
               <QuickEstimatePanel
                 leadId={id!}
                 hasAddress={hasAddress}
@@ -1175,54 +1174,105 @@ export default function LeadDetail() {
                   setDraftEstimateDialogOpen(true);
                 }}
               />
-            </div>
           )}
 
           {/* Qualification Panel */}
           {!["job", "paid", "completed"].includes(lead.status) && (
-            <div className="px-4 pb-4">
-              <div className="card-elevated rounded-lg p-4">
-                <h3 className="font-medium mb-3">Qualification</h3>
+            
+              <div className="flex flex-col gap-4 card-elevated rounded-lg p-4">
+              
+              {/* Next Step Guidance */}
+              <div className="flex gap-2 items-center pb-4 border-b border-border">
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
+              {!["job", "paid", "completed"].includes(lead.status) && (
+
+                <div className="flex gap-2 justify-center items-center ">
+                  
+                  {PIPELINE_STAGES.map((stage) => (
+                        <div className="flex justify-center items-center">
+                        <Button
+                          key={stage.value}
+                          variant={lead.status === stage.value ? "default" : "ghost"}
+                          onClick={() => updateLeadStatus(stage.value)}
+                          className="rounded-full"
+                        >
+
+                          <ChevronRight className="w-4 h-4"></ChevronRight>
+
+                          {stage.label}
+                        </Button>
+                        
+                        </div>
+                      ))}
+                  </div>
+                  )}
+
+                  <Button
+                  variant = "ghost"
+                  className="flex items-center justify-center gap-2 h-auto text-muted-foreground  whitespace-normal text-left"
+                  onClick = {()=>{setPipelineInfo(prev => !prev)}}
+                >
+                  <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                  { pipelineInfo ? (
+                  <p className="whitespace-normal break-words animate-in fade-in slide-in-from-left-5 duration-500">
+                    {lead.status === "new" && "Contact this lead to move them to the next stage."}
+                    {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
+                    {lead.status === "qualified" && !hasEstimate && "Scheduling an estimate moves this lead into your active job pipeline."}
+                    {lead.status === "qualified" && hasEstimate && !isEstimateApproved && "The estimate needs to be approved before this lead can become a job."}
+                    {lead.status === "qualified" && hasEstimate && isEstimateApproved && "The estimate is approved. Convert this lead to a job to get started."}
+                  </p>
+                  ) : null}
+                </Button>
+
+            </div>
+
+
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-4">
                     <Switch
                       id="budget-confirmed"
                       checked={qualification?.budget_confirmed ?? false}
                       onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
                     />
+                    <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
+                    
                   </div>
 
-                  <div className="flex items-center justify-between gap-4">
-                    <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
+                  <div className="flex items-center gap-4">
                     <Switch
                       id="service-area"
                       checked={qualification?.service_area_fit ?? false}
                       onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
                     />
+                    <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4">
-                    <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
+                  <div className="flex items-center gap-4">
+
+
                     <Switch
                       id="decision-maker"
                       checked={qualification?.decision_maker_confirmed ?? false}
                       onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
                     />
+                    <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
                   </div>
 
-                  <div>
-                    <Label>Timeline</Label>
+
+
+
                     <Select
                       value={qualification?.timeline || "none"}
                       onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
                     >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select timeline" />
+                      <SelectTrigger>
+                        <div className="flex items-center gap-4">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <SelectValue placeholder="Unsure of timeline" />
+                        </div>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="none">Timeline not confirmed</SelectItem>
                         {TIMELINE_OPTIONS.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
@@ -1230,7 +1280,7 @@ export default function LeadDetail() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
+
 
                   <div>
                     <Label>Notes</Label>
@@ -1243,21 +1293,17 @@ export default function LeadDetail() {
                       rows={2}
                     />
                   </div>
+                </div>
 
-                  {qualification && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">Fit Score:</span>
-                      <span className={cn(
-                        "font-semibold",
-                        calculateFitScore(qualification) >= 70 ? "text-status-confirmed" :
-                        calculateFitScore(qualification) >= 40 ? "text-status-pending" : "text-status-attention"
-                      )}>
-                        {calculateFitScore(qualification)}/100
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-2">
+                <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setDisqualifyOpen(true)}
+                    >
+                      <X className="h-4 w-4 mr-1" /> Disqualify
+                    </Button>
                     <Button
                       variant="default"
                       size="sm"
@@ -1267,22 +1313,12 @@ export default function LeadDetail() {
                     >
                       <Check className="h-4 w-4 mr-1" /> Mark Qualified
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setDisqualifyOpen(true)}
-                    >
-                      <X className="h-4 w-4 mr-1" /> Disqualify
-                    </Button>
                   </div>
-                </div>
               </div>
-            </div>
+
           )}
 
           {/* Interaction Timeline */}
-          <div className="px-4 pb-4">
             <div className="card-elevated rounded-lg p-4">
               <h3 className="font-medium mb-3">Activity Timeline</h3>
 
@@ -1324,13 +1360,12 @@ export default function LeadDetail() {
               </div>
             </div>
           </div>
-        </>
       )}
 
       {activeTab === "notes" && (
-        <div className="px-4 py-4">
+        <div className="px-4 py-4 max-w-[var(--content-max-width)] m-auto flex flex-col gap-4">
           <div className="card-elevated rounded-lg p-4">
-            <div className="mb-4">
+
               <Textarea
                 value={newNote}
                 onChange={(e) => setNewNote(e.target.value)}
@@ -1345,38 +1380,36 @@ export default function LeadDetail() {
               >
                 <Plus className="h-4 w-4 mr-1" /> Add Note
               </Button>
+            
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 flex flex-col gap-4">
               {interactions.filter((i) => i.type === "note").length === 0 ? (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground">No notes yet</p>
-                </div>
+                null
               ) : (
                 interactions
                   .filter((i) => i.type === "note")
                   .map((interaction) => (
-                    <div key={interaction.id} className="flex gap-3 pb-3 border-b border-border last:border-0">
+                    <div key={interaction.id} className="card-elevated flex gap-4 rounded-lg p-4">
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                         <FileText className="h-4 w-4" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-sm font-medium">Note</span>
+
+                      
+                        <div className="flex-1 items-center justify-between gap-2 mb-0.5">
+                          <p className="text-3">
+                          {interaction.body || interaction.summary}
+                          </p>
                           <span className="text-xs text-muted-foreground ml-auto">
-                            {formatDate(interaction.created_at)}
+                            {format(new Date(interaction.created_at), "MMM d, yyyy 'at' h:mm a")}
                           </span>
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          {interaction.body || interaction.summary}
-                        </p>
-                      </div>
+                        
                     </div>
                   ))
               )}
             </div>
-          </div>
+          
         </div>
       )}
 

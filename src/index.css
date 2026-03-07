@@ -13,6 +13,8 @@ input[type="number"] {
 
 @layer base {
   :root {
+    --content-max-width: 800px;
+
     /* Core Brand - Forest Green operational palette */
     --background: 210 20% 98%;
     --foreground: 220 25% 10%;
@@ -65,7 +67,7 @@ input[type="number"] {
     --surface-sunken: 215 25% 96%;
 
     /* Touch targets for gloved hands */
-    --touch-target-min: 48px;
+    --touch-target-min: 24px;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -198,5 +200,35 @@ input[type="number"] {
   
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@layer components {
+  .text-1 {
+    @apply text-xl font-semibold;
+  }
+
+  .text-2 {
+    @apply text-lg font-semibold;
+  }
+
+  .text-3 {
+    @apply text-base;
+  }
+
+  .text-4 {
+    @apply text-base text-muted-foreground;
+  }
+
+  .text-5 {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .text-label {
+    @apply text-sm font-semibold;
+  }
+
+  .levitate{
+    @apply active:scale-[0.98] hover:shadow-md transition-all;
   }
 }

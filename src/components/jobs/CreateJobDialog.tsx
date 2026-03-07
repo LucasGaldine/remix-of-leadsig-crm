@@ -261,8 +261,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-semibold">Create New Job</DialogTitle>
-          <p className="text-gray-500 text-base">Select a client and enter job details below.</p>
+          <DialogTitle>Create New Job</DialogTitle>
+          <p className="text-5">Select a client and enter job details below.</p>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -276,7 +276,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           />
 
           <div className="space-y-2">
-            <Label htmlFor="jobName" className="text-base font-semibold text-gray-900">
+            <Label htmlFor="jobName">
               Job Name
             </Label>
             <Input
@@ -284,20 +284,25 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               value={jobName}
               onChange={(e) => setJobName(e.target.value)}
               placeholder="Smith Patio Project (optional)"
-              className="h-14 text-base border-2 border-gray-300 focus-visible:border-emerald-600 focus-visible:ring-0 rounded-xl"
+
             />
-            <p className="text-sm text-gray-500">If left empty, the customer name will be used</p>
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Job Details</h3>
+            <div className="flex items-center gap-3">
+            <div className="h-px bg-border flex-1" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Job Details
+            </span>
+            <div className="h-px bg-border flex-1" />
+          </div>
 
             <div className="space-y-2">
-              <Label htmlFor="serviceType" className="text-base font-semibold text-gray-900">
+              <Label htmlFor="serviceType">
                 Service Type
               </Label>
               <Select value={serviceType} onValueChange={setServiceType}>
-                <SelectTrigger className="h-12 text-base border-gray-300 rounded-lg">
+                <SelectTrigger className="h-12 text-base border-border rounded-lg">
                   <SelectValue placeholder="Select service type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -312,8 +317,8 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="jobAddress" className="text-base font-semibold text-gray-900">
-                Job Address <span className="text-red-500">*</span>
+              <Label htmlFor="jobAddress" >
+                Job Address <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="jobAddress"
@@ -324,7 +329,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                     ? `Default: ${selectedCustomer.address}`
                     : "123 Main St, Austin, TX"
                 }
-                className="h-12 text-base border-gray-300 rounded-lg"
+
               />
               {selectedCustomer?.address && !jobAddress && (
                 <p className="text-xs text-muted-foreground">
@@ -334,7 +339,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-base font-semibold text-gray-900">
+              <Label htmlFor="description" >
                 Description
               </Label>
               <Textarea
@@ -342,20 +347,28 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Project scope and details..."
-                className="min-h-24 text-base border-gray-300 rounded-lg resize-none"
+
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-gray-50">
-              <div className="flex items-center gap-3">
-                <Repeat className="h-5 w-5 text-gray-600" />
-                <div>
-                  <p className="font-semibold text-gray-900">Job Schedule</p>
-                  <p className="text-sm text-gray-500">Set up a recurring schedule with a shared quote and client portal</p>
-                </div>
+            <div className="flex items-center gap-3">
+            <div className="h-px bg-border flex-1" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Scheduling
+            </span>
+            <div className="h-px bg-border flex-1" />
+          </div>
+
+            <div className="flex items-center justify-between p-2 px-4 rounded-lg border border-border ">
+              <div className="flex items-center gap-3 text-label">
+                <Repeat className="h-4 w-4" />
+
+                  <p>Create recurring schedule</p>
+
               </div>
+
               <Switch
                 checked={isRecurring}
                 onCheckedChange={setIsRecurring}
@@ -365,7 +378,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             {isRecurring && (
               <div className="space-y-4 p-4 rounded-lg border border-gray-200">
                 <div className="space-y-2">
-                  <Label className="text-base font-semibold text-gray-900">Frequency</Label>
+                  <Label>Frequency</Label>
                   <Select value={frequency} onValueChange={(v) => { setFrequency(v as RecurrenceFrequency); setSelectedDaysOfWeek([]); setSelectedDayOfMonth(""); }}>
                     <SelectTrigger className="h-12 text-base border-gray-300 rounded-lg">
                       <SelectValue />
@@ -380,7 +393,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
                 {(frequency === "weekly" || frequency === "biweekly") && (
                   <div className="space-y-2">
-                    <Label className="text-base font-semibold text-gray-900">
+                    <Label >
                       Days of the Week <span className="text-red-500">*</span>
                     </Label>
                     <div className="flex gap-1.5">
@@ -405,7 +418,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
                 {frequency === "monthly" && (
                   <div className="space-y-2">
-                    <Label className="text-base font-semibold text-gray-900">
+                    <Label >
                       Day of the Month <span className="text-red-500">*</span>
                     </Label>
                     <Select value={selectedDayOfMonth} onValueChange={setSelectedDayOfMonth}>
@@ -428,7 +441,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-base font-semibold text-gray-900">
+                    <Label>
                       Start Date <span className="text-red-500">*</span>
                     </Label>
                     <Input
@@ -442,7 +455,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label className="text-base font-semibold text-gray-900">End Date</Label>
+                      <Label >End Date</Label>
                       <div className="flex items-center gap-2">
                         <Checkbox
                           id="hasEndDate"
@@ -472,7 +485,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-base font-semibold text-gray-900">Start Time</Label>
+                    <Label>Start Time</Label>
                     <Input
                       type="time"
                       value={scheduledTime}
@@ -481,7 +494,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-base font-semibold text-gray-900">End Time</Label>
+                    <Label>End Time</Label>
                     <Input
                       type="time"
                       value={scheduledTimeEnd}
@@ -494,7 +507,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-gray-600" />
-                    <Label className="text-base font-semibold text-gray-900">Default Crew</Label>
+                    <Label >Default Crew</Label>
                   </div>
                   <p className="text-sm text-gray-500">
                     These crew members will be automatically assigned to each instance. You can change the crew on individual jobs later.
@@ -528,7 +541,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           {!isRecurring && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="scheduledDate" className="text-base font-semibold text-gray-900">
+                <Label htmlFor="scheduledDate" >
                   Scheduled Date
                 </Label>
                 <Input
@@ -541,7 +554,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="scheduledTime" className="text-base font-semibold text-gray-900">
+                <Label htmlFor="scheduledTime" >
                   Scheduled Time
                 </Label>
                 <Input
@@ -559,16 +572,16 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             <Button
               type="button"
               variant="outline"
+              size="lg"
               onClick={handleCancel}
               disabled={isLoading}
-              className="px-8 h-12 text-base rounded-lg border-gray-300"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
-              className="px-8 h-12 text-base bg-emerald-700 hover:bg-emerald-800 rounded-lg"
+              size="lg"
             >
               {isLoading ? "Creating..." : isRecurring ? "Create Job Schedule" : "Create Job"}
             </Button>

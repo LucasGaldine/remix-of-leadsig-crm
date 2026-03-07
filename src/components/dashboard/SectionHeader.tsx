@@ -15,9 +15,9 @@ export function SectionHeader({ title, count, action, className }: SectionHeader
   return (
     <div className={cn("flex items-center justify-between", className)}>
       <div className="flex items-center gap-2">
-        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        <h2 className="text-2">{title}</h2>
         {count !== undefined && (
-          <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+          <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-label">
             {count}
           </span>
         )}

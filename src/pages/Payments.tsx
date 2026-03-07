@@ -142,7 +142,10 @@ export default function Payments() {
         </div>
       )}
 
-      <div className="bg-card border-b border-border px-4 overflow-x-auto scrollbar-hide">
+  <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
+<div className="rounded-lg bg-card border border-border">
+
+      <div className="px-4 overflow-x-auto scrollbar-hide border-b border-borde ">
         <div className="flex">
           {[
             { id: "estimates" as const, label: "Estimates", icon: FileText },
@@ -171,7 +174,7 @@ export default function Payments() {
         </div>
       </div>
 
-      <div className="px-4 py-3 bg-card border-b border-border">
+      <div className="px-4 py-3 ">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -185,7 +188,7 @@ export default function Payments() {
       </div>
 
       {activeTab === "invoices" && (
-        <div className="px-4 py-3 bg-card border-b border-border overflow-x-auto scrollbar-hide">
+        <div className="px-4 py-3 overflow-x-auto scrollbar-hide">
           <div className="flex gap-2">
             {[
               { value: "all" as const, label: "All" },
@@ -209,8 +212,10 @@ export default function Payments() {
           </div>
         </div>
       )}
+</div>
+</div>
 
-      <main className="px-4 py-4">
+      <main className="p-4 max-w-[var(--content-max-width)] m-auto">
         {activeTab === "estimates" && (
           <div className="space-y-3">
             {filteredEstimates.map((estimate) => {
@@ -313,6 +318,8 @@ export default function Payments() {
           </div>
         )}
       </main>
+
+
 
       <FloatingActionButton
         actions={

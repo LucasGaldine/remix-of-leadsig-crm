@@ -20,6 +20,7 @@ import {
   Plus,
   Info,
   Unlink,
+  Briefcase,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -614,167 +615,188 @@ export default function JobDetail() {
   const isUnassigned = hasSchedules && jobAssignments.length === 0;
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Job Details" showBack backTo="/jobs" />
+    <div className="min-h-screen  bg-surface-sunken pb-24">
+      <PageHeader title="" showBack backTo="/jobs" />
 
       {/* Status Banner */}
-      <div className="bg-card border-b border-border px-4 py-4">
-          <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <StatusBadge status={displayStatus as any} size="lg">
-                {statusLabel}
-              </StatusBadge>
-              {jobAny.recurring_job_id && (
-                <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
-                  <Repeat className="h-3 w-3 mr-1" />
-                  Visit #{jobAny.recurring_instance_number || ""}
-                </Badge>
-              )}
-              {isUnassigned && (
-                <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
-                  <Users className="h-3 w-3 mr-1" />
-                  Unassigned
-                </Badge>
-              )}
-              {isManager() && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="ml-auto"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={openEditDialog}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Edit Job
-                    </DropdownMenuItem>
-                    {jobAny.recurring_job_id ? (
-                      <DropdownMenuItem onClick={() => setRecurringDetailModalOpen(true)}>
-                        <Repeat className="h-4 w-4 mr-2" />
-                        View Schedule Details
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
-                        <Repeat className="h-4 w-4 mr-2" />
-                        Create Recurring Schedule
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
-                      <Archive className="h-4 w-4 mr-2" />
-                      {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
-                    </DropdownMenuItem>
-                    {jobAny.recurring_job_id && (
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => setDeleteDialogOpen(true)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete Job Schedule
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+      <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
+        <div className="bg-card rounded-lg border border-border">
+
+          {/* Main Content */}
+          <div className="flex flex-col pt-8 pb-8 p-4 gap-4">
+
+            <div className="flex">
+              {/*Left Column */}
+              <div className="flex flex-col w-full gap-2">
+                
+                <div className="flex items-center gap-2">
+                <p className="text-1">
+                  {job.name || job.customer?.name || "Unknown Client"}
+                </p>
+
+                {isManager() && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={openEditDialog}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Job
+                        </DropdownMenuItem>
+                        {jobAny.recurring_job_id ? (
+                          <DropdownMenuItem onClick={() => setRecurringDetailModalOpen(true)}>
+                            <Repeat className="h-4 w-4 mr-2" />
+                            View Schedule Details
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
+                            <Repeat className="h-4 w-4 mr-2" />
+                            Create Recurring Schedule
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
+                          <Archive className="h-4 w-4 mr-2" />
+                          {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
+                        </DropdownMenuItem>
+                        {jobAny.recurring_job_id && (
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeleteDialogOpen(true)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Job Schedule
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+                
+                <div className="text-5">
+                  <div className="flex items-center gap-1">
+                    <Briefcase className="h-3.5 w-3.5 shrink-0"></Briefcase>
+                  <p >
+                    {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
+                  </p>
+                  </div>
+                  <button onClick={openAddressDialog} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{clientAddress || "No address"}</span>
+                  </button>
+                </div>
+              </div>
+              
+              {/*Right Column */}
+              <div className=" w-full flex flex-col items-end gap-2">
+                <div className="flex justify-end gap-2">
+                  
+                  
+                  {isUnassigned && (
+                    <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
+                      <Users className="h-3 w-3 mr-1" />
+                      Unassigned
+                    </Badge>
+                  )}
+
+                  {jobAny.recurring_job_id && (
+                    <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
+                      <Repeat className="h-3 w-3 mr-1" />
+                      Visit #{jobAny.recurring_instance_number || ""}
+                    </Badge>
+                  )}
+
+                  <StatusBadge status={displayStatus as any} size="lg">
+                    {statusLabel}
+                  </StatusBadge>
+
+                </div>
+                
+                <div className="text-right text-muted-foreground">
+                  <p className="text-2 ">
+                  ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
+                  </p>
+                  <p className="text-xs ">{jobAny.recurring_job_id ? "Quote Total" : "Estimate Total"}</p>
+                </div>
+
+              </div>
+
             </div>
-            <h2 className="text-xl font-bold text-foreground">
-              {job.name || job.customer?.name || "Unknown Client"}
-            </h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
-            </p>
-            <button onClick={openAddressDialog} className="flex items-center gap-1 text-sm text-muted-foreground mt-1 hover:text-foreground transition-colors">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{clientAddress || "No address"}</span>
-            </button>
-          </div>
-          <div className="text-right ml-4">
-            <p className="text-2xl font-bold text-foreground">
-              ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
-            </p>
-            <p className="text-xs text-muted-foreground">{jobAny.recurring_job_id ? "Quote Total" : "Estimate Total"}</p>
-          </div>
-        </div>
 
-        {/* Quick Actions */}
-        <div className="flex gap-2 mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={handleCall}
-          >
-            <Phone className="h-4 w-4" />
-            Call
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={handleText}
-          >
-            <MessageSquare className="h-4 w-4" />
-            Text
-          </Button>
-          <Button
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={handleNavigate}
-          >
-            <Navigation className="h-4 w-4" />
-            Navigate
-          </Button>
+            {/* Quick Actions */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="lg"
+                className="flex-1 gap-2"
+                onClick={handleCall}
+              >
+                <Phone className="h-4 w-4" />
+                Call
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="flex-1 gap-2"
+                onClick={handleText}
+              >
+                <MessageSquare className="h-4 w-4" />
+                Text
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1 gap-2"
+                onClick={handleNavigate}
+              >
+                <Navigation className="h-4 w-4" />
+                Navigate
+              </Button>
+            </div>
+          </div>
+
+
+          {/* Tabs */}
+          <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4 ">
+            <div className="flex">
+              {[
+                { id: "details", label: "Details" },
+                { id: "checklist", label: "Checklist" },
+                { id: "photos", label: "Photos" },
+                { id: "notes", label: "Notes" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                  className={cn(
+                    "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                    activeTab === tab.id
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+
+
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-card border-b border-border px-4 overflow-x-auto scrollbar-hide">
-        <div className="flex">
-          {[
-            { id: "details", label: "Details" },
-            { id: "checklist", label: "Checklist" },
-            { id: "photos", label: "Photos" },
-            { id: "notes", label: "Notes" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className={cn(
-                "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
-                activeTab === tab.id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      
 
-      {/* Next Step Guidance */}
-      {job.status !== "paid" && isManager() && (
-        <div className="px-4 pt-4">
-          <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-            <Info className="h-4 w-4 mt-0.5 shrink-0" />
-            <p>
-              {(job as any).display_status === "unscheduled" && "Schedule this job to set a date and get the crew ready."}
-              {(job as any).display_status === "scheduled" && "This job is scheduled. It will move to in-progress on the scheduled date."}
-              {(job as any).display_status === "in_progress" && "This job is in progress. Mark it as complete once the work is done."}
-              {(job as any).display_status === "completed" && "This job is complete. Record the payment to close it out."}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Tab Content */}
-      <main className="px-4 py-4 pb-32">
+
         {activeTab === "details" && (
-          <div className="space-y-4">
+          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
             {/* Estimate / Quote */}
             {estimate ? (
               <button
@@ -880,25 +902,27 @@ export default function JobDetail() {
                 ) : null}
 
                 {isManager() && (
-                  <div className="space-y-2">
+                  <div className="flex gap-4">
                     <Button
                       variant="outline"
-                      size="sm"
-                      onClick={openScheduleDialog}
-                      className="w-full gap-2"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Schedule Date
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
+                      size="lg"
+                      className="flex-1"
                       onClick={() => setMakeRecurringOpen(true)}
-                      className="w-full gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
                     >
                       <Repeat className="h-4 w-4" />
                       Create Recurring Schedule
                     </Button>
+
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="flex-1"
+                      onClick={openScheduleDialog}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Schedule Date
+                    </Button>
+                    
                   </div>
                 )}
               </div>
@@ -1048,6 +1072,7 @@ export default function JobDetail() {
         )}
 
         {activeTab === "checklist" && id && (
+          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4"> 
           <JobChecklist
             jobId={id}
             isEstimateVisit={job?.is_estimate_visit}
@@ -1061,10 +1086,11 @@ export default function JobDetail() {
             }
             isManager={isManager()}
           />
+          </div>
         )}
 
         {activeTab === "photos" && id && (
-          <div className="space-y-8">
+          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
             <PhotoSection
               leadId={job?.is_estimate_visit && parentLeadId ? parentLeadId : id}
               photoType="before"
@@ -1082,44 +1108,55 @@ export default function JobDetail() {
         )}
 
         {activeTab === "notes" && (
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Textarea
-                placeholder="Add a note..."
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                rows={2}
-                className="flex-1"
-              />
-              <Button
-                onClick={addNote}
-                disabled={addingNote || !newNote.trim()}
-                className="self-end"
-              >
-                {addingNote ? "Adding..." : "Add"}
-              </Button>
+          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
+            <div className="card-elevated rounded-lg p-4">
+                <Textarea
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Add a note..."
+                  rows={2}
+                />
+                <Button
+                  size="sm"
+                  className="mt-2"
+                  onClick={addNote}
+                  disabled={!newNote.trim() || addingNote}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add Note
+                </Button>
             </div>
 
             {notes.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-3 flex flex-col gap-4">
                 {notes.map((note) => (
-                  <div key={note.id} className="card-elevated rounded-lg p-4">
-                    <p className="text-sm text-foreground whitespace-pre-wrap">{note.body || note.summary}</p>
-                    <p className="text-xs text-muted-foreground mt-2">
+
+                  <div key={note.id} className="card-elevated flex gap-4 rounded-lg p-4">
+
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                        <FileText className="h-4 w-4" />
+                      </div>
+
+                    <div className="flex-1 items-center justify-between gap-2 mb-0.5">
+                    <p className="text-3">{note.body || note.summary}</p>
+
+                    <span className="text-xs text-muted-foreground ml-auto">
                       {format(new Date(note.created_at), "MMM d, yyyy 'at' h:mm a")}
-                    </p>
+                    </span>
+                    </div>
                   </div>
+
+                  
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">No notes yet</p>
-              </div>
+              null
             )}
           </div>
         )}
-      </main>
+
+
+{/* */}
+
 
       {/* Bottom Action */}
       {!job.is_estimate_visit && (hasAfterPhotos || job.status === "paid" || (job as any).display_status === "completed") && (

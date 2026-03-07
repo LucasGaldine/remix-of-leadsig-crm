@@ -100,13 +100,15 @@ export default function Index() {
         subtitle={format(new Date(), "EEEE, MMMM d")}
       />
 
-      <main className="px-4 py-4 space-y-6">
+      <main className="px-4 py-4 space-y-6 max-w-[var(--content-max-width)] m-auto">
         {/* Email Verification Banner */}
         {user?.email && <EmailVerificationBanner email={user.email} isEmailConfirmed={isEmailConfirmed} />}
 
         {/* Quick Stats */}
         <DashboardStatCards />
 
+
+        <div className="flex flex-col gap-8">
         {sections.includes("awaiting_approval") && !approvalsLoading && pendingApprovals.length > 0 && (
           <section>
             <SectionHeader
@@ -152,6 +154,7 @@ export default function Index() {
           </section>
         )}
 
+
         {sections.includes("todays_jobs") && (
           <section>
             <SectionHeader
@@ -166,7 +169,7 @@ export default function Index() {
               </div>
             ) : activeJobsData.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No jobs today</p>
+                <p className="text-4">No jobs today</p>
               </div>
             ) : (
               <>
@@ -194,7 +197,7 @@ export default function Index() {
         )}
 
         {sections.includes("qualified_leads") && (
-          <section>
+          <section >
             <SectionHeader
               title="Qualified Leads"
               count={qualifiedLeads.length}
@@ -237,6 +240,7 @@ export default function Index() {
             )}
           </section>
         )}
+        </div>
       </main>
 
       <MobileNav />

@@ -190,6 +190,13 @@ export default function Settings() {
           description: "Manage your subscription",
           onClick: () => navigate("/settings/pricing"),
         }] : []),
+      
+      ],
+    },
+    {
+      title: "FAQ",
+      items: [
+        
         {
           icon: <HelpCircle className="h-5 w-5" />,
           label: "Help & Support",
@@ -200,11 +207,13 @@ export default function Settings() {
         {
           icon: <FileText className="h-5 w-5" />,
           label: "Privacy Policy",
+          description: "Review data usage",
           onClick: () => navigate("/privacy"),
         },
         {
           icon: <Scale className="h-5 w-5" />,
           label: "Terms of Service",
+          description: "View service terms",
           onClick: () => navigate("/terms"),
         },
         {
@@ -212,12 +221,6 @@ export default function Settings() {
           label: "Data Deletion",
           description: "Request data removal",
           onClick: () => navigate("/data-deletion"),
-        },
-        {
-          icon: <LogOut className="h-5 w-5" />,
-          label: "Sign Out",
-          variant: "danger",
-          onClick: handleSignOut,
         },
       ],
     },

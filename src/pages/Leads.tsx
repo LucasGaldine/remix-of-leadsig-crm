@@ -159,12 +159,19 @@ export default function Leads() {
 
       {/* Quick Access Buttons */}
       {(pendingCount > 0 || rejectedCount > 0) && (
-        <div className="px-4 py-3 bg-card border-b border-border">
+        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto ">
           <div className="flex gap-2">
             {pendingCount > 0 && (
               <button
                 onClick={() => navigate("/leads/pending-approval")}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[hsl(var(--status-pending-bg))] text-[hsl(var(--status-pending))] text-sm font-medium hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2
+                 px-3 py-2 
+                 rounded-lg 
+                 bg-[hsl(var(--status-pending-bg))] 
+                 text-[hsl(var(--status-pending))] text-sm font-medium
+                 border border-[hsl(var(--status-pending))]
+                hover:opacity-80 transition-opacity
+                levitate"
               >
                 <Clock className="h-4 w-4" />
                 {pendingCount} Pending Approval
@@ -183,22 +190,26 @@ export default function Leads() {
         </div>
       )}
 
+      <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
       <ListPageFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         searchPlaceholder="Search leads..."
+        className="rounded-lg"
         tabs={[
           { value: "all", label: "All", count: counts?.all || 0 },
           { value: "new", label: "New", count: counts?.new || 0 },
           { value: "contacted", label: "Contacted", count: counts?.contacted || 0 },
           { value: "qualified", label: "Qualified", count: counts?.qualified || 0 },
-          { value: "archive", label: "Archive", count: counts?.archive || 0 },
+          { value: "archive", label: "Archive", count: counts?.archive || 0, location:"right" },
         ]}
         activeTab={activeFilter}
         onTabChange={(v) => setActiveFilter(v as FilterStatus)}
       />
 
-      <main className="px-4 py-4">
+      </div>
+
+      <main className="p-4 max-w-[var(--content-max-width)] m-auto">
         {isArchiveTab ? (
           <>
             {archiveLoading ? (

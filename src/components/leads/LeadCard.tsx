@@ -78,7 +78,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
   return (
     <div
       className={cn(
-        "card-elevated rounded-lg overflow-hidden",
+        "card-elevated rounded-lg overflow-hidden levitate",
         className
       )}
     >
@@ -86,7 +86,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
         onClick={onClick}
         className="w-full text-left p-4 transition-all active:bg-muted/50"
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <StatusBadge status={getStatusBadgeStatus(lead.status)}>
@@ -95,24 +95,22 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
               <span className="text-2xs text-muted-foreground uppercase tracking-wide">
                 via {lead.source}
               </span>
+
             </div>
 
-            <h3 className="font-semibold text-foreground text-lg">
+            <p className="text-2">
               {lead.name}
-            </h3>
+            </p>
 
-            <p className="text-sm text-muted-foreground font-medium mt-0.5">
+            <p className="text-5 font-medium mt-0.5">
               {lead.serviceType && lead.serviceType !== "Unknown" ? lead.serviceType : "No service type"}
             </p>
 
-            <div className="flex items-center gap-2 mt-2">
-              <DollarSign className="h-4 w-4 text-status-confirmed" />
-              <span className="font-semibold text-foreground">
+          </div>
+
+           <span className="text-2">
                 ${lead.estimatedBudget.toLocaleString()}
               </span>
-              <span className="text-sm text-muted-foreground">budget</span>
-            </div>
-          </div>
 
           <ChevronRight className="h-5 w-5 text-muted-foreground mt-1" />
         </div>

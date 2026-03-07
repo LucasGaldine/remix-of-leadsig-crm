@@ -113,7 +113,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
               )}
             </div>
 
-          <h3 className="font-semibold text-foreground truncate text-lg">
+          <h3 className="text-2 truncate ">
             {job.name || job.customer?.name || "Unnamed Job"}
           </h3>
 
@@ -143,14 +143,15 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex items-center gap-4">
           {value > 0 && (
-            <span className="text-lg font-bold text-foreground">
+            <span className="text-2">
               ${value.toLocaleString()}
             </span>
           )}
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
+
       </div>
       </button>
 

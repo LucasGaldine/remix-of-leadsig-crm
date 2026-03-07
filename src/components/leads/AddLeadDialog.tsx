@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { CSVImportModal } from "./CSVImportModal";
 import { ClientSelector } from "@/components/clients/ClientSelector";
+import { formatCurrency } from "@/lib/formatter";
 
 interface AddLeadDialogProps {
   open: boolean;
@@ -47,6 +48,11 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
 
   const handleLeadChange = (field: string, value: string) => {
     setLeadData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleBudgetChange = (value) => {
+  const numericValue = value.replace(/\D/g, ""); // raw number
+  handleLeadChange("estimatedBudget", numericValue);
   };
 
   const resetForm = () => {
@@ -178,20 +184,27 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Lead</DialogTitle>
-            <DialogDescription>
-              Select an existing client or create a new one, then enter the lead details.
-            </DialogDescription>
           </DialogHeader>
+
+
 
           <Button
             type="button"
             variant="outline"
-            className="w-full gap-2"
+            className="w-full gap-2 mt-2"
             onClick={() => { onOpenChange(false); setShowCSVImport(true); }}
           >
             <Upload className="h-4 w-4" />
             Import from CSV
           </Button>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px bg-border flex-1" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Or add manually
+            </span>
+            <div className="h-px bg-border flex-1" />
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <ClientSelector
@@ -203,10 +216,9 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
               onModeChange={setClientMode}
             />
 
-            <div className="border-t border-border pt-4 space-y-3">
-              <p className="text-sm font-medium text-muted-foreground">Lead Details</p>
+            
 
-              <div>
+            <div>
                 <Label htmlFor="serviceType">Service Type</Label>
                 <Select
                   value={leadData.serviceType}
@@ -226,13 +238,13 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
               </div>
 
               <div>
-                <Label htmlFor="estimatedBudget">Budget ($)</Label>
+                <Label htmlFor="estimatedBudget">Budget</Label>
                 <Input
                   id="estimatedBudget"
-                  type="number"
-                  value={leadData.estimatedBudget}
-                  onChange={(e) => handleLeadChange("estimatedBudget", e.target.value)}
-                  placeholder="5000"
+                  type="text"
+                  value={formatCurrency(leadData.estimatedBudget)}
+                  onChange={(e) => handleBudgetChange(e.target.value)}
+                  placeholder="$5,000"
                   className="mt-1.5"
                 />
               </div>
@@ -247,13 +259,13 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
                   className="mt-1.5 min-h-[60px] resize-none"
                 />
               </div>
-            </div>
+
 
             <DialogFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={() => { resetForm(); onOpenChange(false); }}>
+              <Button type="button" variant="outline" size="lg" onClick={() => { resetForm(); onOpenChange(false); }}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button size="lg" type="submit" disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Add Lead
               </Button>

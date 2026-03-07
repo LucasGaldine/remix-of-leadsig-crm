@@ -177,7 +177,7 @@ export default function Schedule() {
       </div>
 
       {/* Jobs List */}
-      <main className="px-4 py-4">
+      <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto mt-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">
             {format(selectedDate, "EEEE, MMMM d")}

@@ -59,9 +59,9 @@ export function PageHeader({
               </button>
             )}
             <div>
-              <h1 className="text-xl font-bold text-foreground">{title}</h1>
+              <h1 className="text-1">{title}</h1>
               {subtitle && (
-                <p className="text-sm text-muted-foreground">{subtitle}</p>
+                <p className="text-5">{subtitle}</p>
               )}
             </div>
           </div>
@@ -82,6 +82,7 @@ export function PageHeader({
             <UserMenu />
           </div>
         </div>
+
       </header>
 
       {showNotifications && (

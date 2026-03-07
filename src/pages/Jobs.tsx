@@ -95,16 +95,24 @@ export default function Jobs() {
       />
 
       {hasAlertBadges && (
-        <div className="px-4 py-3 bg-card border-b border-border">
+        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
           <div className="flex gap-2">
             {statusCounts.unassigned > 0 && (
               <button
                 onClick={() => setSelectedStatus(selectedStatus === "unassigned" ? "all" : "unassigned")}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))] text-sm font-medium hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2
+                 px-3 py-2 
+                rounded-lg
+                text-sm font-medium
+                border border-[hsl(var(--status-attention))]
+                bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]
+                hover:opacity-80 transition-opacity
+                levitate"
               >
                 <Users className="h-4 w-4" />
                 {statusCounts.unassigned} Unassigned
               </button>
+              
             )}
             {statusCounts.overdue > 0 && (
               <button
@@ -119,6 +127,8 @@ export default function Jobs() {
         </div>
       )}
 
+
+      <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
       <ListPageFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -126,9 +136,11 @@ export default function Jobs() {
         tabs={statusTabs}
         activeTab={selectedStatus}
         onTabChange={setSelectedStatus}
+        className="rounded-lg"
       />
+      </div>
 
-      <main className="px-4 py-4">
+      <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />

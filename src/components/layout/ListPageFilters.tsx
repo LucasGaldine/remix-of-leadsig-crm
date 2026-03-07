@@ -6,6 +6,7 @@ interface FilterTab {
   value: string;
   label: string;
   count?: number;
+  location?: string;
 }
 
 interface ListPageFiltersProps {
@@ -15,6 +16,7 @@ interface ListPageFiltersProps {
   tabs: FilterTab[];
   activeTab: string;
   onTabChange: (value: string) => void;
+  className?: string;
 }
 
 export function ListPageFilters({
@@ -24,10 +26,11 @@ export function ListPageFilters({
   tabs,
   activeTab,
   onTabChange,
+  className,
 }: ListPageFiltersProps) {
   return (
-    <>
-      <div className="px-4 py-3 bg-card border-b border-border">
+    <div className={cn("bg-card border border-border", className)}>
+      <div className="px-4 py-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -40,8 +43,9 @@ export function ListPageFilters({
         </div>
       </div>
 
-      <div className="px-4 py-3 bg-card border-b border-border overflow-x-auto scrollbar-hide">
+      <div className="px-4 py-3 border-t border-border overflow-x-auto scrollbar-hide">
         <div className="flex gap-2">
+
           {tabs.map((tab) => (
             <button
               key={tab.value}
@@ -50,7 +54,10 @@ export function ListPageFilters({
                 "flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors min-h-touch",
                 activeTab === tab.value
                   ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+                tab.location === "right"
+                  ? "ml-auto"
+                  : null
               )}
             >
               {tab.label}
@@ -66,10 +73,12 @@ export function ListPageFilters({
                   {tab.count}
                 </span>
               )}
+
             </button>
           ))}
+
         </div>
       </div>
-    </>
+    </div>
   );
 }
