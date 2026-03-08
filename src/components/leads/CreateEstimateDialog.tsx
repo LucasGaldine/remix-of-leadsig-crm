@@ -325,7 +325,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Schedule Estimate</DialogTitle>
             <DialogDescription>
@@ -333,23 +333,61 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-3">
               <Label className="text-base font-semibold flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
+                <CalendarIcon className="h-4 w-4" />
                 Visit Date & Time
               </Label>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="schedule-date">Date *</Label>
-                  <Input
-                    id="schedule-date"
-                    type="date"
-                    value={scheduledDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
-                    min={new Date().toISOString().split("T")[0]}
-                  />
+
+              {/* Inline Calendar */}
+              <div className="flex justify-center">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  onMonthChange={setCalendarMonth}
+                  disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                  className={cn("rounded-md border pointer-events-auto")}
+                  modifiers={{
+                    busy: (date) => {
+                      const dateStr = format(date, "yyyy-MM-dd");
+                      return busyDatesSet?.has(dateStr) || false;
+                    },
+                  }}
+                  modifiersClassNames={{
+                    busy: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
+                  }}
+                />
+              </div>
+
+              {/* Jobs on selected date */}
+              {selectedDate && selectedDateJobs.length > 0 && (
+                <div className="rounded-lg border border-border p-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {selectedDateJobs.length} job{selectedDateJobs.length !== 1 ? "s" : ""} on {format(selectedDate, "MMM d")}:
+                  </p>
+                  <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                    {selectedDateJobs.map((job: any) => (
+                      <div key={job.schedule_id} className="flex items-center justify-between text-sm">
+                        <span className="truncate flex-1">{job.name || "Unnamed job"}</span>
+                        {job.scheduled_time_start && (
+                          <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">
+                            {job.scheduled_time_start}{job.scheduled_time_end ? ` - ${job.scheduled_time_end}` : ""}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
+
+              {selectedDate && selectedDateJobs.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center">No jobs scheduled on {format(selectedDate, "MMM d")}</p>
+              )}
+
+              {/* Time inputs */}
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="schedule-start">Start Time</Label>
                   <Input
