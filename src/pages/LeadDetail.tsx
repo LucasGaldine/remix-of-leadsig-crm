@@ -153,9 +153,8 @@ export default function LeadDetail() {
   // Create estimate dialog
   const [createEstimateDialogOpen, setCreateEstimateDialogOpen] = useState(false);
 
-  // Quick estimate draft dialog
-  const [draftEstimateDialogOpen, setDraftEstimateDialogOpen] = useState(false);
-  const [draftLineItems, setDraftLineItems] = useState<EstimateLineItemInit[]>([]);
+  // Line items estimate dialog
+  const [lineItemsDialogOpen, setLineItemsDialogOpen] = useState(false);
 
   // Convert to job dialog with optional scheduling
   const [convertJobDialogOpen, setConvertJobDialogOpen] = useState(false);
