@@ -1,0 +1,278 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Building2, Loader2, Copy, Check, Users } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { StickyActionBar } from "@/components/settings/StickyActionBar";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+export default function SettingsCompanyProfile() {
+  const navigate = useNavigate();
+  const { currentAccount, refreshProfile } = useAuth();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useUnsavedChanges(isDirty);
+
+  const [companyName, setCompanyName] = useState("");
+  const [companyEmail, setCompanyEmail] = useState("");
+  const [companyPhone, setCompanyPhone] = useState("");
+  const [companyAddress, setCompanyAddress] = useState("");
+  const [billingEmail, setBillingEmail] = useState("");
+  const [website, setWebsite] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+
+  useEffect(() => {
+    if (currentAccount) {
+      setCompanyName(currentAccount.company_name || "");
+      setCompanyEmail(currentAccount.company_email || "");
+      setCompanyPhone(currentAccount.company_phone || "");
+      setCompanyAddress(currentAccount.company_address || "");
+      setBillingEmail(currentAccount.billing_email || "");
+      setWebsite(currentAccount.website || "");
+      setInviteCode(currentAccount.invite_code || "");
+    }
+  }, [currentAccount]);
+
+  const handleCopyCode = async () => {
+    if (!inviteCode) return;
+
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setCopiedCode(true);
+      toast.success("Company code copied to clipboard");
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch (err) {
+      toast.error("Failed to copy code");
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!currentAccount) {
+      toast.error("No account selected");
+      return;
+    }
+
+    if (!companyName.trim()) {
+      toast.error("Company name is required");
+      return;
+    }
+
+    setIsSaving(true);
+
+    const { error } = await supabase
+      .from("accounts")
+      .update({
+        company_name: companyName.trim(),
+        company_email: companyEmail.trim() || null,
+        company_phone: companyPhone.trim() || null,
+        company_address: companyAddress.trim() || null,
+        billing_email: billingEmail.trim() || null,
+        website: website.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", currentAccount.id);
+
+    setIsSaving(false);
+
+    if (error) {
+      console.error("Error updating company profile:", error);
+      toast.error("Failed to update company profile");
+      return;
+    }
+
+    setIsDirty(false);
+    toast.success("Company profile updated successfully");
+    await refreshProfile();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const handleSubmitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSave(e);
+  };
+
+  return (
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader
+        title="Company Profile"
+        showBack
+        backTo="/settings"
+      />
+
+      <form onSubmit={handleSubmitForm} className="px-4 py-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Team
+            </CardTitle>
+            <CardDescription>
+              Share this code with team members to invite them to join your company
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="invite-code">Company Invite Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="invite-code"
+                  value={inviteCode}
+                  readOnly
+                  className="font-mono text-lg tracking-wider"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopyCode}
+                  disabled={!inviteCode}
+                >
+                  {copiedCode ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                New team members will need this code during signup to join your company
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Business Information
+            </CardTitle>
+            <CardDescription>
+              This information will appear on your estimates, invoices, and customer communications
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="company-name">
+                Company Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="company-name"
+                value={companyName}
+                onChange={(e) => { setCompanyName(e.target.value); setIsDirty(true); }}
+                placeholder="Your Company Name"
+                disabled={isSaving}
+                required
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="company-email">Company Email</Label>
+                <Input
+                  id="company-email"
+                  type="email"
+                  value={companyEmail}
+                  onChange={(e) => { setCompanyEmail(e.target.value); setIsDirty(true); }}
+                  placeholder="contact@company.com"
+                  disabled={isSaving}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="company-phone">Company Phone</Label>
+                <Input
+                  id="company-phone"
+                  type="tel"
+                  value={companyPhone}
+                  onChange={(e) => { setCompanyPhone(e.target.value); setIsDirty(true); }}
+                  placeholder="(555) 123-4567"
+                  disabled={isSaving}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="company-address">Business Address</Label>
+              <Textarea
+                id="company-address"
+                value={companyAddress}
+                onChange={(e) => { setCompanyAddress(e.target.value); setIsDirty(true); }}
+                placeholder="123 Main Street&#10;City, State 12345"
+                disabled={isSaving}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                This address will appear on your invoices and estimates
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="billing-email">Billing Email</Label>
+                <Input
+                  id="billing-email"
+                  type="email"
+                  value={billingEmail}
+                  onChange={(e) => { setBillingEmail(e.target.value); setIsDirty(true); }}
+                  placeholder="billing@company.com"
+                  disabled={isSaving}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Separate email for billing notifications
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="website">Website</Label>
+                <Input
+                  id="website"
+                  type="url"
+                  value={website}
+                  onChange={(e) => { setWebsite(e.target.value); setIsDirty(true); }}
+                  placeholder="https://www.company.com"
+                  disabled={isSaving}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <StickyActionBar
+          onSave={() => {
+            if (!companyName.trim()) {
+              toast.error("Company name is required");
+              return;
+            }
+            handleSave({ preventDefault: () => {} } as React.FormEvent);
+          }}
+          isSaving={isSaving}
+        />
+      </form>
+
+      <MobileNav />
+      <UnsavedChangesDialog blocker={blocker} />
+    </div>
+  );
+}
