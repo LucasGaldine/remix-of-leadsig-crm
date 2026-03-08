@@ -242,6 +242,9 @@ export default function Index() {
           </section>
         )}
         </div>
+
+        {/* Analytics Visuals */}
+        <DashboardVisuals />
       </main>
 
       <MobileNav />
