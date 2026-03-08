@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, FileText, Users } from "lucide-react";
+import { Calendar as CalendarIcon, FileText, Users } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -15,7 +16,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useJobSchedules } from "@/hooks/useJobSchedules";
-import { format } from "date-fns";
+import { useScheduledJobs } from "@/hooks/useScheduledJobs";
+import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const roleLabels: Record<string, string> = {
   owner: 'Owner',
