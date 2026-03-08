@@ -436,14 +436,34 @@ export default function LeadDetail() {
   };
 
   const handleDisqualify = async () => {
-    if (!disqualifyReason) {
+    if (!disqualifyReason || !lead) {
       toast.error("Please select a reason");
       return;
     }
 
     await updateQualification({ disqualify_reason: disqualifyReason });
+
+    // Move lead to lost/archived so it appears in Archive section only
+    const { error } = await supabase
+      .from("leads")
+      .update({ status: "lost" as LeadStatus })
+      .eq("id", lead.id);
+
+    if (!error) {
+      setLead({ ...lead, status: "lost" as LeadStatus });
+      await supabase.from("interactions").insert({
+        lead_id: lead.id,
+        account_id: currentAccount?.id,
+        type: "status_change" as InteractionType,
+        direction: "na" as InteractionDirection,
+        summary: `Lead disqualified: ${disqualifyReason}`,
+        created_by: user?.id,
+      });
+      fetchInteractions();
+    }
+
     setDisqualifyOpen(false);
-    toast.success("Lead disqualified");
+    toast.success("Lead disqualified and moved to archive");
   };
 
   const handleEstimateSuccess = () => {
