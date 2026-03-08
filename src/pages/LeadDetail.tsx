@@ -785,9 +785,12 @@ export default function LeadDetail() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => { if (lead.email) window.open(`mailto:${lead.email}`); }}
+                    onClick={() => {
+                      const address = [lead.address, lead.city].filter(Boolean).join(", ");
+                      if (address) window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+                    }}
                   >
-                    <Mail className="h-4 w-4" />
+                    <Navigation className="h-4 w-4" />
                   </Button>
                 </div>
               
