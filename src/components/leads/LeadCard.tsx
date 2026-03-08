@@ -42,9 +42,7 @@ interface LeadCardProps {
 }
 
 export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEstimate, archiveMode, onUnarchive, onDelete, className }: LeadCardProps) {
-  const [showQualifyConfirm, setShowQualifyConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const isQualifiedOrBeyond = lead.status === "qualified" || lead.status === "job" || lead.status === "paid" || lead.status === "completed";
   const getStatusBadgeStatus = (status: LeadStatus) => {
     switch (status) {
       case "qualified":
