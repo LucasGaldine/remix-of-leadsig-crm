@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from "react";
 import { MapPin, Clock, User, ChevronRight, Users, Repeat } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";

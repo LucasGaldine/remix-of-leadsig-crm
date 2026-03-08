@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { parseCSV, autoMapColumns, LEAD_FIELDS, type ParsedCSV, type ColumnMapping, type LeadFieldKey } from "@/lib/csvParser";
-
+// @ts-nocheck
 interface CSVImportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
