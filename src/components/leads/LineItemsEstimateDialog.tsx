@@ -243,16 +243,28 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
               <div key={index} className="p-4 border border-border rounded-lg space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-                  {lineItems.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeLineItem(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <QuickEstimateLineItem
+                      leadId={lead.id}
+                      onApply={(name, quantity, unit, unitPrice, description) => {
+                        updateLineItem(index, "name", name);
+                        updateLineItem(index, "quantity", quantity);
+                        updateLineItem(index, "unit", unit);
+                        updateLineItem(index, "unit_price", unitPrice);
+                        updateLineItem(index, "description", description);
+                      }}
+                    />
+                    {lineItems.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeLineItem(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
