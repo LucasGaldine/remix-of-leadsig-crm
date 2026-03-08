@@ -73,7 +73,7 @@ export default function Index() {
     phone: lead.phone || "",
     serviceType: lead.service_type || "Unknown",
     estimatedBudget: Number(lead.estimated_value) || 0,
-    location: lead.city || "Unknown",
+    location: [lead.address, lead.city].filter(Boolean).join(", ") || "Unknown",
     source: lead.source || "Unknown",
     createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),
     status: lead.status,
