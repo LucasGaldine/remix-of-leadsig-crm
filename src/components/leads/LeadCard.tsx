@@ -180,27 +180,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
         )}
       </div>
 
-      <AlertDialog open={showQualifyConfirm} onOpenChange={setShowQualifyConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Qualify Lead</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to qualify <span className="font-medium text-foreground">{lead.name}</span>? This will move the lead to the qualified stage.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setShowQualifyConfirm(false);
-                onQualify?.();
-              }}
-            >
-              Qualify
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
