@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, MessageSquare, CheckCircle, FileText, ChevronRight, DollarSign, ArchiveRestore, Trash2 } from "lucide-react";
+import { Phone, MessageSquare, ChevronRight, ArchiveRestore, Trash2, Navigation } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   AlertDialog,
@@ -42,9 +42,7 @@ interface LeadCardProps {
 }
 
 export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEstimate, archiveMode, onUnarchive, onDelete, className }: LeadCardProps) {
-  const [showQualifyConfirm, setShowQualifyConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const isQualifiedOrBeyond = lead.status === "qualified" || lead.status === "job" || lead.status === "paid" || lead.status === "completed";
   const getStatusBadgeStatus = (status: LeadStatus) => {
     switch (status) {
       case "qualified":
@@ -165,54 +163,24 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
               Text
             </button>
             <div className="w-px bg-border" />
-            {isQualifiedOrBeyond ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewEstimate?.();
-                }}
-                className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-              >
-                <FileText className="h-4 w-4" />
-                View Estimate
-              </button>
-            ) : (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowQualifyConfirm(true);
-                }}
-                className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-              >
-                <CheckCircle className="h-4 w-4" />
-                Qualify
-              </button>
-            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const address = lead.location || "";
+                if (address) {
+                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+                }
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
+            >
+              <Navigation className="h-4 w-4" />
+              Navigate
+            </button>
           </>
         )}
       </div>
 
-      <AlertDialog open={showQualifyConfirm} onOpenChange={setShowQualifyConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Qualify Lead</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to qualify <span className="font-medium text-foreground">{lead.name}</span>? This will move the lead to the qualified stage.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setShowQualifyConfirm(false);
-                onQualify?.();
-              }}
-            >
-              Qualify
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
