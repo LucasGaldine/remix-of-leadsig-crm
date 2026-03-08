@@ -133,66 +133,90 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
     let failed = 0;
     const errors: string[] = [];
 
-    const BATCH_SIZE = 50;
-    for (let i = 0; i < csv.rows.length; i += BATCH_SIZE) {
-      const batch = csv.rows.slice(i, i + BATCH_SIZE);
-      const records = batch.map((row, batchIdx) => {
-        const rowIdx = i + batchIdx + 2;
+    for (let i = 0; i < csv.rows.length; i++) {
+      const row = csv.rows[i];
+      const rowIdx = i + 2;
 
-        const getValue = (field: LeadFieldKey) => {
-          const indices = fieldToHeaderIndices[field];
-          if (!indices || indices.length === 0) return null;
-          const parts = indices.map((idx) => row[idx]?.trim()).filter(Boolean);
-          return parts.length > 0 ? parts.join(" ") : null;
-        };
+      const getValue = (field: LeadFieldKey) => {
+        const indices = fieldToHeaderIndices[field];
+        if (!indices || indices.length === 0) return null;
+        const parts = indices.map((idx) => row[idx]?.trim()).filter(Boolean);
+        return parts.length > 0 ? parts.join(" ") : null;
+      };
 
-        const name = getValue("name");
-        if (!name) {
-          errors.push(`Row ${rowIdx}: Missing name`);
-          return null;
-        }
-
-        const estimatedRaw = getValue("estimated_value");
-        let estimatedValue: number | null = null;
-        if (estimatedRaw) {
-          const cleaned = estimatedRaw.replace(/[$,]/g, "");
-          const parsed = parseFloat(cleaned);
-          if (!isNaN(parsed)) estimatedValue = parsed;
-        }
-
-        return {
-          name,
-          email: getValue("email"),
-          phone: getValue("phone"),
-          address: getValue("address"),
-          city: getValue("city"),
-          state: getValue("state"),
-          service_type: getValue("service_type"),
-          source: getValue("source") || "CSV Import",
-          notes: getValue("notes"),
-          estimated_value: estimatedValue,
-          created_by: user.id,
-          account_id: currentAccount.id,
-          status: "new" as const,
-          approval_status: "approved",
-        };
-      }).filter(Boolean);
-
-      if (records.length > 0) {
-        const { data, error } = await supabase
-          .from("leads")
-          .insert(records as any[])
-          .select("id");
-
-        if (error) {
-          failed += records.length;
-          errors.push(`Batch error: ${error.message}`);
-        } else {
-          success += data.length;
-        }
+      const name = getValue("name");
+      if (!name) {
+        errors.push(`Row ${rowIdx}: Missing name`);
+        failed++;
+        continue;
       }
 
-      failed += batch.length - records.length;
+      const email = getValue("email");
+      const phone = getValue("phone");
+      const address = getValue("address");
+      const city = getValue("city");
+
+      const estimatedRaw = getValue("estimated_value");
+      let estimatedValue: number | null = null;
+      if (estimatedRaw) {
+        const cleaned = estimatedRaw.replace(/[$,]/g, "");
+        const parsed = parseFloat(cleaned);
+        if (!isNaN(parsed)) estimatedValue = parsed;
+      }
+
+      try {
+        // Create customer first
+        const { data: customer, error: customerError } = await supabase
+          .from("customers")
+          .insert({
+            name,
+            email: email || null,
+            phone: phone || null,
+            address: address || null,
+            city: city || null,
+            created_by: user.id,
+            account_id: currentAccount.id,
+          })
+          .select("id")
+          .single();
+
+        if (customerError) {
+          errors.push(`Row ${rowIdx}: Failed to create customer - ${customerError.message}`);
+          failed++;
+          continue;
+        }
+
+        // Create lead linked to customer
+        const { error: leadError } = await supabase
+          .from("leads")
+          .insert({
+            name,
+            email: email || null,
+            phone: phone || null,
+            address: address || null,
+            city: city || null,
+            state: getValue("state"),
+            customer_id: customer.id,
+            service_type: getValue("service_type"),
+            source: getValue("source") || "CSV Import",
+            notes: getValue("notes"),
+            estimated_value: estimatedValue,
+            created_by: user.id,
+            account_id: currentAccount.id,
+            status: "new" as const,
+            approval_status: "approved",
+          });
+
+        if (leadError) {
+          errors.push(`Row ${rowIdx}: Failed to create lead - ${leadError.message}`);
+          failed++;
+        } else {
+          success++;
+        }
+      } catch (err: any) {
+        errors.push(`Row ${rowIdx}: ${err.message}`);
+        failed++;
+      }
     }
 
     setImportResult({ success, failed, errors });
