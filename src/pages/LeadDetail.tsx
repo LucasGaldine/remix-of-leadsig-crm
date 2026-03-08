@@ -1026,13 +1026,12 @@ export default function LeadDetail() {
         />
       )}
 
-      {/* Quick Estimate Draft Dialog */}
+      {/* Line Items Estimate Dialog */}
       {lead && (
-        <CreateDraftEstimateDialog
-          open={draftEstimateDialogOpen}
-          onOpenChange={setDraftEstimateDialogOpen}
+        <LineItemsEstimateDialog
+          open={lineItemsDialogOpen}
+          onOpenChange={setLineItemsDialogOpen}
           lead={lead}
-          lineItems={draftLineItems}
           onSuccess={handleEstimateSuccess}
         />
       )}
