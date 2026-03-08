@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, FileText, Users } from "lucide-react";
+import { Calendar as CalendarIcon, FileText, Users } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -15,7 +16,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useJobSchedules } from "@/hooks/useJobSchedules";
-import { format } from "date-fns";
+import { useScheduledJobs } from "@/hooks/useScheduledJobs";
+import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const roleLabels: Record<string, string> = {
   owner: 'Owner',
@@ -57,13 +60,39 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   type CrewMember = { user_id: string; full_name: string | null; email: string | null; role: string | null };
 
   const [scheduling, setScheduling] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
   const [confirmNoCrewOpen, setConfirmNoCrewOpen] = useState(false);
   const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+
+  // Fetch busy dates for the visible month range
+  const monthStart = startOfMonth(calendarMonth);
+  const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
+
+  const { data: busyDatesSet } = useQuery({
+    queryKey: ["busy-dates", format(monthStart, "yyyy-MM-dd"), format(monthEnd, "yyyy-MM-dd")],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("job_schedules")
+        .select("scheduled_date")
+        .gte("scheduled_date", format(monthStart, "yyyy-MM-dd"))
+        .lte("scheduled_date", format(monthEnd, "yyyy-MM-dd"));
+
+      if (error) throw error;
+      const dates = new Set<string>();
+      data?.forEach((s) => { if (s.scheduled_date) dates.add(s.scheduled_date); });
+      return dates;
+    },
+    enabled: !!user,
+  });
+
+  // Fetch jobs for the selected date
+  const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
   const { data: crewMembers = [] } = useQuery<CrewMember[]>({
     queryKey: ["crew-members", currentAccount?.id],
@@ -296,7 +325,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Schedule Estimate</DialogTitle>
             <DialogDescription>
@@ -304,23 +333,61 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-3">
               <Label className="text-base font-semibold flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
+                <CalendarIcon className="h-4 w-4" />
                 Visit Date & Time
               </Label>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="schedule-date">Date *</Label>
-                  <Input
-                    id="schedule-date"
-                    type="date"
-                    value={scheduledDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
-                    min={new Date().toISOString().split("T")[0]}
-                  />
+
+              {/* Inline Calendar */}
+              <div className="flex justify-center">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  onMonthChange={setCalendarMonth}
+                  disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                  className={cn("rounded-md border pointer-events-auto")}
+                  modifiers={{
+                    busy: (date) => {
+                      const dateStr = format(date, "yyyy-MM-dd");
+                      return busyDatesSet?.has(dateStr) || false;
+                    },
+                  }}
+                  modifiersClassNames={{
+                    busy: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
+                  }}
+                />
+              </div>
+
+              {/* Jobs on selected date */}
+              {selectedDate && selectedDateJobs.length > 0 && (
+                <div className="rounded-lg border border-border p-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {selectedDateJobs.length} job{selectedDateJobs.length !== 1 ? "s" : ""} on {format(selectedDate, "MMM d")}:
+                  </p>
+                  <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                    {selectedDateJobs.map((job: any) => (
+                      <div key={job.schedule_id} className="flex items-center justify-between text-sm">
+                        <span className="truncate flex-1">{job.name || "Unnamed job"}</span>
+                        {job.scheduled_time_start && (
+                          <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">
+                            {job.scheduled_time_start}{job.scheduled_time_end ? ` - ${job.scheduled_time_end}` : ""}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
+
+              {selectedDate && selectedDateJobs.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center">No jobs scheduled on {format(selectedDate, "MMM d")}</p>
+              )}
+
+              {/* Time inputs */}
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="schedule-start">Start Time</Label>
                   <Input
