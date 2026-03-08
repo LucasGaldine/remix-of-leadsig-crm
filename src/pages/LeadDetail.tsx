@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Archive, FileTextIcon, Trophy } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileTextIcon, Trophy } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -785,9 +785,12 @@ export default function LeadDetail() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => { if (lead.email) window.open(`mailto:${lead.email}`); }}
+                    onClick={() => {
+                      const address = [lead.address, lead.city].filter(Boolean).join(", ");
+                      if (address) window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+                    }}
                   >
-                    <Mail className="h-4 w-4" />
+                    <Navigation className="h-4 w-4" />
                   </Button>
                 </div>
               
