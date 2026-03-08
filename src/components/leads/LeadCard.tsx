@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, MessageSquare, CheckCircle, FileText, ChevronRight, DollarSign, ArchiveRestore, Trash2 } from "lucide-react";
+import { Phone, MessageSquare, ChevronRight, ArchiveRestore, Trash2, Navigation } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   AlertDialog,
