@@ -3,7 +3,7 @@ import { MapPin, Clock, User, ChevronRight, Users, Repeat } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Database } from "@/integrations/supabase/types";
+import { Database } from "@/types/database";
 import { format } from "date-fns";
 import { RecurringJobDetailModal } from "./RecurringJobDetailModal";
 
