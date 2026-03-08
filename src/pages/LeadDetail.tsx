@@ -5,11 +5,8 @@ import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { QuickEstimatePanel, QuickEstimateBreakdown } from "@/components/leads/QuickEstimatePanel";
 import { CreateEstimateDialog } from "@/components/leads/CreateEstimateDialog";
-import { type EstimateLineItemInit } from "@/components/leads/LineItemsEstimateDialog";
-import { CreateDraftEstimateDialog } from "@/components/leads/CreateDraftEstimateDialog";
-import { SERVICE_LABELS } from "@/hooks/useQuickEstimate";
+import { LineItemsEstimateDialog, type EstimateLineItemInit } from "@/components/leads/LineItemsEstimateDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -156,9 +153,8 @@ export default function LeadDetail() {
   // Create estimate dialog
   const [createEstimateDialogOpen, setCreateEstimateDialogOpen] = useState(false);
 
-  // Quick estimate draft dialog
-  const [draftEstimateDialogOpen, setDraftEstimateDialogOpen] = useState(false);
-  const [draftLineItems, setDraftLineItems] = useState<EstimateLineItemInit[]>([]);
+  // Line items estimate dialog
+  const [lineItemsDialogOpen, setLineItemsDialogOpen] = useState(false);
 
   // Convert to job dialog with optional scheduling
   const [convertJobDialogOpen, setConvertJobDialogOpen] = useState(false);
@@ -1030,13 +1026,12 @@ export default function LeadDetail() {
         />
       )}
 
-      {/* Quick Estimate Draft Dialog */}
+      {/* Line Items Estimate Dialog */}
       {lead && (
-        <CreateDraftEstimateDialog
-          open={draftEstimateDialogOpen}
-          onOpenChange={setDraftEstimateDialogOpen}
+        <LineItemsEstimateDialog
+          open={lineItemsDialogOpen}
+          onOpenChange={setLineItemsDialogOpen}
           lead={lead}
-          lineItems={draftLineItems}
           onSuccess={handleEstimateSuccess}
         />
       )}
@@ -1154,49 +1149,25 @@ export default function LeadDetail() {
             </div>
           )}
 
-          {/* Quick Estimate Panel */}
+          {/* Create Estimate Card */}
           {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
-              <QuickEstimatePanel
-                leadId={id!}
-                hasAddress={hasAddress}
-                onEstimateSaved={fetchInteractions}
-                onCreateDraft={(breakdown: QuickEstimateBreakdown) => {
-                  const { serviceType, measurements, result } = breakdown;
-                  const label = SERVICE_LABELS[serviceType];
-                  const qty = serviceType === "fencing"
-                    ? (measurements.linearFeet || 0)
-                    : (measurements.sqft || 0);
-                  const unit = serviceType === "fencing" ? "linear ft" : "sq ft";
-                  const overheadAmount = result.totalMid - result.laborTotal - result.materialTotal;
-
-                  const items: EstimateLineItemInit[] = [
-                    {
-                      name: `${label} - Labor`,
-                      description: "",
-                      quantity: qty.toString(),
-                      unit,
-                      unit_price: qty > 0 ? (result.laborTotal / qty).toFixed(2) : "0",
-                    },
-                    {
-                      name: `${label} - Materials`,
-                      description: "Includes waste factor",
-                      quantity: qty.toString(),
-                      unit,
-                      unit_price: qty > 0 ? (result.materialTotal / qty).toFixed(2) : "0",
-                    },
-                    {
-                      name: "Overhead & Profit",
-                      description: "",
-                      quantity: "1",
-                      unit: "item",
-                      unit_price: overheadAmount.toFixed(2),
-                    },
-                  ];
-
-                  setDraftLineItems(items);
-                  setDraftEstimateDialogOpen(true);
-                }}
-              />
+            <button
+              onClick={() => setLineItemsDialogOpen(true)}
+              className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <DollarSign className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">Create Estimate</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Add line items with quick pricing calculator
+                  </p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </div>
+            </button>
           )}
 
           {/* Qualification Panel */}
