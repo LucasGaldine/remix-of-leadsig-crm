@@ -165,29 +165,19 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
               Text
             </button>
             <div className="w-px bg-border" />
-            {isQualifiedOrBeyond ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewEstimate?.();
-                }}
-                className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-              >
-                <FileText className="h-4 w-4" />
-                View Estimate
-              </button>
-            ) : (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowQualifyConfirm(true);
-                }}
-                className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-              >
-                <CheckCircle className="h-4 w-4" />
-                Qualify
-              </button>
-            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const address = lead.location || "";
+                if (address) {
+                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+                }
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
+            >
+              <Navigation className="h-4 w-4" />
+              Navigate
+            </button>
           </>
         )}
       </div>
