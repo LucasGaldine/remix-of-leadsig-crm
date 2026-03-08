@@ -60,13 +60,39 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   type CrewMember = { user_id: string; full_name: string | null; email: string | null; role: string | null };
 
   const [scheduling, setScheduling] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
   const [confirmNoCrewOpen, setConfirmNoCrewOpen] = useState(false);
   const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+
+  // Fetch busy dates for the visible month range
+  const monthStart = startOfMonth(calendarMonth);
+  const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
+
+  const { data: busyDatesSet } = useQuery({
+    queryKey: ["busy-dates", format(monthStart, "yyyy-MM-dd"), format(monthEnd, "yyyy-MM-dd")],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("job_schedules")
+        .select("scheduled_date")
+        .gte("scheduled_date", format(monthStart, "yyyy-MM-dd"))
+        .lte("scheduled_date", format(monthEnd, "yyyy-MM-dd"));
+
+      if (error) throw error;
+      const dates = new Set<string>();
+      data?.forEach((s) => { if (s.scheduled_date) dates.add(s.scheduled_date); });
+      return dates;
+    },
+    enabled: !!user,
+  });
+
+  // Fetch jobs for the selected date
+  const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
   const { data: crewMembers = [] } = useQuery<CrewMember[]>({
     queryKey: ["crew-members", currentAccount?.id],
