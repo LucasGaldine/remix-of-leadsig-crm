@@ -28,7 +28,7 @@ import { useCreateJob } from "@/hooks/useJobs";
 import { format } from "date-fns";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Database } from "@/integrations/supabase/types";
+import { Database } from "@/types/database";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 

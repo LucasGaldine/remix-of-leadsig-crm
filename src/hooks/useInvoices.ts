@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Database } from "@/integrations/supabase/types";
+import { Database } from "@/types/database";
 import { useAuth } from "./useAuth";
 
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"];

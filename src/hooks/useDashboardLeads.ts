@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Database } from "@/integrations/supabase/types";
+import { Database } from "@/types/database";
 import { useAuth } from "./useAuth";
 import { format } from "date-fns";
 
