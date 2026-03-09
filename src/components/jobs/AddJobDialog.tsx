@@ -11,6 +11,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { useAddressVerification } from "@/hooks/useAddressVerification";
+import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 
 
 interface AddJobDialogProps {
@@ -22,6 +24,7 @@ interface AddJobDialogProps {
 export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogProps) {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
+  const { verify, verifying, result: addressResult, reset: resetVerification } = useAddressVerification();
   
   const [formData, setFormData] = useState({
     name: "",
@@ -201,9 +204,18 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
                 <Input
                   id="address"
                   value={formData.address}
-                  onChange={(e) => handleChange("address", e.target.value)}
-                  placeholder="123 Main St, Austin, TX"
+                  onChange={(e) => {
+                    handleChange("address", e.target.value);
+                    resetVerification();
+                  }}
+                  placeholder="123 Main St, Austin, TX 78701"
                   className="mt-1.5"
+                />
+                <AddressVerificationBadge
+                  verifying={verifying}
+                  result={addressResult}
+                  onVerify={() => verify(formData.address)}
+                  onAccept={(formatted) => handleChange("address", formatted)}
                 />
               </div>
 

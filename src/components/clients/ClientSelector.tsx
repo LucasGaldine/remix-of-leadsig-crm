@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useCustomers, type Customer, type CreateCustomerInput } from "@/hooks/useCustomers";
 import { cn } from "@/lib/utils";
+import { useAddressVerification } from "@/hooks/useAddressVerification";
+import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 
 interface ClientSelectorProps {
   selectedCustomer: Customer | null;
@@ -202,6 +204,7 @@ function NewClientForm({
   data: CreateCustomerInput;
   onChange: (data: CreateCustomerInput) => void;
 }) {
+  const { verify, verifying, result: addressResult, reset: resetVerification } = useAddressVerification();
   return (
     <div className="space-y-3 p-3 rounded-lg border border-dashed border-border bg-muted/30">
       <div>
@@ -253,9 +256,18 @@ function NewClientForm({
           <Input
             id="clientAddress"
             value={data.address || ""}
-            onChange={(e) => onChange({ ...data, address: e.target.value })}
-            placeholder="123 Main St"
+            onChange={(e) => {
+              onChange({ ...data, address: e.target.value });
+              resetVerification();
+            }}
+            placeholder="123 Main St, Austin, TX 78701"
             className="mt-1"
+          />
+          <AddressVerificationBadge
+            verifying={verifying}
+            result={addressResult}
+            onVerify={() => verify(data.address || "")}
+            onAccept={(formatted) => onChange({ ...data, address: formatted })}
           />
         </div>
         <div>
