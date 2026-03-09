@@ -52,6 +52,8 @@ import ClientJobPortal from "./pages/ClientJobPortal";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import DataDeletion from "./pages/DataDeletion";
+import Customers from "./pages/Customers";
+import CustomerDetail from "./pages/CustomerDetail";
 
 const queryClient = new QueryClient();
 
