@@ -54,6 +54,7 @@ import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, u
 import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
 import { EditJobScheduleDialog } from "@/components/jobs/EditJobScheduleDialog";
 import { RecurringJobDetailModal } from "@/components/jobs/RecurringJobDetailModal";
+import { ScheduleJobDialog } from "@/components/jobs/ScheduleJobDialog";
 import { Repeat } from "lucide-react";
 
 export default function JobDetail() {
@@ -68,11 +69,6 @@ export default function JobDetail() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [addressDialogOpen, setAddressDialogOpen] = useState(false);
   const [addressValue, setAddressValue] = useState("");
-  const [scheduleForm, setScheduleForm] = useState({
-    scheduled_date: "",
-    scheduled_time_start: "",
-    scheduled_time_end: ""
-  });
   const [editForm, setEditForm] = useState({
     name: "",
     service_type: "",
@@ -360,28 +356,9 @@ export default function JobDetail() {
   };
 
   const openScheduleDialog = () => {
-    setScheduleForm({
-      scheduled_date: "",
-      scheduled_time_start: "",
-      scheduled_time_end: ""
-    });
     setScheduleDialogOpen(true);
   };
 
-  const handleSchedule = async () => {
-    if (!id) return;
-    const result = await scheduleJob({
-      leadId: id,
-      scheduledDate: scheduleForm.scheduled_date,
-      startTime: scheduleForm.scheduled_time_start,
-      endTime: scheduleForm.scheduled_time_end,
-    });
-
-    if (result.ok) {
-      setScheduleForm({ scheduled_date: "", scheduled_time_start: "", scheduled_time_end: "" });
-      setScheduleDialogOpen(false);
-    }
-  };
 
   const handleDeleteSchedule = async (scheduleId: string) => {
     if (!id) return;
@@ -1270,62 +1247,16 @@ export default function JobDetail() {
       </AlertDialog>
 
       {/* Schedule Dialog */}
-      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Schedule Date</DialogTitle>
-            <DialogDescription>
-              Add a new scheduled work date for this job. You can add multiple dates for multi-day projects.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="schedule-date">Scheduled Date *</Label>
-              <Input
-                id="schedule-date"
-                type="date"
-                value={scheduleForm.scheduled_date}
-                onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_date: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="schedule-start-time">Start Time</Label>
-                <Input
-                  id="schedule-start-time"
-                  type="time"
-                  value={scheduleForm.scheduled_time_start}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_time_start: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="schedule-end-time">End Time</Label>
-                <Input
-                  id="schedule-end-time"
-                  type="time"
-                  value={scheduleForm.scheduled_time_end}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_time_end: e.target.value })}
-                />
-              </div>
-            </div>
-            {scheduleForm.scheduled_date && (
-              <div className="text-sm text-muted-foreground bg-secondary p-3 rounded-md">
-                {hasSchedules
-                  ? "Adding additional scheduled date. Job status will update automatically based on all scheduled dates."
-                  : "Job status will update automatically based on scheduled dates."}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSchedule} disabled={!scheduleForm.scheduled_date}>
-              Add Schedule
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {id && (
+        <ScheduleJobDialog
+          open={scheduleDialogOpen}
+          onOpenChange={setScheduleDialogOpen}
+          jobId={id}
+          jobName={job?.name || undefined}
+          hasSchedules={hasSchedules}
+          onMakeRecurring={!jobAny.recurring_job_id ? () => setMakeRecurringOpen(true) : undefined}
+        />
+      )}
 
       {/* Address Dialog */}
       <Dialog open={addressDialogOpen} onOpenChange={setAddressDialogOpen}>
