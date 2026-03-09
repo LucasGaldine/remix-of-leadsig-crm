@@ -5,10 +5,60 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText } from "lucide-react";
+import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText, Navigation, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { ClientShareLink } from "@/components/jobs/ClientShareLink";
+import { toast } from "sonner";
+
+function PortalLinkButton({ customerId }: { customerId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleGenerateAndCopy = async () => {
+    setLoading(true);
+    try {
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("client_portal_token")
+        .eq("id", customerId)
+        .maybeSingle();
+
+      let token = customer?.client_portal_token || null;
+
+      if (!token) {
+        token = crypto.randomUUID();
+        const { error } = await supabase
+          .from("customers")
+          .update({ client_portal_token: token })
+          .eq("id", customerId);
+        if (error) throw error;
+      }
+
+      const link = `${window.location.origin}/client/job?token=${token}`;
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      toast.success("Portal link copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast.error("Failed to generate portal link");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      onClick={handleGenerateAndCopy}
+      disabled={loading}
+      className="gap-2"
+    >
+      <Share2 className="h-4 w-4" />
+      {loading ? "Generating..." : copied ? "Link Copied!" : "Share Portal Link"}
+    </Button>
+  );
+}
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
@@ -95,6 +145,10 @@ export default function CustomerDetail() {
 
   const location = [customer.address, customer.city].filter(Boolean).join(", ");
 
+  const totalEstimatedValue = jobs.reduce((sum: number, job: any) => sum + (job.estimated_value || 0), 0);
+  const totalActualValue = jobs.reduce((sum: number, job: any) => sum + (job.actual_value || 0), 0);
+  const totalValue = totalActualValue || totalEstimatedValue;
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="" showBack backTo="/customers" />
@@ -102,93 +156,84 @@ export default function CustomerDetail() {
       <main className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
         {/* Contact Info Card */}
         <div className="bg-card rounded-lg border border-border">
-          <div className="p-4 pt-8 pb-8">
-            <div className="flex flex-col sm:flex-row gap-4 mb-4">
-              {/* Left Column */}
-              <div className="flex flex-col flex-1 min-w-0 gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-base">
-                    {customer.name?.charAt(0)?.toUpperCase() || "?"}
-                  </div>
-                  <h2 className="text-1 font-bold text-foreground">{customer.name}</h2>
-                </div>
+          <div className="p-6">
+            {/* Header with Name and Status */}
+            <div className="flex items-start justify-between mb-4">
+              <h1 className="text-2xl font-bold text-foreground">{customer.name}</h1>
+            </div>
 
-                <div className="text-5">
-                  {customer.phone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{customer.phone}</span>
-                    </div>
-                  )}
-                  {customer.email && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{customer.email}</span>
-                    </div>
-                  )}
-                  {location && (
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{location}</span>
-                    </div>
-                  )}
-                </div>
+            {/* Contact Info and Summary Row */}
+            <div className="flex flex-col lg:flex-row justify-between gap-6 mb-6">
+              {/* Contact Info */}
+              <div className="flex flex-col gap-2 text-muted-foreground">
+                {customer.phone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 shrink-0" />
+                    <span>{customer.phone}</span>
+                  </div>
+                )}
+                {customer.email && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 shrink-0" />
+                    <span>{customer.email}</span>
+                  </div>
+                )}
+                {location && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 shrink-0" />
+                    <span>{location}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Right Column */}
-              <div className="flex flex-col sm:items-end gap-2">
-                <div className="sm:text-right text-muted-foreground">
-                  <p className="text-2">{jobs.length + estimates.length + invoices.length}</p>
-                  <p className="text-xs">Total Records</p>
+              {/* Summary Stats */}
+              <div className="flex flex-col items-start lg:items-end gap-1">
+                {totalValue > 0 && (
+                  <div className="text-2xl font-bold text-foreground">
+                    ${totalValue.toLocaleString()}
+                  </div>
+                )}
+                <div className="text-sm text-muted-foreground">
+                  {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}
                 </div>
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="grid grid-cols-3 gap-2">
-              {customer.phone && (
-                <>
+            {/* Action Buttons Row */}
+            <div className="flex flex-wrap items-center gap-2 justify-between">
+              {/* Quick Actions */}
+              <div className="flex gap-2">
+                {customer.phone && (
                   <Button
                     variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-xs px-2"
+                    size="icon"
                     onClick={() => window.open(`tel:${customer.phone}`)}
                   >
-                    <Phone className="h-4 w-4 shrink-0" />
-                    <span className="hidden xs:inline">Call</span>
+                    <Phone className="h-4 w-4" />
                   </Button>
+                )}
+                {customer.phone && (
                   <Button
                     variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-xs px-2"
+                    size="icon"
                     onClick={() => window.open(`sms:${customer.phone}`)}
                   >
-                    <MessageSquare className="h-4 w-4 shrink-0" />
-                    <span className="hidden xs:inline">Text</span>
+                    <MessageSquare className="h-4 w-4" />
                   </Button>
-                </>
-              )}
-              {customer.email && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs px-2"
-                  onClick={() => window.open(`mailto:${customer.email}`)}
-                >
-                  <Mail className="h-4 w-4 shrink-0" />
-                  <span className="hidden xs:inline">Email</span>
-                </Button>
-              )}
-              {location && !customer.phone && (
-                <Button
-                  size="sm"
-                  className="gap-1.5 text-xs px-2"
-                  onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`)}
-                >
-                  <MapPin className="h-4 w-4 shrink-0" />
-                  <span className="hidden xs:inline">Map</span>
-                </Button>
-              )}
+                )}
+                {location && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`)}
+                  >
+                    <Navigation className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              {/* Portal Link Button */}
+              <PortalLinkButton customerId={customer.id} />
             </div>
           </div>
 
