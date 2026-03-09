@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Send,
   CreditCard,
   Link2,
   Copy,
@@ -76,10 +75,6 @@ export default function InvoiceDetail() {
   const stripeInvoiceUrl = (invoice as any).stripe_invoice_url as string | null;
   const lineItems = invoice.line_items || [];
 
-  const handleSend = () => {
-    toast.info("Send functionality coming soon");
-  };
-
   const handleCopyPayLink = () => {
     const payLink = `${window.location.origin}/pay/invoice/${invoice.id}`;
     navigator.clipboard.writeText(payLink);
@@ -129,7 +124,7 @@ export default function InvoiceDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-48">
+    <div className="min-h-screen bg-surface-sunken pb-32">
       <PageHeader title="Invoice" showBack backTo="/payments" />
 
       <div className="bg-card border-b border-border px-4 py-4">
@@ -277,7 +272,7 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
-      <div className="px-4 mt-4">
+      <div className="px-4 mt-4 mb-4">
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={handleCopyPayLink}>
             <Link2 className="h-4 w-4" />
@@ -293,23 +288,17 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
-      <div className="fixed bottom-[4.5rem] left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 h-14 gap-2" onClick={handleSend}>
-            <Send className="h-4 w-4" />
-            Send
+      {hasBalance && (
+        <div className="px-4 mb-4">
+          <Button
+            className="w-full h-14 gap-2"
+            onClick={() => setShowChargeOptions(true)}
+          >
+            <CreditCard className="h-4 w-4" />
+            Charge Now
           </Button>
-          {hasBalance && (
-            <Button
-              className="flex-1 h-14 gap-2"
-              onClick={() => setShowChargeOptions(true)}
-            >
-              <CreditCard className="h-4 w-4" />
-              Charge Now
-            </Button>
-          )}
         </div>
-      </div>
+      )}
 
       <OtherPaymentOptionsModal
         open={showChargeOptions}

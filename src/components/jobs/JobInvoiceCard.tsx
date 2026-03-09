@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Send, ExternalLink, Loader as Loader2 } from "lucide-react";
+import { Send, ExternalLink, Loader as Loader2, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
+import { OtherPaymentOptionsModal, type PaymentOption } from "@/components/payments/OtherPaymentOptionsModal";
 
 interface ExistingInvoice {
   id: string;
@@ -39,6 +40,8 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [estimateStatus, setEstimateStatus] = useState<string | null>(null);
+  const [showLogPaymentModal, setShowLogPaymentModal] = useState(false);
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   const taxRate = (currentAccount?.default_tax_rate || 0) / 100;
   const invoiceAmount = parseFloat(amount) || 0;
@@ -223,6 +226,54 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
     }
   };
 
+  const handleRecordPayment = async (method: PaymentOption, paymentAmount: number) => {
+    if (!user || !currentAccount) {
+      toast.error("Authentication required");
+      return;
+    }
+
+    setRecordingPayment(true);
+    try {
+      const { data: job } = await supabase
+        .from("leads")
+        .select("customer_id")
+        .eq("id", jobId)
+        .single();
+
+      const { data: estimate } = await supabase
+        .from("estimates")
+        .select("id")
+        .eq("job_id", jobId)
+        .maybeSingle();
+
+      if (!job?.customer_id) {
+        toast.error("Customer not found");
+        return;
+      }
+
+      await supabase.from("payments").insert({
+        lead_id: jobId,
+        customer_id: job.customer_id,
+        estimate_id: estimate?.id,
+        amount: paymentAmount,
+        method,
+        status: "completed",
+        processed_by: user.id,
+        account_id: currentAccount.id,
+      });
+
+      await queryClient.invalidateQueries({ queryKey: ["payments"] });
+      setShowLogPaymentModal(false);
+      toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${paymentAmount.toLocaleString()} recorded`);
+      fetchInvoices();
+    } catch (error) {
+      console.error("Payment recording error:", error);
+      toast.error("Failed to record payment");
+    } finally {
+      setRecordingPayment(false);
+    }
+  };
+
   const statusColors: Record<string, string> = {
     sent: "text-amber-600",
     paid: "text-emerald-600",
@@ -279,26 +330,48 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
           </p>
         ) : estimateStatus && estimateStatus !== "accepted" ? (
           <div className="space-y-2">
-            <Button
-              className="w-full"
-              disabled
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Send Invoice
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                disabled
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Send Invoice
+              </Button>
+              <Button
+                className="flex-1"
+                variant="outline"
+                onClick={() => setShowLogPaymentModal(true)}
+                disabled={loading}
+              >
+                <DollarSign className="h-4 w-4 mr-2" />
+                Log Payment
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground text-center">
               The estimate must be approved before sending an invoice
             </p>
           </div>
         ) : (
-          <Button
-            className="w-full"
-            onClick={handleOpenDialog}
-            disabled={loading}
-          >
-            <Send className="h-4 w-4 mr-2" />
-            Send Invoice
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              onClick={handleOpenDialog}
+              disabled={loading}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send Invoice
+            </Button>
+            <Button
+              className="flex-1"
+              variant="outline"
+              onClick={() => setShowLogPaymentModal(true)}
+              disabled={loading}
+            >
+              <DollarSign className="h-4 w-4 mr-2" />
+              Log Payment
+            </Button>
+          </div>
         )}
       </div>
 
@@ -372,6 +445,14 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <OtherPaymentOptionsModal
+        open={showLogPaymentModal}
+        onOpenChange={setShowLogPaymentModal}
+        totalAmount={estimateTotal || 0}
+        onRecordPayment={handleRecordPayment}
+        recordingPayment={recordingPayment}
+      />
     </>
   );
 }
