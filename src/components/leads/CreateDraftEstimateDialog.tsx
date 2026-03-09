@@ -38,6 +38,7 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
+  const [profitMargin, setProfitMargin] = useState<string>(String(currentAccount?.default_profit_margin ?? 0));
 
   const estimateSubtotal = lineItems.reduce((sum, item) => {
     const quantity = parseFloat(item.quantity || "0");
@@ -45,8 +46,10 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
     return sum + quantity * unitPrice;
   }, 0);
 
-  const estimateTax = estimateSubtotal * ((currentAccount?.default_tax_rate ?? 0) / 100);
-  const estimateTotal = estimateSubtotal + estimateTax;
+  const estimateProfit = estimateSubtotal * ((parseFloat(profitMargin) || 0) / 100);
+  const estimateSubtotalAfterProfit = estimateSubtotal + estimateProfit;
+  const estimateTax = estimateSubtotalAfterProfit * ((currentAccount?.default_tax_rate ?? 0) / 100);
+  const estimateTotal = estimateSubtotalAfterProfit + estimateTax;
 
   const handleCreate = async () => {
     if (!user || !currentAccount) {
@@ -107,11 +110,12 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
         .insert({
           customer_id: customerId,
           job_id: lead.id,
-          subtotal: estimateTotal,
+          subtotal: estimateSubtotal,
+          profit_margin: (parseFloat(profitMargin) || 0) / 100,
           tax_rate: (currentAccount?.default_tax_rate ?? 0) / 100,
-          tax: estimateTotal * ((currentAccount?.default_tax_rate ?? 0) / 100),
+          tax: estimateTax,
           discount: 0,
-          total: estimateTotal * (1 + (currentAccount?.default_tax_rate ?? 0) / 100),
+          total: estimateTotal,
           status: "draft",
           created_by: user.id,
           account_id: currentAccount.id,
@@ -210,6 +214,24 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium">${estimateSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Profit Margin:</span>
+                  <div className="relative w-20">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={profitMargin}
+                      onChange={(e) => setProfitMargin(e.target.value)}
+                      className="h-7 text-xs pr-6"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <span className="font-medium">${estimateProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Tax ({currentAccount?.default_tax_rate ?? 0}%)</span>
