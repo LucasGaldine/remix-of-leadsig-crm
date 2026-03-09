@@ -625,7 +625,7 @@ export default function JobDetail() {
                           variant="ghost"
                           size="sm"
                         >
-                          <Phone className="h-4 w-4" />
+                          <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
