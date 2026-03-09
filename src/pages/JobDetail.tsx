@@ -1112,30 +1112,51 @@ export default function JobDetail() {
             onMarkComplete={async () => {
               await updateJobMutation.mutateAsync({ id, status: "completed" as any });
               
-              // If this is an estimate visit, convert the parent lead to a job
+              // If this is an estimate visit, create a new regular job from this estimate visit's data
               if (job?.is_estimate_visit) {
                 try {
-                  // Query for the parent lead directly to avoid stale closure
-                  const { data: parentLead } = await supabase
+                  // Re-fetch the current job to get latest data
+                  const { data: currentJob } = await supabase
                     .from("leads")
-                    .select("id")
-                    .eq("estimate_job_id", id)
-                    .maybeSingle();
-                  
-                  if (parentLead) {
-                    await supabase
+                    .select("*")
+                    .eq("id", id)
+                    .single();
+
+                  if (currentJob) {
+                    const { data: newJob, error: insertError } = await supabase
                       .from("leads")
-                      .update({ status: "job" })
-                      .eq("id", parentLead.id);
-                    
+                      .insert({
+                        name: currentJob.name,
+                        address: currentJob.address,
+                        city: currentJob.city,
+                        state: currentJob.state,
+                        service_type: currentJob.service_type,
+                        description: currentJob.description,
+                        customer_id: currentJob.customer_id,
+                        account_id: currentJob.account_id,
+                        created_by: currentJob.created_by,
+                        estimated_value: currentJob.estimated_value,
+                        source: currentJob.source,
+                        status: "job",
+                        approval_status: "approved",
+                        is_estimate_visit: false,
+                        estimate_job_id: id,
+                      })
+                      .select()
+                      .single();
+
+                    if (insertError) throw insertError;
+
                     queryClient.invalidateQueries({ queryKey: ["jobs"] });
                     queryClient.invalidateQueries({ queryKey: ["leads"] });
-                    toast.success("Parent lead converted to job");
-                  } else {
-                    console.warn("No parent lead found for estimate visit job:", id);
+                    toast.success("New job created from estimate visit!");
+                    
+                    if (newJob) {
+                      navigate(`/jobs/${newJob.id}`);
+                    }
                   }
                 } catch (error) {
-                  console.error("Error converting parent lead to job:", error);
+                  console.error("Error creating job from estimate visit:", error);
                   toast.error("Failed to auto-create job from estimate visit");
                 }
               }
