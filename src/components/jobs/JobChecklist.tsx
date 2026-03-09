@@ -56,6 +56,7 @@ export function JobChecklist({
   const [pendingToggleItem, setPendingToggleItem] = useState<ChecklistItem | null>(null);
   const [markingComplete, setMarkingComplete] = useState(false);
 
+  const isJobCompleted = jobStatus === "completed";
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
   const allComplete = totalCount > 0 && completedCount === totalCount;
