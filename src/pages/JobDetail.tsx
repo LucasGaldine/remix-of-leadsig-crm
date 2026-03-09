@@ -69,11 +69,6 @@ export default function JobDetail() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [addressDialogOpen, setAddressDialogOpen] = useState(false);
   const [addressValue, setAddressValue] = useState("");
-  const [scheduleForm, setScheduleForm] = useState({
-    scheduled_date: "",
-    scheduled_time_start: "",
-    scheduled_time_end: ""
-  });
   const [editForm, setEditForm] = useState({
     name: "",
     service_type: "",
