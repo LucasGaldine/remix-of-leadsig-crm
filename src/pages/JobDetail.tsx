@@ -840,15 +840,6 @@ export default function JobDetail() {
               </div>
             ) : null}
 
-            {/* Invoices */}
-            {id && (
-              <JobInvoiceCard
-                jobId={id}
-                customerEmail={job.customer?.email}
-                customerName={job.customer?.name}
-              />
-            )}
-
 
             {/* Schedule or Job Schedule Info */}
             {!jobAny.recurring_job_id ? (
@@ -1077,6 +1068,24 @@ export default function JobDetail() {
                   existingToken={job.is_estimate_visit ? parentLeadToken : jobAny.client_share_token}
                 />
               )
+            )}
+
+            {/* Invoices Section */}
+            {isManager() && id && (
+              <div className="card-elevated rounded-lg p-4">
+                <div className="mb-3">
+                  <p className="font-medium text-foreground">Invoices</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Send invoices to collect payment
+                  </p>
+                </div>
+                <JobInvoiceCard
+                  jobId={id}
+                  customerEmail={job.customer?.email}
+                  customerName={job.customer?.name}
+                  estimateTotal={estimate?.total ? Number(estimate.total) : null}
+                />
+              </div>
             )}
           </div>
         )}
