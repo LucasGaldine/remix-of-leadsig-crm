@@ -148,6 +148,7 @@ input[type="number"] {
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Anton', sans-serif;
+    font-weight: 400;
     -webkit-tap-highlight-color: transparent;
   }
 
