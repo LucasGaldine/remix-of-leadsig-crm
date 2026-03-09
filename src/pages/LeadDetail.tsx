@@ -746,7 +746,16 @@ export default function LeadDetail() {
                 {/*Customer Info*/}
                 <div className="flex flex-col gap-2">
                   <div className="flex gap-2 items-center">
-                    <p className="text-1">{lead.name}</p>
+                    {customer?.id ? (
+                      <button
+                        onClick={() => navigate(`/customers/${customer.id}`)}
+                        className="text-1 hover:text-primary hover:underline transition-colors text-left"
+                      >
+                        {lead.name}
+                      </button>
+                    ) : (
+                      <p className="text-1">{lead.name}</p>
+                    )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
