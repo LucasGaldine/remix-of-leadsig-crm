@@ -725,32 +725,32 @@ export default function JobDetail() {
             </div>
 
             {/* Quick Actions */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 variant="outline"
-                size="lg"
-                className="flex-1 gap-2"
+                size="sm"
+                className="gap-1.5 text-xs px-2"
                 onClick={handleCall}
               >
-                <Phone className="h-4 w-4" />
-                Call
+                <Phone className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline">Call</span>
               </Button>
               <Button
                 variant="outline"
-                size="lg"
-                className="flex-1 gap-2"
+                size="sm"
+                className="gap-1.5 text-xs px-2"
                 onClick={handleText}
               >
-                <MessageSquare className="h-4 w-4" />
-                Text
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline">Text</span>
               </Button>
               <Button
-                size="lg"
-                className="flex-1 gap-2"
+                size="sm"
+                className="gap-1.5 text-xs px-2"
                 onClick={handleNavigate}
               >
-                <Navigation className="h-4 w-4" />
-                Navigate
+                <Navigation className="h-4 w-4 shrink-0" />
+                <span className="hidden xs:inline">Navigate</span>
               </Button>
             </div>
           </div>
