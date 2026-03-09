@@ -259,13 +259,18 @@ export default function Index() {
               </div>
             ) : customersData.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No customers yet</p>
+                <p className="text-muted-foreground">No customers need attention</p>
               </div>
             ) : (
-              <CustomerCard
-                customer={customersData[0]}
-                onClick={() => navigate(`/customers/${customersData[0].id}`)}
-              />
+              <div className="space-y-1">
+                <CustomerCard
+                  customer={customersData[0]}
+                  onClick={() => navigate(`/customers/${customersData[0].id}`)}
+                />
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  {customersData[0].reason}
+                </p>
+              </div>
             )}
           </section>
         )}
