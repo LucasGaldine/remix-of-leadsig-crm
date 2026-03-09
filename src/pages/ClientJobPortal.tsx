@@ -112,6 +112,11 @@ interface InvoiceData {
   status: string;
 }
 
+interface PortalMetadata {
+  customer: CustomerData;
+  has_portal: boolean;
+}
+
 export interface PortalData {
   job: JobData;
   company: CompanyData;
@@ -121,6 +126,7 @@ export interface PortalData {
   invoice: InvoiceData | null;
   photos: { before: PhotoItem[]; after: PhotoItem[] };
   activity: ActivityItem[];
+  portal_metadata?: PortalMetadata;
 }
 
 export interface CustomerPortalData {
@@ -398,10 +404,12 @@ export default function ClientJobPortal() {
   const statusLabel = getStatusLabel(job.status, schedules);
   const statusColor = getStatusColor(job.status, schedules);
 
+  const showBackButton = customerData || data?.portal_metadata?.has_portal;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
-        {customerData && (
+        {showBackButton && (
           <button
             onClick={handleBackToList}
             className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors mb-4"

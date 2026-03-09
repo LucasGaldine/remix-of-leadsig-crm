@@ -227,7 +227,19 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
 
   if (job) {
     job.customer = customer;
-    return await handleSingleJobGet(supabase, supabaseUrl, job);
+    const jobDetails = await handleSingleJobGet(supabase, supabaseUrl, job);
+    const jobData = await jobDetails.json();
+    return jsonResponse({
+      ...jobData,
+      portal_metadata: {
+        customer: {
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+        has_portal: true,
+      }
+    });
   }
 
   const { data: recurringJob } = await supabase
@@ -240,7 +252,19 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
   if (recurringJob) {
     recurringJob.customer = customer;
     recurringJob.client_share_token = null;
-    return await handleRecurringJobPortal(supabase, supabaseUrl, recurringJob, req);
+    const jobDetails = await handleRecurringJobPortal(supabase, supabaseUrl, recurringJob, req);
+    const jobData = await jobDetails.json();
+    return jsonResponse({
+      ...jobData,
+      portal_metadata: {
+        customer: {
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+        has_portal: true,
+      }
+    });
   }
 
   return jsonResponse({ error: "Job not found or access denied" }, 404);
