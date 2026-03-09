@@ -1,10 +1,10 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, formatDistanceToNow } from "date-fns";
@@ -94,94 +94,135 @@ export default function CustomerDetail() {
 
   const location = [customer.address, customer.city].filter(Boolean).join(", ");
 
+  const [activeTab, setActiveTab] = useState<"jobs" | "estimates" | "invoices">("jobs");
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title={customer.name} showBack backTo="/customers" />
+      <PageHeader title="" showBack backTo="/customers" />
 
-      <main className="px-4 py-4 space-y-5 max-w-[var(--content-max-width)] m-auto">
+      <main className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
         {/* Contact Info Card */}
-        <div className="card-elevated rounded-xl overflow-hidden">
-          <div className="p-5 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
-                {customer.name?.charAt(0)?.toUpperCase() || "?"}
+        <div className="bg-card rounded-lg border border-border">
+          <div className="p-4 pt-8 pb-8">
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              {/* Left Column */}
+              <div className="flex flex-col flex-1 min-w-0 gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-base">
+                    {customer.name?.charAt(0)?.toUpperCase() || "?"}
+                  </div>
+                  <h2 className="text-1 font-bold text-foreground">{customer.name}</h2>
+                </div>
+
+                <div className="text-5">
+                  {customer.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{customer.phone}</span>
+                    </div>
+                  )}
+                  {customer.email && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{customer.email}</span>
+                    </div>
+                  )}
+                  {location && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{location}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-foreground">{customer.name}</h2>
-                {customer.email && (
-                  <p className="text-sm text-muted-foreground">{customer.email}</p>
-                )}
+
+              {/* Right Column */}
+              <div className="flex flex-col sm:items-end gap-2">
+                <div className="sm:text-right text-muted-foreground">
+                  <p className="text-2">{jobs.length + estimates.length + invoices.length}</p>
+                  <p className="text-xs">Total Records</p>
+                </div>
               </div>
             </div>
 
-            {customer.phone && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Phone className="h-4 w-4" />
-                <span>{customer.phone}</span>
-              </div>
-            )}
-            {location && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <MapPin className="h-4 w-4" />
-                <span>{location}</span>
-              </div>
-            )}
+            {/* Quick Actions */}
+            <div className="grid grid-cols-3 gap-2">
+              {customer.phone && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs px-2"
+                    onClick={() => window.open(`tel:${customer.phone}`)}
+                  >
+                    <Phone className="h-4 w-4 shrink-0" />
+                    <span className="hidden xs:inline">Call</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs px-2"
+                    onClick={() => window.open(`sms:${customer.phone}`)}
+                  >
+                    <MessageSquare className="h-4 w-4 shrink-0" />
+                    <span className="hidden xs:inline">Text</span>
+                  </Button>
+                </>
+              )}
+              {customer.email && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs px-2"
+                  onClick={() => window.open(`mailto:${customer.email}`)}
+                >
+                  <Mail className="h-4 w-4 shrink-0" />
+                  <span className="hidden xs:inline">Email</span>
+                </Button>
+              )}
+              {location && !customer.phone && (
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs px-2"
+                  onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`)}
+                >
+                  <MapPin className="h-4 w-4 shrink-0" />
+                  <span className="hidden xs:inline">Map</span>
+                </Button>
+              )}
+            </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="border-t border-border px-5 py-3 flex gap-2">
-            {customer.phone && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(`tel:${customer.phone}`)}
-                  className="flex-1"
+          {/* Tabs */}
+          <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4">
+            <div className="flex">
+              {[
+                { id: "jobs", label: "Jobs" },
+                { id: "estimates", label: "Estimates" },
+                { id: "invoices", label: "Invoices" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                  className={cn(
+                    "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                    activeTab === tab.id
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
                 >
-                  <Phone className="h-4 w-4 mr-1" /> Call
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(`sms:${customer.phone}`)}
-                  className="flex-1"
-                >
-                  <MessageSquare className="h-4 w-4 mr-1" /> Text
-                </Button>
-              </>
-            )}
-            {customer.email && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`mailto:${customer.email}`)}
-                className="flex-1"
-              >
-                <Mail className="h-4 w-4 mr-1" /> Email
-              </Button>
-            )}
-            {location && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`)}
-                className="flex-1"
-              >
-                <MapPin className="h-4 w-4 mr-1" /> Map
-              </Button>
-            )}
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+      </main>
 
-        {/* Tabs */}
-        <Tabs defaultValue="jobs" className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="jobs" className="flex-1">Jobs</TabsTrigger>
-            <TabsTrigger value="estimates" className="flex-1">Estimates</TabsTrigger>
-            <TabsTrigger value="invoices" className="flex-1">Invoices</TabsTrigger>
-          </TabsList>
+      {/* Tab Content */}
+      <div className="p-4 max-w-[var(--content-max-width)] m-auto">{activeTab === "jobs" && (
+          <div className="space-y-2">
 
-          <TabsContent value="jobs" className="mt-3 space-y-2">
             {jobs.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
                 <Wrench className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
@@ -206,9 +247,11 @@ export default function CustomerDetail() {
                 </button>
               ))
             )}
-          </TabsContent>
+          </div>
+        )}
 
-          <TabsContent value="estimates" className="mt-3 space-y-2">
+        {activeTab === "estimates" && (
+          <div className="space-y-2">
             {estimates.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
                 <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
@@ -238,9 +281,11 @@ export default function CustomerDetail() {
                 </button>
               ))
             )}
-          </TabsContent>
+          </div>
+        )}
 
-          <TabsContent value="invoices" className="mt-3 space-y-2">
+        {activeTab === "invoices" && (
+          <div className="space-y-2">
             {invoices.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
                 <DollarSign className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
@@ -274,17 +319,19 @@ export default function CustomerDetail() {
                 </button>
               ))
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
+      </div>
 
-        {/* Notes */}
-        {customer.notes && (
+      {/* Notes */}
+      {customer.notes && (
+        <div className="p-4 max-w-[var(--content-max-width)] m-auto">
           <div className="card-elevated rounded-xl p-5">
             <h3 className="font-semibold text-foreground mb-2">Notes</h3>
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
       <MobileNav />
     </div>
