@@ -356,28 +356,9 @@ export default function JobDetail() {
   };
 
   const openScheduleDialog = () => {
-    setScheduleForm({
-      scheduled_date: "",
-      scheduled_time_start: "",
-      scheduled_time_end: ""
-    });
     setScheduleDialogOpen(true);
   };
 
-  const handleSchedule = async () => {
-    if (!id) return;
-    const result = await scheduleJob({
-      leadId: id,
-      scheduledDate: scheduleForm.scheduled_date,
-      startTime: scheduleForm.scheduled_time_start,
-      endTime: scheduleForm.scheduled_time_end,
-    });
-
-    if (result.ok) {
-      setScheduleForm({ scheduled_date: "", scheduled_time_start: "", scheduled_time_end: "" });
-      setScheduleDialogOpen(false);
-    }
-  };
 
   const handleDeleteSchedule = async (scheduleId: string) => {
     if (!id) return;
