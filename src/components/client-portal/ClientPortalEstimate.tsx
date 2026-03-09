@@ -39,6 +39,7 @@ interface ClientPortalEstimateProps {
   apiUrl: string;
   apiHeaders: Record<string, string>;
   onRefresh: () => void;
+  jobId?: string | null;
   customerName?: string;
   jobName?: string;
   address?: string;
@@ -55,6 +56,7 @@ export function ClientPortalEstimate({
   apiUrl,
   apiHeaders,
   onRefresh,
+  jobId = null,
   customerName = "Customer",
   jobName = "",
   address = "",
@@ -99,7 +101,10 @@ export function ClientPortalEstimate({
     setSubmitting(action);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}?token=${token}`, {
+      const url = jobId
+        ? `${apiUrl}?token=${token}&jobId=${jobId}`
+        : `${apiUrl}?token=${token}`;
+      const response = await fetch(url, {
         method: "POST",
         headers: apiHeaders,
         body: JSON.stringify({
@@ -127,7 +132,10 @@ export function ClientPortalEstimate({
     setSubmitting(action);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}?token=${token}`, {
+      const url = jobId
+        ? `${apiUrl}?token=${token}&jobId=${jobId}`
+        : `${apiUrl}?token=${token}`;
+      const response = await fetch(url, {
         method: "POST",
         headers: apiHeaders,
         body: JSON.stringify({
