@@ -14,6 +14,7 @@ export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentAccount } = useAuth();
+  const [activeTab, setActiveTab] = useState<"jobs" | "estimates" | "invoices">("jobs");
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ["customer", id],
@@ -93,8 +94,6 @@ export default function CustomerDetail() {
   }
 
   const location = [customer.address, customer.city].filter(Boolean).join(", ");
-
-  const [activeTab, setActiveTab] = useState<"jobs" | "estimates" | "invoices">("jobs");
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
