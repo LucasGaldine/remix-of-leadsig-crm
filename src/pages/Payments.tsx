@@ -35,11 +35,10 @@ export default function Payments() {
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const allNeedsReview = allEstimates.filter(
-    e => !e.is_finalized && e.estimate_visit_completed && e.status !== "accepted" && e.status !== "declined"
+    e => e.estimate_visit_completed && e.status !== "accepted" && e.status !== "declined"
   );
 
   const baseFilteredEstimates = allEstimates.filter(e => {
-    if (e.is_finalized) return false;
     const customerName = e.customer?.name || "";
     const jobName = e.job?.name || "";
     return (
@@ -95,7 +94,6 @@ export default function Payments() {
     discount: Number(estimate.discount),
     total: Number(estimate.total),
     status: estimate.status,
-    isFinalized: estimate.is_finalized,
     needsReview,
     createdAt: estimate.created_at ? format(new Date(estimate.created_at), "MMM d") : "",
     sentAt: estimate.sent_at ? format(new Date(estimate.sent_at), "MMM d") : undefined,

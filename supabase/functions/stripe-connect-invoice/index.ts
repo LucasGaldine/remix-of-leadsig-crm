@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 interface InvoiceRequest {
-  estimateId: string;
+  invoiceId: string;
   customerEmail?: string;
   customerName?: string;
 }
@@ -54,27 +54,26 @@ Deno.serve(async (req: Request) => {
     }
 
     const body: InvoiceRequest = await req.json();
-    const { estimateId, customerEmail, customerName } = body;
+    const { invoiceId, customerEmail, customerName } = body;
 
-    if (!estimateId) {
-      throw new Error("Missing required field: estimateId");
+    if (!invoiceId) {
+      throw new Error("Missing required field: invoiceId");
     }
 
-    const { data: estimate, error: estError } = await supabase
-      .from("estimates")
+    const { data: invoice, error: invError } = await supabase
+      .from("invoices")
       .select(`
-        id, subtotal, tax_rate, tax, discount, total, notes, job_id, customer_id, account_id,
-        line_items:estimate_line_items(
-          id, name, description, quantity, unit, unit_price, total, sort_order,
-          is_change_order, change_order_type
+        id, subtotal, tax_rate, tax, discount, total, notes, lead_id, customer_id, account_id, estimate_id, due_date,
+        line_items:invoice_line_items(
+          id, name, description, quantity, unit, unit_price, total, sort_order
         )
       `)
-      .eq("id", estimateId)
+      .eq("id", invoiceId)
       .eq("account_id", membership.account_id)
       .single();
 
-    if (estError || !estimate) {
-      throw new Error("Estimate not found");
+    if (invError || !invoice) {
+      throw new Error("Invoice not found");
     }
 
     const { data: stripeAccount } = await supabase
@@ -98,34 +97,34 @@ Deno.serve(async (req: Request) => {
         email: customerEmail || undefined,
         name: customerName || undefined,
         metadata: {
-          supabase_customer_id: estimate.customer_id,
+          supabase_customer_id: invoice.customer_id,
           account_id: membership.account_id,
         },
       },
       connectOpts
     );
 
-    const activeLineItems = (estimate.line_items || []).filter(
-      (li: any) => !li.is_change_order || li.change_order_type !== "deleted"
-    );
+    const dueDate = invoice.due_date ? new Date(invoice.due_date) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const daysUntilDue = Math.max(1, Math.ceil((dueDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
 
     const invoiceParams: Stripe.InvoiceCreateParams = {
       customer: stripeCustomer.id,
       collection_method: "send_invoice",
-      days_until_due: 30,
+      days_until_due: daysUntilDue,
       auto_advance: true,
       pending_invoice_items_behavior: "include",
       metadata: {
-        estimate_id: estimateId,
+        invoice_id: invoiceId,
+        estimate_id: invoice.estimate_id,
         account_id: membership.account_id,
       },
     };
 
-    if (Number(estimate.tax_rate) > 0) {
+    if (Number(invoice.tax_rate) > 0) {
       const taxRate = await stripe.taxRates.create(
         {
           display_name: "Tax",
-          percentage: Number(estimate.tax_rate) * 100,
+          percentage: Number(invoice.tax_rate) * 100,
           inclusive: false,
         },
         connectOpts
@@ -133,7 +132,7 @@ Deno.serve(async (req: Request) => {
       invoiceParams.default_tax_rates = [taxRate.id];
     }
 
-    for (const item of activeLineItems) {
+    for (const item of invoice.line_items || []) {
       const unitAmountCents = Math.round(Number(item.unit_price) * 100);
       await stripe.invoiceItems.create(
         {
@@ -179,56 +178,24 @@ Deno.serve(async (req: Request) => {
       hostedUrl = refreshed.hosted_invoice_url || null;
     }
 
-    const { data: newInvoice, error: invoiceError } = await supabase
+    const { error: updateError } = await supabase
       .from("invoices")
-      .insert({
-        customer_id: estimate.customer_id,
-        lead_id: estimate.job_id,
-        estimate_id: estimate.id,
-        subtotal: estimate.subtotal,
-        tax_rate: estimate.tax_rate,
-        tax: estimate.tax,
-        discount: estimate.discount,
-        total: estimate.total,
-        balance_due: estimate.total,
-        notes: estimate.notes,
+      .update({
         status: "sent",
         sent_at: new Date().toISOString(),
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-        created_by: user.id,
-        account_id: membership.account_id,
         stripe_invoice_id: finalizedInvoice.id,
         stripe_invoice_url: hostedUrl,
+        updated_at: new Date().toISOString(),
       })
-      .select("id")
-      .single();
+      .eq("id", invoiceId);
 
-    if (invoiceError) {
-      throw new Error("Failed to create local invoice record: " + invoiceError.message);
+    if (updateError) {
+      throw new Error("Failed to update invoice with Stripe details: " + updateError.message);
     }
-
-    for (const item of activeLineItems) {
-      await supabase.from("invoice_line_items").insert({
-        invoice_id: newInvoice.id,
-        name: item.name,
-        description: item.description || null,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        total: item.total,
-        sort_order: item.sort_order || 0,
-        account_id: membership.account_id,
-      });
-    }
-
-    await supabase
-      .from("estimates")
-      .update({ is_finalized: true, updated_at: new Date().toISOString() })
-      .eq("id", estimateId);
 
     return new Response(
       JSON.stringify({
-        invoiceId: newInvoice.id,
+        invoiceId: invoice.id,
         stripeInvoiceId: finalizedInvoice.id,
         stripeInvoiceUrl: hostedUrl,
       }),
