@@ -621,9 +621,9 @@ export default function JobDetail() {
           {/* Main Content */}
           <div className="flex flex-col pt-8 pb-8 p-4 gap-4">
 
-            <div className="flex">
+            <div className="flex flex-col sm:flex-row gap-4">
               {/*Left Column */}
-              <div className="flex flex-col w-full gap-2">
+              <div className="flex flex-col flex-1 min-w-0 gap-2">
                 
                 <div className="flex items-center gap-2">
                 <p className="text-1">
