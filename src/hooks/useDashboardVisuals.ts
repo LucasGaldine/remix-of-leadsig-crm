@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { subDays, startOfWeek, endOfWeek, format } from "date-fns";
+import { subDays, startOfWeek, endOfWeek, format, differenceInMinutes } from "date-fns";
 
 type Timeframe = "30d" | "week" | "month";
 
@@ -17,6 +17,20 @@ function getDateRange(tf: Timeframe) {
   return { from: subDays(now, 30), to: now };
 }
 
+const isMissingTable = (error: any) =>
+  error?.code === "PGRST205" || error?.message?.toLowerCase?.().includes("does not exist");
+
+const parseTimeToMinutes = (time?: string | null) => {
+  if (!time) return 8 * 60; // sensible default workday
+  const [h, m, s] = time.split(":").map((v) => Number(v) || 0);
+  return h * 60 + m + s / 60;
+};
+
+const computeScheduleHours = (start?: string | null, end?: string | null) => {
+  const minutes = Math.max(parseTimeToMinutes(end) - parseTimeToMinutes(start), 60); // at least 1h
+  return minutes / 60;
+};
+
 export function useRevenueExpenses(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
   const { from, to } = getDateRange(timeframe);
@@ -26,19 +40,23 @@ export function useRevenueExpenses(timeframe: Timeframe) {
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("payments")
-        .select("amount, type, recorded_at, created_at")
+        .select("amount, type, recorded_at, created_at, status")
         .eq("account_id", currentAccount.id)
+        .eq("status", "completed")
         .gte("created_at", from.toISOString())
         .lte("created_at", to.toISOString());
 
+      if (error) throw error;
+
       // Group by week
-      const weeks: Record<string, { revenue: number; expenses: number }> = {};
+      const weeks: Record<string, { revenue: number; expenses: number; order: number }> = {};
       (data || []).forEach((p: any) => {
         const date = new Date(p.recorded_at || p.created_at);
-        const weekKey = `W${Math.ceil(date.getDate() / 7)}`;
-        if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0 };
+        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+        const weekKey = format(weekStart, "MMM d");
+        if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
         const amt = Number(p.amount) || 0;
         if (p.type === "expense") {
           weeks[weekKey].expenses += amt;
@@ -48,8 +66,8 @@ export function useRevenueExpenses(timeframe: Timeframe) {
       });
 
       return Object.entries(weeks)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([week, vals]) => ({ week, ...vals }));
+        .sort(([, a], [, b]) => a.order - b.order)
+        .map(([week, vals]) => ({ week, revenue: vals.revenue, expenses: vals.expenses }));
     },
     enabled: !!currentAccount,
   });
@@ -57,32 +75,39 @@ export function useRevenueExpenses(timeframe: Timeframe) {
 
 export function useLeadFunnel(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
+  const { from, to } = getDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-lead-funnel", currentAccount?.id, timeframe],
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("leads")
-        .select("stage")
-        .eq("account_id", currentAccount.id);
+        .select("status, created_at")
+        .eq("account_id", currentAccount.id)
+        .gte("created_at", from.toISOString())
+        .lte("created_at", to.toISOString());
 
-      const stages = ["new", "qualified", "approved", "won"];
+      if (error) throw error;
+
+      const stages = [
+        { key: "new", label: "New Leads" },
+        { key: "contacted", label: "Contacted" },
+        { key: "qualified", label: "Qualified" },
+        { key: "job", label: "Jobs" },
+        { key: "paid", label: "Won" },
+      ] as const;
+
       const counts: Record<string, number> = {};
-      stages.forEach((s) => (counts[s] = 0));
+      stages.forEach((s) => (counts[s.key] = 0));
 
       (data || []).forEach((l: any) => {
-        const s = l.stage || "new";
-        if (counts[s] !== undefined) counts[s]++;
+        const status = l.status || "new";
+        if (counts[status] !== undefined) counts[status]++;
       });
 
-      return [
-        { stage: "New Leads", count: counts.new },
-        { stage: "Qualified", count: counts.qualified },
-        { stage: "Approved", count: counts.approved },
-        { stage: "Won", count: counts.won },
-      ];
+      return stages.map((s) => ({ stage: s.label, count: counts[s.key] || 0 }));
     },
     enabled: !!currentAccount,
   });
@@ -90,29 +115,65 @@ export function useLeadFunnel(timeframe: Timeframe) {
 
 export function useJobCompletion(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
+  const { from, to } = getDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-job-completion", currentAccount?.id, timeframe],
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data } = await supabase
-        .from("jobs")
-        .select("status, delay_reason")
-        .eq("account_id", currentAccount.id);
+      const [leadRes, scheduleRes] = await Promise.all([
+        supabase
+          .from("leads")
+          .select("id, status, created_at")
+          .eq("account_id", currentAccount.id)
+          .gte("created_at", from.toISOString())
+          .lte("created_at", to.toISOString()),
+        supabase
+          .from("job_schedules")
+          .select("lead_id, scheduled_date, scheduled_time_end")
+          .eq("account_id", currentAccount.id),
+      ]);
 
-      let onTime = 0, delayed = 0, notCompleted = 0;
-      (data || []).forEach((j: any) => {
-        if (j.status === "completed" && !j.delay_reason) onTime++;
-        else if (j.status === "completed" && j.delay_reason) delayed++;
-        else notCompleted++;
+      if (leadRes.error) throw leadRes.error;
+      if (scheduleRes.error && !isMissingTable(scheduleRes.error)) throw scheduleRes.error;
+
+      const scheduleMap = new Map<string, Date>();
+      (scheduleRes.data || []).forEach((s: any) => {
+        if (!s.lead_id || !s.scheduled_date) return;
+        const endDate = new Date(
+          `${s.scheduled_date}T${s.scheduled_time_end || "23:59:59"}`
+        );
+        const existing = scheduleMap.get(s.lead_id);
+        if (!existing || endDate > existing) {
+          scheduleMap.set(s.lead_id, endDate);
+        }
       });
 
-      const total = onTime + delayed + notCompleted || 1;
+      let completed = 0, overdue = 0, open = 0;
+      const now = new Date();
+
+      (leadRes.data || []).forEach((lead: any) => {
+        const status = lead.status;
+        const isDone = ["completed", "paid", "won"].includes(status);
+        if (isDone) {
+          completed++;
+          return;
+        }
+
+        const lastSchedule = scheduleMap.get(lead.id);
+        if (lastSchedule && lastSchedule < now) {
+          overdue++;
+        } else {
+          open++;
+        }
+      });
+
+      const total = Math.max(completed + overdue + open, 1);
       return [
-        { name: "On Time", value: Math.round((onTime / total) * 100), color: "hsl(var(--primary))" },
-        { name: "Delayed", value: Math.round((delayed / total) * 100), color: "hsl(38 92% 50%)" },
-        { name: "Not Completed", value: Math.round((notCompleted / total) * 100), color: "hsl(0 72% 51%)" },
+        { name: "Completed", value: Math.round((completed / total) * 100), color: "hsl(var(--primary))" },
+        { name: "Overdue", value: Math.round((overdue / total) * 100), color: "hsl(38 92% 50%)" },
+        { name: "Open", value: Math.round((open / total) * 100), color: "hsl(0 72% 51%)" },
       ];
     },
     enabled: !!currentAccount,
@@ -121,25 +182,75 @@ export function useJobCompletion(timeframe: Timeframe) {
 
 export function usePlannedVsActual(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
+  const { from, to } = getDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-planned-vs-actual", currentAccount?.id, timeframe],
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data } = await supabase
-        .from("jobs")
-        .select("name, quoted_hours, actual_hours")
-        .eq("account_id", currentAccount.id)
-        .not("quoted_hours", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(6);
+      const fromDate = format(from, "yyyy-MM-dd");
+      const toDate = format(to, "yyyy-MM-dd");
 
-      return (data || []).map((j: any) => ({
-        job: j.name || "Untitled",
-        planned: Number(j.quoted_hours) || 0,
-        actual: Number(j.actual_hours) || 0,
-      }));
+      const [scheduleRes, timeRes] = await Promise.all([
+        supabase
+          .from("job_schedules")
+          .select("lead_id, scheduled_date, scheduled_time_start, scheduled_time_end, leads!inner(name)")
+          .eq("account_id", currentAccount.id)
+          .gte("scheduled_date", fromDate)
+          .lte("scheduled_date", toDate),
+        supabase
+          .from("job_time_entries")
+          .select("lead_id, clock_in, clock_out")
+          .eq("account_id", currentAccount.id)
+          .gte("clock_in", from.toISOString())
+          .lte("clock_in", to.toISOString()),
+      ]);
+
+      if (scheduleRes.error && !isMissingTable(scheduleRes.error)) throw scheduleRes.error;
+      if (timeRes.error && !isMissingTable(timeRes.error)) throw timeRes.error;
+
+      const planned = new Map<string, number>();
+      const nameMap = new Map<string, string>();
+
+      (scheduleRes.data || []).forEach((s: any) => {
+        if (!s.lead_id) return;
+        const hours = computeScheduleHours(s.scheduled_time_start, s.scheduled_time_end);
+        planned.set(s.lead_id, (planned.get(s.lead_id) || 0) + hours);
+        if (s.leads?.name) nameMap.set(s.lead_id, s.leads.name);
+      });
+
+      const actual = new Map<string, number>();
+      (timeRes.data || []).forEach((t: any) => {
+        if (!t.lead_id || !t.clock_in) return;
+        const start = new Date(t.clock_in);
+        const end = t.clock_out ? new Date(t.clock_out) : new Date();
+        const mins = Math.max(0, differenceInMinutes(end, start));
+        actual.set(t.lead_id, (actual.get(t.lead_id) || 0) + mins / 60);
+      });
+
+      const leadIds = Array.from(new Set([...planned.keys(), ...actual.keys()]));
+      if (leadIds.length === 0) return [];
+
+      const missingNames = leadIds.filter((id) => !nameMap.has(id));
+      if (missingNames.length > 0) {
+        const { data: leads, error } = await supabase
+          .from("leads")
+          .select("id, name")
+          .in("id", missingNames)
+          .eq("account_id", currentAccount.id);
+        if (error) throw error;
+        (leads || []).forEach((l: any) => nameMap.set(l.id, l.name || "Untitled"));
+      }
+
+      return leadIds
+        .map((id) => ({
+          job: nameMap.get(id) || "Untitled",
+          planned: Math.round((planned.get(id) || 0) * 10) / 10,
+          actual: Math.round((actual.get(id) || 0) * 10) / 10,
+        }))
+        .sort((a, b) => (b.actual + b.planned) - (a.actual + a.planned))
+        .slice(0, 6);
     },
     enabled: !!currentAccount,
   });
@@ -147,24 +258,29 @@ export function usePlannedVsActual(timeframe: Timeframe) {
 
 export function useCostVsQuoted(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
+  const { from, to } = getDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-cost-vs-quoted", currentAccount?.id, timeframe],
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data } = await supabase
-        .from("jobs")
-        .select("name, quoted_cost, actual_cost")
+      const { data, error } = await supabase
+        .from("leads")
+        .select("name, estimated_value, actual_value, updated_at")
         .eq("account_id", currentAccount.id)
-        .not("quoted_cost", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(6);
+        .not("estimated_value", "is", null)
+        .gte("updated_at", from.toISOString())
+        .lte("updated_at", to.toISOString())
+        .order("updated_at", { ascending: false })
+        .limit(8);
 
-      return (data || []).map((j: any) => ({
-        name: j.name || "Untitled",
-        quoted: Number(j.quoted_cost) || 0,
-        actual: Number(j.actual_cost) || 0,
+      if (error) throw error;
+
+      return (data || []).map((lead: any) => ({
+        name: lead.name || "Untitled",
+        quoted: Number(lead.estimated_value) || 0,
+        actual: Number(lead.actual_value) || 0,
       }));
     },
     enabled: !!currentAccount,
@@ -180,35 +296,53 @@ export function useCrewHours(timeframe: Timeframe) {
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data } = await supabase
-        .from("job_crew_assignments")
-        .select("crew_member_id, hours_worked, date")
+      const { data: entries, error } = await supabase
+        .from("job_time_entries")
+        .select("user_id, clock_in, clock_out")
         .eq("account_id", currentAccount.id)
-        .gte("date", format(from, "yyyy-MM-dd"))
-        .lte("date", format(to, "yyyy-MM-dd"));
+        .gte("clock_in", from.toISOString())
+        .lte("clock_in", to.toISOString());
 
-      // Get crew members for names
-      const { data: members } = await supabase
-        .from("crew_members")
-        .select("id, name, role_type")
-        .eq("account_id", currentAccount.id);
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
 
-      const memberMap = new Map<string, { name: string; role: string }>();
-      (members || []).forEach((m: any) => {
-        memberMap.set(m.id, { name: m.name || "Unknown", role: m.role_type || "crew" });
+      const hoursByUser: Record<string, number> = {};
+      (entries || []).forEach((e: any) => {
+        if (!e.user_id || !e.clock_in) return;
+        const start = new Date(e.clock_in);
+        const end = e.clock_out ? new Date(e.clock_out) : new Date();
+        const mins = Math.max(0, differenceInMinutes(end, start));
+        hoursByUser[e.user_id] = (hoursByUser[e.user_id] || 0) + mins / 60;
       });
 
-      const hoursByMember: Record<string, number> = {};
-      (data || []).forEach((a: any) => {
-        const id = a.crew_member_id;
-        hoursByMember[id] = (hoursByMember[id] || 0) + (Number(a.hours_worked) || 0);
-      });
+      const userIds = Object.keys(hoursByUser);
+      if (userIds.length === 0) return [];
 
-      return Object.entries(hoursByMember)
-        .map(([id, hours]) => ({
-          name: memberMap.get(id)?.name || "Unknown",
-          role: memberMap.get(id)?.role === "lead" ? "Lead" : "Crew",
-          hours: Math.round(hours * 10) / 10,
+      const [profilesRes, membersRes] = await Promise.all([
+        supabase.from("profiles").select("user_id, full_name").in("user_id", userIds),
+        supabase
+          .from("account_members")
+          .select("user_id, role")
+          .eq("account_id", currentAccount.id)
+          .in("user_id", userIds),
+      ]);
+
+      if (profilesRes.error) throw profilesRes.error;
+      if (membersRes.error) throw membersRes.error;
+
+      const nameMap = new Map<string, string>();
+      (profilesRes.data || []).forEach((p: any) => nameMap.set(p.user_id, p.full_name || "Unknown"));
+
+      const roleMap = new Map<string, string>();
+      (membersRes.data || []).forEach((m: any) => roleMap.set(m.user_id, m.role));
+
+      return userIds
+        .map((id) => ({
+          name: nameMap.get(id) || "Unknown",
+          role: ["owner", "admin", "crew_lead"].includes((roleMap.get(id) || "").toLowerCase()) ? "Lead" : "Crew",
+          hours: Math.round((hoursByUser[id] || 0) * 10) / 10,
         }))
         .sort((a, b) => b.hours - a.hours)
         .slice(0, 8);
