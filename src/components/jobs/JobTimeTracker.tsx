@@ -321,7 +321,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
             }}
           >
             <Play className="h-3.5 w-3.5" />
-            Manual Clock In
+            Clock In
           </Button>
         </div>
       )}
