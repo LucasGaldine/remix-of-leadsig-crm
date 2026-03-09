@@ -254,10 +254,6 @@ export default function EstimateDetail() {
       toast.error("This estimate has already been converted to an invoice");
       return;
     }
-    if (estimate.job?.status !== "completed") {
-      toast.error("Job must be completed before creating an invoice");
-      return;
-    }
     setMarkingAsSent(true);
     try {
       const activeLineItems = estimate.line_items.filter(
