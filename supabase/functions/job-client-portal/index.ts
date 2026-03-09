@@ -277,13 +277,13 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     const action = body.action;
     const clientUpdatedAt = body.updated_at;
 
-    if (action !== "approve" && action !== "decline") {
+    if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
       return jsonResponse({ error: "Invalid action" }, 400);
     }
 
     const { data: estimate, error: estError } = await supabase
       .from("estimates")
-      .select("id, status, expires_at, job_id, recurring_job_id, updated_at")
+      .select("id, status, expires_at, job_id, recurring_job_id, updated_at, has_pending_changes")
       .eq("recurring_job_id", recurringJob.id)
       .maybeSingle();
 
@@ -459,13 +459,13 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
   const action = body.action;
   const clientUpdatedAt = body.updated_at;
 
-  if (action !== "approve" && action !== "decline") {
+  if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
     return jsonResponse({ error: "Invalid action" }, 400);
   }
 
   const { data: estimate, error: estError } = await supabase
     .from("estimates")
-    .select("id, status, expires_at, job_id, updated_at")
+    .select("id, status, expires_at, job_id, updated_at, has_pending_changes")
     .eq("job_id", job.id)
     .maybeSingle();
 
@@ -482,7 +482,7 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
 
     const { data: parentEstimate, error: peError } = await supabase
       .from("estimates")
-      .select("id, status, expires_at, job_id, updated_at")
+      .select("id, status, expires_at, job_id, updated_at, has_pending_changes")
       .eq("job_id", parentLead.id)
       .maybeSingle();
 
@@ -689,8 +689,8 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
 
 async function handleEstimateAction(
   supabase: any,
-  estimate: { id: string; status: string; expires_at: string | null; job_id: string | null; recurring_job_id?: string | null; updated_at: string },
-  action: "approve" | "decline",
+  estimate: { id: string; status: string; expires_at: string | null; job_id: string | null; recurring_job_id?: string | null; updated_at: string; has_pending_changes?: boolean },
+  action: "approve" | "decline" | "approve_changes" | "decline_changes",
   portalJobId: string | null,
   clientUpdatedAt?: string
 ) {
@@ -698,6 +698,40 @@ async function handleEstimateAction(
     return jsonResponse({
       error: "This estimate has been updated since you loaded this page. Please refresh the page to see the latest version before approving."
     }, 409);
+  }
+
+  if (action === "approve_changes" || action === "decline_changes") {
+    if (!estimate.has_pending_changes) {
+      return jsonResponse({ error: "No pending changes to approve" }, 400);
+    }
+
+    if (action === "approve_changes") {
+      const { error: approveError } = await supabase
+        .from("estimate_line_items")
+        .update({ change_order_approved: true })
+        .eq("estimate_id", estimate.id)
+        .eq("is_change_order", true)
+        .eq("change_order_approved", false);
+
+      if (approveError) {
+        return jsonResponse({ error: "Failed to approve changes" }, 500);
+      }
+
+      return jsonResponse({ success: true, message: "Changes approved" });
+    } else {
+      const { error: declineError } = await supabase
+        .from("estimate_line_items")
+        .delete()
+        .eq("estimate_id", estimate.id)
+        .eq("is_change_order", true)
+        .eq("change_order_approved", false);
+
+      if (declineError) {
+        return jsonResponse({ error: "Failed to decline changes" }, 500);
+      }
+
+      return jsonResponse({ success: true, message: "Changes declined" });
+    }
   }
 
   if (estimate.status === "accepted") {

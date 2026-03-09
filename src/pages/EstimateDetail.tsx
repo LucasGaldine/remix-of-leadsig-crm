@@ -538,9 +538,17 @@ export default function EstimateDetail() {
       <div className="bg-card border-b border-border px-4 py-4">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <span className={cn("text-2xs px-2 py-1 rounded-full inline-flex items-center gap-1", config.className)}>
-              {config.label}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={cn("text-2xs px-2 py-1 rounded-full inline-flex items-center gap-1", config.className)}>
+                {config.label}
+              </span>
+              {estimate.has_pending_changes && (
+                <span className="text-2xs px-2 py-1 rounded-full inline-flex items-center gap-1 bg-amber-100 text-amber-800">
+                  <AlertCircle className="h-3 w-3" />
+                  Changes Pending Approval
+                </span>
+              )}
+            </div>
             <h2 className="text-xl font-bold text-foreground mt-2">
               {estimate.customer?.name || "Unknown Customer"}
             </h2>
@@ -698,7 +706,7 @@ export default function EstimateDetail() {
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <p className="font-medium text-foreground">{item.name}</p>
                           {item.is_change_order && item.changed_at && (() => {
                             const changedDate = new Date(item.changed_at);
@@ -715,6 +723,23 @@ export default function EstimateDetail() {
                             >
                               {item.change_order_type === 'added' && 'New'}
                               {item.change_order_type === 'edited' && 'Modified'}
+                            </Badge>
+                          )}
+                          {item.is_change_order && item.change_order_approved === false && (
+                            <Badge
+                              variant="outline"
+                              className="text-2xs bg-amber-50 text-amber-700 border-amber-200"
+                            >
+                              Pending Approval
+                            </Badge>
+                          )}
+                          {item.is_change_order && item.change_order_approved === true && (
+                            <Badge
+                              variant="outline"
+                              className="text-2xs bg-emerald-50 text-emerald-700 border-emerald-200"
+                            >
+                              <CheckCheck className="h-3 w-3 mr-1" />
+                              Approved
                             </Badge>
                           )}
                         </div>
@@ -908,7 +933,18 @@ export default function EstimateDetail() {
         </div>
       </div>
 
-      {hasChangeOrders && !editMode && (() => {
+      {estimate.has_pending_changes && !editMode && (
+        <div className="px-4 mt-4">
+          <Alert className="bg-amber-50 border-amber-200">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-900">
+              This estimate has pending changes awaiting customer approval. Changes have been sent to the customer for review.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {hasChangeOrders && !editMode && !estimate.has_pending_changes && (() => {
         const recentChanges = estimate.line_items.some((item: any) => {
           if (!item.is_change_order || !item.changed_at) return false;
           const changedDate = new Date(item.changed_at);
