@@ -94,10 +94,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
         className
       )}
     >
-      <button
-        onClick={onClick}
-        className="w-full text-left p-4 transition-all active:bg-muted/50"
-      >
+      <div className="w-full p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -129,13 +126,17 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
 
           </div>
 
-           <span className="text-2">
-                ${lead.estimatedBudget.toLocaleString()}
-              </span>
-
-          <ChevronRight className="h-5 w-5 text-muted-foreground mt-1" />
+          <button
+            onClick={onClick}
+            className="flex items-center gap-2 hover:bg-accent rounded-md px-2 py-1 -mr-2 transition-colors"
+          >
+            <span className="text-2">
+              ${lead.estimatedBudget.toLocaleString()}
+            </span>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </button>
         </div>
-      </button>
+      </div>
 
       <div className="flex border-t border-border">
         {archiveMode ? (
