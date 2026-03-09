@@ -167,25 +167,15 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
 
       try {
         // Create customer first
-        const { data: customer, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            name,
-            email: email || null,
-            phone: phone || null,
-            address: address || null,
-            city: city || null,
-            created_by: user.id,
-            account_id: currentAccount.id,
-          })
-          .select("id")
-          .single();
-
-        if (customerError) {
-          errors.push(`Row ${rowIdx}: Failed to create customer - ${customerError.message}`);
-          failed++;
-          continue;
-        }
+        const { id: customerId } = await findOrCreateCustomer({
+          name,
+          email: email || null,
+          phone: phone || null,
+          address: address || null,
+          city: city || null,
+          created_by: user.id,
+          account_id: currentAccount.id,
+        });
 
         // Create lead linked to customer
         const { error: leadError } = await supabase
