@@ -34,7 +34,7 @@ export default function Index() {
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading, refetch: refetchLeads } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
-  const { data: customersData = [], isLoading: customersLoading } = useCustomers();
+  const { data: customersData = [], isLoading: customersLoading } = useCustomersNeedingAttention();
 
   const SECTION_LIMIT = 3;
 
