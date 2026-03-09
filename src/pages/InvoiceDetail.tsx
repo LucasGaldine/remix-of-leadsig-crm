@@ -279,13 +279,7 @@ export default function InvoiceDetail() {
             Copy Pay Link
           </Button>
           
-          <Button variant="outline" size="sm" className="gap-2 text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {hasBalance && (
+          {hasBalance && (
         <div className="px-4 mb-4">
           <Button
             className="w-full h-14 gap-2"
@@ -296,6 +290,10 @@ export default function InvoiceDetail() {
           </Button>
         </div>
       )}
+        </div>
+      </div>
+
+      
 
       <OtherPaymentOptionsModal
         open={showChargeOptions}
