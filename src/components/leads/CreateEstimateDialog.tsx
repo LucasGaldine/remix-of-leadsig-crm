@@ -19,6 +19,8 @@ import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { cn } from "@/lib/utils";
+import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+
 
 const roleLabels: Record<string, string> = {
   owner: 'Owner',
