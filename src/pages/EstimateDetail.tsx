@@ -46,6 +46,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { OtherPaymentOptionsModal } from "@/components/payments/OtherPaymentOptionsModal";
 import { QuickEstimatePanel, QuickEstimateBreakdown } from "@/components/leads/QuickEstimatePanel";
+import { QuickEstimateLineItem } from "@/components/leads/QuickEstimateLineItem";
 import { SERVICE_LABELS } from "@/hooks/useQuickEstimate";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -959,7 +960,26 @@ export default function EstimateDetail() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor={`name-${index}`}>Title *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor={`name-${index}`}>Title *</Label>
+                    {estimate.job_id && (
+                      <QuickEstimateLineItem
+                        leadId={estimate.job_id}
+                        onApply={(name, quantity, unit, unitPrice, description) => {
+                          const updated = [...lineItems];
+                          updated[index] = {
+                            ...updated[index],
+                            name,
+                            quantity: quantity || updated[index].quantity,
+                            unit: unit || updated[index].unit,
+                            unit_price: unitPrice,
+                            description: description || updated[index].description,
+                          };
+                          setLineItems(updated);
+                        }}
+                      />
+                    )}
+                  </div>
                   <Input
                     id={`name-${index}`}
                     value={item.name}
