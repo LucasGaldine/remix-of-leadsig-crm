@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ExistingInvoice {
   id: string;
@@ -27,6 +28,7 @@ interface JobInvoiceCardProps {
 
 export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTotal }: JobInvoiceCardProps) {
   const queryClient = useQueryClient();
+  const { user, currentAccount } = useAuth();
   const [invoices, setInvoices] = useState<ExistingInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -68,6 +70,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   };
 
   const handleSendInvoice = async () => {
+    if (!user || !currentAccount) {
+      toast.error("Authentication required");
+      return;
+    }
+
     const invoiceAmount = parseFloat(amount);
 
     if (!title.trim()) {
@@ -87,38 +94,84 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
 
     setSending(true);
     try {
-      const { data, error } = await supabase.functions.invoke("stripe-job-invoice", {
+      const { data: job } = await supabase
+        .from("leads")
+        .select("customer_id")
+        .eq("id", jobId)
+        .single();
+
+      const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
+        p_account_id: currentAccount.id,
+      });
+
+      const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+      const { data: accountData } = await supabase
+        .from("accounts")
+        .select("tax_rate")
+        .eq("id", currentAccount.id)
+        .single();
+
+      const taxRate = accountData?.tax_rate || 0;
+      const tax = invoiceAmount * Number(taxRate);
+      const total = invoiceAmount + tax;
+
+      const { data: newInvoice, error: invoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          customer_id: job?.customer_id || null,
+          lead_id: jobId,
+          estimate_id: null,
+          invoice_number: invoiceNumber.data || 1,
+          subtotal: invoiceAmount,
+          tax_rate: taxRate,
+          tax,
+          discount: 0,
+          total,
+          balance_due: total,
+          notes: description.trim() || null,
+          status: "draft",
+          due_date: dueDate,
+          created_by: user.id,
+          account_id: currentAccount.id,
+        })
+        .select("id")
+        .single();
+
+      if (invoiceError) throw invoiceError;
+
+      await supabase.from("invoice_line_items").insert({
+        invoice_id: newInvoice.id,
+        name: title.trim(),
+        description: description.trim() || null,
+        quantity: 1,
+        unit: "item",
+        unit_price: invoiceAmount,
+        total: invoiceAmount,
+        sort_order: 0,
+        account_id: currentAccount.id,
+      });
+
+      const { error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
         body: {
-          jobId,
-          lineItems: [{
-            name: title.trim(),
-            description: description.trim() || undefined,
-            quantity: 1,
-            unit_price: invoiceAmount,
-          }],
+          invoiceId: newInvoice.id,
           customerEmail: customerEmail || undefined,
           customerName: customerName || undefined,
         },
       });
 
-      if (error) {
-        const body = error.context?.body ?? error.body;
-        let msg = "Failed to create invoice";
-        if (body) {
-          try {
-            const parsed = typeof body === "string" ? JSON.parse(body) : body;
-            if (parsed?.error) msg = parsed.error;
-          } catch { }
-        }
-        toast.error(msg);
-        return;
+      if (stripeError) {
+        console.error("Stripe invoice error:", stripeError);
+        toast.error("Invoice created but failed to send via Stripe");
+      } else {
+        toast.success("Invoice created and sent via Stripe");
       }
 
-      toast.success("Invoice created and sent via Stripe");
       setDialogOpen(false);
       fetchInvoices();
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
-    } catch {
+    } catch (error) {
+      console.error("Invoice creation error:", error);
       toast.error("Failed to create invoice");
     } finally {
       setSending(false);
