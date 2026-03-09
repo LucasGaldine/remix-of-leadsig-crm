@@ -11,6 +11,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { useAddressVerification } from "@/hooks/useAddressVerification";
+import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 
 
 interface AddJobDialogProps {
