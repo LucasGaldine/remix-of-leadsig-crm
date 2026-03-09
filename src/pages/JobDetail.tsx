@@ -315,8 +315,7 @@ export default function JobDetail() {
 
   const handleNavigate = () => {
     if (clientAddress) {
-      const address = encodeURIComponent(clientAddress);
-      window.open(`https://maps.google.com/?q=${address}`);
+      openMapsWithAddress(clientAddress);
     }
   };
 
