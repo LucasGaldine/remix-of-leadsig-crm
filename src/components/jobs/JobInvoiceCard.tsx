@@ -175,11 +175,13 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       });
 
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      if (!session?.access_token) {
         toast.error("Session expired. Please sign in again.");
         setSending(false);
         return;
       }
+
+      console.log("Calling Stripe function with token length:", session.access_token.length);
 
       const { data: invokeData, error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
         body: {
@@ -187,13 +189,17 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
           customerEmail: customerEmail || undefined,
           customerName: customerName || undefined,
         },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
       console.log("Stripe function response:", { data: invokeData, error: stripeError });
 
       if (stripeError) {
         console.error("Stripe invoice error:", stripeError);
-        toast.error("Invoice created but failed to send via Stripe");
+        const errorMessage = invokeData?.error || stripeError.message || "Unknown error";
+        toast.error(`Failed to send invoice: ${errorMessage}`);
       } else {
         toast.success("Invoice created and sent via Stripe");
       }
