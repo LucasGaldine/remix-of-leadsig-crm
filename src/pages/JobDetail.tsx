@@ -839,6 +839,15 @@ export default function JobDetail() {
               </div>
             ) : null}
 
+            {/* Invoices */}
+            {id && (
+              <JobInvoiceCard
+                jobId={id}
+                customerEmail={job.customer?.email}
+                customerName={job.customer?.name}
+              />
+            )}
+
             {/* Schedule or Job Schedule Info */}
             {!jobAny.recurring_job_id ? (
               <div className="card-elevated rounded-lg p-4">
