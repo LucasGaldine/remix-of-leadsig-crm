@@ -118,9 +118,10 @@ export default function JobDetail() {
       fetchEstimate();
       fetchParentLead();
       fetchAfterPhotos();
+      fetchBeforePhotos();
       fetchNotes();
     }
-  }, [id]);
+  }, [id, parentLeadId]);
 
   useEffect(() => {
     const jobAny = job as any;
