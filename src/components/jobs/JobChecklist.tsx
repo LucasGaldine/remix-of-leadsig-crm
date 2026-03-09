@@ -9,13 +9,21 @@ import {
   Save,
   Copy,
   Check,
-  Link2,
-  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useJobChecklist, ChecklistItem } from "@/hooks/useJobChecklist";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 interface JobChecklistProps {
@@ -23,6 +31,8 @@ interface JobChecklistProps {
   isEstimateVisit?: boolean;
   clientPortalUrl?: string | null;
   isManager?: boolean;
+  onMarkComplete?: () => Promise<void> | void;
+  hasBeforePhotos?: boolean;
 }
 
 export function JobChecklist({
@@ -30,6 +40,8 @@ export function JobChecklist({
   isEstimateVisit,
   clientPortalUrl,
   isManager = false,
+  onMarkComplete,
+  hasBeforePhotos = false,
 }: JobChecklistProps) {
   const { items, isLoading, toggleItem, addItem, updateItem, deleteItem } =
     useJobChecklist(jobId);
@@ -38,6 +50,9 @@ export function JobChecklist({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
   const [copiedPortal, setCopiedPortal] = useState(false);
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [pendingToggleItem, setPendingToggleItem] = useState<ChecklistItem | null>(null);
+  const [markingComplete, setMarkingComplete] = useState(false);
 
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
@@ -45,6 +60,23 @@ export function JobChecklist({
 
   const handleToggle = async (item: ChecklistItem) => {
     if (editMode) return;
+
+    // If checking the last unchecked item (would complete all items)
+    if (!item.is_completed) {
+      const uncheckedCount = items.filter((i) => !i.is_completed).length;
+      if (uncheckedCount === 1) {
+        // This is the last item — check requirements first
+        if (isEstimateVisit && !hasBeforePhotos) {
+          toast.error("Before photos must be uploaded before marking this job as complete");
+          return;
+        }
+        // Show confirmation modal
+        setPendingToggleItem(item);
+        setCompleteDialogOpen(true);
+        return;
+      }
+    }
+
     try {
       await toggleItem.mutateAsync({
         id: item.id,
@@ -53,6 +85,32 @@ export function JobChecklist({
     } catch {
       toast.error("Failed to update checklist item");
     }
+  };
+
+  const handleConfirmComplete = async () => {
+    if (!pendingToggleItem) return;
+    setMarkingComplete(true);
+    try {
+      await toggleItem.mutateAsync({
+        id: pendingToggleItem.id,
+        is_completed: true,
+      });
+      if (onMarkComplete) {
+        await onMarkComplete();
+      }
+      toast.success("Job marked as complete");
+    } catch {
+      toast.error("Failed to complete job");
+    } finally {
+      setMarkingComplete(false);
+      setPendingToggleItem(null);
+      setCompleteDialogOpen(false);
+    }
+  };
+
+  const handleCancelComplete = () => {
+    setPendingToggleItem(null);
+    setCompleteDialogOpen(false);
   };
 
   const handleAdd = async () => {
@@ -321,6 +379,26 @@ export function JobChecklist({
           }}
         />
       </div>
+
+      {/* Completion confirmation dialog */}
+      <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark Job as Complete?</AlertDialogTitle>
+            <AlertDialogDescription>
+              All checklist items will be checked off. Would you like to mark this job as complete?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelComplete} disabled={markingComplete}>
+              No, Keep Open
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmComplete} disabled={markingComplete}>
+              {markingComplete ? "Completing..." : "Yes, Mark Complete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
