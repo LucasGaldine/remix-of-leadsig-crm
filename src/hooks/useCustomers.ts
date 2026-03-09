@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 
 export interface Customer {
   id: string;
