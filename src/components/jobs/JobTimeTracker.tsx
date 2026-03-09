@@ -76,20 +76,43 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
     return () => geo.stopWatching();
   }, [siteLat, siteLng]);
 
-  // Fetch existing entries
+  // Fetch existing entries from interactions table
   const fetchEntries = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from("job_time_entries")
-      .select("id, clock_in, clock_out, is_auto, notes")
-      .eq("lead_id", jobId)
-      .eq("user_id", user.id)
-      .order("clock_in", { ascending: false });
-    const items = (data || []) as TimeEntry[];
-    setEntries(items);
-    const active = items.find((e) => !e.clock_out);
-    setActiveEntry(active || null);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("interactions")
+        .select("id, body, summary, created_at, created_by")
+        .eq("lead_id", jobId)
+        .eq("type", "time_entry")
+        .eq("created_by", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Parse time entries from interactions
+      const items: TimeEntry[] = (data || []).map((row: any) => {
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(row.body || "{}");
+        } catch {}
+        return {
+          id: row.id,
+          clock_in: parsed.clock_in || row.created_at,
+          clock_out: parsed.clock_out || null,
+          is_auto: parsed.is_auto || false,
+          notes: parsed.notes || null,
+        };
+      });
+
+      setEntries(items);
+      const active = items.find((e) => !e.clock_out);
+      setActiveEntry(active || null);
+    } catch (err) {
+      console.error("Error fetching time entries:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [jobId, user]);
 
   useEffect(() => {
@@ -118,13 +141,12 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
   // Auto clock-out when leaving site
   useEffect(() => {
     if (manualMode || geo.isNearSite || !activeEntry || !activeEntry.is_auto || autoClockOutDoneRef.current) return;
-    // Small delay to avoid GPS flicker
     const timeout = setTimeout(() => {
       if (!geo.isNearSite && activeEntry) {
         autoClockOutDoneRef.current = true;
         clockOut(true);
       }
-    }, 30000); // 30s grace period
+    }, 30000);
     return () => clearTimeout(timeout);
   }, [geo.isNearSite, activeEntry, manualMode]);
 
@@ -141,25 +163,43 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
   const clockIn = async (isAuto: boolean) => {
     if (!user) return;
     try {
+      const clockInTime = new Date().toISOString();
+      const body = JSON.stringify({
+        clock_in: clockInTime,
+        clock_out: null,
+        is_auto: isAuto,
+        clock_in_lat: geo.lat,
+        clock_in_lng: geo.lng,
+      });
+
       const { data, error } = await supabase
-        .from("job_time_entries")
+        .from("interactions")
         .insert({
           lead_id: jobId,
-          user_id: user.id,
           account_id: accountId || "",
-          clock_in: new Date().toISOString(),
-          is_auto: isAuto,
-          clock_in_lat: geo.lat,
-          clock_in_lng: geo.lng,
+          type: "time_entry",
+          direction: "na",
+          body,
+          summary: `Clock in at ${format(new Date(clockInTime), "h:mm a")}`,
+          created_by: user.id,
         })
-        .select("id, clock_in, clock_out, is_auto, notes")
+        .select("id, body, created_at, created_by")
         .single();
 
       if (error) throw error;
-      setActiveEntry(data as TimeEntry);
-      setEntries((prev) => [data as TimeEntry, ...prev]);
+
+      const entry: TimeEntry = {
+        id: data.id,
+        clock_in: clockInTime,
+        clock_out: null,
+        is_auto: isAuto,
+        notes: null,
+      };
+      setActiveEntry(entry);
+      setEntries((prev) => [entry, ...prev]);
       toast.success(isAuto ? "Auto clocked in — you're at the job site" : "Clocked in");
-    } catch {
+    } catch (err) {
+      console.error("Clock in error:", err);
       toast.error("Failed to clock in");
     }
   };
@@ -167,12 +207,20 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
   const clockOut = async (isAuto: boolean) => {
     if (!activeEntry) return;
     try {
+      const clockOutTime = new Date().toISOString();
+      const body = JSON.stringify({
+        clock_in: activeEntry.clock_in,
+        clock_out: clockOutTime,
+        is_auto: activeEntry.is_auto,
+        clock_out_lat: geo.lat,
+        clock_out_lng: geo.lng,
+      });
+
       const { error } = await supabase
-        .from("job_time_entries")
+        .from("interactions")
         .update({
-          clock_out: new Date().toISOString(),
-          clock_out_lat: geo.lat,
-          clock_out_lng: geo.lng,
+          body,
+          summary: `${format(new Date(activeEntry.clock_in), "h:mm a")} – ${format(new Date(clockOutTime), "h:mm a")}`,
         })
         .eq("id", activeEntry.id);
 
