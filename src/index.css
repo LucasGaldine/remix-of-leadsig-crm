@@ -148,6 +148,7 @@ input[type="number"] {
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Anton', sans-serif;
+    font-weight: 400;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -210,11 +211,11 @@ input[type="number"] {
 
 @layer components {
   .text-1 {
-    @apply text-xl font-semibold;
+    @apply text-xl;
   }
 
   .text-2 {
-    @apply text-lg font-semibold;
+    @apply text-lg;
   }
 
   .text-3 {
@@ -230,7 +231,7 @@ input[type="number"] {
   }
 
   .text-label {
-    @apply text-sm font-semibold;
+    @apply text-sm;
   }
 
   .levitate{
