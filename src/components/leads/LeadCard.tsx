@@ -94,7 +94,10 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
         className
       )}
     >
-      <div className="w-full p-4">
+      <div
+        onClick={onClick}
+        className="w-full p-4 cursor-pointer hover:bg-accent/50 transition-colors"
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -108,12 +111,13 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
             </div>
 
             {lead.customer?.id ? (
-              <button
+              <a
+                href={`/customers/${lead.customer.id}`}
                 onClick={handleCustomerClick}
-                className="text-2 hover:text-primary hover:underline transition-colors text-left"
+                className="text-2 hover:text-primary hover:underline transition-colors text-left inline-block"
               >
                 {lead.name}
-              </button>
+              </a>
             ) : (
               <p className="text-2">
                 {lead.name}
@@ -126,15 +130,12 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
 
           </div>
 
-          <button
-            onClick={onClick}
-            className="flex items-center gap-2 hover:bg-accent rounded-md px-2 py-1 -mr-2 transition-colors"
-          >
+          <div className="flex items-center gap-2">
             <span className="text-2">
               ${lead.estimatedBudget.toLocaleString()}
             </span>
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </button>
+          </div>
         </div>
       </div>
 
