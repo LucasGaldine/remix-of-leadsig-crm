@@ -55,6 +55,7 @@ import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
 import { EditJobScheduleDialog } from "@/components/jobs/EditJobScheduleDialog";
 import { RecurringJobDetailModal } from "@/components/jobs/RecurringJobDetailModal";
 import { ScheduleJobDialog } from "@/components/jobs/ScheduleJobDialog";
+import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { Repeat } from "lucide-react";
 
 export default function JobDetail() {
@@ -837,6 +838,15 @@ export default function JobDetail() {
                 </div>
               </div>
             ) : null}
+
+            {/* Invoices */}
+            {id && (
+              <JobInvoiceCard
+                jobId={id}
+                customerEmail={job.customer?.email}
+                customerName={job.customer?.name}
+              />
+            )}
 
             {/* Schedule or Job Schedule Info */}
             {!jobAny.recurring_job_id ? (

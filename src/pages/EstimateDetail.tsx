@@ -1169,44 +1169,15 @@ export default function EstimateDetail() {
                   </Button>
                 </>
               )}
-              {!estimate.is_finalized && estimate.status === "accepted" && (
-                isRecurringQuote ? (
-                  <Button
-                    className="flex-1 h-14 gap-2"
-                    onClick={handleGeneratePortalLink}
-                    disabled={generatingLink}
-                  >
-                    <Link2 className="h-4 w-4" />
-                    {generatingLink ? "Generating..." : "Client Portal"}
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      className="flex-1 h-14 gap-2"
-                      onClick={() => setShowPaymentOptions(true)}
-                      disabled={markingAsSent || creatingStripeInvoice || recordingPayment}
-                    >
-                      <FileCheck className="h-4 w-4" />
-                      Other Payment Options
-                    </Button>
-                    <Button
-                      className="flex-1 h-14 gap-2"
-                      onClick={handleConvertToStripeInvoice}
-                      disabled={creatingStripeInvoice || markingAsSent || recordingPayment}
-                    >
-                      <CreditCard className="h-4 w-4" />
-                      {creatingStripeInvoice ? "Creating..." : "Stripe Invoice"}
-                    </Button>
-                  </>
-                )
-              )}
-              {estimate.is_finalized && (
-                <div className="w-full text-center py-4">
-                  <p className="text-sm text-muted-foreground">
-                    This estimate has been finalized
-                  </p>
-                </div>
+              {estimate.status === "accepted" && isRecurringQuote && (
+                <Button
+                  className="flex-1 h-14 gap-2"
+                  onClick={handleGeneratePortalLink}
+                  disabled={generatingLink}
+                >
+                  <Link2 className="h-4 w-4" />
+                  {generatingLink ? "Generating..." : "Client Portal"}
+                </Button>
               )}
             </div>
           </div>
