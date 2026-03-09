@@ -1083,6 +1083,11 @@ export default function JobDetail() {
 
         {activeTab === "checklist" && id && (
           <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4"> 
+          <JobTimeTracker
+            jobId={id}
+            jobAddress={clientAddress || null}
+            accountId={currentAccount?.id}
+          />
           <JobChecklist
             jobId={id}
             jobStatus={job?.status}
@@ -1149,11 +1154,6 @@ export default function JobDetail() {
                 }
               }
             }}
-          />
-          <JobTimeTracker
-            jobId={id}
-            jobAddress={clientAddress || null}
-            accountId={currentAccount?.id}
           />
           </div>
         )}

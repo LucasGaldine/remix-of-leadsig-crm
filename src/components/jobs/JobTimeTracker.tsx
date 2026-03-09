@@ -249,7 +249,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
           <Clock className="h-5 w-5 text-secondary-foreground" />
         </div>
         <div className="flex-1">
-          <p className="font-medium text-foreground">Time Tracking</p>
+          <p className="font-medium text-foreground">Log Your Hours</p>
           <p className="text-sm text-muted-foreground mt-0.5">
             {loading ? "Loading..." : `Total: ${formatDuration(totalMs)}`}
           </p>
@@ -321,7 +321,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
             }}
           >
             <Play className="h-3.5 w-3.5" />
-            Manual Clock In
+            Clock In
           </Button>
         </div>
       )}
