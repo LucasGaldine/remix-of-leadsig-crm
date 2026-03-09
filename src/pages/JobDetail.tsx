@@ -1097,6 +1097,7 @@ export default function JobDetail() {
           <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4"> 
           <JobChecklist
             jobId={id}
+            jobStatus={job?.status}
             isEstimateVisit={job?.is_estimate_visit}
             clientPortalUrl={
               (() => {

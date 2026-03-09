@@ -28,6 +28,7 @@ import { toast } from "sonner";
 
 interface JobChecklistProps {
   jobId: string;
+  jobStatus?: string;
   isEstimateVisit?: boolean;
   clientPortalUrl?: string | null;
   isManager?: boolean;
@@ -37,6 +38,7 @@ interface JobChecklistProps {
 
 export function JobChecklist({
   jobId,
+  jobStatus,
   isEstimateVisit,
   clientPortalUrl,
   isManager = false,
@@ -54,12 +56,13 @@ export function JobChecklist({
   const [pendingToggleItem, setPendingToggleItem] = useState<ChecklistItem | null>(null);
   const [markingComplete, setMarkingComplete] = useState(false);
 
+  const isJobCompleted = jobStatus === "completed";
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
   const allComplete = totalCount > 0 && completedCount === totalCount;
 
   const handleToggle = async (item: ChecklistItem) => {
-    if (editMode) return;
+    if (editMode || isJobCompleted) return;
 
     // If checking the last unchecked item (would complete all items)
     if (!item.is_completed) {
@@ -202,7 +205,7 @@ export function JobChecklist({
             </span>
           )}
         </div>
-        {isManager && (
+        {isManager && !isJobCompleted && (
           <Button
             variant={editMode ? "default" : "ghost"}
             size="sm"
@@ -270,7 +273,7 @@ export function JobChecklist({
               key={item.id}
               className={cn(
                 "flex items-center gap-3 p-3 transition-colors",
-                !editMode && "cursor-pointer hover:bg-muted/50",
+                !editMode && !isJobCompleted && "cursor-pointer hover:bg-muted/50",
                 item.is_completed && !editMode && "bg-muted/30"
               )}
               onClick={() => !editMode && handleToggle(item)}
