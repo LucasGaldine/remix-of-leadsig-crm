@@ -110,17 +110,17 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
 
             </div>
 
-            <p className="text-2">
-              {lead.name}
-            </p>
-
-            {lead.customer?.name && (
+            {lead.customer?.id ? (
               <button
                 onClick={handleCustomerClick}
-                className="text-sm text-muted-foreground hover:text-primary hover:underline transition-colors text-left"
+                className="text-2 hover:text-primary hover:underline transition-colors text-left"
               >
-                {lead.customer.name}
+                {lead.name}
               </button>
+            ) : (
+              <p className="text-2">
+                {lead.name}
+              </p>
             )}
 
             <p className="text-5 font-medium mt-0.5">

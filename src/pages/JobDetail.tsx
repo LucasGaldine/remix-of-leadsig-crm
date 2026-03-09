@@ -591,7 +591,7 @@ export default function JobDetail() {
 
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24">
-      <PageHeader title="" showBack backTo="/jobs" />
+      <PageHeader title={job.name || "Job Details"} showBack backTo="/jobs" />
 
       {/* Status Banner */}
       <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
@@ -603,11 +603,20 @@ export default function JobDetail() {
             <div className="flex flex-col sm:flex-row gap-4">
               {/*Left Column */}
               <div className="flex flex-col flex-1 min-w-0 gap-2">
-                
+
                 <div className="flex items-center gap-2">
-                <p className="text-1">
-                  {job.name || job.customer?.name || "Unknown Client"}
-                </p>
+                {job.customer?.id ? (
+                  <button
+                    onClick={() => navigate(`/customers/${job.customer.id}`)}
+                    className="text-1 hover:text-primary hover:underline transition-colors text-left"
+                  >
+                    {job.customer.name || "Unknown Client"}
+                  </button>
+                ) : (
+                  <p className="text-1">
+                    {job.customer?.name || "Unknown Client"}
+                  </p>
+                )}
 
                 {isManager() && (
                     <DropdownMenu>
