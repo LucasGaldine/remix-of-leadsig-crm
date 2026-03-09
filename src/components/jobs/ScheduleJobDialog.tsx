@@ -270,26 +270,6 @@ export function ScheduleJobDialog({
             </div>
           )}
 
-          {/* Recurring schedule info */}
-          {onMakeRecurring && (
-            <div className="pt-2 border-t border-border">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  onOpenChange(false);
-                  onMakeRecurring();
-                }}
-              >
-                <Repeat className="h-4 w-4 mr-2" />
-                Create Recurring Schedule
-              </Button>
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                Set up automatic scheduling for weekly, biweekly, or monthly jobs
-              </p>
-            </div>
-          )}
         </div>
 
         <DialogFooter>
