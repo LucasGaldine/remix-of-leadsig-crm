@@ -168,7 +168,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
         await createRecurringJob.mutateAsync({
           customer_id: customer.id,
-          name: jobName || null,
+          name: jobName || customer.name,
           service_type: serviceType || null,
           address: jobAddress || customer.address || "",
           description: description || null,
@@ -192,7 +192,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         }
 
         await createJob.mutateAsync({
-          name: jobName || null,
+          name: jobName || customer.name,
           customer_id: customer.id,
           phone: customer.phone,
           email: customer.email,
@@ -302,7 +302,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 Service Type
               </Label>
               <Select value={serviceType} onValueChange={setServiceType}>
-                <SelectTrigger className="h-12 text-base border-border rounded-lg">
+                <SelectTrigger id="serviceType" className="h-12 text-base border-border rounded-lg">
                   <SelectValue placeholder="Select service type" />
                 </SelectTrigger>
                 <SelectContent>
