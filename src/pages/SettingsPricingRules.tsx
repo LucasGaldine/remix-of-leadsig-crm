@@ -48,11 +48,14 @@ export default function SettingsPricingRules() {
 
   useEffect(() => {
     fetchRules();
+  }, [user?.id, currentAccount?.id]);
+
+  useEffect(() => {
     if (currentAccount) {
       setTaxRate(String(currentAccount.default_tax_rate ?? 8));
       setProfitMargin(String(currentAccount.default_profit_margin ?? 0));
     }
-  }, [user?.id, currentAccount?.id]);
+  }, [currentAccount?.default_tax_rate, currentAccount?.default_profit_margin]);
 
   const fetchRules = async () => {
     if (!user?.id || !currentAccount?.id) return;
