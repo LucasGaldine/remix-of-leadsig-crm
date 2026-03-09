@@ -803,7 +803,7 @@ export default function LeadDetail() {
                     size="icon"
                     onClick={() => {
                       const address = [lead.address, lead.city].filter(Boolean).join(", ");
-                      if (address) window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+                      if (address) openMapsWithAddress(address);
                     }}
                   >
                     <Navigation className="h-4 w-4" />
