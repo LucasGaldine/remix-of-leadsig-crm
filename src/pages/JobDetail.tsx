@@ -689,7 +689,7 @@ export default function JobDetail() {
               </div>
               
               {/*Right Column */}
-              <div className=" w-full flex flex-col items-end gap-2">
+              <div className="flex flex-col sm:items-end gap-2">
                 <div className="flex justify-end gap-2">
                   
                   
