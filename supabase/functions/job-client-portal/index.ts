@@ -130,6 +130,7 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
       `)
       .eq("customer_id", customer.id)
       .neq("status", "archived")
+      .eq("is_estimate_visit", false)
       .order("created_at", { ascending: false });
 
     const { data: recurringJobs } = await supabase
