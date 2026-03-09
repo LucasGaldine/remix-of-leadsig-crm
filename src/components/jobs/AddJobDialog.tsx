@@ -55,27 +55,21 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
     setSaving(true);
 
     try {
-      // First create the customer
-      const { data: customer, error: customerError } = await supabase
-        .from("customers")
-        .insert([{
-          name: formData.customerName.trim(),
-          phone: formData.customerPhone.trim() || null,
-          email: formData.customerEmail.trim() || null,
-          address: formData.address.trim() || null,
-          created_by: user.id,
-        }])
-        .select()
-        .single();
-
-      if (customerError) throw customerError;
+      // First create or find the customer
+      const { id: customerId } = await findOrCreateCustomer({
+        name: formData.customerName.trim(),
+        phone: formData.customerPhone.trim() || null,
+        email: formData.customerEmail.trim() || null,
+        address: formData.address.trim() || null,
+        created_by: user.id,
+      });
 
       // Then create the job (in the leads table)
       const { data: job, error: jobError } = await supabase
         .from("leads")
         .insert([{
           name: formData.name.trim() || null,
-          customer_id: customer.id,
+          customer_id: customerId,
           service_type: formData.serviceType || null,
           address: formData.address.trim() || null,
           estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,

@@ -55,38 +55,16 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
     const loadingToast = toast.loading("Creating estimate...");
 
     try {
-      let customerId = null;
+      const { id: customerId } = await findOrCreateCustomer({
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email,
+        address: lead.address || lead.city,
+        city: lead.city,
+        created_by: user.id,
+        account_id: currentAccount.id,
+      });
 
-      if (lead.phone) {
-        const { data: existingCustomer } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("phone", lead.phone)
-          .maybeSingle();
-
-        if (existingCustomer) {
-          customerId = existingCustomer.id;
-        }
-      }
-
-      if (!customerId) {
-        const { data: newCustomer, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            name: lead.name,
-            phone: lead.phone,
-            email: lead.email,
-            address: lead.address || lead.city,
-            city: lead.city,
-            created_by: user.id,
-            account_id: currentAccount.id,
-          })
-          .select()
-          .single();
-
-        if (customerError) throw new Error("Failed to create customer");
-        customerId = newCustomer.id;
-      }
 
       if (scheduledDate) {
         const { error: convertError } = await supabase
