@@ -1,16 +1,27 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText, Navigation, Share2 } from "lucide-react";
+import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText, Navigation, Share2, CreditCard as Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { toast } from "sonner";
+import { EditCustomerDialog } from "@/components/customers/EditCustomerDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function PortalLinkButton({ customerId }: { customerId: string }) {
   const [loading, setLoading] = useState(false);
@@ -64,7 +75,11 @@ export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentAccount } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"jobs" | "estimates" | "invoices">("jobs");
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ["customer", id],
@@ -143,11 +158,36 @@ export default function CustomerDetail() {
     );
   }
 
-  const location = [customer.address, customer.city].filter(Boolean).join(", ");
-
   const totalEstimatedValue = jobs.reduce((sum: number, job: any) => sum + (job.estimated_value || 0), 0);
   const totalActualValue = jobs.reduce((sum: number, job: any) => sum + (job.actual_value || 0), 0);
   const totalValue = totalActualValue || totalEstimatedValue;
+
+  const handleDeleteCustomer = async () => {
+    if (!customer?.id) return;
+
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("customers")
+        .delete()
+        .eq("id", customer.id);
+
+      if (error) throw error;
+
+      toast.success("Customer and all associated data deleted");
+      navigate("/customers");
+    } catch (error: any) {
+      console.error("Error deleting customer:", error);
+      toast.error(error.message || "Failed to delete customer");
+    } finally {
+      setDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
+  const handleCustomerUpdated = () => {
+    queryClient.invalidateQueries({ queryKey: ["customer", id] });
+  };
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -157,33 +197,51 @@ export default function CustomerDetail() {
         {/* Contact Info Card */}
         <div className="bg-card rounded-lg border border-border">
           <div className="p-6">
-            {/* Header with Name and Status */}
+            {/* Header with Name and Actions */}
             <div className="flex items-start justify-between mb-4">
               <h1 className="text-2xl font-bold text-foreground">{customer.name}</h1>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowEditDialog(true)}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Contact Info and Summary Row */}
             <div className="flex flex-col lg:flex-row justify-between gap-6 mb-6">
               {/* Contact Info */}
-              <div className="flex flex-col gap-2 text-muted-foreground">
-                {customer.phone && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 shrink-0" />
-                    <span>{customer.phone}</span>
-                  </div>
-                )}
-                {customer.email && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 shrink-0" />
-                    <span>{customer.email}</span>
-                  </div>
-                )}
-                {location && (
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    <span>{location}</span>
-                  </div>
-                )}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className={cn(!customer.phone && "text-muted-foreground italic")}>
+                    {customer.phone || "No phone"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className={cn(!customer.email && "text-muted-foreground italic")}>
+                    {customer.email || "No email"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className={cn(!customer.address && !customer.city && "text-muted-foreground italic")}>
+                    {customer.address && customer.city
+                      ? `${customer.address}, ${customer.city}`
+                      : customer.address || customer.city || "No address"}
+                  </span>
+                </div>
               </div>
 
               {/* Summary Stats */}
@@ -221,11 +279,14 @@ export default function CustomerDetail() {
                     <MessageSquare className="h-4 w-4" />
                   </Button>
                 )}
-                {location && (
+                {(customer.address || customer.city) && (
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`)}
+                    onClick={() => {
+                      const location = [customer.address, customer.city].filter(Boolean).join(", ");
+                      window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`);
+                    }}
                   >
                     <Navigation className="h-4 w-4" />
                   </Button>
@@ -376,6 +437,35 @@ export default function CustomerDetail() {
           </div>
         </div>
       )}
+
+      <EditCustomerDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        customer={customer}
+        onCustomerUpdated={handleCustomerUpdated}
+      />
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Customer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {customer.name} and all associated jobs, estimates, invoices, and data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCustomer}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Delete Customer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MobileNav />
     </div>
