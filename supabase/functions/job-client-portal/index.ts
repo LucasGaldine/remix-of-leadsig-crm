@@ -324,9 +324,10 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       .from("estimates")
       .select(`
         id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+        original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
-          sort_order, is_change_order, change_order_type, changed_at
+          sort_order, is_change_order, change_order_type, change_order_approved, changed_at
         )
       `)
       .eq("recurring_job_id", recurringJob.id)
@@ -382,6 +383,16 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
         .sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
     : [];
 
+  let originalLineItemsRecurring = null;
+  if (estimate?.original_total) {
+    const { data: originals } = await supabase
+      .from("estimate_line_items_original")
+      .select("id, original_line_item_id, name, description, quantity, unit, unit_price, total, sort_order")
+      .eq("estimate_id", estimate.id)
+      .order("sort_order");
+    originalLineItemsRecurring = originals;
+  }
+
   const instanceMap = new Map((instances || []).map((i: any) => [i.id, i]));
   const schedulesWithVisit = (allSchedules || []).map((s: any) => {
     const inst = instanceMap.get(s.lead_id);
@@ -420,6 +431,13 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
           status: estimate.status,
           updated_at: estimate.updated_at,
           line_items: filteredLineItems,
+          original_total: estimate.original_total,
+          original_subtotal: estimate.original_subtotal,
+          original_tax: estimate.original_tax,
+          original_discount: estimate.original_discount,
+          original_notes: estimate.original_notes,
+          original_line_items: originalLineItemsRecurring,
+          has_pending_changes: estimate.has_pending_changes,
         }
       : null,
     photos: {
@@ -504,9 +522,10 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
       .select(
         `
         id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+        original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
-          sort_order, is_change_order, change_order_type, changed_at
+          sort_order, is_change_order, change_order_type, change_order_approved, changed_at
         )
       `
       )
@@ -550,9 +569,10 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         .select(
           `
           id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+          original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
           line_items:estimate_line_items(
             id, name, description, quantity, unit, unit_price, total,
-            sort_order, is_change_order, change_order_type
+            sort_order, is_change_order, change_order_type, change_order_approved
           )
         `
         )
@@ -598,6 +618,16 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         )
     : [];
 
+  let originalLineItems = null;
+  if (parentEstimate?.original_total) {
+    const { data: originals } = await supabase
+      .from("estimate_line_items_original")
+      .select("id, original_line_item_id, name, description, quantity, unit, unit_price, total, sort_order")
+      .eq("estimate_id", parentEstimate.id)
+      .order("sort_order");
+    originalLineItems = originals;
+  }
+
   return jsonResponse({
     job: {
       name: job.name,
@@ -626,6 +656,13 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
           status: parentEstimate.status,
           updated_at: parentEstimate.updated_at,
           line_items: filteredLineItems,
+          original_total: parentEstimate.original_total,
+          original_subtotal: parentEstimate.original_subtotal,
+          original_tax: parentEstimate.original_tax,
+          original_discount: parentEstimate.original_discount,
+          original_notes: parentEstimate.original_notes,
+          original_line_items: originalLineItems,
+          has_pending_changes: parentEstimate.has_pending_changes,
         }
       : null,
     photos: {
