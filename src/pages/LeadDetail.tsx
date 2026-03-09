@@ -844,10 +844,9 @@ export default function LeadDetail() {
                 <div className="flex flex-col sm:flex-row justify-end gap-2">
                   {showConvertButton && (
                   <Button
-                    size="sm"
+                    size="lg"
                     disabled={!hasAddress}
                     onClick={() => setCreateEstimateDialogOpen(true)}
-                    className="gap-1.5 text-xs whitespace-nowrap"
                   >
                     <FileTextIcon className="h-4 w-4 shrink-0" />
                     Schedule Visit
