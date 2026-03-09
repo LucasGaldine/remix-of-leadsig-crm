@@ -788,7 +788,12 @@ export default function JobDetail() {
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                  onClick={() => {
+                    setActiveTab(tab.id as typeof activeTab);
+                    if (tab.id === "checklist") {
+                      fetchBeforePhotos();
+                    }
+                  }}
                   className={cn(
                     "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
                     activeTab === tab.id
