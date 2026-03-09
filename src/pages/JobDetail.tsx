@@ -56,6 +56,7 @@ import { EditJobScheduleDialog } from "@/components/jobs/EditJobScheduleDialog";
 import { RecurringJobDetailModal } from "@/components/jobs/RecurringJobDetailModal";
 import { ScheduleJobDialog } from "@/components/jobs/ScheduleJobDialog";
 import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
+import { JobTimeTracker } from "@/components/jobs/JobTimeTracker";
 import { Repeat } from "lucide-react";
 
 export default function JobDetail() {
@@ -845,6 +846,15 @@ export default function JobDetail() {
                 jobId={id}
                 customerEmail={job.customer?.email}
                 customerName={job.customer?.name}
+              />
+            )}
+
+            {/* Time Tracking */}
+            {id && (
+              <JobTimeTracker
+                jobId={id}
+                jobAddress={clientAddress || null}
+                accountId={currentAccount?.id}
               />
             )}
 
