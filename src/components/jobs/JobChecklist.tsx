@@ -205,7 +205,7 @@ export function JobChecklist({
             </span>
           )}
         </div>
-        {isManager && (
+        {isManager && !isJobCompleted && (
           <Button
             variant={editMode ? "default" : "ghost"}
             size="sm"
