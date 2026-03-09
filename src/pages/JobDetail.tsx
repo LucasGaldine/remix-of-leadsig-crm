@@ -921,27 +921,26 @@ export default function JobDetail() {
                 ) : null}
 
                 {isManager() && (
-                  <div className="flex gap-4">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                       variant="outline"
-                      size="lg"
-                      className="flex-1"
+                      size="sm"
+                      className="flex-1 gap-1.5 text-xs"
                       onClick={() => setMakeRecurringOpen(true)}
                     >
-                      <Repeat className="h-4 w-4" />
-                      Create Recurring Schedule
+                      <Repeat className="h-4 w-4 shrink-0" />
+                      Recurring
                     </Button>
 
                     <Button
                       variant="outline"
-                      size="lg"
-                      className="flex-1"
+                      size="sm"
+                      className="flex-1 gap-1.5 text-xs"
                       onClick={openScheduleDialog}
                     >
-                      <Plus className="h-4 w-4" />
-                      Add Schedule Date
+                      <Plus className="h-4 w-4 shrink-0" />
+                      Add Date
                     </Button>
-                    
                   </div>
                 )}
               </div>
