@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, DollarSign, X, Download, AlertCircle } from "lucide-react";
+import { Check, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 
 interface LineItem {
