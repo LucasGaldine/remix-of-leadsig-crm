@@ -28,7 +28,6 @@ export default function CreateInvoice() {
   const [dueDate, setDueDate] = useState("");
   const [creating, setCreating] = useState(false);
   const [existingInvoicesTotal, setExistingInvoicesTotal] = useState(0);
-  const [sendToStripe, setSendToStripe] = useState(false);
 
   useEffect(() => {
     const fetchExistingInvoices = async () => {
@@ -104,7 +103,7 @@ export default function CreateInvoice() {
   const remainingAmount = estimateTotal - existingInvoicesTotal;
   const invoiceAmount = parseFloat(amount) || 0;
 
-  const handleCreateInvoice = async () => {
+  const handleCreateInvoice = async (sendViaStripe = false) => {
     if (!user || !currentAccount) {
       toast.error("Authentication required");
       return;
@@ -155,8 +154,8 @@ export default function CreateInvoice() {
           total: invoiceAmount,
           balance_due: invoiceAmount,
           notes: notes || estimate.notes,
-          status: sendToStripe ? "sent" : "draft",
-          sent_at: sendToStripe ? new Date().toISOString() : null,
+          status: sendViaStripe ? "sent" : "draft",
+          sent_at: sendViaStripe ? new Date().toISOString() : null,
           due_date: dueDate,
           created_by: user.id,
           account_id: currentAccount.id,
@@ -180,7 +179,7 @@ export default function CreateInvoice() {
         });
       }
 
-      if (sendToStripe) {
+      if (sendViaStripe) {
         const { error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
           body: {
             invoiceId: newInvoice.id,
@@ -198,8 +197,6 @@ export default function CreateInvoice() {
       } else {
         toast.success("Invoice created successfully");
       }
-
-      setSendToStripe(false);
 
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
       await queryClient.invalidateQueries({ queryKey: ["estimate", estimateId] });
@@ -316,17 +313,14 @@ export default function CreateInvoice() {
               <Button
                 variant="outline"
                 className="flex-1 h-14"
-                onClick={handleCreateInvoice}
+                onClick={() => handleCreateInvoice(false)}
                 disabled={creating || invoiceAmount <= 0 || invoiceAmount > remainingAmount}
               >
                 {creating ? "Creating..." : "Save as Draft"}
               </Button>
               <Button
                 className="flex-1 h-14 gap-2"
-                onClick={() => {
-                  setSendToStripe(true);
-                  handleCreateInvoice();
-                }}
+                onClick={() => handleCreateInvoice(true)}
                 disabled={creating || invoiceAmount <= 0 || invoiceAmount > remainingAmount}
               >
                 <CreditCard className="h-4 w-4" />
