@@ -82,7 +82,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
     if (!user) return;
     try {
       const { data, error } = await supabase
-        .from("job_time_entries" as any)
+        .from("job_time_entries")
         .select("id, clock_in, clock_out, is_auto, notes")
         .eq("lead_id", jobId)
         .eq("user_id", user.id)
@@ -158,7 +158,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
     if (!user || !tableExists) return;
     try {
       const { data, error } = await supabase
-        .from("job_time_entries" as any)
+        .from("job_time_entries")
         .insert({
           lead_id: jobId,
           user_id: user.id,
@@ -185,7 +185,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
     if (!activeEntry) return;
     try {
       const { error } = await supabase
-        .from("job_time_entries" as any)
+        .from("job_time_entries")
         .update({
           clock_out: new Date().toISOString(),
           clock_out_lat: geo.lat,
