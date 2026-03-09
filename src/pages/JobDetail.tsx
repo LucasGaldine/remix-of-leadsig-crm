@@ -1150,6 +1150,11 @@ export default function JobDetail() {
               }
             }}
           />
+          <JobTimeTracker
+            jobId={id}
+            jobAddress={clientAddress || null}
+            accountId={currentAccount?.id}
+          />
           </div>
         )}
 
