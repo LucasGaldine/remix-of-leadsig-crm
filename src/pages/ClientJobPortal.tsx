@@ -381,7 +381,7 @@ export default function ClientJobPortal() {
             token={token!}
             apiUrl={apiUrl}
             apiHeaders={apiHeaders}
-            onRefresh={fetchJobData}
+            onRefresh={fetchData}
             customerName={job.customer?.name || ""}
             jobName={job.name}
             address={job.address}
