@@ -1179,7 +1179,7 @@ export default function EstimateDetail() {
                     <Link2 className="h-4 w-4" />
                     {generatingLink ? "Generating..." : "Client Portal"}
                   </Button>
-                ) : estimate.job?.status === "completed" ? (
+                ) : (
                   <>
                     <Button
                       variant="outline"
@@ -1199,15 +1199,6 @@ export default function EstimateDetail() {
                       {creatingStripeInvoice ? "Creating..." : "Stripe Invoice"}
                     </Button>
                   </>
-                ) : (
-                  <div className="w-full rounded-lg bg-amber-50 border border-amber-200 p-4 text-center">
-                    <p className="text-sm font-medium text-amber-800">
-                      Job must be completed before invoicing
-                    </p>
-                    <p className="text-xs text-amber-600 mt-1">
-                      Mark the job as completed to create an invoice
-                    </p>
-                  </div>
                 )
               )}
               {estimate.is_finalized && (
