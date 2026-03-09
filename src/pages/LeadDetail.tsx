@@ -831,26 +831,27 @@ export default function LeadDetail() {
                 </div>
 
                 {/*CTA*/}
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-col sm:flex-row justify-end gap-2">
                   {showConvertButton && (
                   <Button
-                    size="lg"
+                    size="sm"
                     disabled={!hasAddress}
                     onClick={() => setCreateEstimateDialogOpen(true)}
+                    className="gap-1.5 text-xs whitespace-nowrap"
                   >
-                    <FileTextIcon></FileTextIcon>
-                    Schedule Estimate
+                    <FileTextIcon className="h-4 w-4 shrink-0" />
+                    Estimate
                   </Button>
                 )}
                 {showConvertButton && hasEstimate && isEstimateApproved && (
                   <Button
                     size="sm"
-                    className="gap-2"
+                    className="gap-1.5 text-xs whitespace-nowrap"
                     disabled={!hasAddress}
                     onClick={() => setConvertJobDialogOpen(true)}
                   >
-                    <Briefcase className="h-4 w-4" />
-                    Convert to Job
+                    <Briefcase className="h-4 w-4 shrink-0" />
+                    Convert
                   </Button>
                 )}
                 </div>
