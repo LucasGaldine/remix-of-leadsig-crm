@@ -849,6 +849,15 @@ export default function JobDetail() {
               />
             )}
 
+            {/* Time Tracking */}
+            {id && (
+              <JobTimeTracker
+                jobId={id}
+                jobAddress={clientAddress || null}
+                accountId={currentAccount?.id}
+              />
+            )}
+
             {/* Schedule or Job Schedule Info */}
             {!jobAny.recurring_job_id ? (
               <div className="card-elevated rounded-lg p-4">
