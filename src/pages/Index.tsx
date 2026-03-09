@@ -16,6 +16,8 @@ import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCustomers } from "@/hooks/useCustomers";
+import { CustomerCard } from "@/components/customers/CustomerCard";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -32,6 +34,7 @@ export default function Index() {
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading, refetch: refetchLeads } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
+  const { data: customersData = [], isLoading: customersLoading } = useCustomers();
 
   const SECTION_LIMIT = 3;
 
@@ -234,6 +237,47 @@ export default function Index() {
                     className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                   >
                     View {qualifiedLeads.length - SECTION_LIMIT} more
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {sections.includes("customers") && (
+          <section>
+            <SectionHeader
+              title="Customers"
+              count={customersData.length}
+              action={{ label: "View all", onClick: () => navigate("/customers") }}
+              className="mb-3"
+            />
+            {customersLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : customersData.length === 0 ? (
+              <div className="card-elevated rounded-lg p-6 text-center">
+                <p className="text-muted-foreground">No customers yet</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {customersData.slice(0, SECTION_LIMIT).map((c) => (
+                    <CustomerCard
+                      key={c.id}
+                      customer={c}
+                      onClick={() => navigate(`/customers/${c.id}`)}
+                    />
+                  ))}
+                </div>
+                {customersData.length > SECTION_LIMIT && (
+                  <button
+                    onClick={() => navigate("/customers")}
+                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    View {customersData.length - SECTION_LIMIT} more
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 )}

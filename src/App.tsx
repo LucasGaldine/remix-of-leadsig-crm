@@ -52,6 +52,8 @@ import ClientJobPortal from "./pages/ClientJobPortal";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import DataDeletion from "./pages/DataDeletion";
+import Customers from "./pages/Customers";
+import CustomerDetail from "./pages/CustomerDetail";
 
 const queryClient = new QueryClient();
 
@@ -123,6 +125,8 @@ const router = createBrowserRouter([
       { path: "/materials/orders/new", element: <Protected><CreateSupplyOrder /></Protected> },
       { path: "/materials/orders/:id", element: <Protected><SupplyOrderDetail /></Protected> },
       { path: "/materials/suppliers/new", element: <Protected><SupplierManagement /></Protected> },
+      { path: "/customers", element: <Protected><Customers /></Protected> },
+      { path: "/customers/:id", element: <Protected><CustomerDetail /></Protected> },
       { path: "*", element: <NotFound /> },
     ],
   },

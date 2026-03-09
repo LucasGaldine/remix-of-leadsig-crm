@@ -13,6 +13,7 @@ import {
   UserX,
   AlertTriangle,
   ClipboardCheck,
+  Contact,
   type LucideIcon,
 } from "lucide-react";
 
@@ -157,6 +158,12 @@ export const DASHBOARD_SECTIONS: DashboardSectionConfig[] = [
     description: "Approved leads ready to convert",
     icon: Target,
   },
+  {
+    id: "customers",
+    label: "Customers",
+    description: "Your customer directory",
+    icon: Contact,
+  },
 ];
 
-export const DEFAULT_SECTION_IDS = ["awaiting_approval", "todays_jobs", "qualified_leads"];
+export const DEFAULT_SECTION_IDS = ["awaiting_approval", "todays_jobs", "qualified_leads", "customers"];
