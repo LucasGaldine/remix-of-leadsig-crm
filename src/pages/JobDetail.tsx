@@ -1102,6 +1102,10 @@ export default function JobDetail() {
               })()
             }
             isManager={isManager()}
+            hasBeforePhotos={hasBeforePhotos}
+            onMarkComplete={async () => {
+              await updateJobMutation.mutateAsync({ id, status: "completed" as any });
+            }}
           />
           </div>
         )}
