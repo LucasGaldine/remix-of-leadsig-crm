@@ -173,11 +173,21 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         account_id: currentAccount.id,
       });
 
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Session expired. Please sign in again.");
+        setSending(false);
+        return;
+      }
+
       const { error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
         body: {
           invoiceId: newInvoice.id,
           customerEmail: customerEmail || undefined,
           customerName: customerName || undefined,
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
         },
       });
 

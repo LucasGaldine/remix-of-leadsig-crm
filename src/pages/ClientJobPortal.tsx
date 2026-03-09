@@ -277,7 +277,7 @@ export default function ClientJobPortal() {
                         </h3>
                         <div className="flex items-center gap-3 mt-2">
                           <span className="text-sm text-slate-600">
-                            ${(invoice.total / 100).toFixed(2)}
+                            ${Number(invoice.total).toFixed(2)}
                           </span>
                           <span className={cn(
                             "text-xs px-2 py-0.5 rounded-full font-medium",
