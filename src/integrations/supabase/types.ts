@@ -56,6 +56,36 @@ export type Database = {
         }
         Relationships: []
       }
+      job_crew_assignments: {
+        Row: {
+          account_id: string | null
+          created_at: string | null
+          crew_member_id: string | null
+          date: string | null
+          hours_worked: number | null
+          id: string
+          job_id: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string | null
+          crew_member_id?: string | null
+          date?: string | null
+          hours_worked?: number | null
+          id?: string
+          job_id?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string | null
+          crew_member_id?: string | null
+          date?: string | null
+          hours_worked?: number | null
+          id?: string
+          job_id?: string | null
+        }
+        Relationships: []
+      }
       job_time_entries: {
         Row: {
           account_id: string
