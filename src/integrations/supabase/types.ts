@@ -56,6 +56,57 @@ export type Database = {
         }
         Relationships: []
       }
+      job_time_entries: {
+        Row: {
+          account_id: string
+          clock_in: string
+          clock_in_lat: number | null
+          clock_in_lng: number | null
+          clock_out: string | null
+          clock_out_lat: number | null
+          clock_out_lng: number | null
+          created_at: string
+          id: string
+          is_auto: boolean
+          lead_id: string
+          notes: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          clock_in?: string
+          clock_in_lat?: number | null
+          clock_in_lng?: number | null
+          clock_out?: string | null
+          clock_out_lat?: number | null
+          clock_out_lng?: number | null
+          created_at?: string
+          id?: string
+          is_auto?: boolean
+          lead_id: string
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          clock_in?: string
+          clock_in_lat?: number | null
+          clock_in_lng?: number | null
+          clock_out?: string | null
+          clock_out_lat?: number | null
+          clock_out_lng?: number | null
+          created_at?: string
+          id?: string
+          is_auto?: boolean
+          lead_id?: string
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
