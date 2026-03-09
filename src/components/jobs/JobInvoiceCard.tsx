@@ -103,7 +103,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       const { data: estimate } = await supabase
         .from("estimates")
         .select("id")
-        .eq("lead_id", jobId)
+        .eq("job_id", jobId)
         .maybeSingle();
 
       if (!estimate) {

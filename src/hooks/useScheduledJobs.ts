@@ -32,7 +32,7 @@ export function useScheduledJobs(date: string) {
         scheduled_time_end: schedule.scheduled_time_end,
       }));
     },
-    enabled: !!user,
+    enabled: !!user && !!date,
   });
 }
 
