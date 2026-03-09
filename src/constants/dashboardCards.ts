@@ -13,6 +13,7 @@ import {
   UserX,
   AlertTriangle,
   ClipboardCheck,
+  Contact,
   type LucideIcon,
 } from "lucide-react";
 
