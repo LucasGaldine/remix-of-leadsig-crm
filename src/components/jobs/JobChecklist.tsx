@@ -62,7 +62,7 @@ export function JobChecklist({
   const allComplete = totalCount > 0 && completedCount === totalCount;
 
   const handleToggle = async (item: ChecklistItem) => {
-    if (editMode) return;
+    if (editMode || isJobCompleted) return;
 
     // If checking the last unchecked item (would complete all items)
     if (!item.is_completed) {
