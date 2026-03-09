@@ -1110,6 +1110,22 @@ export default function JobDetail() {
             hasBeforePhotos={hasBeforePhotos}
             onMarkComplete={async () => {
               await updateJobMutation.mutateAsync({ id, status: "completed" as any });
+              
+              // If this is an estimate visit, convert the parent lead to a job
+              if (job?.is_estimate_visit && parentLeadId) {
+                try {
+                  await supabase
+                    .from("leads")
+                    .update({ status: "job" })
+                    .eq("id", parentLeadId);
+                  
+                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                  queryClient.invalidateQueries({ queryKey: ["leads"] });
+                  toast.success("Parent lead converted to job");
+                } catch (error) {
+                  console.error("Error converting parent lead to job:", error);
+                }
+              }
             }}
           />
           </div>
