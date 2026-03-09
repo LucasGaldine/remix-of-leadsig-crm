@@ -100,6 +100,18 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         .eq("id", jobId)
         .single();
 
+      const { data: estimate } = await supabase
+        .from("estimates")
+        .select("id")
+        .eq("lead_id", jobId)
+        .maybeSingle();
+
+      if (!estimate) {
+        toast.error("No estimate found for this job. Please create an estimate first.");
+        setSending(false);
+        return;
+      }
+
       const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
         p_account_id: currentAccount.id,
       });
@@ -121,7 +133,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         .insert({
           customer_id: job?.customer_id || null,
           lead_id: jobId,
-          estimate_id: null,
+          estimate_id: estimate.id,
           invoice_number: invoiceNumber.data || 1,
           subtotal: invoiceAmount,
           tax_rate: taxRate,
