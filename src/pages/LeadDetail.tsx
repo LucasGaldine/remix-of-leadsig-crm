@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Ellipsis-Verticle, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoveVertical as MoreVertical, CreditCard as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
+import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoveVertical as MoreVertical, CreditCard as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -759,7 +759,7 @@ export default function LeadDetail() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Ellipsis-Verticle className="h-5 w-5" />
+                            <EllipsisVertical className="h-5 w-5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
