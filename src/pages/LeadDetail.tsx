@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { openMapsWithAddress } from "@/lib/openMaps";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateJob } from "@/hooks/useJobs";
 import { format } from "date-fns";
@@ -803,7 +804,7 @@ export default function LeadDetail() {
                     size="icon"
                     onClick={() => {
                       const address = [lead.address, lead.city].filter(Boolean).join(", ");
-                      if (address) window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+                      if (address) openMapsWithAddress(address);
                     }}
                   >
                     <Navigation className="h-4 w-4" />
