@@ -155,6 +155,21 @@ export default function JobDetail() {
     }
   };
 
+  const fetchBeforePhotos = async () => {
+    if (!id) return;
+    try {
+      const photoLeadId = job?.is_estimate_visit && parentLeadId ? parentLeadId : id;
+      const { count } = await supabase
+        .from("lead_photos")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", photoLeadId)
+        .eq("photo_type", "before");
+      setHasBeforePhotos((count ?? 0) > 0);
+    } catch (error) {
+      console.error("Error fetching before photos:", error);
+    }
+  };
+
   const fetchAfterPhotos = async () => {
     if (!id) return;
     try {
