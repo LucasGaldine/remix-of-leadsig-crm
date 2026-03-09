@@ -28,6 +28,7 @@ import { toast } from "sonner";
 
 interface JobChecklistProps {
   jobId: string;
+  jobStatus?: string;
   isEstimateVisit?: boolean;
   clientPortalUrl?: string | null;
   isManager?: boolean;
@@ -37,6 +38,7 @@ interface JobChecklistProps {
 
 export function JobChecklist({
   jobId,
+  jobStatus,
   isEstimateVisit,
   clientPortalUrl,
   isManager = false,
