@@ -16,7 +16,7 @@ import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useCustomers } from "@/hooks/useCustomers";
+import { useCustomersNeedingAttention } from "@/hooks/useCustomersNeedingAttention";
 import { CustomerCard } from "@/components/customers/CustomerCard";
 
 function getGreeting(): string {
@@ -34,7 +34,7 @@ export default function Index() {
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading, refetch: refetchLeads } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
-  const { data: customersData = [], isLoading: customersLoading } = useCustomers();
+  const { data: customersData = [], isLoading: customersLoading } = useCustomersNeedingAttention();
 
   const SECTION_LIMIT = 3;
 
@@ -259,13 +259,18 @@ export default function Index() {
               </div>
             ) : customersData.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No customers yet</p>
+                <p className="text-muted-foreground">No customers need attention</p>
               </div>
             ) : (
-              <CustomerCard
-                customer={customersData[0]}
-                onClick={() => navigate(`/customers/${customersData[0].id}`)}
-              />
+              <div className="space-y-1">
+                <CustomerCard
+                  customer={customersData[0]}
+                  onClick={() => navigate(`/customers/${customersData[0].id}`)}
+                />
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  {customersData[0].reason}
+                </p>
+              </div>
             )}
           </section>
         )}
