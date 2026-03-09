@@ -211,11 +211,11 @@ input[type="number"] {
 
 @layer components {
   .text-1 {
-    @apply text-xl font-semibold;
+    @apply text-xl;
   }
 
   .text-2 {
-    @apply text-lg font-semibold;
+    @apply text-lg;
   }
 
   .text-3 {
@@ -231,7 +231,7 @@ input[type="number"] {
   }
 
   .text-label {
-    @apply text-sm font-semibold;
+    @apply text-sm;
   }
 
   .levitate{
