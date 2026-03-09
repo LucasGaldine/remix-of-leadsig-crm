@@ -152,6 +152,11 @@ input[type="number"] {
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Anton only has weight 400 — prevent faux bold */
+  * {
+    font-weight: 400 !important;
+  }
+
   /* Ensure touch targets are large enough for gloved hands */
   button, a, [role="button"] {
     min-height: var(--touch-target-min);
