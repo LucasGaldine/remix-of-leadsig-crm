@@ -871,12 +871,12 @@ export default function EstimateDetail() {
                 {saving ? (
                   <>
                     <Save className="h-4 w-4 mr-2 animate-pulse" />
-                    Saving...
+                    {estimate?.status === 'accepted' ? 'Sending...' : 'Saving...'}
                   </>
                 ) : (
                   <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
+                    <Send className="h-4 w-4 mr-2" />
+                    {estimate?.status === 'accepted' ? 'Send Change Order' : 'Save Changes'}
                   </>
                 )}
               </Button>

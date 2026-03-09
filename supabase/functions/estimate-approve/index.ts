@@ -45,6 +45,7 @@ Deno.serve(async (req: Request) => {
           status,
           expires_at,
           created_at,
+          updated_at,
           accepted_at,
           approved_via,
           account_id,

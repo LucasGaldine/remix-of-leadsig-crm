@@ -80,6 +80,7 @@ interface LineItem {
   total: number;
   is_change_order?: boolean;
   change_order_type?: 'added' | 'edited' | 'deleted';
+  change_order_approved?: boolean | null;
   changed_at?: string;
 }
 
@@ -93,6 +94,13 @@ interface EstimateData {
   status: string;
   updated_at: string;
   line_items: LineItem[];
+  original_total?: number | null;
+  original_subtotal?: number | null;
+  original_tax?: number | null;
+  original_discount?: number | null;
+  original_notes?: string | null;
+  original_line_items?: LineItem[] | null;
+  has_pending_changes?: boolean;
 }
 
 interface PhotoItem {
