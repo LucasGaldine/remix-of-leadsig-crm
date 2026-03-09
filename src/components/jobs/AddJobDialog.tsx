@@ -24,6 +24,7 @@ interface AddJobDialogProps {
 export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogProps) {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
+  const { verify, verifying, result: addressResult, reset: resetVerification } = useAddressVerification();
   
   const [formData, setFormData] = useState({
     name: "",
