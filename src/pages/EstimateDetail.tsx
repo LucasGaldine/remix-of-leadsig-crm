@@ -254,10 +254,6 @@ export default function EstimateDetail() {
       toast.error("This estimate has already been converted to an invoice");
       return;
     }
-    if (estimate.job?.status !== "completed") {
-      toast.error("Job must be completed before creating an invoice");
-      return;
-    }
     setMarkingAsSent(true);
     try {
       const activeLineItems = estimate.line_items.filter(
@@ -324,10 +320,6 @@ export default function EstimateDetail() {
       toast.error("This estimate has already been converted to an invoice");
       return;
     }
-    if (estimate.job?.status !== "completed") {
-      toast.error("Job must be completed before creating an invoice");
-      return;
-    }
     setCreatingStripeInvoice(true);
     try {
       const { data, error } = await supabase.functions.invoke("stripe-connect-invoice", {
@@ -365,10 +357,6 @@ export default function EstimateDetail() {
   const handleRecordPayment = async (method: "cash" | "check" | "ach", amount: number) => {
     if (estimate.is_finalized) {
       toast.error("This estimate has already been converted to an invoice");
-      return;
-    }
-    if (estimate.job?.status !== "completed") {
-      toast.error("Job must be completed before creating an invoice");
       return;
     }
     setRecordingPayment(true);
@@ -1191,7 +1179,7 @@ export default function EstimateDetail() {
                     <Link2 className="h-4 w-4" />
                     {generatingLink ? "Generating..." : "Client Portal"}
                   </Button>
-                ) : estimate.job?.status === "completed" ? (
+                ) : (
                   <>
                     <Button
                       variant="outline"
@@ -1211,15 +1199,6 @@ export default function EstimateDetail() {
                       {creatingStripeInvoice ? "Creating..." : "Stripe Invoice"}
                     </Button>
                   </>
-                ) : (
-                  <div className="w-full rounded-lg bg-amber-50 border border-amber-200 p-4 text-center">
-                    <p className="text-sm font-medium text-amber-800">
-                      Job must be completed before invoicing
-                    </p>
-                    <p className="text-xs text-amber-600 mt-1">
-                      Mark the job as completed to create an invoice
-                    </p>
-                  </div>
                 )
               )}
               {estimate.is_finalized && (
