@@ -174,6 +174,12 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         account_id: currentAccount.id,
       });
 
+      if (!customerEmail) {
+        toast.error("Customer must have an email address to receive invoices. Please add an email to the customer profile.");
+        setSending(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         toast.error("Session expired. Please sign in again.");

@@ -185,6 +185,12 @@ export default function CreateInvoice() {
       }
 
       if (sendViaStripe) {
+        if (!estimate.customer?.email) {
+          toast.error("Customer must have an email address to receive invoices. Please add an email to the customer profile.");
+          setCreating(false);
+          return;
+        }
+
         const { error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
           body: {
             invoiceId: newInvoice.id,
