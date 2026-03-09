@@ -39,11 +39,14 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
 
-  const estimateTotal = lineItems.reduce((sum, item) => {
+  const estimateSubtotal = lineItems.reduce((sum, item) => {
     const quantity = parseFloat(item.quantity || "0");
     const unitPrice = parseFloat(item.unit_price || "0");
     return sum + quantity * unitPrice;
   }, 0);
+
+  const estimateTax = estimateSubtotal * ((currentAccount?.default_tax_rate ?? 0) / 100);
+  const estimateTotal = estimateSubtotal + estimateTax;
 
   const handleCreate = async () => {
     if (!user || !currentAccount) {
@@ -203,9 +206,19 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
                 </div>
               );
             })}
-            <div className="border-t border-border pt-2 mt-2 flex items-center justify-between font-semibold">
-              <span>Total</span>
-              <span>${estimateTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <div className="border-t border-border pt-2 mt-2 space-y-1.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="font-medium">${estimateSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Tax ({currentAccount?.default_tax_rate ?? 0}%)</span>
+                <span className="font-medium">${estimateTax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex items-center justify-between font-semibold pt-1.5 border-t border-border">
+                <span>Total</span>
+                <span>${estimateTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
             </div>
           </div>
 

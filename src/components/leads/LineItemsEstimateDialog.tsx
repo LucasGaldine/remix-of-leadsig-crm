@@ -71,7 +71,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     setLineItems(updated);
   };
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return lineItems
       .filter(item => item.unit_price && item.quantity)
       .reduce((sum, item) => {
@@ -79,6 +79,16 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         const unitPrice = parseFloat(item.unit_price || "0");
         return sum + (quantity * unitPrice);
       }, 0);
+  };
+
+  const calculateTax = () => {
+    const subtotal = calculateSubtotal();
+    const taxRate = (currentAccount?.default_tax_rate ?? 0) / 100;
+    return subtotal * taxRate;
+  };
+
+  const calculateTotal = () => {
+    return calculateSubtotal() + calculateTax();
   };
 
   const handleCreate = async () => {
@@ -327,9 +337,23 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
               </div>
             ))}
 
-            <div className="bg-secondary p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold">Total Estimate:</span>
+            <div className="bg-secondary p-4 rounded-lg space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">Subtotal:</span>
+                <span className="font-medium">
+                  ${calculateSubtotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">
+                  Tax ({currentAccount?.default_tax_rate ?? 0}%):
+                </span>
+                <span className="font-medium">
+                  ${calculateTax().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-border">
+                <span className="font-semibold">Total:</span>
                 <span className="text-xl font-bold">
                   ${calculateTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
