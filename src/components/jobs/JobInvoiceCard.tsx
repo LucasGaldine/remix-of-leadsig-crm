@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 interface ExistingInvoice {
   id: string;
@@ -28,6 +29,7 @@ interface JobInvoiceCardProps {
 
 export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTotal }: JobInvoiceCardProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user, currentAccount } = useAuth();
   const [invoices, setInvoices] = useState<ExistingInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -235,7 +237,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         {invoices.length > 0 && (
           <div className="space-y-2">
             {invoices.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between p-3 bg-card rounded-lg border border-border">
+              <div
+                key={inv.id}
+                className="flex items-center justify-between p-3 bg-card rounded-lg border border-border cursor-pointer hover:bg-accent transition-colors"
+                onClick={() => navigate(`/payments/invoices/${inv.id}`)}
+              >
                 <div>
                   <p className="text-sm font-medium text-foreground">
                     ${Number(inv.total).toLocaleString()}
@@ -253,7 +259,10 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
-                      onClick={() => window.open(inv.stripe_invoice_url!, "_blank")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(inv.stripe_invoice_url!, "_blank");
+                      }}
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Button>
