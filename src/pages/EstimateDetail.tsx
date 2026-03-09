@@ -358,6 +358,7 @@ export default function EstimateDetail() {
               is_change_order: true,
               change_order_type: 'deleted',
               changed_at: new Date().toISOString(),
+              change_order_approved: false,
             })
             .eq('id', deletedId);
 
@@ -396,6 +397,7 @@ export default function EstimateDetail() {
               is_change_order: true,
               change_order_type: 'added',
               changed_at: new Date().toISOString(),
+              change_order_approved: false,
             });
 
             if (error) throw error;
@@ -438,6 +440,7 @@ export default function EstimateDetail() {
                   is_change_order: true,
                   change_order_type: 'deleted',
                   changed_at: new Date().toISOString(),
+                  change_order_approved: false,
                 })
                 .eq('id', item.id);
 
@@ -455,6 +458,7 @@ export default function EstimateDetail() {
                 change_order_type: 'edited',
                 original_line_item_id: item.id,
                 changed_at: new Date().toISOString(),
+                change_order_approved: false,
               });
 
               if (error) throw error;

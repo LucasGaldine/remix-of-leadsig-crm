@@ -53,6 +53,7 @@ Deno.serve(async (req: Request) => {
           original_discount,
           original_total,
           original_notes,
+          has_pending_changes,
           customer:customers(name, email, phone),
           job:leads!estimates_job_id_fkey(name, address, service_type),
           line_items:estimate_line_items(
@@ -65,7 +66,8 @@ Deno.serve(async (req: Request) => {
             total,
             sort_order,
             is_change_order,
-            change_order_type
+            change_order_type,
+            change_order_approved
           )
         `
         )
@@ -123,9 +125,12 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === "POST") {
+      const body = await req.json();
+      const { action } = body;
+
       const { data: estimate, error: fetchError } = await supabase
         .from("estimates")
-        .select("id, status, expires_at, job_id")
+        .select("id, status, expires_at, job_id, has_pending_changes")
         .eq("approval_token", token)
         .maybeSingle();
 
@@ -139,55 +144,130 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      if (estimate.status === "accepted") {
-        return new Response(
-          JSON.stringify({
-            error: "This estimate has already been approved",
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+      if (action === "approve_changes" || action === "decline_changes") {
+        if (!estimate.has_pending_changes) {
+          return new Response(
+            JSON.stringify({ error: "No pending changes to approve" }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        if (action === "approve_changes") {
+          const { error: approveError } = await supabase
+            .from("estimate_line_items")
+            .update({ change_order_approved: true })
+            .eq("estimate_id", estimate.id)
+            .eq("is_change_order", true)
+            .eq("change_order_approved", false);
+
+          if (approveError) {
+            return new Response(
+              JSON.stringify({ error: "Failed to approve changes" }),
+              {
+                status: 500,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
           }
-        );
+
+          return new Response(
+            JSON.stringify({ success: true, message: "Changes approved" }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        } else {
+          const { error: declineError } = await supabase
+            .from("estimate_line_items")
+            .delete()
+            .eq("estimate_id", estimate.id)
+            .eq("is_change_order", true)
+            .eq("change_order_approved", false);
+
+          if (declineError) {
+            return new Response(
+              JSON.stringify({ error: "Failed to decline changes" }),
+              {
+                status: 500,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+
+          return new Response(
+            JSON.stringify({ success: true, message: "Changes declined" }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
       }
 
-      if (
-        estimate.expires_at &&
-        new Date(estimate.expires_at) < new Date()
-      ) {
-        return new Response(
-          JSON.stringify({ error: "This estimate has expired" }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
+      if (action === "approve" || action === "decline") {
+        if (estimate.status === "accepted") {
+          return new Response(
+            JSON.stringify({
+              error: "This estimate has already been approved",
+            }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
 
-      const { error: updateError } = await supabase
-        .from("estimates")
-        .update({
-          status: "accepted",
-          accepted_at: new Date().toISOString(),
-          approved_via: "customer_link",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", estimate.id);
+        if (
+          estimate.expires_at &&
+          new Date(estimate.expires_at) < new Date()
+        ) {
+          return new Response(
+            JSON.stringify({ error: "This estimate has expired" }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
 
-      if (updateError) {
+        const newStatus = action === "approve" ? "accepted" : "declined";
+        const { error: updateError } = await supabase
+          .from("estimates")
+          .update({
+            status: newStatus,
+            accepted_at: action === "approve" ? new Date().toISOString() : null,
+            approved_via: action === "approve" ? "customer_link" : null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", estimate.id);
+
+        if (updateError) {
+          return new Response(
+            JSON.stringify({ error: `Failed to ${action} estimate` }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+
         return new Response(
-          JSON.stringify({ error: "Failed to approve estimate" }),
+          JSON.stringify({ success: true, message: `Estimate ${action === "approve" ? "approved" : "declined"}` }),
           {
-            status: 500,
+            status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           }
         );
       }
 
       return new Response(
-        JSON.stringify({ success: true, message: "Estimate approved" }),
+        JSON.stringify({ error: "Invalid action" }),
         {
-          status: 200,
+          status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
