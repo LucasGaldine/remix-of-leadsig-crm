@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useCustomers, type Customer, type CreateCustomerInput } from "@/hooks/useCustomers";
 import { cn } from "@/lib/utils";
+import { useAddressVerification } from "@/hooks/useAddressVerification";
+import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 
 interface ClientSelectorProps {
   selectedCustomer: Customer | null;
