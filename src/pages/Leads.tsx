@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, XCircle, UserPlus, Trash2 } from "lucide-react";
+import { Clock, Circle as XCircle, UserPlus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
