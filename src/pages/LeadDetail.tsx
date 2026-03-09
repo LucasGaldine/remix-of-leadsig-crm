@@ -850,7 +850,7 @@ export default function LeadDetail() {
                     className="gap-1.5 text-xs whitespace-nowrap"
                   >
                     <FileTextIcon className="h-4 w-4 shrink-0" />
-                    Estimate
+                    Schedule Visit
                   </Button>
                 )}
                 {showConvertButton && hasEstimate && isEstimateApproved && (
