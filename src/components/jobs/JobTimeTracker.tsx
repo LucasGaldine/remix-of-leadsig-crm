@@ -185,7 +185,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
     if (!activeEntry) return;
     try {
       const { error } = await supabase
-        .from("job_time_entries" as any)
+        .from("job_time_entries")
         .update({
           clock_out: new Date().toISOString(),
           clock_out_lat: geo.lat,
