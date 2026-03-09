@@ -125,6 +125,8 @@ const router = createBrowserRouter([
       { path: "/materials/orders/new", element: <Protected><CreateSupplyOrder /></Protected> },
       { path: "/materials/orders/:id", element: <Protected><SupplyOrderDetail /></Protected> },
       { path: "/materials/suppliers/new", element: <Protected><SupplierManagement /></Protected> },
+      { path: "/customers", element: <Protected><Customers /></Protected> },
+      { path: "/customers/:id", element: <Protected><CustomerDetail /></Protected> },
       { path: "*", element: <NotFound /> },
     ],
   },
