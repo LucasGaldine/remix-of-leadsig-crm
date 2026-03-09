@@ -1151,12 +1151,9 @@ export default function LeadDetail() {
           )}
 
           {/* Client Share Link */}
-          {hasEstimate && id && (
+          {hasEstimate && id && (lead as any).customer?.id && (
             <div className="px-4 pb-4">
-              <ClientShareLink
-                jobId={id}
-                existingToken={(lead as any).client_share_token}
-              />
+              <ClientShareLink customerId={(lead as any).customer.id} />
             </div>
           )}
 

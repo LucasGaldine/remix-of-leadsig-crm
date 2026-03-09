@@ -169,48 +169,30 @@ export default function EstimateDetail() {
   const handleGeneratePortalLink = async () => {
     setGeneratingLink(true);
     try {
-      let token: string | null = null;
-
-      if (isRecurringQuote && estimate.recurring_job_id) {
-        const { data: rj } = await supabase
-          .from("recurring_jobs")
-          .select("client_share_token")
-          .eq("id", estimate.recurring_job_id)
-          .maybeSingle();
-
-        token = rj?.client_share_token || null;
-
-        if (!token) {
-          token = crypto.randomUUID();
-          const { error } = await supabase
-            .from("recurring_jobs")
-            .update({ client_share_token: token })
-            .eq("id", estimate.recurring_job_id);
-          if (error) throw error;
-        }
-      } else if (estimate.job_id) {
-        const { data: lead } = await supabase
-          .from("leads")
-          .select("client_share_token")
-          .eq("id", estimate.job_id)
-          .maybeSingle();
-
-        token = lead?.client_share_token || null;
-
-        if (!token) {
-          token = crypto.randomUUID();
-          const { error } = await supabase
-            .from("leads")
-            .update({ client_share_token: token })
-            .eq("id", estimate.job_id);
-          if (error) throw error;
-        }
+      if (!estimate.customer?.id) {
+        toast.error("No customer associated with this estimate");
+        return;
       }
 
-      if (token) {
-        const link = `${window.location.origin}/client/job?token=${token}`;
-        setPortalLink(link);
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("client_portal_token")
+        .eq("id", estimate.customer.id)
+        .maybeSingle();
+
+      let token = customer?.client_portal_token || null;
+
+      if (!token) {
+        token = crypto.randomUUID();
+        const { error } = await supabase
+          .from("customers")
+          .update({ client_portal_token: token })
+          .eq("id", estimate.customer.id);
+        if (error) throw error;
       }
+
+      const link = `${window.location.origin}/client/job?token=${token}`;
+      setPortalLink(link);
     } catch {
       toast.error("Failed to generate client portal link");
     } finally {

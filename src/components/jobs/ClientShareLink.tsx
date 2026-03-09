@@ -1,42 +1,56 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Check, Copy, Link2, RefreshCw, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface ClientShareLinkProps {
-  jobId?: string;
-  recurringJobId?: string;
-  existingToken?: string | null;
+  customerId: string;
 }
 
-export function ClientShareLink({ jobId, recurringJobId, existingToken }: ClientShareLinkProps) {
-  const [token, setToken] = useState<string | null>(existingToken || null);
+export function ClientShareLink({ customerId }: ClientShareLinkProps) {
+  const [token, setToken] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const shareUrl = token
     ? `${window.location.origin}/client/job?token=${token}`
     : null;
+
+  useEffect(() => {
+    fetchExistingToken();
+  }, [customerId]);
+
+  const fetchExistingToken = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("client_portal_token")
+        .eq("id", customerId)
+        .maybeSingle();
+
+      if (!error && data?.client_portal_token) {
+        setToken(data.client_portal_token);
+      }
+    } catch {
+      // Ignore errors
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const generateLink = async () => {
     setGenerating(true);
     try {
       const newToken = crypto.randomUUID();
 
-      if (recurringJobId) {
-        const { error } = await supabase
-          .from("recurring_jobs")
-          .update({ client_share_token: newToken })
-          .eq("id", recurringJobId);
-        if (error) throw error;
-      } else if (jobId) {
-        const { error } = await supabase
-          .from("leads")
-          .update({ client_share_token: newToken })
-          .eq("id", jobId);
-        if (error) throw error;
-      }
+      const { error } = await supabase
+        .from("customers")
+        .update({ client_portal_token: newToken })
+        .eq("id", customerId);
+
+      if (error) throw error;
 
       setToken(newToken);
       toast.success("Share link created");
@@ -59,6 +73,16 @@ export function ClientShareLink({ jobId, recurringJobId, existingToken }: Client
     }
   };
 
+  if (loading) {
+    return (
+      <div className="card-elevated rounded-lg p-4">
+        <div className="flex items-center justify-center py-4">
+          <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card-elevated rounded-lg p-4">
       <div className="flex items-start gap-3">
@@ -68,10 +92,7 @@ export function ClientShareLink({ jobId, recurringJobId, existingToken }: Client
         <div className="flex-1 min-w-0">
           <p className="font-medium text-foreground">Client Portal Link</p>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {recurringJobId
-              ? "Share a link so your client can view their job schedule, quote, photos, and all visits."
-              : "Share a link so your client can view their job status, estimate, photos, and schedule."
-            }
+            Share a link so your client can view all their jobs, estimates, photos, and schedules in one place.
           </p>
 
           {shareUrl ? (

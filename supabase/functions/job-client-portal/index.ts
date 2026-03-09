@@ -26,9 +26,20 @@ Deno.serve(async (req: Request) => {
 
     const url = new URL(req.url);
     const token = url.searchParams.get("token");
+    const jobId = url.searchParams.get("jobId");
 
     if (!token) {
       return jsonResponse({ error: "Missing share token" }, 400);
+    }
+
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("id, name, email, phone, account_id")
+      .eq("client_portal_token", token)
+      .maybeSingle();
+
+    if (customer) {
+      return await handleCustomerPortal(supabase, supabaseUrl, customer, jobId, req);
     }
 
     const { data: recurringJob } = await supabase
@@ -81,6 +92,135 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
+
+async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer: any, jobId: string | null, req: Request) {
+  if (req.method === "POST") {
+    if (!jobId) {
+      return jsonResponse({ error: "Job ID required for this action" }, 400);
+    }
+    const { data: job } = await supabase
+      .from("leads")
+      .select("id, customer_id, account_id")
+      .eq("id", jobId)
+      .eq("customer_id", customer.id)
+      .maybeSingle();
+
+    if (!job) {
+      return jsonResponse({ error: "Job not found or access denied" }, 404);
+    }
+
+    return await handleSingleJobPost(supabase, { ...job, customer }, req);
+  }
+
+  if (req.method !== "GET") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+
+  if (!jobId) {
+    const { data: jobs } = await supabase
+      .from("leads")
+      .select(`
+        id,
+        name,
+        address,
+        service_type,
+        status,
+        created_at,
+        updated_at
+      `)
+      .eq("customer_id", customer.id)
+      .neq("status", "archived")
+      .order("created_at", { ascending: false });
+
+    const { data: recurringJobs } = await supabase
+      .from("recurring_jobs")
+      .select(`
+        id,
+        name,
+        address,
+        service_type,
+        frequency,
+        start_date,
+        end_date,
+        created_at
+      `)
+      .eq("customer_id", customer.id)
+      .order("created_at", { ascending: false });
+
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("company_name, company_email, company_phone, logo_url")
+      .eq("id", customer.account_id)
+      .maybeSingle();
+
+    return jsonResponse({
+      customer: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+      },
+      company: account || {},
+      jobs: (jobs || []).map((j: any) => ({
+        id: j.id,
+        name: j.name,
+        address: j.address,
+        service_type: j.service_type,
+        status: j.status,
+        created_at: j.created_at,
+      })),
+      recurring_jobs: (recurringJobs || []).map((rj: any) => ({
+        id: rj.id,
+        name: rj.name,
+        address: rj.address,
+        service_type: rj.service_type,
+        frequency: rj.frequency,
+        start_date: rj.start_date,
+        end_date: rj.end_date,
+        created_at: rj.created_at,
+      })),
+    });
+  }
+
+  const { data: job } = await supabase
+    .from("leads")
+    .select(`
+      id,
+      name,
+      address,
+      service_type,
+      status,
+      description,
+      actual_value,
+      is_estimate_visit,
+      estimate_job_id,
+      account_id,
+      created_at,
+      updated_at
+    `)
+    .eq("id", jobId)
+    .eq("customer_id", customer.id)
+    .maybeSingle();
+
+  if (job) {
+    job.customer = customer;
+    return await handleSingleJobGet(supabase, supabaseUrl, job);
+  }
+
+  const { data: recurringJob } = await supabase
+    .from("recurring_jobs")
+    .select("id, name, address, service_type, description, account_id, customer_id, frequency, start_date, end_date")
+    .eq("id", jobId)
+    .eq("customer_id", customer.id)
+    .maybeSingle();
+
+  if (recurringJob) {
+    recurringJob.customer = customer;
+    recurringJob.client_share_token = null;
+    return await handleRecurringJobPortal(supabase, supabaseUrl, recurringJob, req);
+  }
+
+  return jsonResponse({ error: "Job not found or access denied" }, 404);
+}
 
 async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recurringJob: any, req: Request) {
   if (req.method === "POST") {

@@ -1044,18 +1044,8 @@ export default function JobDetail() {
             )}
 
             {/* Client Share Link */}
-            {isManager() && id && (
-              jobAny.recurring_job_id ? (
-                <ClientShareLink
-                  recurringJobId={jobAny.recurring_job_id}
-                  existingToken={recurringJobData?.client_share_token}
-                />
-              ) : (
-                <ClientShareLink
-                  jobId={job.is_estimate_visit && parentLeadId ? parentLeadId : id}
-                  existingToken={job.is_estimate_visit ? parentLeadToken : jobAny.client_share_token}
-                />
-              )
+            {isManager() && id && job.customer?.id && (
+              <ClientShareLink customerId={job.customer.id} />
             )}
 
             {/* Invoices Section */}
