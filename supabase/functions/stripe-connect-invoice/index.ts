@@ -20,27 +20,46 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log("Stripe invoice function called");
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 
     if (!stripeSecretKey) {
+      console.error("Stripe secret key not configured");
       return new Response(
         JSON.stringify({ error: "Stripe is not configured" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
 
-    const authHeader = req.headers.get("Authorization")!;
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      console.error("Missing Authorization header");
+      return new Response(
+        JSON.stringify({ error: "Missing authorization" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
     const token = authHeader.replace("Bearer ", "");
+    console.log("Authenticating user...");
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) {
-      throw new Error("Unauthorized");
+      console.error("User authentication failed:", userError?.message || "No user found");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
     }
+
+    console.log("User authenticated:", user.id);
 
     const { data: membership } = await supabase
       .from("account_members")
@@ -50,15 +69,27 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!membership) {
-      throw new Error("No active account found");
+      console.error("No active account found for user:", user.id);
+      return new Response(
+        JSON.stringify({ error: "No active account found" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
     }
+
+    console.log("Account found:", membership.account_id);
 
     const body: InvoiceRequest = await req.json();
     const { invoiceId, customerEmail, customerName } = body;
 
     if (!invoiceId) {
-      throw new Error("Missing required field: invoiceId");
+      console.error("Missing invoiceId in request body");
+      return new Response(
+        JSON.stringify({ error: "Missing required field: invoiceId" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
     }
+
+    console.log("Processing invoice:", invoiceId);
 
     const { data: invoice, error: invError } = await supabase
       .from("invoices")
@@ -73,8 +104,14 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (invError || !invoice) {
-      throw new Error("Invoice not found");
+      console.error("Invoice not found:", invoiceId, invError?.message);
+      return new Response(
+        JSON.stringify({ error: "Invoice not found" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
+      );
     }
+
+    console.log("Invoice found, checking Stripe account...");
 
     const { data: stripeAccount } = await supabase
       .from("stripe_connect_accounts")
@@ -83,8 +120,18 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!stripeAccount || !stripeAccount.stripe_user_id || !stripeAccount.charges_enabled) {
-      throw new Error("Stripe account not connected or not enabled for charges");
+      console.error("Stripe account not properly configured:", {
+        hasAccount: !!stripeAccount,
+        hasStripeUserId: !!stripeAccount?.stripe_user_id,
+        chargesEnabled: !!stripeAccount?.charges_enabled
+      });
+      return new Response(
+        JSON.stringify({ error: "Stripe account not connected or not enabled for charges" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
     }
+
+    console.log("Stripe account verified, creating invoice...");
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2024-12-18.acacia",
@@ -190,8 +237,14 @@ Deno.serve(async (req: Request) => {
       .eq("id", invoiceId);
 
     if (updateError) {
-      throw new Error("Failed to update invoice with Stripe details: " + updateError.message);
+      console.error("Failed to update invoice:", updateError.message);
+      return new Response(
+        JSON.stringify({ error: "Failed to update invoice with Stripe details: " + updateError.message }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
     }
+
+    console.log("Invoice created successfully:", finalizedInvoice.id);
 
     return new Response(
       JSON.stringify({

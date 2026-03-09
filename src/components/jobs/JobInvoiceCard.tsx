@@ -38,6 +38,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const [amount, setAmount] = useState("");
   const [estimateStatus, setEstimateStatus] = useState<string | null>(null);
 
+  const taxRate = (currentAccount?.default_tax_rate || 0) / 100;
+  const invoiceAmount = parseFloat(amount) || 0;
+  const taxAmount = invoiceAmount * taxRate;
+  const totalWithTax = invoiceAmount + taxAmount;
+
   const fetchInvoices = async () => {
     const { data } = await supabase
       .from("invoices")
@@ -315,7 +320,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="invoice-amount">Amount</Label>
+              <Label htmlFor="invoice-amount">Amount (Subtotal)</Label>
               <Input
                 id="invoice-amount"
                 type="number"
@@ -328,6 +333,22 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
                 <p className="text-sm text-destructive">
                   Amount exceeds remaining estimate balance
                 </p>
+              )}
+              {invoiceAmount > 0 && taxRate > 0 && (
+                <div className="mt-3 p-3 bg-muted rounded-lg space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal:</span>
+                    <span className="font-medium">${invoiceAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tax ({(currentAccount?.default_tax_rate || 0).toFixed(1)}%):</span>
+                    <span className="font-medium">${taxAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between pt-1.5 border-t border-border">
+                    <span className="font-semibold">Total:</span>
+                    <span className="font-semibold">${totalWithTax.toFixed(2)}</span>
+                  </div>
+                </div>
               )}
             </div>
           </div>
