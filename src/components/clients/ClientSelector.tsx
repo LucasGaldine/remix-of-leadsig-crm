@@ -256,9 +256,18 @@ function NewClientForm({
           <Input
             id="clientAddress"
             value={data.address || ""}
-            onChange={(e) => onChange({ ...data, address: e.target.value })}
-            placeholder="123 Main St"
+            onChange={(e) => {
+              onChange({ ...data, address: e.target.value });
+              resetVerification();
+            }}
+            placeholder="123 Main St, Austin, TX 78701"
             className="mt-1"
+          />
+          <AddressVerificationBadge
+            verifying={verifying}
+            result={addressResult}
+            onVerify={() => verify(data.address || "")}
+            onAccept={(formatted) => onChange({ ...data, address: formatted })}
           />
         </div>
         <div>
