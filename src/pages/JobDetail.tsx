@@ -1,27 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  MapPin,
-  Clock,
-  User,
-  Users,
-  Phone,
-  MessageSquare,
-  Navigation,
-  CheckSquare,
-  FileText,
-  DollarSign,
-  ChevronRight,
-  Calendar,
-  Edit,
-  Trash2,
-  Archive,
-  MoreVertical,
-  Plus,
-  Info,
-  Unlink,
-  Briefcase,
-} from "lucide-react";
+import { MapPin, Clock, User, Users, Phone, MessageSquare, Navigation, SquareCheck as CheckSquare, FileText, DollarSign, ChevronRight, Calendar, CreditCard as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
