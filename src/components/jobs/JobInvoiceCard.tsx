@@ -118,13 +118,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
 
       const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-      const { data: accountData } = await supabase
-        .from("accounts")
-        .select("tax_rate")
-        .eq("id", currentAccount.id)
-        .single();
-
-      const taxRate = accountData?.tax_rate || 0;
+      const taxRate = (currentAccount.default_tax_rate || 0) / 100;
       const tax = invoiceAmount * Number(taxRate);
       const total = invoiceAmount + tax;
 
