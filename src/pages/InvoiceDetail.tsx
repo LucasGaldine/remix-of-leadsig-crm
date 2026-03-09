@@ -280,7 +280,7 @@ export default function InvoiceDetail() {
           </Button>
           
           {hasBalance && (
-        <div className="px-4 mb-4">
+
           <Button
             className="flex-1 gap-2"
             onClick={() => setShowChargeOptions(true)}
@@ -288,7 +288,7 @@ export default function InvoiceDetail() {
             <CreditCard className="h-4 w-4" />
             Charge Now
           </Button>
-        </div>
+
       )}
         </div>
       </div>
