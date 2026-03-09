@@ -14,7 +14,7 @@ export default function Customers() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Customers" onBack={() => navigate("/")} />
+      <PageHeader title="Customers" showBack backTo="/" />
 
       <main className="px-4 py-4 space-y-4 max-w-[var(--content-max-width)] m-auto">
         <div className="relative">

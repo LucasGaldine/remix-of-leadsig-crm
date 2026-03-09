@@ -96,7 +96,7 @@ export default function CustomerDetail() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title={customer.name} onBack={() => navigate("/customers")} />
+      <PageHeader title={customer.name} showBack backTo="/customers" />
 
       <main className="px-4 py-4 space-y-5 max-w-[var(--content-max-width)] m-auto">
         {/* Contact Info Card */}
