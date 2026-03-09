@@ -625,7 +625,7 @@ export default function JobDetail() {
                           variant="ghost"
                           size="sm"
                         >
-                          <EllipsisVertical className="h-4 w-4" />
+                          <Phone className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
