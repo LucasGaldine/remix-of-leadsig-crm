@@ -282,7 +282,7 @@ export default function InvoiceDetail() {
           {hasBalance && (
         <div className="px-4 mb-4">
           <Button
-            className="w-full h-14 gap-2"
+            className="flex-1 gap-2"
             onClick={() => setShowChargeOptions(true)}
           >
             <CreditCard className="h-4 w-4" />
