@@ -150,7 +150,7 @@ export default function Payments() {
           {[
             { id: "estimates" as const, label: "Estimates", icon: FileText },
             { id: "invoices" as const, label: "Invoices", icon: DollarSign },
-            { id: "charge" as const, label: "Charge", icon: CreditCard },
+            { id: "charge" as const, label: "Payments", icon: CreditCard },
           ].map((tab) => (
             <button
               key={tab.id}
