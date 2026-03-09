@@ -50,6 +50,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
   const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [manualMode, setManualMode] = useState(false);
+  const [tableExists, setTableExists] = useState(true);
   const autoClockInDoneRef = useRef(false);
   const autoClockOutDoneRef = useRef(false);
 
@@ -76,35 +77,28 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
     return () => geo.stopWatching();
   }, [siteLat, siteLng]);
 
-  // Fetch existing entries from interactions table
+  // Fetch existing entries
   const fetchEntries = useCallback(async () => {
     if (!user) return;
     try {
       const { data, error } = await supabase
-        .from("interactions")
-        .select("id, body, summary, created_at, created_by")
+        .from("job_time_entries" as any)
+        .select("id, clock_in, clock_out, is_auto, notes")
         .eq("lead_id", jobId)
-        .eq("type", "time_entry")
-        .eq("created_by", user.id)
-        .order("created_at", { ascending: false });
+        .eq("user_id", user.id)
+        .order("clock_in", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Table doesn't exist on this database
+        if (error.code === "PGRST205" || error.message?.includes("Could not find")) {
+          setTableExists(false);
+          setLoading(false);
+          return;
+        }
+        throw error;
+      }
 
-      // Parse time entries from interactions
-      const items: TimeEntry[] = (data || []).map((row: any) => {
-        let parsed: any = {};
-        try {
-          parsed = JSON.parse(row.body || "{}");
-        } catch {}
-        return {
-          id: row.id,
-          clock_in: parsed.clock_in || row.created_at,
-          clock_out: parsed.clock_out || null,
-          is_auto: parsed.is_auto || false,
-          notes: parsed.notes || null,
-        };
-      });
-
+      const items = (data || []) as TimeEntry[];
       setEntries(items);
       const active = items.find((e) => !e.clock_out);
       setActiveEntry(active || null);
@@ -133,10 +127,10 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
 
   // Auto clock-in when near site
   useEffect(() => {
-    if (manualMode || !geo.isNearSite || activeEntry || autoClockInDoneRef.current) return;
+    if (manualMode || !geo.isNearSite || activeEntry || autoClockInDoneRef.current || !tableExists) return;
     autoClockInDoneRef.current = true;
     clockIn(true);
-  }, [geo.isNearSite, activeEntry, manualMode]);
+  }, [geo.isNearSite, activeEntry, manualMode, tableExists]);
 
   // Auto clock-out when leaving site
   useEffect(() => {
@@ -161,42 +155,25 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
   }, [activeEntry?.id]);
 
   const clockIn = async (isAuto: boolean) => {
-    if (!user) return;
+    if (!user || !tableExists) return;
     try {
-      const clockInTime = new Date().toISOString();
-      const body = JSON.stringify({
-        clock_in: clockInTime,
-        clock_out: null,
-        is_auto: isAuto,
-        clock_in_lat: geo.lat,
-        clock_in_lng: geo.lng,
-      });
-
       const { data, error } = await supabase
-        .from("interactions")
+        .from("job_time_entries" as any)
         .insert({
           lead_id: jobId,
+          user_id: user.id,
           account_id: accountId || "",
-          type: "time_entry",
-          direction: "na",
-          body,
-          summary: `Clock in at ${format(new Date(clockInTime), "h:mm a")}`,
-          created_by: user.id,
+          clock_in: new Date().toISOString(),
+          is_auto: isAuto,
+          clock_in_lat: geo.lat,
+          clock_in_lng: geo.lng,
         })
-        .select("id, body, created_at, created_by")
+        .select("id, clock_in, clock_out, is_auto, notes")
         .single();
 
       if (error) throw error;
-
-      const entry: TimeEntry = {
-        id: data.id,
-        clock_in: clockInTime,
-        clock_out: null,
-        is_auto: isAuto,
-        notes: null,
-      };
-      setActiveEntry(entry);
-      setEntries((prev) => [entry, ...prev]);
+      setActiveEntry(data as TimeEntry);
+      setEntries((prev) => [data as TimeEntry, ...prev]);
       toast.success(isAuto ? "Auto clocked in — you're at the job site" : "Clocked in");
     } catch (err) {
       console.error("Clock in error:", err);
@@ -207,20 +184,12 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
   const clockOut = async (isAuto: boolean) => {
     if (!activeEntry) return;
     try {
-      const clockOutTime = new Date().toISOString();
-      const body = JSON.stringify({
-        clock_in: activeEntry.clock_in,
-        clock_out: clockOutTime,
-        is_auto: activeEntry.is_auto,
-        clock_out_lat: geo.lat,
-        clock_out_lng: geo.lng,
-      });
-
       const { error } = await supabase
-        .from("interactions")
+        .from("job_time_entries" as any)
         .update({
-          body,
-          summary: `${format(new Date(activeEntry.clock_in), "h:mm a")} – ${format(new Date(clockOutTime), "h:mm a")}`,
+          clock_out: new Date().toISOString(),
+          clock_out_lat: geo.lat,
+          clock_out_lng: geo.lng,
         })
         .eq("id", activeEntry.id);
 
@@ -241,6 +210,24 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
   }, 0);
 
   const completedEntries = entries.filter((e) => e.clock_out);
+
+  if (!tableExists) {
+    return (
+      <div className="card-elevated rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-secondary">
+            <Clock className="h-5 w-5 text-secondary-foreground" />
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-foreground">Log Your Hours</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Time tracking requires the <code className="text-xs bg-muted px-1 py-0.5 rounded">job_time_entries</code> table. Please run the setup SQL on your database.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card-elevated rounded-lg p-4">
@@ -309,7 +296,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
         </div>
       )}
 
-      {/* Manual controls */}
+      {/* Clock In button */}
       {!activeEntry && !loading && (
         <div className="flex gap-2 mb-3">
           <Button
