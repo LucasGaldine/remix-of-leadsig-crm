@@ -713,7 +713,7 @@ export default function JobDetail() {
 
                 </div>
                 
-                <div className="text-right text-muted-foreground">
+                <div className="sm:text-right text-muted-foreground">
                   <p className="text-2 ">
                   ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
                   </p>
