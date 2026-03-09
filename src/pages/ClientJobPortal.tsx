@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { CircleAlert as AlertCircle, Building2, Calendar, Camera, CircleCheck as CheckCircle2, Clock, DollarSign, FileText, MapPin, Wrench, X, ChevronRight } from "lucide-react";
+import { CircleAlert as AlertCircle, Building2, Calendar, Camera, CircleCheck as CheckCircle2, Clock, DollarSign, FileText, Wrench, X, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ClientPortalHeader } from "@/components/client-portal/ClientPortalHeader";
@@ -36,6 +36,17 @@ interface RecurringJobListItem {
   frequency: string;
   start_date: string;
   end_date?: string;
+  created_at: string;
+}
+
+interface InvoiceListItem {
+  id: string;
+  lead_id: string;
+  job_name: string;
+  service_type?: string;
+  stripe_invoice_url: string;
+  status: string;
+  total: number;
   created_at: string;
 }
 
@@ -117,6 +128,7 @@ export interface CustomerPortalData {
   company: CompanyData;
   jobs: JobListItem[];
   recurring_jobs: RecurringJobListItem[];
+  invoices: InvoiceListItem[];
 }
 
 type PageState = "loading" | "loaded" | "error";
@@ -173,6 +185,7 @@ export default function ClientJobPortal() {
       if (result.jobs !== undefined) {
         setCustomerData(result);
         setViewMode("job-list");
+        setData(null);
       } else {
         setData(result);
         setViewMode("job-detail");
@@ -220,7 +233,7 @@ export default function ClientJobPortal() {
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
         <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="px-6 sm:px-8 py-6 border-b border-slate-100">
+            <div className="px-6 sm:px-8 py-6">
               {customerData.company.logo_url && (
                 <img
                   src={customerData.company.logo_url}
@@ -228,12 +241,61 @@ export default function ClientJobPortal() {
                   className="h-12 mb-4"
                 />
               )}
+              {customerData.company.company_name && (
+                <p className="text-sm font-medium text-slate-600 mb-3">
+                  {customerData.company.company_name}
+                </p>
+              )}
               <h1 className="text-2xl font-bold text-slate-900">
                 Welcome, {customerData.customer.name}
               </h1>
               <p className="text-slate-600 mt-1">View your jobs and project details</p>
             </div>
           </div>
+
+          {customerData.invoices && customerData.invoices.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">Invoices</h2>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {customerData.invoices.map((invoice) => (
+                  <div
+                    key={invoice.id}
+                    className="px-6 sm:px-8 py-5"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-900 truncate">
+                          {invoice.service_type ? formatServiceType(invoice.service_type) : invoice.job_name}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-sm text-slate-600">
+                            ${(invoice.total / 100).toFixed(2)}
+                          </span>
+                          <span className={cn(
+                            "text-xs px-2 py-0.5 rounded-full font-medium",
+                            invoice.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                          )}>
+                            {invoice.status === "paid" ? "Paid" : "Payment Due"}
+                          </span>
+                        </div>
+                      </div>
+                      <a
+                        href={invoice.stripe_invoice_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white font-medium text-sm hover:bg-slate-900 transition-colors flex-shrink-0"
+                      >
+                        <DollarSign className="h-4 w-4" />
+                        {invoice.status === "paid" ? "View" : "Pay"}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {customerData.jobs.length > 0 && (
             <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -249,19 +311,11 @@ export default function ClientJobPortal() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-slate-900 truncate">{job.name}</h3>
-                        {job.address && (
-                          <p className="text-sm text-slate-600 mt-1 flex items-center gap-1">
-                            <MapPin className="h-3.5 w-3.5" />
-                            {job.address}
-                          </p>
-                        )}
+                        <h3 className="font-semibold text-slate-900 truncate">
+                          {job.service_type ? formatServiceType(job.service_type) : job.name}
+                        </h3>
                         <div className="flex items-center gap-3 mt-2">
-                          {job.service_type && (
-                            <span className="text-xs text-slate-500 capitalize">
-                              {job.service_type.replace(/_/g, " ")}
-                            </span>
-                          )}
+                          <span className="text-sm text-slate-600">{job.name}</span>
                           <span className={cn(
                             "text-xs px-2 py-0.5 rounded-full font-medium",
                             getStatusColor(job.status, [])
@@ -292,16 +346,13 @@ export default function ClientJobPortal() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-slate-900 truncate">{rj.name}</h3>
-                        {rj.address && (
-                          <p className="text-sm text-slate-600 mt-1 flex items-center gap-1">
-                            <MapPin className="h-3.5 w-3.5" />
-                            {rj.address}
-                          </p>
-                        )}
+                        <h3 className="font-semibold text-slate-900 truncate">
+                          {rj.service_type ? formatServiceType(rj.service_type) : rj.name}
+                        </h3>
                         <div className="flex items-center gap-3 mt-2">
+                          <span className="text-sm text-slate-600">{rj.name}</span>
                           <span className="text-xs text-slate-500 capitalize">
-                            {rj.frequency} service
+                            {rj.frequency}
                           </span>
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-sky-100 text-sky-800">
                             Recurring
@@ -445,6 +496,13 @@ export default function ClientJobPortal() {
       </div>
     </div>
   );
+}
+
+function formatServiceType(serviceType: string): string {
+  return serviceType
+    .split("_")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function getStatusLabel(status: string, schedules: ScheduleItem[]): string {

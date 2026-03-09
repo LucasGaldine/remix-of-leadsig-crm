@@ -153,6 +153,20 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
       .eq("id", customer.account_id)
       .maybeSingle();
 
+    const { data: invoices } = await supabase
+      .from("invoices")
+      .select(`
+        id,
+        lead_id,
+        stripe_invoice_url,
+        status,
+        total,
+        created_at,
+        leads!inner(customer_id, name, service_type)
+      `)
+      .eq("leads.customer_id", customer.id)
+      .order("created_at", { ascending: false });
+
     return jsonResponse({
       customer: {
         name: customer.name,
@@ -177,6 +191,16 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
         start_date: rj.start_date,
         end_date: rj.end_date,
         created_at: rj.created_at,
+      })),
+      invoices: (invoices || []).map((inv: any) => ({
+        id: inv.id,
+        lead_id: inv.lead_id,
+        job_name: inv.leads?.name,
+        service_type: inv.leads?.service_type,
+        stripe_invoice_url: inv.stripe_invoice_url,
+        status: inv.status,
+        total: inv.total,
+        created_at: inv.created_at,
       })),
     });
   }
