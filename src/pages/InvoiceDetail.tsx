@@ -278,10 +278,7 @@ export default function InvoiceDetail() {
             <Link2 className="h-4 w-4" />
             Copy Pay Link
           </Button>
-          <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={handleDuplicate}>
-            <Copy className="h-4 w-4" />
-            Duplicate
-          </Button>
+          
           <Button variant="outline" size="sm" className="gap-2 text-destructive">
             <Trash2 className="h-4 w-4" />
           </Button>
