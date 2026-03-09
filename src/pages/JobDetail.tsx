@@ -1113,18 +1113,30 @@ export default function JobDetail() {
               await updateJobMutation.mutateAsync({ id, status: "completed" as any });
               
               // If this is an estimate visit, convert the parent lead to a job
-              if (job?.is_estimate_visit && parentLeadId) {
+              if (job?.is_estimate_visit) {
                 try {
-                  await supabase
+                  // Query for the parent lead directly to avoid stale closure
+                  const { data: parentLead } = await supabase
                     .from("leads")
-                    .update({ status: "job" })
-                    .eq("id", parentLeadId);
+                    .select("id")
+                    .eq("estimate_job_id", id)
+                    .maybeSingle();
                   
-                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
-                  queryClient.invalidateQueries({ queryKey: ["leads"] });
-                  toast.success("Parent lead converted to job");
+                  if (parentLead) {
+                    await supabase
+                      .from("leads")
+                      .update({ status: "job" })
+                      .eq("id", parentLead.id);
+                    
+                    queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                    queryClient.invalidateQueries({ queryKey: ["leads"] });
+                    toast.success("Parent lead converted to job");
+                  } else {
+                    console.warn("No parent lead found for estimate visit job:", id);
+                  }
                 } catch (error) {
                   console.error("Error converting parent lead to job:", error);
+                  toast.error("Failed to auto-create job from estimate visit");
                 }
               }
             }}
