@@ -36,6 +36,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [estimateStatus, setEstimateStatus] = useState<string | null>(null);
 
   const fetchInvoices = async () => {
     const { data } = await supabase
@@ -44,6 +45,14 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       .eq("lead_id", jobId)
       .order("created_at", { ascending: false });
     setInvoices(data || []);
+
+    const { data: estimate } = await supabase
+      .from("estimates")
+      .select("status")
+      .eq("job_id", jobId)
+      .maybeSingle();
+    setEstimateStatus(estimate?.status || null);
+
     setLoading(false);
   };
 
@@ -102,12 +111,18 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
 
       const { data: estimate } = await supabase
         .from("estimates")
-        .select("id")
+        .select("id, status")
         .eq("job_id", jobId)
         .maybeSingle();
 
       if (!estimate) {
         toast.error("No estimate found for this job. Please create an estimate first.");
+        setSending(false);
+        return;
+      }
+
+      if (estimate.status !== "accepted") {
+        toast.error("The estimate must be approved before you can send an invoice.");
         setSending(false);
         return;
       }
@@ -231,6 +246,19 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
           <p className="text-sm text-muted-foreground text-center py-2">
             Estimate fully invoiced
           </p>
+        ) : estimateStatus && estimateStatus !== "accepted" ? (
+          <div className="space-y-2">
+            <Button
+              className="w-full"
+              disabled
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send Invoice
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              The estimate must be approved before sending an invoice
+            </p>
+          </div>
         ) : (
           <Button
             className="w-full"

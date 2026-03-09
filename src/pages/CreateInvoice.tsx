@@ -109,6 +109,11 @@ export default function CreateInvoice() {
       return;
     }
 
+    if (estimate.status !== "accepted") {
+      toast.error("The estimate must be approved before creating an invoice");
+      return;
+    }
+
     if (invoiceAmount <= 0) {
       toast.error("Invoice amount must be greater than 0");
       return;
@@ -248,6 +253,15 @@ export default function CreateInvoice() {
           </CardContent>
         </Card>
 
+        {estimate.status !== "accepted" && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              This estimate must be approved before an invoice can be created.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {remainingAmount <= 0 && (
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -257,7 +271,7 @@ export default function CreateInvoice() {
           </Alert>
         )}
 
-        {remainingAmount > 0 && (
+        {remainingAmount > 0 && estimate.status === "accepted" && (
           <>
             <Card>
               <CardHeader>
