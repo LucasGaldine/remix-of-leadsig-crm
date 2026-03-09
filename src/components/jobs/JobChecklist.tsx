@@ -273,7 +273,7 @@ export function JobChecklist({
               key={item.id}
               className={cn(
                 "flex items-center gap-3 p-3 transition-colors",
-                !editMode && "cursor-pointer hover:bg-muted/50",
+                !editMode && !isJobCompleted && "cursor-pointer hover:bg-muted/50",
                 item.is_completed && !editMode && "bg-muted/30"
               )}
               onClick={() => !editMode && handleToggle(item)}
