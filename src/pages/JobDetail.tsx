@@ -108,6 +108,7 @@ export default function JobDetail() {
   const [parentLeadId, setParentLeadId] = useState<string | null>(null);
   const [parentLeadToken, setParentLeadToken] = useState<string | null>(null);
   const [hasAfterPhotos, setHasAfterPhotos] = useState(false);
+  const [hasBeforePhotos, setHasBeforePhotos] = useState(false);
   const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
