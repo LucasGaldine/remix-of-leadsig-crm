@@ -64,6 +64,16 @@ export default function ChargePayment() {
     setStep("method");
   };
 
+  const handleTapToPay = (customerId: string) => {
+    setSelectedCustomer(customerId);
+    const customer = customersWithBalance.find(c => c.id === customerId);
+    if (customer) {
+      setAmount(customer.balance.toString());
+    }
+    setSelectedMethod("tap-to-pay");
+    setStep("details");
+  };
+
   const handleMethodSelect = (method: PaymentMethod) => {
     setSelectedMethod(method);
     setStep("details");
@@ -115,32 +125,45 @@ export default function ChargePayment() {
 
             <div className="space-y-3">
               {customersWithBalance.map((customer) => (
-                <button
+                <div
                   key={customer.id}
-                  onClick={() => handleCustomerSelect(customer.id)}
                   className={cn(
-                    "w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all",
+                    "w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all",
                     selectedCustomer === customer.id && "ring-2 ring-primary"
                   )}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-secondary">
-                        <User className="h-5 w-5 text-secondary-foreground" />
+                  <button
+                    onClick={() => handleCustomerSelect(customer.id)}
+                    className="w-full active:scale-[0.98] transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-secondary">
+                          <User className="h-5 w-5 text-secondary-foreground" />
+                        </div>
+                        <div className="text-left">
+                          <h3 className="font-semibold text-foreground">{customer.name}</h3>
+                          <p className="text-sm text-muted-foreground">{customer.jobName}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground">{customer.name}</h3>
-                        <p className="text-sm text-muted-foreground">{customer.jobName}</p>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-foreground">
+                          ${customer.balance.toLocaleString()}
+                        </p>
+                        <p className="text-2xs text-muted-foreground">Balance due</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-foreground">
-                        ${customer.balance.toLocaleString()}
-                      </p>
-                      <p className="text-2xs text-muted-foreground">Balance due</p>
-                    </div>
-                  </div>
-                </button>
+                  </button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full mt-3 gap-2"
+                    onClick={() => handleTapToPay(customer.id)}
+                  >
+                    <Smartphone className="h-4 w-4" />
+                    Tap to Pay
+                  </Button>
+                </div>
               ))}
             </div>
           </div>
