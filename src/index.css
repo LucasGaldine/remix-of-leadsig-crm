@@ -140,23 +140,18 @@ input[type="number"] {
     @apply border-border;
   }
 
-  html, body {
-    overflow-x: hidden;
-    width: 100%;
-  }
-
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', sans-serif;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
     -webkit-tap-highlight-color: transparent;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Antonio', sans-serif;
-  }
-
   /* Ensure touch targets are large enough for gloved hands */
-  button, a, [role="button"] {
+  button,
+  a,
+  [role="button"] {
     min-height: var(--touch-target-min);
   }
 }
@@ -206,7 +201,7 @@ input[type="number"] {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
@@ -214,11 +209,11 @@ input[type="number"] {
 
 @layer components {
   .text-1 {
-    @apply text-xl;
+    @apply text-xl font-semibold;
   }
 
   .text-2 {
-    @apply text-lg;
+    @apply text-lg font-semibold;
   }
 
   .text-3 {
@@ -234,10 +229,10 @@ input[type="number"] {
   }
 
   .text-label {
-    @apply text-sm;
+    @apply text-sm font-semibold;
   }
 
-  .levitate{
+  .levitate {
     @apply active:scale-[0.98] hover:shadow-md transition-all;
   }
 }
