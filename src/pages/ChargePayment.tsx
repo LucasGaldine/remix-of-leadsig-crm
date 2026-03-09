@@ -64,6 +64,16 @@ export default function ChargePayment() {
     setStep("method");
   };
 
+  const handleTapToPay = (customerId: string) => {
+    setSelectedCustomer(customerId);
+    const customer = customersWithBalance.find(c => c.id === customerId);
+    if (customer) {
+      setAmount(customer.balance.toString());
+    }
+    setSelectedMethod("tap-to-pay");
+    setStep("details");
+  };
+
   const handleMethodSelect = (method: PaymentMethod) => {
     setSelectedMethod(method);
     setStep("details");
