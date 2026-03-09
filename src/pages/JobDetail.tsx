@@ -730,7 +730,7 @@ export default function JobDetail() {
                 onClick={handleText}
               >
                 <MessageSquare className="h-4 w-4 shrink-0" />
-                <span className="hidden xs:inline">Text</span>
+                <span className="hidden sm:inline">Text</span>
               </Button>
               <Button
                 size="sm"
@@ -738,7 +738,7 @@ export default function JobDetail() {
                 onClick={handleNavigate}
               >
                 <Navigation className="h-4 w-4 shrink-0" />
-                <span className="hidden xs:inline">Navigate</span>
+                <span className="hidden sm:inline">Navigate</span>
               </Button>
             </div>
           </div>
