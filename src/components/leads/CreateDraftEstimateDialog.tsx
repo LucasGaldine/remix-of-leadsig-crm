@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { type EstimateLineItemInit } from "./LineItemsEstimateDialog";
+import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 
 interface CreateDraftEstimateDialogProps {
   open: boolean;
