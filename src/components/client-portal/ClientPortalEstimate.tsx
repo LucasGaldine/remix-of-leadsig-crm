@@ -26,6 +26,12 @@ interface ClientPortalEstimateProps {
     status: string;
     updated_at: string;
     line_items: LineItem[];
+    original_total?: number | null;
+    original_subtotal?: number | null;
+    original_tax?: number | null;
+    original_discount?: number | null;
+    original_notes?: string | null;
+    original_line_items?: LineItem[] | null;
   };
   token: string;
   apiUrl: string;
@@ -58,8 +64,10 @@ export function ClientPortalEstimate({
 }: ClientPortalEstimateProps) {
   const [submitting, setSubmitting] = useState<"approve" | "decline" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showingOriginal, setShowingOriginal] = useState(false);
 
   const isPending = estimate.status !== "accepted" && estimate.status !== "declined";
+  const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
 
   const handleDownloadPDF = () => {
     generateEstimatePDF({
@@ -109,6 +117,30 @@ export function ClientPortalEstimate({
     }
   };
 
+  const displayLineItems = showingOriginal && hasOriginalEstimate
+    ? estimate.original_line_items!
+    : estimate.line_items;
+
+  const displaySubtotal = showingOriginal && hasOriginalEstimate
+    ? estimate.original_subtotal!
+    : estimate.subtotal;
+
+  const displayTax = showingOriginal && hasOriginalEstimate
+    ? estimate.original_tax!
+    : estimate.tax;
+
+  const displayDiscount = showingOriginal && hasOriginalEstimate
+    ? estimate.original_discount!
+    : estimate.discount;
+
+  const displayTotal = showingOriginal && hasOriginalEstimate
+    ? estimate.original_total!
+    : estimate.total;
+
+  const displayNotes = showingOriginal && hasOriginalEstimate
+    ? estimate.original_notes
+    : estimate.notes;
+
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
       <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
@@ -126,6 +158,32 @@ export function ClientPortalEstimate({
             </span>
           )}
         </div>
+
+        {hasOriginalEstimate && (
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => setShowingOriginal(false)}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                !showingOriginal
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Modified
+            </button>
+            <button
+              onClick={() => setShowingOriginal(true)}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                showingOriginal
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Original
+            </button>
+          </div>
+        )}
+
         <button
           onClick={handleDownloadPDF}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm hover:bg-slate-50 transition-colors"
@@ -135,10 +193,10 @@ export function ClientPortalEstimate({
         </button>
       </div>
 
-      {estimate.line_items.length > 0 && (
+      {displayLineItems.length > 0 && (
         <div className="px-6 sm:px-8 py-5">
           <div className="space-y-0 divide-y divide-slate-100">
-            {estimate.line_items.map((item) => (
+            {displayLineItems.map((item) => (
               <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex justify-between items-start">
                   <div className="flex-1 min-w-0 mr-4">
@@ -192,7 +250,7 @@ export function ClientPortalEstimate({
             <span className="text-slate-500">Subtotal</span>
             <span className="text-slate-700">
               $
-              {Number(estimate.subtotal).toLocaleString(undefined, {
+              {Number(displaySubtotal).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
               })}
             </span>
@@ -203,17 +261,17 @@ export function ClientPortalEstimate({
             </span>
             <span className="text-slate-700">
               $
-              {Number(estimate.tax).toLocaleString(undefined, {
+              {Number(displayTax).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
               })}
             </span>
           </div>
-          {Number(estimate.discount) > 0 && (
+          {Number(displayDiscount) > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Discount</span>
               <span className="text-emerald-600">
                 -$
-                {Number(estimate.discount).toLocaleString(undefined, {
+                {Number(displayDiscount).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                 })}
               </span>
@@ -223,7 +281,7 @@ export function ClientPortalEstimate({
             <span className="text-lg font-bold text-slate-900">Total</span>
             <span className="text-lg font-bold text-slate-900">
               $
-              {Number(estimate.total).toLocaleString(undefined, {
+              {Number(displayTotal).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
               })}
             </span>
@@ -231,13 +289,13 @@ export function ClientPortalEstimate({
         </div>
       </div>
 
-      {estimate.notes && (
+      {displayNotes && (
         <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
           <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
             Notes
           </p>
           <p className="text-sm text-slate-600 whitespace-pre-wrap">
-            {estimate.notes}
+            {displayNotes}
           </p>
         </div>
       )}

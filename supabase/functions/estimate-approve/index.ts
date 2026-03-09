@@ -48,6 +48,11 @@ Deno.serve(async (req: Request) => {
           accepted_at,
           approved_via,
           account_id,
+          original_subtotal,
+          original_tax,
+          original_discount,
+          original_total,
+          original_notes,
           customer:customers(name, email, phone),
           job:leads!estimates_job_id_fkey(name, address, service_type),
           line_items:estimate_line_items(
@@ -83,6 +88,16 @@ Deno.serve(async (req: Request) => {
         .eq("id", estimate.account_id)
         .maybeSingle();
 
+      let originalLineItems = null;
+      if (estimate.original_total) {
+        const { data: originals } = await supabase
+          .from("estimate_line_items_original")
+          .select("*")
+          .eq("estimate_id", estimate.id)
+          .order("sort_order");
+        originalLineItems = originals;
+      }
+
       return new Response(
         JSON.stringify({
           estimate: {
@@ -96,6 +111,7 @@ Deno.serve(async (req: Request) => {
                 (a: { sort_order?: number }, b: { sort_order?: number }) =>
                   (a.sort_order || 0) - (b.sort_order || 0)
               ),
+            original_line_items: originalLineItems,
           },
           company: account || {},
         }),

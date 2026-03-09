@@ -71,6 +71,7 @@ export default function EstimateDetail() {
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showQuickEstimate, setShowQuickEstimate] = useState(false);
+  const [showingOriginal, setShowingOriginal] = useState(false);
 
   const handleDownloadPDF = () => {
     if (!estimate) return;
@@ -137,6 +138,16 @@ export default function EstimateDetail() {
   const displayTitle = isRecurringQuote
     ? `${estimate.customer?.name || "Unknown"} Quote`
     : `${estimate.customer?.name || "Unknown"}, Estimate`;
+
+  const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
+
+  const displayLineItems = showingOriginal && hasOriginalEstimate
+    ? estimate.original_line_items!
+    : estimate.line_items.filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted');
+
+  const displayTotal = showingOriginal && hasOriginalEstimate
+    ? estimate.original_total!
+    : estimate.total;
 
   const handleManualApprove = async () => {
     setManualApproving(true);
@@ -537,7 +548,7 @@ export default function EstimateDetail() {
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-foreground">
-              ${Number(estimate.total).toLocaleString()}
+              ${Number(displayTotal).toLocaleString()}
             </p>
             {estimate.expires_at && (
               <p className="text-sm text-muted-foreground">
@@ -647,13 +658,31 @@ export default function EstimateDetail() {
           )}
         </div>
 
+        {hasOriginalEstimate && !editMode && (
+          <div className="flex gap-2 mb-3">
+            <Button
+              variant={!showingOriginal ? "default" : "outline"}
+              size="sm"
+              className="flex-1"
+              onClick={() => setShowingOriginal(false)}
+            >
+              Modified
+            </Button>
+            <Button
+              variant={showingOriginal ? "default" : "outline"}
+              size="sm"
+              className="flex-1"
+              onClick={() => setShowingOriginal(true)}
+            >
+              Original
+            </Button>
+          </div>
+        )}
+
         {!editMode ? (
           <div className="card-elevated rounded-lg overflow-hidden">
-            {estimate.line_items.filter((item: any) =>
-              !item.is_change_order || item.change_order_type !== 'deleted'
-            ).length > 0 ? (
-              estimate.line_items
-                .filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted')
+            {displayLineItems.length > 0 ? (
+              displayLineItems
                 .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                 .map((item, index, arr) => (
                   <div
