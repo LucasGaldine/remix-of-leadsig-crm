@@ -83,7 +83,7 @@ export default function CustomerDetail() {
   if (!customer) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-24">
-        <PageHeader title="Customer Not Found" onBack={() => navigate("/customers")} />
+        <PageHeader title="Customer Not Found" showBack backTo="/customers" />
         <main className="px-4 py-8 text-center">
           <p className="text-muted-foreground">This customer could not be found.</p>
         </main>
