@@ -20,11 +20,19 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    console.log("Stripe invoice function called");
+    console.log("=== Stripe invoice function called ===");
+    console.log("Method:", req.method);
+    console.log("URL:", req.url);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+
+    console.log("Environment check:", {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasServiceKey: !!supabaseServiceKey,
+      hasStripeKey: !!stripeSecretKey
+    });
 
     if (!stripeSecretKey) {
       console.error("Stripe secret key not configured");
@@ -35,6 +43,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const authHeader = req.headers.get("Authorization");
+    console.log("Authorization header present:", !!authHeader);
+
     if (!authHeader) {
       console.error("Missing Authorization header");
       return new Response(
@@ -44,17 +54,23 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace("Bearer ", "");
+    console.log("Token extracted, length:", token.length);
     console.log("Authenticating user...");
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    console.log("Auth result:", {
+      hasUser: !!user,
+      userId: user?.id,
+      errorMessage: userError?.message
+    });
+
     if (userError || !user) {
       console.error("User authentication failed:", userError?.message || "No user found");
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized: " + (userError?.message || "No user found") }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
       );
     }

@@ -138,10 +138,6 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
 
       const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-      const taxRate = (currentAccount.default_tax_rate || 0) / 100;
-      const tax = invoiceAmount * Number(taxRate);
-      const total = invoiceAmount + tax;
-
       const { data: newInvoice, error: invoiceError } = await supabase
         .from("invoices")
         .insert({
@@ -150,11 +146,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
           estimate_id: estimate.id,
           invoice_number: invoiceNumber.data || 1,
           subtotal: invoiceAmount,
-          tax_rate: taxRate,
-          tax,
+          tax_rate: 0,
+          tax: 0,
           discount: 0,
-          total,
-          balance_due: total,
+          total: invoiceAmount,
+          balance_due: invoiceAmount,
           notes: description.trim() || null,
           status: "draft",
           due_date: dueDate,
@@ -185,16 +181,15 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         return;
       }
 
-      const { error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
+      const { data: invokeData, error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
         body: {
           invoiceId: newInvoice.id,
           customerEmail: customerEmail || undefined,
           customerName: customerName || undefined,
         },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
       });
+
+      console.log("Stripe function response:", { data: invokeData, error: stripeError });
 
       if (stripeError) {
         console.error("Stripe invoice error:", stripeError);
@@ -320,7 +315,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="invoice-amount">Amount (Subtotal)</Label>
+              <Label htmlFor="invoice-amount">Invoice Amount</Label>
               <Input
                 id="invoice-amount"
                 type="number"
@@ -333,22 +328,6 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
                 <p className="text-sm text-destructive">
                   Amount exceeds remaining estimate balance
                 </p>
-              )}
-              {invoiceAmount > 0 && taxRate > 0 && (
-                <div className="mt-3 p-3 bg-muted rounded-lg space-y-1.5 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Subtotal:</span>
-                    <span className="font-medium">${invoiceAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Tax ({(currentAccount?.default_tax_rate || 0).toFixed(1)}%):</span>
-                    <span className="font-medium">${taxAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between pt-1.5 border-t border-border">
-                    <span className="font-semibold">Total:</span>
-                    <span className="font-semibold">${totalWithTax.toFixed(2)}</span>
-                  </div>
-                </div>
               )}
             </div>
           </div>
