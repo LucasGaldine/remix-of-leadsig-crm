@@ -75,6 +75,10 @@ export default function Leads() {
     createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),
     status: lead.status as LeadStatus,
     qualificationScore: lead.qualification_score || undefined,
+    customer: lead.customer ? {
+      id: lead.customer.id,
+      name: lead.customer.name,
+    } : null,
   });
 
   const allLeads: Lead[] = (leadsData || []).map(mapLead);

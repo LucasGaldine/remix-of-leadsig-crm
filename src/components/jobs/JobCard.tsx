@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Database } from "@/types/database";
 import { format } from "date-fns";
 import { RecurringJobDetailModal } from "./RecurringJobDetailModal";
+import { useNavigate } from "react-router-dom";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 type DbJob = Database["public"]["Tables"]["leads"]["Row"];
@@ -54,6 +55,7 @@ function formatScheduledDateRange(
 }
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
+  const navigate = useNavigate();
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
   const statusLabels: Record<string, string> = {
@@ -77,6 +79,13 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
   const handleRecurringBadgeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowRecurringModal(true);
+  };
+
+  const handleCustomerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (job.customer?.id) {
+      navigate(`/customers/${job.customer.id}`);
+    }
   };
 
   return (
@@ -114,9 +123,18 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
               )}
             </div>
 
-          <h3 className="text-2 truncate ">
-            {job.name || job.customer?.name || "Unnamed Job"}
+          <h3 className="text-2 truncate">
+            {job.name || "Unnamed Job"}
           </h3>
+
+          {job.customer?.name && (
+            <button
+              onClick={handleCustomerClick}
+              className="text-sm text-muted-foreground hover:text-primary hover:underline transition-colors mt-0.5 text-left"
+            >
+              {job.customer.name}
+            </button>
+          )}
 
           <p className="text-sm text-muted-foreground font-medium mt-0.5">
             {job.is_estimate_visit

@@ -63,7 +63,7 @@ export default function CustomerDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("invoices")
-        .select("*")
+        .select("*, lead:leads!invoices_lead_id_fkey(id, name)")
         .eq("customer_id", id!)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -230,7 +230,7 @@ export default function CustomerDetail() {
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-foreground">
-                        ${Number(est.total_amount || 0).toLocaleString()}
+                        ${Number(est.total || 0).toLocaleString()}
                       </p>
                       <StatusBadge status={est.status} />
                     </div>
@@ -254,18 +254,20 @@ export default function CustomerDetail() {
                   className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-semibold text-foreground">
-                        Invoice #{inv.invoice_number || inv.id?.slice(0, 8)}
+                        ${Number(inv.total || 0).toLocaleString()}
                       </h3>
-                      <p className="text-sm text-muted-foreground">
+                      {inv.lead && (
+                        <p className="text-sm text-muted-foreground">
+                          {inv.lead.name}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
                         {format(new Date(inv.created_at), "MMM d, yyyy")}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-foreground">
-                        ${Number(inv.total_amount || 0).toLocaleString()}
-                      </p>
                       <StatusBadge status={inv.status} />
                     </div>
                   </div>

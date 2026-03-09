@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid" | "completed" | "lost" | "archived";
 
@@ -26,6 +27,10 @@ export interface Lead {
   createdAt: string;
   status: LeadStatus;
   qualificationScore?: number;
+  customer?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 interface LeadCardProps {
@@ -42,7 +47,16 @@ interface LeadCardProps {
 }
 
 export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEstimate, archiveMode, onUnarchive, onDelete, className }: LeadCardProps) {
+  const navigate = useNavigate();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleCustomerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (lead.customer?.id) {
+      navigate(`/customers/${lead.customer.id}`);
+    }
+  };
+
   const getStatusBadgeStatus = (status: LeadStatus) => {
     switch (status) {
       case "qualified":
@@ -99,6 +113,15 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
             <p className="text-2">
               {lead.name}
             </p>
+
+            {lead.customer?.name && (
+              <button
+                onClick={handleCustomerClick}
+                className="text-sm text-muted-foreground hover:text-primary hover:underline transition-colors text-left"
+              >
+                {lead.customer.name}
+              </button>
+            )}
 
             <p className="text-5 font-medium mt-0.5">
               {lead.serviceType && lead.serviceType !== "Unknown" ? lead.serviceType : "No service type"}
