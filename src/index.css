@@ -147,14 +147,8 @@ input[type="number"] {
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Anton', sans-serif;
-    font-weight: 400;
+    font-family: 'Oswald', sans-serif;
     -webkit-tap-highlight-color: transparent;
-  }
-
-  /* Anton only has weight 400 — prevent faux bold */
-  * {
-    font-weight: 400 !important;
   }
 
   /* Ensure touch targets are large enough for gloved hands */
