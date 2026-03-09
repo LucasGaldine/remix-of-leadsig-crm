@@ -304,7 +304,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
                 <div className="flex items-center gap-1.5">
                   <span className="font-medium text-foreground">{formatDuration(dur)}</span>
                   {e.is_auto && (
-                    <Wifi className="h-3 w-3 text-muted-foreground" title="Auto-tracked" />
+                    <span title="Auto-tracked"><Wifi className="h-3 w-3 text-muted-foreground" /></span>
                   )}
                 </div>
               </div>
