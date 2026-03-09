@@ -108,6 +108,7 @@ export default function JobDetail() {
   const [parentLeadId, setParentLeadId] = useState<string | null>(null);
   const [parentLeadToken, setParentLeadToken] = useState<string | null>(null);
   const [hasAfterPhotos, setHasAfterPhotos] = useState(false);
+  const [hasBeforePhotos, setHasBeforePhotos] = useState(false);
   const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -117,9 +118,10 @@ export default function JobDetail() {
       fetchEstimate();
       fetchParentLead();
       fetchAfterPhotos();
+      fetchBeforePhotos();
       fetchNotes();
     }
-  }, [id]);
+  }, [id, parentLeadId]);
 
   useEffect(() => {
     const jobAny = job as any;
@@ -151,6 +153,21 @@ export default function JobDetail() {
       }
     } catch (error) {
       console.error("Error fetching parent lead:", error);
+    }
+  };
+
+  const fetchBeforePhotos = async () => {
+    if (!id) return;
+    try {
+      const photoLeadId = job?.is_estimate_visit && parentLeadId ? parentLeadId : id;
+      const { count } = await supabase
+        .from("lead_photos")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", photoLeadId)
+        .eq("photo_type", "before");
+      setHasBeforePhotos((count ?? 0) > 0);
+    } catch (error) {
+      console.error("Error fetching before photos:", error);
     }
   };
 
@@ -1085,6 +1102,10 @@ export default function JobDetail() {
               })()
             }
             isManager={isManager()}
+            hasBeforePhotos={hasBeforePhotos}
+            onMarkComplete={async () => {
+              await updateJobMutation.mutateAsync({ id, status: "completed" as any });
+            }}
           />
           </div>
         )}
