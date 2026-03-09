@@ -204,6 +204,7 @@ function NewClientForm({
   data: CreateCustomerInput;
   onChange: (data: CreateCustomerInput) => void;
 }) {
+  const { verify, verifying, result: addressResult, reset: resetVerification } = useAddressVerification();
   return (
     <div className="space-y-3 p-3 rounded-lg border border-dashed border-border bg-muted/30">
       <div>
