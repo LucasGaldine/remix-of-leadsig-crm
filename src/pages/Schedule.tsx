@@ -72,13 +72,6 @@ export default function Schedule() {
       <PageHeader
         title="Schedule"
         subtitle={format(selectedDate, "MMMM yyyy")}
-        actions={
-        <Button size="sm" className="gap-1" onClick={() => navigate("/jobs")}>
-            <Plus className="h-4 w-4" />
-            Add
-          </Button>
-        }
-
       />
 
       {/* Week View */}
