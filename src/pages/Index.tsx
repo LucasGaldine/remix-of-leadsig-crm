@@ -244,6 +244,47 @@ export default function Index() {
             )}
           </section>
         )}
+
+        {sections.includes("customers") && (
+          <section>
+            <SectionHeader
+              title="Customers"
+              count={customersData.length}
+              action={{ label: "View all", onClick: () => navigate("/customers") }}
+              className="mb-3"
+            />
+            {customersLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : customersData.length === 0 ? (
+              <div className="card-elevated rounded-lg p-6 text-center">
+                <p className="text-muted-foreground">No customers yet</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {customersData.slice(0, SECTION_LIMIT).map((c) => (
+                    <CustomerCard
+                      key={c.id}
+                      customer={c}
+                      onClick={() => navigate(`/customers/${c.id}`)}
+                    />
+                  ))}
+                </div>
+                {customersData.length > SECTION_LIMIT && (
+                  <button
+                    onClick={() => navigate("/customers")}
+                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    View {customersData.length - SECTION_LIMIT} more
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+        )}
         </div>
 
         {/* Analytics Visuals */}
