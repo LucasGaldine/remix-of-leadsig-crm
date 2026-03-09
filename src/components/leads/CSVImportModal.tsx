@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { parseCSV, autoMapColumns, LEAD_FIELDS, type ParsedCSV, type ColumnMapping, type LeadFieldKey } from "@/lib/csvParser";
+import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 // @ts-nocheck
 interface CSVImportModalProps {
   open: boolean;
@@ -166,25 +167,15 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
 
       try {
         // Create customer first
-        const { data: customer, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            name,
-            email: email || null,
-            phone: phone || null,
-            address: address || null,
-            city: city || null,
-            created_by: user.id,
-            account_id: currentAccount.id,
-          })
-          .select("id")
-          .single();
-
-        if (customerError) {
-          errors.push(`Row ${rowIdx}: Failed to create customer - ${customerError.message}`);
-          failed++;
-          continue;
-        }
+        const { id: customerId } = await findOrCreateCustomer({
+          name,
+          email: email || null,
+          phone: phone || null,
+          address: address || null,
+          city: city || null,
+          created_by: user.id,
+          account_id: currentAccount.id,
+        });
 
         // Create lead linked to customer
         const { error: leadError } = await supabase
@@ -196,7 +187,7 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
             address: address || null,
             city: city || null,
             state: getValue("state"),
-            customer_id: customer.id,
+            customer_id: customerId,
             service_type: getValue("service_type"),
             source: getValue("source") || "CSV Import",
             notes: getValue("notes"),

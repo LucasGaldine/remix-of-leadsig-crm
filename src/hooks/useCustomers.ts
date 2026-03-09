@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 
 export interface Customer {
   id: string;
@@ -59,18 +60,20 @@ export function useCreateCustomer() {
       if (!user) throw new Error("Not authenticated");
       if (!currentAccount) throw new Error("No account selected");
 
+      const { id } = await findOrCreateCustomer({
+        name: input.name,
+        email: input.email || null,
+        phone: input.phone || null,
+        address: input.address || null,
+        city: input.city || null,
+        created_by: user.id,
+        account_id: currentAccount.id,
+      });
+
       const { data, error } = await supabase
         .from("customers")
-        .insert({
-          name: input.name,
-          email: input.email || null,
-          phone: input.phone || null,
-          address: input.address || null,
-          city: input.city || null,
-          created_by: user.id,
-          account_id: currentAccount.id,
-        })
-        .select()
+        .select("*")
+        .eq("id", id)
         .single();
 
       if (error) throw error;

@@ -11,6 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+
 
 export interface EstimateLineItemInit {
   name: string;
@@ -95,38 +97,16 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     const loadingToast = toast.loading("Creating estimate...");
 
     try {
-      let customerId = null;
+      const { id: customerId } = await findOrCreateCustomer({
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email,
+        address: lead.address || lead.city,
+        city: lead.city,
+        created_by: user.id,
+        account_id: currentAccount.id,
+      });
 
-      if (lead.phone) {
-        const { data: existingCustomer } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("phone", lead.phone)
-          .maybeSingle();
-
-        if (existingCustomer) {
-          customerId = existingCustomer.id;
-        }
-      }
-
-      if (!customerId) {
-        const { data: newCustomer, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            name: lead.name,
-            phone: lead.phone,
-            email: lead.email,
-            address: lead.address || lead.city,
-            city: lead.city,
-            created_by: user.id,
-            account_id: currentAccount.id,
-          })
-          .select()
-          .single();
-
-        if (customerError) throw new Error("Failed to create customer");
-        customerId = newCustomer.id;
-      }
 
       const estimateTotal = validLineItems.reduce((sum, item) => {
         const quantity = parseFloat(item.quantity || "1");
