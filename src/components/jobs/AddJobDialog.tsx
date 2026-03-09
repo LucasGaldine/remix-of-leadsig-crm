@@ -204,9 +204,18 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
                 <Input
                   id="address"
                   value={formData.address}
-                  onChange={(e) => handleChange("address", e.target.value)}
-                  placeholder="123 Main St, Austin, TX"
+                  onChange={(e) => {
+                    handleChange("address", e.target.value);
+                    resetVerification();
+                  }}
+                  placeholder="123 Main St, Austin, TX 78701"
                   className="mt-1.5"
+                />
+                <AddressVerificationBadge
+                  verifying={verifying}
+                  result={addressResult}
+                  onVerify={() => verify(formData.address)}
+                  onAccept={(formatted) => handleChange("address", formatted)}
                 />
               </div>
 
