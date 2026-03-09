@@ -16,7 +16,7 @@ import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useCustomers } from "@/hooks/useCustomers";
+import { useCustomersNeedingAttention } from "@/hooks/useCustomersNeedingAttention";
 import { CustomerCard } from "@/components/customers/CustomerCard";
 
 function getGreeting(): string {
