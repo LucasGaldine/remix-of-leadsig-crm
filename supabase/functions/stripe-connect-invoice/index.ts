@@ -127,6 +127,31 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log("Fetching customer details...");
+    const { data: customer, error: custError } = await supabase
+      .from("customers")
+      .select("email, name, phone")
+      .eq("id", invoice.customer_id)
+      .single();
+
+    if (custError || !customer) {
+      console.error("Customer not found:", invoice.customer_id, custError?.message);
+      return new Response(
+        JSON.stringify({ error: "Customer not found" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
+      );
+    }
+
+    if (!customer.email) {
+      console.error("Customer missing email:", invoice.customer_id);
+      return new Response(
+        JSON.stringify({ error: "Customer must have an email address to receive invoices" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    console.log("Customer found with email:", customer.email);
+
     console.log("Invoice found, checking Stripe account...");
 
     const { data: stripeAccount } = await supabase
@@ -157,8 +182,9 @@ Deno.serve(async (req: Request) => {
 
     const stripeCustomer = await stripe.customers.create(
       {
-        email: customerEmail || undefined,
-        name: customerName || undefined,
+        email: customer.email,
+        name: customer.name || undefined,
+        phone: customer.phone || undefined,
         metadata: {
           supabase_customer_id: invoice.customer_id,
           account_id: membership.account_id,
