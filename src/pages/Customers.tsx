@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { MobileNav } from "@/components/layout/MobileNav";
 import { CustomerCard } from "@/components/customers/CustomerCard";
 import { useCustomers } from "@/hooks/useCustomers";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ export default function Customers() {
   const { data: customers = [], isLoading } = useCustomers(search);
 
   return (
-    <AppLayout>
+    <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Customers" showBack backTo="/" />
 
       <main className="px-4 py-4 space-y-4 max-w-[var(--content-max-width)] m-auto">
@@ -50,6 +50,8 @@ export default function Customers() {
           </div>
         )}
       </main>
-    </AppLayout>
+
+      <MobileNav />
+    </div>
   );
 }
