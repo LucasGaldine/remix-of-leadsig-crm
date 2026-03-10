@@ -246,29 +246,77 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         return;
       }
 
-      const { data: invoice, error: invoiceError } = await supabase
+      let invoiceId: string;
+
+      const { data: existingInvoice } = await supabase
         .from("invoices")
-        .select("id, estimate_id")
+        .select("id")
         .eq("lead_id", jobId)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (invoiceError) {
-        console.error("Invoice query error:", invoiceError);
-        toast.error("Failed to find invoice");
-        setRecordingPayment(false);
-        return;
-      }
+      if (existingInvoice) {
+        invoiceId = existingInvoice.id;
+      } else {
+        const { data: estimate } = await supabase
+          .from("estimates")
+          .select("id")
+          .eq("job_id", jobId)
+          .maybeSingle();
 
-      if (!invoice) {
-        toast.error("No invoice found for this job. Please create an invoice first.");
-        setRecordingPayment(false);
-        return;
+        const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
+          p_account_id: currentAccount.id,
+        });
+
+        const dueDate = new Date().toISOString().split("T")[0];
+
+        const { data: newInvoice, error: invoiceError } = await supabase
+          .from("invoices")
+          .insert({
+            customer_id: job.customer_id,
+            lead_id: jobId,
+            estimate_id: estimate?.id || null,
+            invoice_number: invoiceNumber.data || 1,
+            subtotal: paymentAmount,
+            tax_rate: 0,
+            tax: 0,
+            discount: 0,
+            total: paymentAmount,
+            balance_due: 0,
+            notes: `Payment received via ${method}`,
+            status: "paid",
+            due_date: dueDate,
+            created_by: user.id,
+            account_id: currentAccount.id,
+          })
+          .select("id")
+          .single();
+
+        if (invoiceError) {
+          console.error("Invoice creation error:", invoiceError);
+          toast.error("Failed to create invoice");
+          setRecordingPayment(false);
+          return;
+        }
+
+        await supabase.from("invoice_line_items").insert({
+          invoice_id: newInvoice.id,
+          name: `Payment - ${method.charAt(0).toUpperCase() + method.slice(1)}`,
+          description: `Payment received via ${method}`,
+          quantity: 1,
+          unit: "item",
+          unit_price: paymentAmount,
+          total: paymentAmount,
+          sort_order: 0,
+          account_id: currentAccount.id,
+        });
+
+        invoiceId = newInvoice.id;
       }
 
       const { error: paymentError } = await supabase.from("payments").insert({
-        invoice_id: invoice.id,
+        invoice_id: invoiceId,
         lead_id: jobId,
         customer_id: job.customer_id,
         amount: paymentAmount,
@@ -287,6 +335,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
 
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       setShowLogPaymentModal(false);
       toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${paymentAmount.toLocaleString()} recorded`);
       fetchInvoices();
