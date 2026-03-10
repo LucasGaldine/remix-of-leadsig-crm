@@ -237,8 +237,8 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         .eq('estimate_id', estimate.id)
         .or('is_change_order.is.null,and(is_change_order.eq.false),and(is_change_order.eq.true,change_order_type.neq.deleted)');
 
-      if (activeItems.data) {
-        const newSubtotal = activeItems.data.reduce(
+      if (activeItems && activeItems.length > 0) {
+        const newSubtotal = activeItems.reduce(
           (sum, item) => sum + parseFloat(item.total.toString()),
           0
         );
