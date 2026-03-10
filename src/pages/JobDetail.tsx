@@ -1093,54 +1093,25 @@ export default function JobDetail() {
             isManager={isManager()}
             hasBeforePhotos={hasBeforePhotos}
             onMarkComplete={async () => {
-              await updateJobMutation.mutateAsync({ id, status: "completed" as any });
-              
-              // If this is an estimate visit, create a new regular job from this estimate visit's data
               if (job?.is_estimate_visit) {
-                try {
-                  // Re-fetch the current job to get latest data
-                  const { data: currentJob } = await supabase
-                    .from("leads")
-                    .select("*")
-                    .eq("id", id)
-                    .single();
+                await new Promise(resolve => setTimeout(resolve, 1000));
 
-                  if (currentJob) {
-                    const { data: newJob, error: insertError } = await supabase
-                      .from("leads")
-                      .insert({
-                        name: currentJob.name,
-                        address: currentJob.address,
-                        city: currentJob.city,
-                        state: currentJob.state,
-                        service_type: currentJob.service_type,
-                        description: currentJob.description,
-                        customer_id: currentJob.customer_id,
-                        account_id: currentJob.account_id,
-                        created_by: currentJob.created_by,
-                        estimated_value: currentJob.estimated_value,
-                        source: currentJob.source,
-                        status: "job",
-                        approval_status: "approved",
-                        is_estimate_visit: false,
-                        estimate_job_id: id,
-                      })
-                      .select()
-                      .single();
+                const { data: newJob } = await supabase
+                  .from("leads")
+                  .select("*")
+                  .eq("estimate_job_id", id)
+                  .eq("is_estimate_visit", false)
+                  .eq("status", "job")
+                  .maybeSingle();
 
-                    if (insertError) throw insertError;
-
-                    queryClient.invalidateQueries({ queryKey: ["jobs"] });
-                    queryClient.invalidateQueries({ queryKey: ["leads"] });
-                    toast.success("New job created from estimate visit!");
-                    
-                    if (newJob) {
-                      navigate(`/jobs/${newJob.id}`);
-                    }
-                  }
-                } catch (error) {
-                  console.error("Error creating job from estimate visit:", error);
-                  toast.error("Failed to auto-create job from estimate visit");
+                if (newJob) {
+                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                  queryClient.invalidateQueries({ queryKey: ["leads"] });
+                  toast.success("Job created from estimate visit!");
+                  navigate(`/jobs/${newJob.id}`);
+                } else {
+                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                  queryClient.invalidateQueries({ queryKey: ["leads"] });
                 }
               }
             }}
