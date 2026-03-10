@@ -336,6 +336,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       setShowLogPaymentModal(false);
       toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${paymentAmount.toLocaleString()} recorded`);
       fetchInvoices();
