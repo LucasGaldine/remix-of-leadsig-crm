@@ -40,32 +40,38 @@ export function useRevenueExpenses(timeframe: Timeframe) {
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const [paymentsRes, jobsRes, lineItemsRes] = await Promise.all([
+      const [paymentsRes, jobsRes] = await Promise.all([
         supabase
           .from("payments")
-          .select("amount, method, created_at, status")
+          .select("amount, created_at")
           .eq("account_id", currentAccount.id)
           .eq("status", "completed")
           .gte("created_at", from.toISOString())
           .lte("created_at", to.toISOString()),
         supabase
           .from("leads")
-          .select("id, created_at")
+          .select("id, updated_at")
           .eq("account_id", currentAccount.id)
-          .in("status", ["job", "paid", "archived"])
-          .gte("created_at", from.toISOString())
-          .lte("created_at", to.toISOString()),
-        supabase
-          .from("job_line_items")
-          .select("lead_id, total, created_at")
-          .eq("account_id", currentAccount.id)
-          .gte("created_at", from.toISOString())
-          .lte("created_at", to.toISOString()),
+          .eq("status", "completed")
+          .gte("updated_at", from.toISOString())
+          .lte("updated_at", to.toISOString()),
       ]);
 
       if (paymentsRes.error) throw paymentsRes.error;
       if (jobsRes.error) throw jobsRes.error;
-      if (lineItemsRes.error && !isMissingTable(lineItemsRes.error)) throw lineItemsRes.error;
+
+      const jobIds = (jobsRes.data || []).map((j: any) => j.id);
+
+      let lineItemsRes = null;
+      if (jobIds.length > 0) {
+        lineItemsRes = await supabase
+          .from("job_line_items")
+          .select("lead_id, total")
+          .eq("account_id", currentAccount.id)
+          .in("lead_id", jobIds);
+
+        if (lineItemsRes.error && !isMissingTable(lineItemsRes.error)) throw lineItemsRes.error;
+      }
 
       const weeks: Record<string, { revenue: number; expenses: number; order: number }> = {};
 
@@ -78,14 +84,15 @@ export function useRevenueExpenses(timeframe: Timeframe) {
         weeks[weekKey].revenue += amt;
       });
 
-      const jobIds = new Set((jobsRes.data || []).map((j: any) => j.id));
-      const jobDateMap = new Map((jobsRes.data || []).map((j: any) => [j.id, j.created_at]));
+      const jobDateMap = new Map((jobsRes.data || []).map((j: any) => [j.id, j.updated_at]));
 
-      (lineItemsRes.data || []).forEach((item: any) => {
-        if (!item.lead_id || !jobIds.has(item.lead_id)) return;
+      (lineItemsRes?.data || []).forEach((item: any) => {
+        if (!item.lead_id) return;
 
         const jobDate = jobDateMap.get(item.lead_id);
-        const date = new Date(jobDate || item.created_at);
+        if (!jobDate) return;
+
+        const date = new Date(jobDate);
         const weekStart = startOfWeek(date, { weekStartsOn: 1 });
         const weekKey = format(weekStart, "MMM d");
         if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
