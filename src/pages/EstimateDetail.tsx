@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, ChevronRight, CircleAlert as AlertCircle, History, CreditCard as Edit2, Link2, Copy, CheckCheck, CreditCard, FileCheck, Download } from "lucide-react";
+import { Send, ArrowRightLeft, User, Calendar, ChevronRight, CircleAlert as AlertCircle, History, CreditCard as Edit2, Link2, Copy, CheckCheck, CreditCard, FileCheck, Download, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
