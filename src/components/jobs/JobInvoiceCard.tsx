@@ -111,6 +111,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       return;
     }
 
+    if (!customerEmail) {
+      toast.error("Customer must have an email address to receive invoices. Please add an email to the customer profile.");
+      return;
+    }
+
     setSending(true);
     try {
       const { data: job } = await supabase
@@ -178,12 +183,6 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         sort_order: 0,
         account_id: currentAccount.id,
       });
-
-      if (!customerEmail) {
-        toast.error("Customer must have an email address to receive invoices. Please add an email to the customer profile.");
-        setSending(false);
-        return;
-      }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
