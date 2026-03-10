@@ -198,6 +198,7 @@ export default function CreateEstimate() {
           job_id: selectedJobId,
           account_id: currentAccount.id,
           subtotal,
+          profit_margin: currentAccount?.default_profit_margin ?? 0,
           tax_rate: parseFloat(taxRate) / 100,
           tax: taxAmount,
           discount: discountAmount,
