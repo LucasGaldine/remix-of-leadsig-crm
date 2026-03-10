@@ -20,6 +20,7 @@ interface ClientPortalEstimateProps {
   estimate: {
     total: number;
     subtotal: number;
+    profit_margin?: number;
     tax_rate: number;
     tax: number;
     discount: number;
@@ -163,6 +164,7 @@ export function ClientPortalEstimate({
     title: string,
     lineItems: LineItem[],
     subtotal: number,
+    profitMargin: number,
     tax: number,
     discount: number,
     total: number,
@@ -232,6 +234,19 @@ export function ClientPortalEstimate({
               })}
             </span>
           </div>
+          {Number(profitMargin) > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">
+                Profit Margin ({Number(profitMargin).toFixed(1)}%)
+              </span>
+              <span className="text-slate-700">
+                $
+                {(Number(subtotal) * (Number(profitMargin) / 100)).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">
               Tax ({(Number(estimate.tax_rate) * 100).toFixed(1)}%)
@@ -330,6 +345,7 @@ export function ClientPortalEstimate({
               "Original Approved Estimate",
               estimate.original_line_items!,
               estimate.original_subtotal!,
+              estimate.profit_margin || 0,
               estimate.original_tax!,
               estimate.original_discount!,
               estimate.original_total!,
@@ -340,6 +356,7 @@ export function ClientPortalEstimate({
               "Proposed Changes",
               currentLineItems,
               estimate.subtotal,
+              estimate.profit_margin || 0,
               estimate.tax,
               estimate.discount,
               estimate.total,
@@ -424,6 +441,19 @@ export function ClientPortalEstimate({
                   })}
                 </span>
               </div>
+              {Number(estimate.profit_margin) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">
+                    Profit Margin ({Number(estimate.profit_margin).toFixed(1)}%)
+                  </span>
+                  <span className="text-slate-700">
+                    $
+                    {(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">
                   Tax ({(Number(estimate.tax_rate) * 100).toFixed(1)}%)

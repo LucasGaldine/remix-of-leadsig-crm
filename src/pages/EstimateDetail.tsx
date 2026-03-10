@@ -268,8 +268,11 @@ export default function EstimateDetail() {
       }
 
       const newSubtotal = newItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-      const newTax = newSubtotal * parseFloat(estimate.tax_rate.toString());
-      const newTotal = newSubtotal + newTax - parseFloat(estimate.discount.toString());
+      const profitMargin = parseFloat(estimate.profit_margin?.toString() || '0');
+      const profitAmount = newSubtotal * (profitMargin / 100);
+      const subtotalWithProfit = newSubtotal + profitAmount;
+      const newTax = subtotalWithProfit * parseFloat(estimate.tax_rate.toString());
+      const newTotal = subtotalWithProfit + newTax - parseFloat(estimate.discount.toString());
 
       await supabase
         .from('estimates')
@@ -494,8 +497,11 @@ export default function EstimateDetail() {
           (sum, item) => sum + parseFloat(item.total.toString()),
           0
         );
-        const newTax = newSubtotal * parseFloat(estimate.tax_rate.toString());
-        const newTotal = newSubtotal + newTax - parseFloat(estimate.discount.toString());
+        const profitMargin = parseFloat(estimate.profit_margin?.toString() || '0');
+        const profitAmount = newSubtotal * (profitMargin / 100);
+        const subtotalWithProfit = newSubtotal + profitAmount;
+        const newTax = subtotalWithProfit * parseFloat(estimate.tax_rate.toString());
+        const newTotal = subtotalWithProfit + newTax - parseFloat(estimate.discount.toString());
 
         await supabase
           .from('estimates')
@@ -916,6 +922,12 @@ export default function EstimateDetail() {
             <span className="text-muted-foreground">Subtotal</span>
             <span className="text-foreground">${Number(estimate.subtotal).toLocaleString()}</span>
           </div>
+          {Number(estimate.profit_margin) > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Profit Margin ({Number(estimate.profit_margin).toFixed(0)}%)</span>
+              <span className="text-foreground">${(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString()}</span>
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Tax ({(Number(estimate.tax_rate) * 100).toFixed(0)}%)</span>
             <span className="text-foreground">${Number(estimate.tax).toLocaleString()}</span>
