@@ -42,7 +42,7 @@ export function useRevenueExpenses(timeframe: Timeframe) {
 
       const { data, error } = await supabase
         .from("payments")
-        .select("amount, type, recorded_at, created_at, status")
+        .select("amount, method, created_at, status")
         .eq("account_id", currentAccount.id)
         .eq("status", "completed")
         .gte("created_at", from.toISOString())
@@ -53,16 +53,12 @@ export function useRevenueExpenses(timeframe: Timeframe) {
       // Group by week
       const weeks: Record<string, { revenue: number; expenses: number; order: number }> = {};
       (data || []).forEach((p: any) => {
-        const date = new Date(p.recorded_at || p.created_at);
+        const date = new Date(p.created_at);
         const weekStart = startOfWeek(date, { weekStartsOn: 1 });
         const weekKey = format(weekStart, "MMM d");
         if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
         const amt = Number(p.amount) || 0;
-        if (p.type === "expense") {
-          weeks[weekKey].expenses += amt;
-        } else {
-          weeks[weekKey].revenue += amt;
-        }
+        weeks[weekKey].revenue += amt;
       });
 
       return Object.entries(weeks)
@@ -96,7 +92,7 @@ export function useLeadFunnel(timeframe: Timeframe) {
         { key: "contacted", label: "Contacted" },
         { key: "qualified", label: "Qualified" },
         { key: "job", label: "Jobs" },
-        { key: "paid", label: "Won" },
+        { key: "completed", label: "Won" },
       ] as const;
 
       const counts: Record<string, number> = {};
@@ -155,7 +151,7 @@ export function useJobCompletion(timeframe: Timeframe) {
 
       (leadRes.data || []).forEach((lead: any) => {
         const status = lead.status;
-        const isDone = ["completed", "paid", "won"].includes(status);
+        const isDone = ["completed"].includes(status);
         if (isDone) {
           completed++;
           return;
