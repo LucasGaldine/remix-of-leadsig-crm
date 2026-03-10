@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { LineItemCategory } from "@/hooks/useJobLineItems";
 
 
 export interface EstimateLineItemInit {
@@ -20,6 +21,7 @@ export interface EstimateLineItemInit {
   quantity: string;
   unit: string;
   unit_price: string;
+  category: LineItemCategory;
 }
 
 interface LineItemsEstimateDialogProps {
@@ -45,20 +47,22 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
 
   const defaultLineItems: EstimateLineItemInit[] = initialLineItems ??
     (lead.estimated_value
-      ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString() }]
-      : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
+      ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString(), category: "other" }]
+      : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
 
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
+  const [profitMargin, setProfitMargin] = useState<string>("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (open) {
       setLineItems(defaultLineItems);
+      setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
     }
-  }, [open]);
+  }, [open, currentAccount?.default_profit_margin]);
 
   const addLineItem = () => {
-    setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
+    setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
   };
 
   const removeLineItem = (index: number) => {
@@ -71,7 +75,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     setLineItems(updated);
   };
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return lineItems
       .filter(item => item.unit_price && item.quantity)
       .reduce((sum, item) => {
@@ -79,6 +83,26 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         const unitPrice = parseFloat(item.unit_price || "0");
         return sum + (quantity * unitPrice);
       }, 0);
+  };
+
+  const calculateProfit = () => {
+    const subtotal = calculateSubtotal();
+    const margin = (parseFloat(profitMargin) || 0) / 100;
+    return subtotal * margin;
+  };
+
+  const calculateSubtotalAfterProfit = () => {
+    return calculateSubtotal() + calculateProfit();
+  };
+
+  const calculateTax = () => {
+    const subtotalAfterProfit = calculateSubtotalAfterProfit();
+    const taxRate = (currentAccount?.default_tax_rate ?? 0) / 100;
+    return subtotalAfterProfit * taxRate;
+  };
+
+  const calculateTotal = () => {
+    return calculateSubtotalAfterProfit() + calculateTax();
   };
 
   const handleCreate = async () => {
@@ -108,11 +132,20 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       });
 
 
-      const estimateTotal = validLineItems.reduce((sum, item) => {
+      const estimateSubtotal = validLineItems.reduce((sum, item) => {
         const quantity = parseFloat(item.quantity || "1");
         const unitPrice = parseFloat(item.unit_price);
         return sum + (quantity * unitPrice);
       }, 0);
+
+      const profitMarginPercent = parseFloat(profitMargin) || 0;
+      const profitMarginValue = profitMarginPercent / 100;
+      const profitAmount = estimateSubtotal * profitMarginValue;
+      const subtotalAfterProfit = estimateSubtotal + profitAmount;
+      const taxRatePercent = currentAccount?.default_tax_rate ?? 0;
+      const taxRate = taxRatePercent / 100;
+      const taxAmount = subtotalAfterProfit * taxRate;
+      const estimateTotal = subtotalAfterProfit + taxAmount;
 
       const { error: updateError } = await supabase
         .from("leads")
@@ -129,11 +162,12 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         .insert({
           customer_id: customerId,
           job_id: lead.id,
-          subtotal: estimateTotal,
-          tax_rate: (currentAccount?.default_tax_rate ?? 0) / 100,
-          tax: estimateTotal * ((currentAccount?.default_tax_rate ?? 0) / 100),
+          subtotal: estimateSubtotal,
+          profit_margin: profitMarginPercent,
+          tax_rate: taxRate,
+          tax: taxAmount,
           discount: 0,
-          total: estimateTotal * (1 + (currentAccount?.default_tax_rate ?? 0) / 100),
+          total: estimateTotal,
           status: "draft",
           created_by: user.id,
           account_id: currentAccount.id,
@@ -158,6 +192,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           unit_price: unitPrice,
           total,
           sort_order: index,
+          category: item.category,
         };
       });
 
@@ -268,6 +303,24 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor={`item-category-${index}`}>Category</Label>
+                  <Select
+                    value={item.category}
+                    onValueChange={(value) => updateLineItem(index, "category", value)}
+                  >
+                    <SelectTrigger id={`item-category-${index}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="equipment">Equipment</SelectItem>
+                      <SelectItem value="materials">Materials</SelectItem>
+                      <SelectItem value="labor">Labor</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor={`item-quantity-${index}`}>Quantity *</Label>
@@ -327,9 +380,43 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
               </div>
             ))}
 
-            <div className="bg-secondary p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold">Total Estimate:</span>
+            <div className="bg-secondary p-4 rounded-lg space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">Subtotal:</span>
+                <span className="font-medium">
+                  ${calculateSubtotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Profit Margin:</span>
+                  <div className="relative w-20">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={profitMargin}
+                      onChange={(e) => setProfitMargin(e.target.value)}
+                      className="h-7 text-xs pr-6"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <span className="font-medium">
+                  ${calculateProfit().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">
+                  Tax ({currentAccount?.default_tax_rate ?? 0}%):
+                </span>
+                <span className="font-medium">
+                  ${calculateTax().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-border">
+                <span className="font-semibold">Total:</span>
                 <span className="text-xl font-bold">
                   ${calculateTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>

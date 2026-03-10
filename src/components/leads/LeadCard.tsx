@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid" | "completed" | "lost" | "archived";
 
@@ -26,6 +27,10 @@ export interface Lead {
   createdAt: string;
   status: LeadStatus;
   qualificationScore?: number;
+  customer?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 interface LeadCardProps {
@@ -42,7 +47,16 @@ interface LeadCardProps {
 }
 
 export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEstimate, archiveMode, onUnarchive, onDelete, className }: LeadCardProps) {
+  const navigate = useNavigate();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleCustomerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (lead.customer?.id) {
+      navigate(`/customers/${lead.customer.id}`);
+    }
+  };
+
   const getStatusBadgeStatus = (status: LeadStatus) => {
     switch (status) {
       case "qualified":
@@ -80,9 +94,9 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
         className
       )}
     >
-      <button
+      <div
         onClick={onClick}
-        className="w-full text-left p-4 transition-all active:bg-muted/50"
+        className="w-full p-4 cursor-pointer hover:bg-accent/50 transition-colors"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -96,9 +110,19 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
 
             </div>
 
-            <p className="text-2">
-              {lead.name}
-            </p>
+            {lead.customer?.id ? (
+              <a
+                href={`/customers/${lead.customer.id}`}
+                onClick={handleCustomerClick}
+                className="text-2 hover:text-primary hover:underline transition-colors text-left inline-block"
+              >
+                {lead.name}
+              </a>
+            ) : (
+              <p className="text-2">
+                {lead.name}
+              </p>
+            )}
 
             <p className="text-5 font-medium mt-0.5">
               {lead.serviceType && lead.serviceType !== "Unknown" ? lead.serviceType : "No service type"}
@@ -106,13 +130,14 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
 
           </div>
 
-           <span className="text-2">
-                ${lead.estimatedBudget.toLocaleString()}
-              </span>
-
-          <ChevronRight className="h-5 w-5 text-muted-foreground mt-1" />
+          <div className="flex items-center gap-2">
+            <span className="text-2">
+              ${lead.estimatedBudget.toLocaleString()}
+            </span>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </div>
         </div>
-      </button>
+      </div>
 
       <div className="flex border-t border-border">
         {archiveMode ? (

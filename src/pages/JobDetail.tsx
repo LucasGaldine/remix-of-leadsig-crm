@@ -1,27 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  MapPin,
-  Clock,
-  User,
-  Users,
-  Phone,
-  MessageSquare,
-  Navigation,
-  CheckSquare,
-  FileText,
-  DollarSign,
-  ChevronRight,
-  Calendar,
-  Edit,
-  Trash2,
-  Archive,
-  MoreVertical,
-  Plus,
-  Info,
-  Unlink,
-  Briefcase,
-} from "lucide-react";
+import { MapPin, Clock, User, Users, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, ChevronRight, Calendar, CreditCard as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -59,6 +38,7 @@ import { ScheduleJobDialog } from "@/components/jobs/ScheduleJobDialog";
 import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { JobTimeTracker } from "@/components/jobs/JobTimeTracker";
 import { Repeat } from "lucide-react";
+import { JobCosts } from "@/components/jobs/JobCosts";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -111,6 +91,7 @@ export default function JobDetail() {
   const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [hasInvoice, setHasInvoice] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -119,6 +100,7 @@ export default function JobDetail() {
       fetchAfterPhotos();
       fetchBeforePhotos();
       fetchNotes();
+      checkHasInvoice();
     }
   }, [id, parentLeadId]);
 
@@ -193,6 +175,19 @@ export default function JobDetail() {
       .eq("type", "note")
       .order("created_at", { ascending: false });
     if (data) setNotes(data);
+  };
+
+  const checkHasInvoice = async () => {
+    if (!id) return;
+    try {
+      const { count } = await supabase
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", id);
+      setHasInvoice((count ?? 0) > 0);
+    } catch (error) {
+      console.error("Error checking for invoices:", error);
+    }
   };
 
   const addNote = async () => {
@@ -612,7 +607,7 @@ export default function JobDetail() {
 
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24">
-      <PageHeader title="" showBack backTo="/jobs" />
+      <PageHeader title={job.name || "Job Details"} showBack backTo="/jobs" />
 
       {/* Status Banner */}
       <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
@@ -624,11 +619,20 @@ export default function JobDetail() {
             <div className="flex flex-col sm:flex-row gap-4">
               {/*Left Column */}
               <div className="flex flex-col flex-1 min-w-0 gap-2">
-                
+
                 <div className="flex items-center gap-2">
-                <p className="text-1">
-                  {job.name || job.customer?.name || "Unknown Client"}
-                </p>
+                {job.customer?.id ? (
+                  <button
+                    onClick={() => navigate(`/customers/${job.customer.id}`)}
+                    className="text-1 hover:text-primary hover:underline transition-colors text-left"
+                  >
+                    {job.customer.name || "Unknown Client"}
+                  </button>
+                ) : (
+                  <p className="text-1">
+                    {job.customer?.name || "Unknown Client"}
+                  </p>
+                )}
 
                 {isManager() && (
                     <DropdownMenu>
@@ -637,7 +641,7 @@ export default function JobDetail() {
                           variant="ghost"
                           size="sm"
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <EllipsisVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -690,13 +694,20 @@ export default function JobDetail() {
               
               {/*Right Column */}
               <div className="flex flex-col sm:items-end gap-2">
-                <div className="flex justify-end gap-2">
-                  
-                  
+                <div className="flex justify-end gap-2 flex-wrap">
+
+
                   {isUnassigned && (
                     <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
                       <Users className="h-3 w-3 mr-1" />
                       Unassigned
+                    </Badge>
+                  )}
+
+                  {job.status === "completed" && !hasInvoice && (
+                    <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
+                      <DollarSign className="h-3 w-3 mr-1" />
+                      Needs Invoice: ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
                     </Badge>
                   )}
 
@@ -733,7 +744,7 @@ export default function JobDetail() {
                 onClick={handleCall}
               >
                 <Phone className="h-4 w-4 shrink-0" />
-                <span className="hidden xs:inline">Call</span>
+                <span className="hidden sm:inline">Call</span>
               </Button>
               <Button
                 variant="outline"
@@ -742,7 +753,7 @@ export default function JobDetail() {
                 onClick={handleText}
               >
                 <MessageSquare className="h-4 w-4 shrink-0" />
-                <span className="hidden xs:inline">Text</span>
+                <span className="hidden sm:inline">Text</span>
               </Button>
               <Button
                 size="sm"
@@ -750,7 +761,7 @@ export default function JobDetail() {
                 onClick={handleNavigate}
               >
                 <Navigation className="h-4 w-4 shrink-0" />
-                <span className="hidden xs:inline">Navigate</span>
+                <span className="hidden sm:inline">Navigate</span>
               </Button>
             </div>
           </div>
@@ -840,15 +851,8 @@ export default function JobDetail() {
               </div>
             ) : null}
 
-            {/* Invoices */}
-            {id && (
-              <JobInvoiceCard
-                jobId={id}
-                customerEmail={job.customer?.email}
-                customerName={job.customer?.name}
-              />
-            )}
-
+            {/* Job Costs */}
+            {id && <JobCosts jobId={id} />}
 
             {/* Schedule or Job Schedule Info */}
             {!jobAny.recurring_job_id ? (
@@ -1065,18 +1069,26 @@ export default function JobDetail() {
             )}
 
             {/* Client Share Link */}
+            {isManager() && id && job.customer?.id && (
+              <ClientShareLink customerId={job.customer.id} />
+            )}
+
+            {/* Invoices Section */}
             {isManager() && id && (
-              jobAny.recurring_job_id ? (
-                <ClientShareLink
-                  recurringJobId={jobAny.recurring_job_id}
-                  existingToken={recurringJobData?.client_share_token}
+              <div className="card-elevated rounded-lg p-4">
+                <div className="mb-3">
+                  <p className="font-medium text-foreground">Invoices</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Send invoices to collect payment
+                  </p>
+                </div>
+                <JobInvoiceCard
+                  jobId={id}
+                  customerEmail={job.customer?.email}
+                  customerName={job.customer?.name}
+                  estimateTotal={estimate?.total ? Number(estimate.total) : null}
                 />
-              ) : (
-                <ClientShareLink
-                  jobId={job.is_estimate_visit && parentLeadId ? parentLeadId : id}
-                  existingToken={job.is_estimate_visit ? parentLeadToken : jobAny.client_share_token}
-                />
-              )
+              </div>
             )}
           </div>
         )}
@@ -1103,55 +1115,40 @@ export default function JobDetail() {
             isManager={isManager()}
             hasBeforePhotos={hasBeforePhotos}
             onMarkComplete={async () => {
-              await updateJobMutation.mutateAsync({ id, status: "completed" as any });
-              
-              // If this is an estimate visit, create a new regular job from this estimate visit's data
               if (job?.is_estimate_visit) {
-                try {
-                  // Re-fetch the current job to get latest data
-                  const { data: currentJob } = await supabase
-                    .from("leads")
-                    .select("*")
-                    .eq("id", id)
-                    .single();
+                await new Promise(resolve => setTimeout(resolve, 1000));
 
-                  if (currentJob) {
-                    const { data: newJob, error: insertError } = await supabase
-                      .from("leads")
-                      .insert({
-                        name: currentJob.name,
-                        address: currentJob.address,
-                        city: currentJob.city,
-                        state: currentJob.state,
-                        service_type: currentJob.service_type,
-                        description: currentJob.description,
-                        customer_id: currentJob.customer_id,
-                        account_id: currentJob.account_id,
-                        created_by: currentJob.created_by,
-                        estimated_value: currentJob.estimated_value,
-                        source: currentJob.source,
-                        status: "job",
-                        approval_status: "approved",
-                        is_estimate_visit: false,
-                        estimate_job_id: id,
-                      })
-                      .select()
-                      .single();
+                const { data: newJob } = await supabase
+                  .from("leads")
+                  .select("*")
+                  .eq("estimate_job_id", id)
+                  .eq("is_estimate_visit", false)
+                  .eq("status", "job")
+                  .maybeSingle();
 
-                    if (insertError) throw insertError;
-
-                    queryClient.invalidateQueries({ queryKey: ["jobs"] });
-                    queryClient.invalidateQueries({ queryKey: ["leads"] });
-                    toast.success("New job created from estimate visit!");
-                    
-                    if (newJob) {
-                      navigate(`/jobs/${newJob.id}`);
-                    }
-                  }
-                } catch (error) {
-                  console.error("Error creating job from estimate visit:", error);
-                  toast.error("Failed to auto-create job from estimate visit");
+                if (newJob) {
+                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                  queryClient.invalidateQueries({ queryKey: ["leads"] });
+                  toast.success("Job created from estimate visit!");
+                  navigate(`/jobs/${newJob.id}`);
+                } else {
+                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                  queryClient.invalidateQueries({ queryKey: ["leads"] });
                 }
+              } else {
+                const { error } = await supabase
+                  .from("leads")
+                  .update({ status: "completed" })
+                  .eq("id", id);
+
+                if (error) {
+                  console.error("Failed to mark job as complete:", error);
+                  throw error;
+                }
+
+                await queryClient.invalidateQueries({ queryKey: ["job", id] });
+                await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                await queryClient.invalidateQueries({ queryKey: ["leads"] });
               }
             }}
           />
@@ -1222,45 +1219,6 @@ export default function JobDetail() {
             )}
           </div>
         )}
-
-
-{/* */}
-
-
-      {/* Bottom Action */}
-      {!job.is_estimate_visit && (hasAfterPhotos || job.status === "paid" || (job as any).display_status === "completed") && (
-        <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-          <Button
-            className="w-full h-14 text-base font-semibold"
-            onClick={() => setCompleteDialogOpen(true)}
-            disabled={job.status === "paid"}
-          >
-            {job.status === "paid" ? "Payment Received" : ((job as any).display_status === "completed" ? "Received Payment" : "Mark as Complete")}
-          </Button>
-        </div>
-      )}
-
-      {/* Payment/Complete Confirmation Dialog */}
-      <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {(job as any).display_status === "completed" ? "Record Payment" : "Mark Job as Complete"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {(job as any).display_status === "completed"
-                ? "Have you received payment for this job? This will mark the job as paid."
-                : "Are you sure you want to mark this job as complete? This will update the job status."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReceivedPayment}>
-              {(job as any).display_status === "completed" ? "Confirm Payment" : "Mark Complete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Schedule Dialog */}
       {id && (

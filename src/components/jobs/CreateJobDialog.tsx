@@ -16,6 +16,7 @@ import {
 import { useCreateJob } from "@/hooks/useJobs";
 import { useCreateRecurringJob, RecurrenceFrequency } from "@/hooks/useRecurringJobs";
 import { useCreateCustomer, type Customer, type CreateCustomerInput } from "@/hooks/useCustomers";
+import { useAddJobSchedule } from "@/hooks/useJobSchedules";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { Repeat, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClientSelector } from "@/components/clients/ClientSelector";
+import { SERVICE_TYPES } from "@/constants/serviceTypes";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -80,6 +82,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
   const createJob = useCreateJob();
   const createRecurringJob = useCreateRecurringJob();
+  const addJobSchedule = useAddJobSchedule();
 
   const { data: crewMembers = [] } = useQuery({
     queryKey: ["crew-members", currentAccount?.id],
@@ -168,7 +171,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
         await createRecurringJob.mutateAsync({
           customer_id: customer.id,
-          name: jobName || null,
+          name: jobName || customer.name,
           service_type: serviceType || null,
           address: jobAddress || customer.address || "",
           description: description || null,
@@ -184,24 +187,25 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
         toast.success("Job schedule created! A quote and client portal have been set up.");
       } else {
-        let scheduledDateTime: string | null = null;
-        if (scheduledDate) {
-          scheduledDateTime = scheduledTime
-            ? `${scheduledDate}T${scheduledTime}:00`
-            : `${scheduledDate}T09:00:00`;
-        }
-
-        await createJob.mutateAsync({
-          name: jobName || null,
+        const newJob = await createJob.mutateAsync({
+          name: jobName || customer.name,
           customer_id: customer.id,
           phone: customer.phone,
           email: customer.email,
           service_type: serviceType || null,
           address: jobAddress || customer.address || "",
           description: description || null,
-          scheduled_date: scheduledDateTime,
           status: "job",
         });
+
+        if (scheduledDate) {
+          await addJobSchedule.mutateAsync({
+            lead_id: newJob.id,
+            scheduled_date: scheduledDate,
+            scheduled_time_start: scheduledTime || undefined,
+            scheduled_time_end: undefined,
+          });
+        }
 
         toast.success("Job created successfully!");
       }
@@ -302,16 +306,15 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 Service Type
               </Label>
               <Select value={serviceType} onValueChange={setServiceType}>
-                <SelectTrigger className="h-12 text-base border-border rounded-lg">
+                <SelectTrigger id="serviceType" className="h-12 text-base border-border rounded-lg">
                   <SelectValue placeholder="Select service type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="patio">Patio Installation</SelectItem>
-                  <SelectItem value="deck">Deck Building</SelectItem>
-                  <SelectItem value="fence">Fence Installation</SelectItem>
-                  <SelectItem value="landscaping">Landscaping</SelectItem>
-                  <SelectItem value="concrete">Concrete Work</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  {SERVICE_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

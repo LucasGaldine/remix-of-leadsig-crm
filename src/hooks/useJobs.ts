@@ -57,10 +57,12 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end),
-          job_assignments!lead_id(id)
+          job_assignments!lead_id(id),
+          invoices!lead_id(id),
+          estimates!job_id(id, total)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["job", "paid", "completed"])
+        .in("status", ["job", "completed"])
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -100,6 +102,9 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
         const earliestSchedule = sortedSchedules[0] || null;
         const latestSchedule = sortedSchedules[sortedSchedules.length - 1] || null;
         const crewCount = (job as any).job_assignments?.length || 0;
+        const hasInvoice = (job as any).invoices?.length > 0;
+        const estimate = (job as any).estimates?.[0] || null;
+        const estimateTotal = estimate?.total ? Number(estimate.total) : null;
 
         let displayStatus = 'unscheduled';
         if (job.status === 'job' && sortedSchedules.length > 0) {
@@ -114,8 +119,6 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           } else {
             displayStatus = 'scheduled';
           }
-        } else if (job.status === 'paid') {
-          displayStatus = 'paid';
         } else if (job.status === 'completed') {
           displayStatus = 'completed';
         }
@@ -128,8 +131,12 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           last_scheduled_date: latestSchedule?.scheduled_date,
           display_status: displayStatus,
           crew_count: crewCount,
+          has_invoice: hasInvoice,
+          estimate_total: estimateTotal,
           job_schedules: undefined,
           job_assignments: undefined,
+          invoices: undefined,
+          estimates: undefined,
         };
       });
     },
@@ -212,8 +219,6 @@ export function useJob(id: string | undefined) {
         } else {
           displayStatus = 'scheduled';
         }
-      } else if (data.status === 'paid') {
-        displayStatus = 'paid';
       } else if (data.status === 'completed') {
         displayStatus = 'completed';
       }
@@ -352,7 +357,6 @@ export function useJobCounts() {
         scheduled: 0,
         in_progress: 0,
         completed: 0,
-        paid: 0,
       };
 
       const { data, error } = await supabase
@@ -362,7 +366,7 @@ export function useJobCounts() {
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["job", "paid", "completed"]);
+        .in("status", ["job", "completed"]);
 
       if (error) throw error;
 
@@ -372,7 +376,6 @@ export function useJobCounts() {
         scheduled: 0,
         in_progress: 0,
         completed: 0,
-        paid: 0,
       };
 
       data.forEach((lead: any) => {
@@ -401,8 +404,6 @@ export function useJobCounts() {
           } else {
             displayStatus = 'scheduled';
           }
-        } else if (lead.status === 'paid') {
-          displayStatus = 'paid';
         } else if (lead.status === 'completed') {
           displayStatus = 'completed';
         }
@@ -434,7 +435,7 @@ export function useJobRevenue() {
         .from("leads")
         .select("actual_value")
         .eq("account_id", currentAccount.id)
-        .eq("status", "paid")
+        .eq("status", "completed")
         .gte("updated_at", startOfMonth.toISOString());
 
       if (error) throw error;

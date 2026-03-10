@@ -1,18 +1,6 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
-import {
-  AlertCircle,
-  Building2,
-  Calendar,
-  Camera,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  FileText,
-  MapPin,
-  Wrench,
-  X,
-} from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { CircleAlert as AlertCircle, Building2, Calendar, Camera, CircleCheck as CheckCircle2, Clock, DollarSign, FileText, Wrench, X, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ClientPortalHeader } from "@/components/client-portal/ClientPortalHeader";
@@ -29,6 +17,43 @@ interface JobData {
   description?: string;
   created_at: string;
   customer: { name: string; email?: string; phone?: string } | null;
+}
+
+interface JobListItem {
+  id: string;
+  name: string;
+  address?: string;
+  service_type?: string;
+  status: string;
+  created_at: string;
+}
+
+interface RecurringJobListItem {
+  id: string;
+  name: string;
+  address?: string;
+  service_type?: string;
+  frequency: string;
+  start_date: string;
+  end_date?: string;
+  created_at: string;
+}
+
+interface InvoiceListItem {
+  id: string;
+  lead_id: string;
+  job_name: string;
+  service_type?: string;
+  stripe_invoice_url: string;
+  status: string;
+  total: number;
+  created_at: string;
+}
+
+interface CustomerData {
+  name: string;
+  email?: string;
+  phone?: string;
 }
 
 interface CompanyData {
@@ -55,6 +80,7 @@ interface LineItem {
   total: number;
   is_change_order?: boolean;
   change_order_type?: 'added' | 'edited' | 'deleted';
+  change_order_approved?: boolean | null;
   changed_at?: string;
 }
 
@@ -68,6 +94,13 @@ interface EstimateData {
   status: string;
   updated_at: string;
   line_items: LineItem[];
+  original_total?: number | null;
+  original_subtotal?: number | null;
+  original_tax?: number | null;
+  original_discount?: number | null;
+  original_notes?: string | null;
+  original_line_items?: LineItem[] | null;
+  has_pending_changes?: boolean;
 }
 
 interface PhotoItem {
@@ -87,6 +120,11 @@ interface InvoiceData {
   status: string;
 }
 
+interface PortalMetadata {
+  customer: CustomerData;
+  has_portal: boolean;
+}
+
 export interface PortalData {
   job: JobData;
   company: CompanyData;
@@ -96,16 +134,30 @@ export interface PortalData {
   invoice: InvoiceData | null;
   photos: { before: PhotoItem[]; after: PhotoItem[] };
   activity: ActivityItem[];
+  portal_metadata?: PortalMetadata;
+}
+
+export interface CustomerPortalData {
+  customer: CustomerData;
+  company: CompanyData;
+  jobs: JobListItem[];
+  recurring_jobs: RecurringJobListItem[];
+  invoices: InvoiceListItem[];
 }
 
 type PageState = "loading" | "loaded" | "error";
+type ViewMode = "job-list" | "job-detail";
 
 export default function ClientJobPortal() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const token = searchParams.get("token");
+  const jobId = searchParams.get("jobId");
 
   const [pageState, setPageState] = useState<PageState>("loading");
+  const [viewMode, setViewMode] = useState<ViewMode>("job-detail");
   const [data, setData] = useState<PortalData | null>(null);
+  const [customerData, setCustomerData] = useState<CustomerPortalData | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-client-portal`;
@@ -121,29 +173,51 @@ export default function ClientJobPortal() {
       setPageState("error");
       return;
     }
-    fetchJobData();
-  }, [token]);
+    fetchData();
+  }, [token, jobId]);
 
-  const fetchJobData = async () => {
+  const fetchData = async () => {
+    setPageState("loading");
     try {
-      const response = await fetch(`${apiUrl}?token=${token}`, {
+      const url = jobId
+        ? `${apiUrl}?token=${token}&jobId=${jobId}`
+        : `${apiUrl}?token=${token}`;
+
+      const response = await fetch(url, {
         headers: apiHeaders,
       });
 
       if (!response.ok) {
         const result = await response.json();
-        setErrorMessage(result.error || "Could not load job details.");
+        setErrorMessage(result.error || "Could not load data.");
         setPageState("error");
         return;
       }
 
       const result = await response.json();
-      setData(result);
+
+      if (result.jobs !== undefined) {
+        setCustomerData(result);
+        setViewMode("job-list");
+        setData(null);
+      } else {
+        setData(result);
+        setViewMode("job-detail");
+      }
+
       setPageState("loaded");
     } catch {
       setErrorMessage("Unable to connect. Please try again later.");
       setPageState("error");
     }
+  };
+
+  const handleSelectJob = (selectedJobId: string) => {
+    setSearchParams({ token: token!, jobId: selectedJobId });
+  };
+
+  const handleBackToList = () => {
+    setSearchParams({ token: token! });
   };
 
   if (pageState === "loading") {
@@ -168,6 +242,169 @@ export default function ClientJobPortal() {
     );
   }
 
+  if (viewMode === "job-list" && customerData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+        <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div className="px-6 sm:px-8 py-6">
+              {customerData.company.logo_url && (
+                <img
+                  src={customerData.company.logo_url}
+                  alt={customerData.company.company_name || "Company Logo"}
+                  className="h-12 mb-4"
+                />
+              )}
+              {customerData.company.company_name && (
+                <p className="text-sm font-medium text-slate-600 mb-3">
+                  {customerData.company.company_name}
+                </p>
+              )}
+              <h1 className="text-2xl font-bold text-slate-900">
+                Welcome, {customerData.customer.name}
+              </h1>
+              <p className="text-slate-600 mt-1">View your jobs and project details</p>
+            </div>
+          </div>
+
+          {customerData.invoices && customerData.invoices.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">Invoices</h2>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {customerData.invoices.map((invoice) => (
+                  <div
+                    key={invoice.id}
+                    className="px-6 sm:px-8 py-5"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-900 truncate">
+                          {invoice.service_type ? formatServiceType(invoice.service_type) : invoice.job_name}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-sm text-slate-600">
+                            ${Number(invoice.total).toFixed(2)}
+                          </span>
+                          <span className={cn(
+                            "text-xs px-2 py-0.5 rounded-full font-medium",
+                            invoice.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                          )}>
+                            {invoice.status === "paid" ? "Paid" : "Payment Due"}
+                          </span>
+                        </div>
+                      </div>
+                      <a
+                        href={invoice.stripe_invoice_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white font-medium text-sm hover:bg-slate-900 transition-colors flex-shrink-0"
+                      >
+                        <DollarSign className="h-4 w-4" />
+                        {invoice.status === "paid" ? "View" : "Pay"}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {customerData.jobs.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">Your Jobs</h2>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {customerData.jobs.map((job) => (
+                  <button
+                    key={job.id}
+                    onClick={() => handleSelectJob(job.id)}
+                    className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-900 truncate">
+                          {job.service_type ? formatServiceType(job.service_type) : job.name}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-sm text-slate-600">{job.name}</span>
+                          <span className={cn(
+                            "text-xs px-2 py-0.5 rounded-full font-medium",
+                            getStatusColor(job.status, [])
+                          )}>
+                            {getStatusLabel(job.status, [])}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {customerData.recurring_jobs.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+              <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">Recurring Services</h2>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {customerData.recurring_jobs.map((rj) => (
+                  <button
+                    key={rj.id}
+                    onClick={() => handleSelectJob(rj.id)}
+                    className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-slate-900 truncate">
+                          {rj.service_type ? formatServiceType(rj.service_type) : rj.name}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-sm text-slate-600">{rj.name}</span>
+                          <span className="text-xs text-slate-500 capitalize">
+                            {rj.frequency}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-sky-100 text-sky-800">
+                            Recurring
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {customerData.jobs.length === 0 && customerData.recurring_jobs.length === 0 && (
+            <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+              <p className="text-slate-600">No jobs found</p>
+            </div>
+          )}
+
+          {customerData.company.company_name && (
+            <p className="text-center text-sm text-slate-400 pt-2 pb-4">
+              Powered by {customerData.company.company_name}
+              {customerData.company.company_phone && (
+                <>
+                  {" -- "}
+                  <a href={`tel:${customerData.company.company_phone}`} className="hover:text-slate-600 transition-colors">
+                    {customerData.company.company_phone}
+                  </a>
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!data) return null;
 
   const { job, company, schedules, estimate_visit_schedules, estimate, invoice, photos, activity } = data;
@@ -175,9 +412,21 @@ export default function ClientJobPortal() {
   const statusLabel = getStatusLabel(job.status, schedules);
   const statusColor = getStatusColor(job.status, schedules);
 
+  const showBackButton = customerData || data?.portal_metadata?.has_portal;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
+        {showBackButton && (
+          <button
+            onClick={handleBackToList}
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors mb-4"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" />
+            Back to all jobs
+          </button>
+        )}
+
         <ClientPortalHeader
           job={job}
           company={company}
@@ -199,7 +448,8 @@ export default function ClientJobPortal() {
             token={token!}
             apiUrl={apiUrl}
             apiHeaders={apiHeaders}
-            onRefresh={fetchJobData}
+            onRefresh={fetchData}
+            jobId={jobId}
             customerName={job.customer?.name || ""}
             jobName={job.name}
             address={job.address}
@@ -263,6 +513,13 @@ export default function ClientJobPortal() {
       </div>
     </div>
   );
+}
+
+function formatServiceType(serviceType: string): string {
+  return serviceType
+    .split("_")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function getStatusLabel(status: string, schedules: ScheduleItem[]): string {

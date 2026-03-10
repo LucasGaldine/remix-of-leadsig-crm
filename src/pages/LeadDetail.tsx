@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Phone, MessageSquare, Calendar, Plus, Briefcase, AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoreVertical, Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileTextIcon, Trophy } from "lucide-react";
+import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoveVertical as MoreVertical, CreditCard as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -746,11 +746,20 @@ export default function LeadDetail() {
                 {/*Customer Info*/}
                 <div className="flex flex-col gap-2">
                   <div className="flex gap-2 items-center">
-                    <p className="text-1">{lead.name}</p>
+                    {customer?.id ? (
+                      <button
+                        onClick={() => navigate(`/customers/${customer.id}`)}
+                        className="text-1 hover:text-primary hover:underline transition-colors text-left"
+                      >
+                        {lead.name}
+                      </button>
+                    ) : (
+                      <p className="text-1">{lead.name}</p>
+                    )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-5 w-5" />
+                            <EllipsisVertical className="h-5 w-5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
@@ -835,13 +844,12 @@ export default function LeadDetail() {
                 <div className="flex flex-col sm:flex-row justify-end gap-2">
                   {showConvertButton && (
                   <Button
-                    size="sm"
+                    size="lg"
                     disabled={!hasAddress}
                     onClick={() => setCreateEstimateDialogOpen(true)}
-                    className="gap-1.5 text-xs whitespace-nowrap"
                   >
                     <FileTextIcon className="h-4 w-4 shrink-0" />
-                    Estimate
+                    Schedule Visit
                   </Button>
                 )}
                 {showConvertButton && hasEstimate && isEstimateApproved && (
@@ -1142,12 +1150,9 @@ export default function LeadDetail() {
           )}
 
           {/* Client Share Link */}
-          {hasEstimate && id && (
+          {hasEstimate && id && (lead as any).customer?.id && (
             <div className="px-4 pb-4">
-              <ClientShareLink
-                jobId={id}
-                existingToken={(lead as any).client_share_token}
-              />
+              <ClientShareLink customerId={(lead as any).customer.id} />
             </div>
           )}
 

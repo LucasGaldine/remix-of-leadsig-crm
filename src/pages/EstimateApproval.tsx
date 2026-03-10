@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, FileText, AlertCircle, Clock, Building2 } from "lucide-react";
+import { Check, FileText, CircleAlert as AlertCircle, Clock, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -317,6 +317,16 @@ export default function EstimateApproval() {
                   ${Number(estimate.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
+              {Number(estimate.profit_margin) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">
+                    Profit Margin ({Number(estimate.profit_margin).toFixed(1)}%)
+                  </span>
+                  <span className="text-slate-700">
+                    ${(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">
                   Tax ({(Number(estimate.tax_rate) * 100).toFixed(1)}%)

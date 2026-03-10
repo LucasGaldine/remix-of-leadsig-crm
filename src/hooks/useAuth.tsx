@@ -28,6 +28,7 @@ interface Account {
   settings: Record<string, any> | null;
   invite_code: string;
   default_tax_rate: number;
+  default_profit_margin: number;
   pricing_plan: 'free' | 'basic' | 'premium';
 }
 
@@ -104,7 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           settings,
           invite_code,
           pricing_plan,
-          default_tax_rate
+          default_tax_rate,
+          default_profit_margin
         )
       `)
       .eq('user_id', userId)

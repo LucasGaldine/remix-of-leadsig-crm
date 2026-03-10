@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, XCircle, UserPlus, Trash2 } from "lucide-react";
+import { Clock, Circle as XCircle, UserPlus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
@@ -75,6 +75,10 @@ export default function Leads() {
     createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),
     status: lead.status as LeadStatus,
     qualificationScore: lead.qualification_score || undefined,
+    customer: lead.customer ? {
+      id: lead.customer.id,
+      name: lead.customer.name,
+    } : null,
   });
 
   const allLeads: Lead[] = (leadsData || []).map(mapLead);

@@ -132,7 +132,7 @@ function LeadFunnel({ timeframe }: { timeframe: Timeframe }) {
 
 function CompletionDonut({ timeframe }: { timeframe: Timeframe }) {
   const { data = [], isLoading } = useJobCompletion(timeframe);
-  const onTimePercent = data.length > 0 ? data[0]?.value || 0 : 0;
+  const completionPercent = data.length > 0 ? data[0]?.value || 0 : 0;
 
   return (
     <VisualCard title="Job Completion Rate" isLoading={isLoading}>
@@ -162,8 +162,8 @@ function CompletionDonut({ timeframe }: { timeframe: Timeframe }) {
               </ResponsiveContainer>
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-foreground">{onTimePercent}%</div>
-                  <div className="text-[10px] text-muted-foreground">On Time</div>
+                  <div className="text-2xl font-bold text-foreground">{completionPercent}%</div>
+                  <div className="text-[10px] text-muted-foreground">Completed</div>
                 </div>
               </div>
             </div>

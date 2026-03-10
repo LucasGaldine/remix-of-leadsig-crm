@@ -26,9 +26,20 @@ Deno.serve(async (req: Request) => {
 
     const url = new URL(req.url);
     const token = url.searchParams.get("token");
+    const jobId = url.searchParams.get("jobId");
 
     if (!token) {
       return jsonResponse({ error: "Missing share token" }, 400);
+    }
+
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("id, name, email, phone, account_id")
+      .eq("client_portal_token", token)
+      .maybeSingle();
+
+    if (customer) {
+      return await handleCustomerPortal(supabase, supabaseUrl, customer, jobId, req);
     }
 
     const { data: recurringJob } = await supabase
@@ -82,19 +93,197 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer: any, jobId: string | null, req: Request) {
+  if (req.method === "POST") {
+    if (!jobId) {
+      return jsonResponse({ error: "Job ID required for this action" }, 400);
+    }
+    const { data: job } = await supabase
+      .from("leads")
+      .select("id, customer_id, account_id")
+      .eq("id", jobId)
+      .eq("customer_id", customer.id)
+      .maybeSingle();
+
+    if (!job) {
+      return jsonResponse({ error: "Job not found or access denied" }, 404);
+    }
+
+    return await handleSingleJobPost(supabase, { ...job, customer }, req);
+  }
+
+  if (req.method !== "GET") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+
+  if (!jobId) {
+    const { data: jobs } = await supabase
+      .from("leads")
+      .select(`
+        id,
+        name,
+        address,
+        service_type,
+        status,
+        created_at,
+        updated_at
+      `)
+      .eq("customer_id", customer.id)
+      .neq("status", "archived")
+      .eq("is_estimate_visit", false)
+      .order("created_at", { ascending: false });
+
+    const { data: recurringJobs } = await supabase
+      .from("recurring_jobs")
+      .select(`
+        id,
+        name,
+        address,
+        service_type,
+        frequency,
+        start_date,
+        end_date,
+        created_at
+      `)
+      .eq("customer_id", customer.id)
+      .order("created_at", { ascending: false });
+
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("company_name, company_email, company_phone, logo_url")
+      .eq("id", customer.account_id)
+      .maybeSingle();
+
+    const { data: invoices } = await supabase
+      .from("invoices")
+      .select(`
+        id,
+        lead_id,
+        stripe_invoice_url,
+        status,
+        total,
+        created_at,
+        leads!inner(customer_id, name, service_type)
+      `)
+      .eq("leads.customer_id", customer.id)
+      .order("created_at", { ascending: false });
+
+    return jsonResponse({
+      customer: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+      },
+      company: account || {},
+      jobs: (jobs || []).map((j: any) => ({
+        id: j.id,
+        name: j.name,
+        address: j.address,
+        service_type: j.service_type,
+        status: j.status,
+        created_at: j.created_at,
+      })),
+      recurring_jobs: (recurringJobs || []).map((rj: any) => ({
+        id: rj.id,
+        name: rj.name,
+        address: rj.address,
+        service_type: rj.service_type,
+        frequency: rj.frequency,
+        start_date: rj.start_date,
+        end_date: rj.end_date,
+        created_at: rj.created_at,
+      })),
+      invoices: (invoices || []).map((inv: any) => ({
+        id: inv.id,
+        lead_id: inv.lead_id,
+        job_name: inv.leads?.name,
+        service_type: inv.leads?.service_type,
+        stripe_invoice_url: inv.stripe_invoice_url,
+        status: inv.status,
+        total: inv.total,
+        created_at: inv.created_at,
+      })),
+    });
+  }
+
+  const { data: job } = await supabase
+    .from("leads")
+    .select(`
+      id,
+      name,
+      address,
+      service_type,
+      status,
+      description,
+      actual_value,
+      is_estimate_visit,
+      estimate_job_id,
+      account_id,
+      created_at,
+      updated_at
+    `)
+    .eq("id", jobId)
+    .eq("customer_id", customer.id)
+    .maybeSingle();
+
+  if (job) {
+    job.customer = customer;
+    const jobDetails = await handleSingleJobGet(supabase, supabaseUrl, job);
+    const jobData = await jobDetails.json();
+    return jsonResponse({
+      ...jobData,
+      portal_metadata: {
+        customer: {
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+        has_portal: true,
+      }
+    });
+  }
+
+  const { data: recurringJob } = await supabase
+    .from("recurring_jobs")
+    .select("id, name, address, service_type, description, account_id, customer_id, frequency, start_date, end_date")
+    .eq("id", jobId)
+    .eq("customer_id", customer.id)
+    .maybeSingle();
+
+  if (recurringJob) {
+    recurringJob.customer = customer;
+    recurringJob.client_share_token = null;
+    const jobDetails = await handleRecurringJobPortal(supabase, supabaseUrl, recurringJob, req);
+    const jobData = await jobDetails.json();
+    return jsonResponse({
+      ...jobData,
+      portal_metadata: {
+        customer: {
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+        has_portal: true,
+      }
+    });
+  }
+
+  return jsonResponse({ error: "Job not found or access denied" }, 404);
+}
+
 async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recurringJob: any, req: Request) {
   if (req.method === "POST") {
     const body = await req.json();
     const action = body.action;
     const clientUpdatedAt = body.updated_at;
 
-    if (action !== "approve" && action !== "decline") {
+    if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
       return jsonResponse({ error: "Invalid action" }, 400);
     }
 
     const { data: estimate, error: estError } = await supabase
       .from("estimates")
-      .select("id, status, expires_at, job_id, recurring_job_id, updated_at")
+      .select("id, status, expires_at, job_id, recurring_job_id, updated_at, has_pending_changes")
       .eq("recurring_job_id", recurringJob.id)
       .maybeSingle();
 
@@ -135,9 +324,10 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       .from("estimates")
       .select(`
         id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+        original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
-          sort_order, is_change_order, change_order_type, changed_at
+          sort_order, is_change_order, change_order_type, change_order_approved, changed_at
         )
       `)
       .eq("recurring_job_id", recurringJob.id)
@@ -193,6 +383,16 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
         .sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
     : [];
 
+  let originalLineItemsRecurring = null;
+  if (estimate?.original_total) {
+    const { data: originals } = await supabase
+      .from("estimate_line_items_original")
+      .select("id, original_line_item_id, name, description, quantity, unit, unit_price, total, sort_order")
+      .eq("estimate_id", estimate.id)
+      .order("sort_order");
+    originalLineItemsRecurring = originals;
+  }
+
   const instanceMap = new Map((instances || []).map((i: any) => [i.id, i]));
   const schedulesWithVisit = (allSchedules || []).map((s: any) => {
     const inst = instanceMap.get(s.lead_id);
@@ -231,6 +431,13 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
           status: estimate.status,
           updated_at: estimate.updated_at,
           line_items: filteredLineItems,
+          original_total: estimate.original_total,
+          original_subtotal: estimate.original_subtotal,
+          original_tax: estimate.original_tax,
+          original_discount: estimate.original_discount,
+          original_notes: estimate.original_notes,
+          original_line_items: originalLineItemsRecurring,
+          has_pending_changes: estimate.has_pending_changes,
         }
       : null,
     photos: {
@@ -252,13 +459,13 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
   const action = body.action;
   const clientUpdatedAt = body.updated_at;
 
-  if (action !== "approve" && action !== "decline") {
+  if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
     return jsonResponse({ error: "Invalid action" }, 400);
   }
 
   const { data: estimate, error: estError } = await supabase
     .from("estimates")
-    .select("id, status, expires_at, job_id, updated_at")
+    .select("id, status, expires_at, job_id, updated_at, has_pending_changes")
     .eq("job_id", job.id)
     .maybeSingle();
 
@@ -275,7 +482,7 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
 
     const { data: parentEstimate, error: peError } = await supabase
       .from("estimates")
-      .select("id, status, expires_at, job_id, updated_at")
+      .select("id, status, expires_at, job_id, updated_at, has_pending_changes")
       .eq("job_id", parentLead.id)
       .maybeSingle();
 
@@ -315,9 +522,10 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
       .select(
         `
         id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+        original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
-          sort_order, is_change_order, change_order_type, changed_at
+          sort_order, is_change_order, change_order_type, change_order_approved, changed_at
         )
       `
       )
@@ -361,9 +569,10 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         .select(
           `
           id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+          original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
           line_items:estimate_line_items(
             id, name, description, quantity, unit, unit_price, total,
-            sort_order, is_change_order, change_order_type
+            sort_order, is_change_order, change_order_type, change_order_approved
           )
         `
         )
@@ -409,6 +618,16 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         )
     : [];
 
+  let originalLineItems = null;
+  if (parentEstimate?.original_total) {
+    const { data: originals } = await supabase
+      .from("estimate_line_items_original")
+      .select("id, original_line_item_id, name, description, quantity, unit, unit_price, total, sort_order")
+      .eq("estimate_id", parentEstimate.id)
+      .order("sort_order");
+    originalLineItems = originals;
+  }
+
   return jsonResponse({
     job: {
       name: job.name,
@@ -437,6 +656,13 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
           status: parentEstimate.status,
           updated_at: parentEstimate.updated_at,
           line_items: filteredLineItems,
+          original_total: parentEstimate.original_total,
+          original_subtotal: parentEstimate.original_subtotal,
+          original_tax: parentEstimate.original_tax,
+          original_discount: parentEstimate.original_discount,
+          original_notes: parentEstimate.original_notes,
+          original_line_items: originalLineItems,
+          has_pending_changes: parentEstimate.has_pending_changes,
         }
       : null,
     photos: {
@@ -463,8 +689,8 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
 
 async function handleEstimateAction(
   supabase: any,
-  estimate: { id: string; status: string; expires_at: string | null; job_id: string | null; recurring_job_id?: string | null; updated_at: string },
-  action: "approve" | "decline",
+  estimate: { id: string; status: string; expires_at: string | null; job_id: string | null; recurring_job_id?: string | null; updated_at: string; has_pending_changes?: boolean },
+  action: "approve" | "decline" | "approve_changes" | "decline_changes",
   portalJobId: string | null,
   clientUpdatedAt?: string
 ) {
@@ -472,6 +698,40 @@ async function handleEstimateAction(
     return jsonResponse({
       error: "This estimate has been updated since you loaded this page. Please refresh the page to see the latest version before approving."
     }, 409);
+  }
+
+  if (action === "approve_changes" || action === "decline_changes") {
+    if (!estimate.has_pending_changes) {
+      return jsonResponse({ error: "No pending changes to approve" }, 400);
+    }
+
+    if (action === "approve_changes") {
+      const { error: approveError } = await supabase
+        .from("estimate_line_items")
+        .update({ change_order_approved: true })
+        .eq("estimate_id", estimate.id)
+        .eq("is_change_order", true)
+        .eq("change_order_approved", false);
+
+      if (approveError) {
+        return jsonResponse({ error: "Failed to approve changes" }, 500);
+      }
+
+      return jsonResponse({ success: true, message: "Changes approved" });
+    } else {
+      const { error: declineError } = await supabase
+        .from("estimate_line_items")
+        .delete()
+        .eq("estimate_id", estimate.id)
+        .eq("is_change_order", true)
+        .eq("change_order_approved", false);
+
+      if (declineError) {
+        return jsonResponse({ error: "Failed to decline changes" }, 500);
+      }
+
+      return jsonResponse({ success: true, message: "Changes declined" });
+    }
   }
 
   if (estimate.status === "accepted") {

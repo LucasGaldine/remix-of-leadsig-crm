@@ -9,7 +9,6 @@ const statusBadgeVariants = cva(
         confirmed: "status-confirmed",
         pending: "status-pending",
         attention: "status-attention",
-        paid: "status-paid",
         unscheduled: "status-attention",
         scheduled: "status-confirmed",
         "in-progress": "status-progress",
@@ -63,7 +62,6 @@ export function StatusBadge({
           status === "in_progress" && "bg-status-progress",
           status === "attention" && "bg-status-attention",
           status === "unscheduled" && "bg-status-attention",
-          status === "paid" && "bg-status-paid",
           status === "completed" && "bg-status-paid",
           status === "job" && "bg-status-confirmed"
         )}

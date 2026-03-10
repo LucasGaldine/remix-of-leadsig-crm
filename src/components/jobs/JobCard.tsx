@@ -1,12 +1,13 @@
 // @ts-nocheck
 import { useState } from "react";
-import { MapPin, Clock, User, ChevronRight, Users, Repeat } from "lucide-react";
+import { MapPin, Clock, User, ChevronRight, Users, Repeat, DollarSign } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Database } from "@/types/database";
 import { format } from "date-fns";
 import { RecurringJobDetailModal } from "./RecurringJobDetailModal";
+import { useNavigate } from "react-router-dom";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 type DbJob = Database["public"]["Tables"]["leads"]["Row"];
@@ -29,6 +30,8 @@ export interface Job extends DbJob {
   crew_count?: number;
   recurring_job_id?: string | null;
   recurring_instance_number?: number | null;
+  has_invoice?: boolean;
+  estimate_total?: number | null;
 }
 
 interface JobCardProps {
@@ -54,6 +57,7 @@ function formatScheduledDateRange(
 }
 
 export function JobCard({ job, onClick, className }: JobCardProps) {
+  const navigate = useNavigate();
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
   const statusLabels: Record<string, string> = {
@@ -65,18 +69,24 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
     scheduled: "Scheduled",
     in_progress: "In Progress",
     completed: "Completed",
-    paid: "Paid",
   };
 
   const badgeStatus = (job.display_status || job.status) as string;
-  const isUnassigned = (job.crew_count || 0) === 0 && badgeStatus === "scheduled";
+  const isUnassigned = (job.crew_count || 0) === 0 && (badgeStatus === "unscheduled" || badgeStatus === "scheduled" || badgeStatus === "in_progress");
   const scheduledDateTime = formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date);
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
-  const value = Number(job.actual_value) || Number(job.estimated_value);
+  const value = Number(job.estimate_total) || 0;
 
   const handleRecurringBadgeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowRecurringModal(true);
+  };
+
+  const handleCustomerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (job.customer?.id) {
+      navigate(`/customers/${job.customer.id}`);
+    }
   };
 
   return (
@@ -112,11 +122,26 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
                   Unassigned
                 </Badge>
               )}
+              {job.status === "completed" && !job.has_invoice && !job.is_estimate_visit && (
+                <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
+                  <DollarSign className="h-3 w-3 mr-1" />
+                  Needs Invoice: ${value > 0 ? value.toLocaleString() : "0"}
+                </Badge>
+              )}
             </div>
 
-          <h3 className="text-2 truncate ">
-            {job.name || job.customer?.name || "Unnamed Job"}
+          <h3 className="text-2 truncate">
+            {job.name || "Unnamed Job"}
           </h3>
+
+          {job.customer?.name && (
+            <button
+              onClick={handleCustomerClick}
+              className="text-sm text-muted-foreground hover:text-primary hover:underline transition-colors mt-0.5 text-left"
+            >
+              {job.customer.name}
+            </button>
+          )}
 
           <p className="text-sm text-muted-foreground font-medium mt-0.5">
             {job.is_estimate_visit
@@ -145,7 +170,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
         </div>
 
         <div className="flex items-center gap-4">
-          {value > 0 && (
+          {!job.is_estimate_visit && value > 0 && (
             <span className="text-2">
               ${value.toLocaleString()}
             </span>

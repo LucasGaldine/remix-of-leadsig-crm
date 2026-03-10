@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 interface InvoiceRequest {
-  estimateId: string;
+  invoiceId: string;
   customerEmail?: string;
   customerName?: string;
 }
@@ -20,27 +20,62 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log("=== Stripe invoice function called ===");
+    console.log("Method:", req.method);
+    console.log("URL:", req.url);
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 
+    console.log("Environment check:", {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasServiceKey: !!supabaseServiceKey,
+      hasStripeKey: !!stripeSecretKey
+    });
+
     if (!stripeSecretKey) {
+      console.error("Stripe secret key not configured");
       return new Response(
         JSON.stringify({ error: "Stripe is not configured" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
 
-    const authHeader = req.headers.get("Authorization")!;
+    const authHeader = req.headers.get("Authorization");
+    console.log("Authorization header present:", !!authHeader);
+
+    if (!authHeader) {
+      console.error("Missing Authorization header");
+      return new Response(
+        JSON.stringify({ error: "Missing authorization" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
     const token = authHeader.replace("Bearer ", "");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    console.log("Token extracted, length:", token.length);
+    console.log("Authenticating user...");
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    console.log("Auth result:", {
+      hasUser: !!user,
+      userId: user?.id,
+      errorMessage: userError?.message
+    });
+
     if (userError || !user) {
-      throw new Error("Unauthorized");
+      console.error("User authentication failed:", userError?.message || "No user found");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: " + (userError?.message || "No user found") }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
     }
+
+    console.log("User authenticated:", user.id);
 
     const { data: membership } = await supabase
       .from("account_members")
@@ -50,32 +85,74 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!membership) {
-      throw new Error("No active account found");
+      console.error("No active account found for user:", user.id);
+      return new Response(
+        JSON.stringify({ error: "No active account found" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
     }
+
+    console.log("Account found:", membership.account_id);
 
     const body: InvoiceRequest = await req.json();
-    const { estimateId, customerEmail, customerName } = body;
+    const { invoiceId, customerEmail, customerName } = body;
 
-    if (!estimateId) {
-      throw new Error("Missing required field: estimateId");
+    if (!invoiceId) {
+      console.error("Missing invoiceId in request body");
+      return new Response(
+        JSON.stringify({ error: "Missing required field: invoiceId" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
     }
 
-    const { data: estimate, error: estError } = await supabase
-      .from("estimates")
+    console.log("Processing invoice:", invoiceId);
+
+    const { data: invoice, error: invError } = await supabase
+      .from("invoices")
       .select(`
-        id, subtotal, tax_rate, tax, discount, total, notes, job_id, customer_id, account_id,
-        line_items:estimate_line_items(
-          id, name, description, quantity, unit, unit_price, total, sort_order,
-          is_change_order, change_order_type
+        id, subtotal, tax_rate, tax, discount, total, notes, lead_id, customer_id, account_id, estimate_id, due_date,
+        line_items:invoice_line_items(
+          id, name, description, quantity, unit, unit_price, total, sort_order
         )
       `)
-      .eq("id", estimateId)
+      .eq("id", invoiceId)
       .eq("account_id", membership.account_id)
       .single();
 
-    if (estError || !estimate) {
-      throw new Error("Estimate not found");
+    if (invError || !invoice) {
+      console.error("Invoice not found:", invoiceId, invError?.message);
+      return new Response(
+        JSON.stringify({ error: "Invoice not found" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
+      );
     }
+
+    console.log("Fetching customer details...");
+    const { data: customer, error: custError } = await supabase
+      .from("customers")
+      .select("email, name, phone")
+      .eq("id", invoice.customer_id)
+      .single();
+
+    if (custError || !customer) {
+      console.error("Customer not found:", invoice.customer_id, custError?.message);
+      return new Response(
+        JSON.stringify({ error: "Customer not found" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
+      );
+    }
+
+    if (!customer.email) {
+      console.error("Customer missing email:", invoice.customer_id);
+      return new Response(
+        JSON.stringify({ error: "Customer must have an email address to receive invoices" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    console.log("Customer found with email:", customer.email);
+
+    console.log("Invoice found, checking Stripe account...");
 
     const { data: stripeAccount } = await supabase
       .from("stripe_connect_accounts")
@@ -84,8 +161,18 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!stripeAccount || !stripeAccount.stripe_user_id || !stripeAccount.charges_enabled) {
-      throw new Error("Stripe account not connected or not enabled for charges");
+      console.error("Stripe account not properly configured:", {
+        hasAccount: !!stripeAccount,
+        hasStripeUserId: !!stripeAccount?.stripe_user_id,
+        chargesEnabled: !!stripeAccount?.charges_enabled
+      });
+      return new Response(
+        JSON.stringify({ error: "Stripe account not connected or not enabled for charges" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
     }
+
+    console.log("Stripe account verified, creating invoice...");
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2024-12-18.acacia",
@@ -95,37 +182,38 @@ Deno.serve(async (req: Request) => {
 
     const stripeCustomer = await stripe.customers.create(
       {
-        email: customerEmail || undefined,
-        name: customerName || undefined,
+        email: customer.email,
+        name: customer.name || undefined,
+        phone: customer.phone || undefined,
         metadata: {
-          supabase_customer_id: estimate.customer_id,
+          supabase_customer_id: invoice.customer_id,
           account_id: membership.account_id,
         },
       },
       connectOpts
     );
 
-    const activeLineItems = (estimate.line_items || []).filter(
-      (li: any) => !li.is_change_order || li.change_order_type !== "deleted"
-    );
+    const dueDate = invoice.due_date ? new Date(invoice.due_date) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const daysUntilDue = Math.max(1, Math.ceil((dueDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
 
     const invoiceParams: Stripe.InvoiceCreateParams = {
       customer: stripeCustomer.id,
       collection_method: "send_invoice",
-      days_until_due: 30,
+      days_until_due: daysUntilDue,
       auto_advance: true,
       pending_invoice_items_behavior: "include",
       metadata: {
-        estimate_id: estimateId,
+        invoice_id: invoiceId,
+        estimate_id: invoice.estimate_id,
         account_id: membership.account_id,
       },
     };
 
-    if (Number(estimate.tax_rate) > 0) {
+    if (Number(invoice.tax_rate) > 0) {
       const taxRate = await stripe.taxRates.create(
         {
           display_name: "Tax",
-          percentage: Number(estimate.tax_rate) * 100,
+          percentage: Number(invoice.tax_rate) * 100,
           inclusive: false,
         },
         connectOpts
@@ -133,7 +221,7 @@ Deno.serve(async (req: Request) => {
       invoiceParams.default_tax_rates = [taxRate.id];
     }
 
-    for (const item of activeLineItems) {
+    for (const item of invoice.line_items || []) {
       const unitAmountCents = Math.round(Number(item.unit_price) * 100);
       await stripe.invoiceItems.create(
         {
@@ -179,56 +267,30 @@ Deno.serve(async (req: Request) => {
       hostedUrl = refreshed.hosted_invoice_url || null;
     }
 
-    const { data: newInvoice, error: invoiceError } = await supabase
+    const { error: updateError } = await supabase
       .from("invoices")
-      .insert({
-        customer_id: estimate.customer_id,
-        lead_id: estimate.job_id,
-        estimate_id: estimate.id,
-        subtotal: estimate.subtotal,
-        tax_rate: estimate.tax_rate,
-        tax: estimate.tax,
-        discount: estimate.discount,
-        total: estimate.total,
-        balance_due: estimate.total,
-        notes: estimate.notes,
+      .update({
         status: "sent",
         sent_at: new Date().toISOString(),
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-        created_by: user.id,
-        account_id: membership.account_id,
         stripe_invoice_id: finalizedInvoice.id,
         stripe_invoice_url: hostedUrl,
+        updated_at: new Date().toISOString(),
       })
-      .select("id")
-      .single();
+      .eq("id", invoiceId);
 
-    if (invoiceError) {
-      throw new Error("Failed to create local invoice record: " + invoiceError.message);
+    if (updateError) {
+      console.error("Failed to update invoice:", updateError.message);
+      return new Response(
+        JSON.stringify({ error: "Failed to update invoice with Stripe details: " + updateError.message }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
     }
 
-    for (const item of activeLineItems) {
-      await supabase.from("invoice_line_items").insert({
-        invoice_id: newInvoice.id,
-        name: item.name,
-        description: item.description || null,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        total: item.total,
-        sort_order: item.sort_order || 0,
-        account_id: membership.account_id,
-      });
-    }
-
-    await supabase
-      .from("estimates")
-      .update({ is_finalized: true, updated_at: new Date().toISOString() })
-      .eq("id", estimateId);
+    console.log("Invoice created successfully:", finalizedInvoice.id);
 
     return new Response(
       JSON.stringify({
-        invoiceId: newInvoice.id,
+        invoiceId: invoice.id,
         stripeInvoiceId: finalizedInvoice.id,
         stripeInvoiceUrl: hostedUrl,
       }),

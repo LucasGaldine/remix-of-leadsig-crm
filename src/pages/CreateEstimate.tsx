@@ -156,9 +156,12 @@ export default function CreateEstimate() {
 
   const calculateTotals = () => {
     const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-    const taxAmount = subtotal * (parseFloat(taxRate) / 100);
+    const profitMargin = currentAccount?.default_profit_margin ?? 0;
+    const profitAmount = subtotal * (profitMargin / 100);
+    const subtotalWithProfit = subtotal + profitAmount;
+    const taxAmount = subtotalWithProfit * (parseFloat(taxRate) / 100);
     const discountAmount = parseFloat(discount) || 0;
-    const total = subtotal + taxAmount - discountAmount;
+    const total = subtotalWithProfit + taxAmount - discountAmount;
 
     return { subtotal, taxAmount, discountAmount, total };
   };
@@ -198,6 +201,7 @@ export default function CreateEstimate() {
           job_id: selectedJobId,
           account_id: currentAccount.id,
           subtotal,
+          profit_margin: currentAccount?.default_profit_margin ?? 0,
           tax_rate: parseFloat(taxRate) / 100,
           tax: taxAmount,
           discount: discountAmount,

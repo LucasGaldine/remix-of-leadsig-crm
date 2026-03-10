@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calculator, RotateCcw, Loader2 } from "lucide-react";
+import { Calculator, RotateCcw, Loader as Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -44,13 +44,18 @@ export default function SettingsPricingRules() {
   const [rules, setRules] = useState<Record<ServiceType, PricingRule>>({} as Record<ServiceType, PricingRule>);
   const [activeTab, setActiveTab] = useState<ServiceType>("pavers");
   const [taxRate, setTaxRate] = useState<string>("");
+  const [profitMargin, setProfitMargin] = useState<string>("");
 
   useEffect(() => {
     fetchRules();
+  }, [user?.id, currentAccount?.id]);
+
+  useEffect(() => {
     if (currentAccount) {
       setTaxRate(String(currentAccount.default_tax_rate ?? 8));
+      setProfitMargin(String(currentAccount.default_profit_margin ?? 0));
     }
-  }, [user?.id, currentAccount?.id]);
+  }, [currentAccount?.default_tax_rate, currentAccount?.default_profit_margin]);
 
   const fetchRules = async () => {
     if (!user?.id || !currentAccount?.id) return;
@@ -105,9 +110,13 @@ export default function SettingsPricingRules() {
 
     try {
       const parsedTax = parseFloat(taxRate) || 0;
+      const parsedProfitMargin = parseFloat(profitMargin) || 0;
       const { error: taxError } = await supabase
         .from("accounts")
-        .update({ default_tax_rate: parsedTax })
+        .update({
+          default_tax_rate: parsedTax,
+          default_profit_margin: parsedProfitMargin
+        })
         .eq("id", currentAccount.id);
 
       if (taxError) throw taxError;
@@ -228,6 +237,32 @@ export default function SettingsPricingRules() {
                     value={taxRate}
                     onChange={(e) => {
                       setTaxRate(e.target.value);
+                      setIsDirty(true);
+                    }}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Profit Margin */}
+            <div className="card-elevated rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">Default Profit Margin</h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Applied automatically to new estimates (editable per estimate)
+                  </p>
+                </div>
+                <div className="relative w-28">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={profitMargin}
+                    onChange={(e) => {
+                      setProfitMargin(e.target.value);
                       setIsDirty(true);
                     }}
                   />

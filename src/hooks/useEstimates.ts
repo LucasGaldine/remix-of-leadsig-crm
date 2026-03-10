@@ -44,6 +44,16 @@ export interface EstimateWithDetails extends Estimate {
     original_line_item_id?: string;
     changed_at?: string;
   }[];
+  original_line_items?: {
+    id: string;
+    name: string;
+    description?: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    total: number;
+    sort_order?: number;
+  }[] | null;
   estimate_visit_completed?: boolean;
 }
 
@@ -190,7 +200,20 @@ export function useEstimate(id: string | undefined) {
         .single();
 
       if (error) throw error;
-      return data as EstimateWithDetails;
+
+      const estimate = data as EstimateWithDetails;
+
+      if (estimate.original_total) {
+        const { data: originalLineItems } = await supabase
+          .from("estimate_line_items_original")
+          .select("*")
+          .eq("estimate_id", id)
+          .order("sort_order");
+
+        estimate.original_line_items = originalLineItems || null;
+      }
+
+      return estimate;
     },
     enabled: !!user && !!id,
   });
