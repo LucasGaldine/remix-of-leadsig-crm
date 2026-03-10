@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, FileText, AlertCircle, Clock, Building2 } from "lucide-react";
+import { Check, FileText, CircleAlert as AlertCircle, Clock, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
