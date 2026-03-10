@@ -69,11 +69,10 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
     scheduled: "Scheduled",
     in_progress: "In Progress",
     completed: "Completed",
-    paid: "Paid",
   };
 
   const badgeStatus = (job.display_status || job.status) as string;
-  const isUnassigned = (job.crew_count || 0) === 0 && badgeStatus === "scheduled";
+  const isUnassigned = (job.crew_count || 0) === 0 && (badgeStatus === "unscheduled" || badgeStatus === "scheduled" || badgeStatus === "in_progress");
   const scheduledDateTime = formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date);
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
   const value = Number(job.actual_value) || Number(job.estimated_value);

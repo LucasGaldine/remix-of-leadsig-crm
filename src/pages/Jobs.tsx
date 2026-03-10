@@ -5,7 +5,7 @@ import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { JobCard } from "@/components/jobs/JobCard";
 import { ListPageFilters } from "@/components/layout/ListPageFilters";
-import { Briefcase, Users, AlertTriangle } from "lucide-react";
+import { Briefcase, Users, AlertTriangle, DollarSign } from "lucide-react";
 import { useJobs, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -29,16 +29,22 @@ export default function Jobs() {
   const jobs = useMemo(() => {
     if (selectedStatus === "all") return allJobs;
     if (selectedStatus === "unassigned") {
+      return allJobs.filter((job: any) => {
+        const ds = job.display_status || job.status;
+        return (job.crew_count || 0) === 0 &&
+          (ds === "unscheduled" || ds === "scheduled" || ds === "in_progress");
+      });
+    }
+    if (selectedStatus === "needs_invoice") {
       return allJobs.filter((job: any) =>
-        (job.crew_count || 0) === 0 &&
-        job.display_status === "scheduled"
+        job.status === "completed" && !job.has_invoice
       );
     }
     if (selectedStatus === "overdue") {
       return allJobs.filter((job: any) => {
         const lastDate = job.last_scheduled_date || job.scheduled_date;
         const ds = job.display_status || job.status;
-        return lastDate && lastDate < today && ds !== "completed" && ds !== "paid";
+        return lastDate && lastDate < today && ds !== "completed";
       });
     }
     return allJobs.filter((job: any) => {
@@ -54,8 +60,8 @@ export default function Jobs() {
       scheduled: 0,
       in_progress: 0,
       completed: 0,
-      paid: 0,
       unassigned: 0,
+      needs_invoice: 0,
       overdue: 0,
     };
 
@@ -64,11 +70,14 @@ export default function Jobs() {
       if (counts[displayStatus] !== undefined) {
         counts[displayStatus]++;
       }
-      if ((job.crew_count || 0) === 0 && displayStatus === "scheduled") {
+      if ((job.crew_count || 0) === 0 && (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress")) {
         counts.unassigned++;
       }
+      if (job.status === "completed" && !job.has_invoice) {
+        counts.needs_invoice++;
+      }
       const lastDate = job.last_scheduled_date || job.scheduled_date;
-      if (lastDate && lastDate < today && displayStatus !== "completed" && displayStatus !== "paid") {
+      if (lastDate && lastDate < today && displayStatus !== "completed") {
         counts.overdue++;
       }
     });
@@ -82,10 +91,9 @@ export default function Jobs() {
     { value: "scheduled", label: "Scheduled", count: statusCounts.scheduled },
     { value: "in_progress", label: "In Progress", count: statusCounts.in_progress },
     { value: "completed", label: "Completed", count: statusCounts.completed },
-    { value: "paid", label: "Paid", count: statusCounts.paid },
   ];
 
-  const hasAlertBadges = statusCounts.unassigned > 0 || statusCounts.overdue > 0;
+  const hasAlertBadges = statusCounts.unassigned > 0 || statusCounts.needs_invoice > 0 || statusCounts.overdue > 0;
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -96,12 +104,12 @@ export default function Jobs() {
 
       {hasAlertBadges && (
         <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {statusCounts.unassigned > 0 && (
               <button
                 onClick={() => setSelectedStatus(selectedStatus === "unassigned" ? "all" : "unassigned")}
                 className="flex items-center gap-2
-                 px-3 py-2 
+                 px-3 py-2
                 rounded-lg
                 text-sm font-medium
                 border border-[hsl(var(--status-attention))]
@@ -112,7 +120,22 @@ export default function Jobs() {
                 <Users className="h-4 w-4" />
                 {statusCounts.unassigned} Unassigned
               </button>
-              
+            )}
+            {statusCounts.needs_invoice > 0 && (
+              <button
+                onClick={() => setSelectedStatus(selectedStatus === "needs_invoice" ? "all" : "needs_invoice")}
+                className="flex items-center gap-2
+                 px-3 py-2
+                rounded-lg
+                text-sm font-medium
+                border border-orange-300
+                bg-orange-50 text-orange-700
+                hover:opacity-80 transition-opacity
+                levitate"
+              >
+                <DollarSign className="h-4 w-4" />
+                {statusCounts.needs_invoice} Need{statusCounts.needs_invoice === 1 ? 's' : ''} Invoice
+              </button>
             )}
             {statusCounts.overdue > 0 && (
               <button
