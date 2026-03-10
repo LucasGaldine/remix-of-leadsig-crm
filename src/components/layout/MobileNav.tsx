@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, FileText, Calendar, DollarSign, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Users, FileText, Calendar, DollarSign, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -91,100 +91,42 @@ export function MobileNav() {
     };
   }, [activeIndex, visibleNavItems]);
 
-  const getVisibleItems = () => {
-    const allItems = visibleNavItems;
-    const currentIdx = activeIndex;
-
-    if (allItems.length <= 5) return allItems;
-
-    const visibleCount = 5;
-    const halfVisible = Math.floor(visibleCount / 2);
-
-    let start = Math.max(0, currentIdx - halfVisible);
-    let end = Math.min(allItems.length, start + visibleCount);
-
-    if (end - start < visibleCount) {
-      start = Math.max(0, end - visibleCount);
-    }
-
-    return allItems.slice(start, end);
-  };
-
-  const itemsToShow = getVisibleItems();
-  const canGoLeft = activeIndex > 0;
-  const canGoRight = activeIndex < visibleNavItems.length - 1;
-
-  const goLeft = () => {
-    if (canGoLeft) {
-      navigate(visibleNavItems[activeIndex - 1].path);
-    }
-  };
-
-  const goRight = () => {
-    if (canGoRight) {
-      navigate(visibleNavItems[activeIndex + 1].path);
-    }
-  };
-
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom">
-      <div className="flex items-center justify-between gap-2 px-2 py-2">
-        <button
-          onClick={goLeft}
-          disabled={!canGoLeft}
-          className={cn(
-            "flex items-center justify-center p-2 rounded-lg transition-all",
-            canGoLeft
-              ? "text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95"
-              : "text-muted-foreground/30 cursor-not-allowed"
-          )}
-          aria-label="Previous page"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
+      <div className="flex items-stretch overflow-x-auto scrollbar-hide">
+        {visibleNavItems.map((item) => {
+          const isActive = isActiveRoute(item.path);
+          const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
 
-        <div className="flex items-center justify-center gap-2 flex-1">
-          {itemsToShow.map((item) => {
-            const isActive = isActiveRoute(item.path);
-            const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
-
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
+          return (
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] min-w-[52px] transition-colors",
+                "active:bg-muted",
+                isActive
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <div
                 className={cn(
-                  "relative flex items-center justify-center p-3 rounded-xl transition-all duration-300",
-                  "active:scale-95",
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-lg scale-110"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  "relative p-1 rounded-lg transition-colors",
+                  isActive && "bg-primary/10"
                 )}
-                aria-label={item.label}
               >
                 {item.icon}
                 {badgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-status-attention text-white text-[9px] font-bold flex items-center justify-center shadow-md">
+                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-status-attention text-white text-[9px] font-bold flex items-center justify-center">
                     {badgeCount > 9 ? "9+" : badgeCount}
                   </span>
                 )}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={goRight}
-          disabled={!canGoRight}
-          className={cn(
-            "flex items-center justify-center p-2 rounded-lg transition-all",
-            canGoRight
-              ? "text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95"
-              : "text-muted-foreground/30 cursor-not-allowed"
-          )}
-          aria-label="Next page"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
+              </div>
+              <span className="text-[10px] font-medium mt-0.5 leading-tight">{item.label}</span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
