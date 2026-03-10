@@ -60,7 +60,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           job_assignments!lead_id(id)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["job", "paid", "completed"])
+        .in("status", ["job", "completed"])
         .order("created_at", { ascending: false });
 
       if (filter?.status) {
@@ -114,8 +114,6 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           } else {
             displayStatus = 'scheduled';
           }
-        } else if (job.status === 'paid') {
-          displayStatus = 'paid';
         } else if (job.status === 'completed') {
           displayStatus = 'completed';
         }
@@ -212,8 +210,6 @@ export function useJob(id: string | undefined) {
         } else {
           displayStatus = 'scheduled';
         }
-      } else if (data.status === 'paid') {
-        displayStatus = 'paid';
       } else if (data.status === 'completed') {
         displayStatus = 'completed';
       }
@@ -352,7 +348,6 @@ export function useJobCounts() {
         scheduled: 0,
         in_progress: 0,
         completed: 0,
-        paid: 0,
       };
 
       const { data, error } = await supabase
@@ -362,7 +357,7 @@ export function useJobCounts() {
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
         .eq("account_id", currentAccount.id)
-        .in("status", ["job", "paid", "completed"]);
+        .in("status", ["job", "completed"]);
 
       if (error) throw error;
 
@@ -372,7 +367,6 @@ export function useJobCounts() {
         scheduled: 0,
         in_progress: 0,
         completed: 0,
-        paid: 0,
       };
 
       data.forEach((lead: any) => {
@@ -401,8 +395,6 @@ export function useJobCounts() {
           } else {
             displayStatus = 'scheduled';
           }
-        } else if (lead.status === 'paid') {
-          displayStatus = 'paid';
         } else if (lead.status === 'completed') {
           displayStatus = 'completed';
         }
@@ -434,7 +426,7 @@ export function useJobRevenue() {
         .from("leads")
         .select("actual_value")
         .eq("account_id", currentAccount.id)
-        .eq("status", "paid")
+        .eq("status", "completed")
         .gte("updated_at", startOfMonth.toISOString());
 
       if (error) throw error;
