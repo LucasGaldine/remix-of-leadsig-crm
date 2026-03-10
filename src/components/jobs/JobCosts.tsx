@@ -8,7 +8,7 @@ interface JobCostsProps {
 }
 
 export const JobCosts = ({ jobId }: JobCostsProps) => {
-  const { lineItems, isLoading, totalCost } = useJobLineItems(jobId);
+  const { lineItems, isLoading, totalWithTax } = useJobLineItems(jobId);
   const [modalOpen, setModalOpen] = useState(false);
 
   if (isLoading) {
@@ -63,7 +63,7 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
           <div className="flex-1">
             <p className="font-medium text-foreground">Job Costs</p>
             <p className="text-sm text-muted-foreground mt-0.5">
-              ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${totalWithTax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <p className="text-xs text-muted-foreground">
               {lineItems.length} line {lineItems.length === 1 ? 'item' : 'items'}

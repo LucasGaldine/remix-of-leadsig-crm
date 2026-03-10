@@ -40,6 +40,24 @@ export const useJobLineItems = (jobId: string | undefined) => {
     enabled: !!jobId && !!currentAccount?.id,
   });
 
+  const { data: jobTaxInfo } = useQuery({
+    queryKey: ["job-tax-info", jobId, currentAccount?.id],
+    queryFn: async () => {
+      if (!jobId || !currentAccount?.id) return null;
+
+      const { data, error } = await supabase
+        .from("leads")
+        .select("tax_rate, tax, subtotal, total_with_tax")
+        .eq("id", jobId)
+        .eq("account_id", currentAccount.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!jobId && !!currentAccount?.id,
+  });
+
   const addLineItem = useMutation({
     mutationFn: async (item: Omit<JobLineItem, "id" | "created_at" | "account_id">) => {
       if (!currentAccount?.id) throw new Error("No account selected");
@@ -108,11 +126,19 @@ export const useJobLineItems = (jobId: string | undefined) => {
   });
 
   const totalCost = lineItems?.reduce((sum, item) => sum + Number(item.total), 0) || 0;
+  const taxRate = jobTaxInfo?.tax_rate ? Number(jobTaxInfo.tax_rate) : 0;
+  const tax = jobTaxInfo?.tax ? Number(jobTaxInfo.tax) : 0;
+  const subtotal = jobTaxInfo?.subtotal ? Number(jobTaxInfo.subtotal) : totalCost;
+  const totalWithTax = jobTaxInfo?.total_with_tax ? Number(jobTaxInfo.total_with_tax) : totalCost;
 
   return {
     lineItems: lineItems || [],
     isLoading,
     totalCost,
+    taxRate,
+    tax,
+    subtotal,
+    totalWithTax,
     addLineItem,
     updateLineItem,
     deleteLineItem,
