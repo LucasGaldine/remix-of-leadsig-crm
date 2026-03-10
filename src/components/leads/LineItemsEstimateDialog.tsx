@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { LineItemCategory } from "@/hooks/useJobLineItems";
 
 
 export interface EstimateLineItemInit {
@@ -20,6 +21,7 @@ export interface EstimateLineItemInit {
   quantity: string;
   unit: string;
   unit_price: string;
+  category: LineItemCategory;
 }
 
 interface LineItemsEstimateDialogProps {
@@ -45,8 +47,8 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
 
   const defaultLineItems: EstimateLineItemInit[] = initialLineItems ??
     (lead.estimated_value
-      ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString() }]
-      : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
+      ? [{ name: lead.service_type || "Service", description: "", quantity: "1", unit: "item", unit_price: lead.estimated_value.toString(), category: "other" }]
+      : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
 
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
   const [profitMargin, setProfitMargin] = useState<string>("");
@@ -60,7 +62,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
   }, [open, currentAccount?.default_profit_margin]);
 
   const addLineItem = () => {
-    setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "" }]);
+    setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
   };
 
   const removeLineItem = (index: number) => {
@@ -190,6 +192,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           unit_price: unitPrice,
           total,
           sort_order: index,
+          category: item.category,
         };
       });
 
@@ -298,6 +301,24 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
                     placeholder="Additional details..."
                     rows={2}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`item-category-${index}`}>Category</Label>
+                  <Select
+                    value={item.category}
+                    onValueChange={(value) => updateLineItem(index, "category", value)}
+                  >
+                    <SelectTrigger id={`item-category-${index}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="equipment">Equipment</SelectItem>
+                      <SelectItem value="materials">Materials</SelectItem>
+                      <SelectItem value="labor">Labor</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

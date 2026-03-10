@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { QuickEstimateLineItem } from "@/components/leads/QuickEstimateLineItem";
+import { LineItemCategory } from "@/hooks/useJobLineItems";
 
 interface LineItemForm {
   id?: string;
@@ -23,6 +24,7 @@ interface LineItemForm {
   quantity: string;
   unit: string;
   unit_price: string;
+  category: LineItemCategory;
   isNew?: boolean;
   originalId?: string;
 }
@@ -50,6 +52,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       quantity: item.quantity.toString(),
       unit: item.unit,
       unit_price: item.unit_price.toString(),
+      category: item.category || 'other',
     }));
   });
 
@@ -62,6 +65,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         quantity: '1',
         unit: 'each',
         unit_price: '',
+        category: 'other',
         isNew: true,
       },
     ]);
@@ -163,6 +167,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               unit_price: unitPrice,
               total,
               sort_order: lineItems.indexOf(item),
+              category: item.category,
               is_change_order: true,
               change_order_type: 'added',
               changed_at: new Date().toISOString(),
@@ -181,6 +186,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               unit_price: unitPrice,
               total,
               sort_order: lineItems.indexOf(item),
+              category: item.category,
               is_change_order: false,
             });
 
@@ -197,7 +203,8 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               normalizeValue(original.description) !== normalizeValue(item.description) ||
               parseFloat(original.quantity) !== quantity ||
               original.unit !== item.unit ||
-              parseFloat(original.unit_price) !== unitPrice);
+              parseFloat(original.unit_price) !== unitPrice ||
+              (original.category || 'other') !== item.category);
 
           if (hasChanged) {
             if (shouldTrackChanges) {
@@ -212,6 +219,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                 unit: item.unit,
                 unit_price: unitPrice,
                 total,
+                category: item.category,
               }).eq('id', item.id);
 
               if (error) throw error;
@@ -223,6 +231,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                 unit: item.unit,
                 unit_price: unitPrice,
                 total,
+                category: item.category,
               }).eq('id', item.id);
 
               if (error) throw error;
@@ -350,6 +359,24 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                     placeholder="Additional details..."
                     rows={2}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`item-category-${index}`}>Category</Label>
+                  <Select
+                    value={item.category}
+                    onValueChange={(value) => updateLineItem(index, "category", value)}
+                  >
+                    <SelectTrigger id={`item-category-${index}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="equipment">Equipment</SelectItem>
+                      <SelectItem value="materials">Materials</SelectItem>
+                      <SelectItem value="labor">Labor</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

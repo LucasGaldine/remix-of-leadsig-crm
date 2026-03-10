@@ -1,10 +1,11 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useJobLineItems } from "@/hooks/useJobLineItems";
+import { useJobLineItems, LineItemCategory } from "@/hooks/useJobLineItems";
 import { Receipt, RefreshCw, Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import {
   AlertDialog,
@@ -30,6 +31,7 @@ interface EditingLineItem {
   quantity: string;
   unit: string;
   unit_price: string;
+  category: LineItemCategory;
 }
 
 export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps) => {
@@ -43,6 +45,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     quantity: "1",
     unit: "each",
     unit_price: "0",
+    category: "other" as LineItemCategory,
   });
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -55,6 +58,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       quantity: String(item.quantity),
       unit: item.unit,
       unit_price: String(item.unit_price),
+      category: item.category || 'other',
     });
   };
 
@@ -77,6 +81,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       unit: editingData.unit,
       unit_price: unitPrice,
       total: quantity * unitPrice,
+      category: editingData.category,
     });
 
     cancelEdit();
@@ -97,6 +102,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       total: quantity * unitPrice,
       sort_order: maxSortOrder + 1,
       estimate_line_item_id: null,
+      category: newItem.category,
     });
 
     setNewItem({
@@ -105,6 +111,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       quantity: "1",
       unit: "each",
       unit_price: "0",
+      category: "other" as LineItemCategory,
     });
     setIsAdding(false);
   };
@@ -159,12 +166,13 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[25%]">Item</TableHead>
-                    <TableHead className="w-[25%]">Description</TableHead>
-                    <TableHead className="text-right w-[15%]">Quantity</TableHead>
-                    <TableHead className="text-right w-[15%]">Unit Price</TableHead>
+                    <TableHead className="w-[20%]">Item</TableHead>
+                    <TableHead className="w-[20%]">Description</TableHead>
+                    <TableHead className="w-[12%]">Category</TableHead>
+                    <TableHead className="text-right w-[12%]">Quantity</TableHead>
+                    <TableHead className="text-right w-[12%]">Unit Price</TableHead>
                     <TableHead className="text-right w-[12%]">Total</TableHead>
-                    <TableHead className="w-[8%]"></TableHead>
+                    <TableHead className="w-[12%]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -184,6 +192,22 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                             onChange={(e) => setEditingData({ ...editingData, description: e.target.value })}
                             className="h-8"
                           />
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={editingData.category}
+                            onValueChange={(value) => setEditingData({ ...editingData, category: value as LineItemCategory })}
+                          >
+                            <SelectTrigger className="h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="equipment">Equipment</SelectItem>
+                              <SelectItem value="materials">Materials</SelectItem>
+                              <SelectItem value="labor">Labor</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
@@ -241,6 +265,9 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {item.description || "—"}
+                        </TableCell>
+                        <TableCell className="capitalize text-sm">
+                          {item.category}
                         </TableCell>
                         <TableCell className="text-right">
                           {Number(item.quantity).toLocaleString()} {item.unit}
@@ -300,6 +327,22 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                         />
                       </TableCell>
                       <TableCell>
+                        <Select
+                          value={newItem.category}
+                          onValueChange={(value) => setNewItem({ ...newItem, category: value as LineItemCategory })}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="equipment">Equipment</SelectItem>
+                            <SelectItem value="materials">Materials</SelectItem>
+                            <SelectItem value="labor">Labor</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex gap-1">
                           <Input
                             type="number"
@@ -351,6 +394,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                                 quantity: "1",
                                 unit: "each",
                                 unit_price: "0",
+                                category: "other" as LineItemCategory,
                               });
                             }}
                             className="h-8 w-8 p-0"

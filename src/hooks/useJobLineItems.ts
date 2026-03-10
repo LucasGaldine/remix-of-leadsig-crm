@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
 
+export type LineItemCategory = 'equipment' | 'materials' | 'labor' | 'other';
+
 export interface JobLineItem {
   id: string;
   lead_id: string;
@@ -15,6 +17,7 @@ export interface JobLineItem {
   sort_order: number;
   account_id: string;
   estimate_line_item_id: string | null;
+  category: LineItemCategory;
   created_at: string;
 }
 
@@ -155,6 +158,7 @@ export const useJobLineItems = (jobId: string | undefined) => {
         sort_order: item.sort_order,
         account_id: currentAccount.id,
         estimate_line_item_id: item.id,
+        category: item.category || 'other',
       }));
 
       const { error: insertError } = await supabase
