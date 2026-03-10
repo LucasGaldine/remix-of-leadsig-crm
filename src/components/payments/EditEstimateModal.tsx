@@ -37,7 +37,7 @@ interface EditEstimateModalProps {
 export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: EditEstimateModalProps) {
   const [saving, setSaving] = useState(false);
   const [profitMargin, setProfitMargin] = useState<string>(() => {
-    return ((estimate.profit_margin || 0) * 100).toString();
+    return (estimate.profit_margin || 0).toString();
   });
   const [lineItems, setLineItems] = useState<LineItemForm[]>(() => {
     const activeItems = estimate.line_items.filter(
@@ -252,7 +252,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
           .from('estimates')
           .update({
             subtotal: newSubtotal,
-            profit_margin: profitMarginValue,
+            profit_margin: parseFloat(profitMargin || '0'),
             tax: newTax,
             total: newTotal,
             updated_at: new Date().toISOString(),

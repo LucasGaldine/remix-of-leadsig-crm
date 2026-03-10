@@ -136,10 +136,12 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         return sum + (quantity * unitPrice);
       }, 0);
 
-      const profitMarginValue = (parseFloat(profitMargin) || 0) / 100;
+      const profitMarginPercent = parseFloat(profitMargin) || 0;
+      const profitMarginValue = profitMarginPercent / 100;
       const profitAmount = estimateSubtotal * profitMarginValue;
       const subtotalAfterProfit = estimateSubtotal + profitAmount;
-      const taxRate = (currentAccount?.default_tax_rate ?? 0) / 100;
+      const taxRatePercent = currentAccount?.default_tax_rate ?? 0;
+      const taxRate = taxRatePercent / 100;
       const taxAmount = subtotalAfterProfit * taxRate;
       const estimateTotal = subtotalAfterProfit + taxAmount;
 
@@ -159,7 +161,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           customer_id: customerId,
           job_id: lead.id,
           subtotal: estimateSubtotal,
-          profit_margin: profitMarginValue,
+          profit_margin: profitMarginPercent,
           tax_rate: taxRate,
           tax: taxAmount,
           discount: 0,
