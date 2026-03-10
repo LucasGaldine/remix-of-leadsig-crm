@@ -31,6 +31,7 @@ export interface Job extends DbJob {
   recurring_job_id?: string | null;
   recurring_instance_number?: number | null;
   has_invoice?: boolean;
+  estimate_total?: number | null;
 }
 
 interface JobCardProps {
@@ -125,7 +126,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
               {job.status === "completed" && !job.has_invoice && (
                 <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
                   <DollarSign className="h-3 w-3 mr-1" />
-                  Needs Invoice: ${value > 0 ? value.toLocaleString() : "0"}
+                  Needs Invoice: ${job.estimate_total ? job.estimate_total.toLocaleString() : (value > 0 ? value.toLocaleString() : "0")}
                 </Badge>
               )}
             </div>
