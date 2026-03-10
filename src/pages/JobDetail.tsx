@@ -1113,6 +1113,19 @@ export default function JobDetail() {
                   queryClient.invalidateQueries({ queryKey: ["jobs"] });
                   queryClient.invalidateQueries({ queryKey: ["leads"] });
                 }
+              } else {
+                const { error } = await supabase
+                  .from("leads")
+                  .update({ status: "completed" })
+                  .eq("id", id);
+
+                if (error) {
+                  console.error("Failed to mark job as complete:", error);
+                  throw error;
+                }
+
+                queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                queryClient.invalidateQueries({ queryKey: ["leads"] });
               }
             }}
           />
