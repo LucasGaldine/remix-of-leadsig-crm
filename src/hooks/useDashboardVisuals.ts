@@ -40,25 +40,48 @@ export function useRevenueExpenses(timeframe: Timeframe) {
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data, error } = await supabase
-        .from("payments")
-        .select("amount, method, created_at, status")
-        .eq("account_id", currentAccount.id)
-        .eq("status", "completed")
-        .gte("created_at", from.toISOString())
-        .lte("created_at", to.toISOString());
+      const [paymentsRes, jobsRes] = await Promise.all([
+        supabase
+          .from("payments")
+          .select("amount, method, created_at, status")
+          .eq("account_id", currentAccount.id)
+          .eq("status", "completed")
+          .gte("created_at", from.toISOString())
+          .lte("created_at", to.toISOString()),
+        supabase
+          .from("leads")
+          .select("id, updated_at, job_line_items(total)")
+          .eq("account_id", currentAccount.id)
+          .in("status", ["completed", "paid"])
+          .gte("updated_at", from.toISOString())
+          .lte("updated_at", to.toISOString()),
+      ]);
 
-      if (error) throw error;
+      if (paymentsRes.error) throw paymentsRes.error;
+      if (jobsRes.error && !isMissingTable(jobsRes.error)) throw jobsRes.error;
 
-      // Group by week
       const weeks: Record<string, { revenue: number; expenses: number; order: number }> = {};
-      (data || []).forEach((p: any) => {
+
+      (paymentsRes.data || []).forEach((p: any) => {
         const date = new Date(p.created_at);
         const weekStart = startOfWeek(date, { weekStartsOn: 1 });
         const weekKey = format(weekStart, "MMM d");
         if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
         const amt = Number(p.amount) || 0;
         weeks[weekKey].revenue += amt;
+      });
+
+      (jobsRes.data || []).forEach((job: any) => {
+        const date = new Date(job.updated_at);
+        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+        const weekKey = format(weekStart, "MMM d");
+        if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
+
+        const totalCost = (job.job_line_items || []).reduce(
+          (sum: number, item: any) => sum + (Number(item.total) || 0),
+          0
+        );
+        weeks[weekKey].expenses += totalCost;
       });
 
       return Object.entries(weeks)
