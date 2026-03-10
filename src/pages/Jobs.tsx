@@ -5,7 +5,7 @@ import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { JobCard } from "@/components/jobs/JobCard";
 import { ListPageFilters } from "@/components/layout/ListPageFilters";
-import { Briefcase, Users, AlertTriangle, DollarSign } from "lucide-react";
+import { Briefcase, Users, TriangleAlert as AlertTriangle, DollarSign } from "lucide-react";
 import { useJobs, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
