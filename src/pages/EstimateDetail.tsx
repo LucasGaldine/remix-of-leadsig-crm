@@ -1,13 +1,10 @@
 // @ts-nocheck
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, ChevronRight, CircleAlert as AlertCircle, History, CreditCard as Edit2, Plus, X, Save, Check, Link2, Copy, CheckCheck, CreditCard, FileCheck, Download, Calculator } from "lucide-react";
+import { Send, ArrowRightLeft, User, Calendar, ChevronRight, CircleAlert as AlertCircle, History, CreditCard as Edit2, Link2, Copy, CheckCheck, CreditCard, FileCheck, Download } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useEstimate } from "@/hooks/useEstimates";
 import { useInvoices } from "@/hooks/useInvoices";
@@ -25,13 +22,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { QuickEstimatePanel, QuickEstimateBreakdown } from "@/components/leads/QuickEstimatePanel";
-import { QuickEstimateLineItem } from "@/components/leads/QuickEstimateLineItem";
-import { SERVICE_LABELS } from "@/hooks/useQuickEstimate";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
+import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
@@ -42,16 +36,6 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   declined: { label: "Declined", className: "bg-red-100 text-red-800" },
 };
 
-interface LineItemForm {
-  id?: string;
-  name: string;
-  description: string;
-  quantity: string;
-  unit: string;
-  unit_price: string;
-  isNew?: boolean;
-  originalId?: string;
-}
 
 export default function EstimateDetail() {
   const { id } = useParams();
@@ -62,15 +46,12 @@ export default function EstimateDetail() {
 
   const relatedInvoices = allInvoices?.filter(inv => inv.estimate_id === id) || [];
 
-  const [editMode, setEditMode] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [lineItems, setLineItems] = useState<LineItemForm[]>([]);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [portalLink, setPortalLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
-  const [showQuickEstimate, setShowQuickEstimate] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
 
   const handleDownloadPDF = () => {
@@ -174,6 +155,11 @@ export default function EstimateDetail() {
     } finally {
       setManualApproving(false);
     }
+  };
+
+  const handleEstimateSuccess = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+    await queryClient.invalidateQueries({ queryKey: ["estimates"] });
   };
 
   const handleGeneratePortalLink = async () => {
@@ -656,27 +642,13 @@ export default function EstimateDetail() {
       <div className="px-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-foreground">Line Items</h3>
-          {!editMode && (
-            <div className="flex gap-2">
-              {estimate.line_items.filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted').length === 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowQuickEstimate(true)}
-                >
-                  <Calculator className="h-4 w-4 mr-2" />
-                  Quick Estimate
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={enterEditMode}>
-                <Edit2 className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
-            </div>
-          )}
+          <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
+            <Edit2 className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
         </div>
 
-        {hasOriginalEstimate && !editMode && (
+        {hasOriginalEstimate && (
           <div className="flex gap-2 mb-3">
             <Button
               variant={!showingOriginal ? "default" : "outline"}
@@ -697,223 +669,76 @@ export default function EstimateDetail() {
           </div>
         )}
 
-        {!editMode ? (
-          <div className="card-elevated rounded-lg overflow-hidden">
-            {displayLineItems.length > 0 ? (
-              displayLineItems
-                .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-                .map((item, index, arr) => (
-                  <div
-                    key={item.id}
-                    className={cn(
-                      "p-4",
-                      index < arr.length - 1 && "border-b border-border"
-                    )}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <p className="font-medium text-foreground">{item.name}</p>
-                          {item.is_change_order && item.changed_at && (() => {
-                            const changedDate = new Date(item.changed_at);
-                            const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
-                            return hoursSinceChange < 24;
-                          })() && (
-                            <Badge
-                              variant={
-                                item.change_order_type === 'added' ? 'default' :
-                                item.change_order_type === 'edited' ? 'secondary' :
-                                'outline'
-                              }
-                              className="text-2xs"
-                            >
-                              {item.change_order_type === 'added' && 'New'}
-                              {item.change_order_type === 'edited' && 'Modified'}
-                            </Badge>
-                          )}
-                          {item.is_change_order && item.change_order_approved === false && (
-                            <Badge
-                              variant="outline"
-                              className="text-2xs bg-amber-50 text-amber-700 border-amber-200"
-                            >
-                              Pending Approval
-                            </Badge>
-                          )}
-                          {item.is_change_order && item.change_order_approved === true && (
-                            <Badge
-                              variant="outline"
-                              className="text-2xs bg-emerald-50 text-emerald-700 border-emerald-200"
-                            >
-                              <CheckCheck className="h-3 w-3 mr-1" />
-                              Approved
-                            </Badge>
-                          )}
-                        </div>
-                        {item.description && (
-                          <p className="text-sm text-muted-foreground mt-0.5">{item.description}</p>
+        <div className="card-elevated rounded-lg overflow-hidden">
+          {displayLineItems.length > 0 ? (
+            displayLineItems
+              .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+              .map((item, index, arr) => (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "p-4",
+                    index < arr.length - 1 && "border-b border-border"
+                  )}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <p className="font-medium text-foreground">{item.name}</p>
+                        {item.is_change_order && item.changed_at && (() => {
+                          const changedDate = new Date(item.changed_at);
+                          const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
+                          return hoursSinceChange < 24;
+                        })() && (
+                          <Badge
+                            variant={
+                              item.change_order_type === 'added' ? 'default' :
+                              item.change_order_type === 'edited' ? 'secondary' :
+                              'outline'
+                            }
+                            className="text-2xs"
+                          >
+                            {item.change_order_type === 'added' && 'New'}
+                            {item.change_order_type === 'edited' && 'Modified'}
+                          </Badge>
                         )}
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {item.quantity} {item.unit} × ${Number(item.unit_price).toFixed(2)}
-                        </p>
+                        {item.is_change_order && item.change_order_approved === false && (
+                          <Badge
+                            variant="outline"
+                            className="text-2xs bg-amber-50 text-amber-700 border-amber-200"
+                          >
+                            Pending Approval
+                          </Badge>
+                        )}
+                        {item.is_change_order && item.change_order_approved === true && (
+                          <Badge
+                            variant="outline"
+                            className="text-2xs bg-emerald-50 text-emerald-700 border-emerald-200"
+                          >
+                            <CheckCheck className="h-3 w-3 mr-1" />
+                            Approved
+                          </Badge>
+                        )}
                       </div>
-                      <p className="font-semibold text-foreground ml-4">
-                        ${Number(item.total).toLocaleString()}
+                      {item.description && (
+                        <p className="text-sm text-muted-foreground mt-0.5">{item.description}</p>
+                      )}
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {item.quantity} {item.unit} × ${Number(item.unit_price).toFixed(2)}
                       </p>
                     </div>
-                  </div>
-                ))
-            ) : (
-              <div className="p-4 text-center text-muted-foreground">
-                No line items found
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {lineItems.map((item, index) => (
-              <div key={index} className="card-elevated rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    Item {index + 1}
-                  </span>
-                  {lineItems.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeLineItem(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor={`name-${index}`}>Title *</Label>
-                    {estimate.job_id && (
-                      <QuickEstimateLineItem
-                        leadId={estimate.job_id}
-                        onApply={(name, quantity, unit, unitPrice, description) => {
-                          const updated = [...lineItems];
-                          updated[index] = {
-                            ...updated[index],
-                            name,
-                            quantity: quantity || updated[index].quantity,
-                            unit: unit || updated[index].unit,
-                            unit_price: unitPrice,
-                            description: description || updated[index].description,
-                          };
-                          setLineItems(updated);
-                        }}
-                      />
-                    )}
-                  </div>
-                  <Input
-                    id={`name-${index}`}
-                    value={item.name}
-                    onChange={(e) => updateLineItem(index, 'name', e.target.value)}
-                    placeholder="Service or product name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`description-${index}`}>Description</Label>
-                  <Textarea
-                    id={`description-${index}`}
-                    value={item.description}
-                    onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                    placeholder="Additional details..."
-                    rows={2}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor={`quantity-${index}`}>Quantity *</Label>
-                    <Input
-                      id={`quantity-${index}`}
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor={`unit-${index}`}>Unit</Label>
-                    <Input
-                      id={`unit-${index}`}
-                      value={item.unit}
-                      onChange={(e) => updateLineItem(index, 'unit', e.target.value)}
-                      placeholder="item, sqft, etc."
-                    />
+                    <p className="font-semibold text-foreground ml-4">
+                      ${Number(item.total).toLocaleString()}
+                    </p>
                   </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`unit-price-${index}`}>Unit Price *</Label>
-                  <Input
-                    id={`unit-price-${index}`}
-                    type="number"
-                    value={item.unit_price}
-                    onChange={(e) => updateLineItem(index, 'unit_price', e.target.value)}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-
-                {item.quantity && item.unit_price && (
-                  <div className="pt-2 border-t border-border">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Line Total:</span>
-                      <span className="font-semibold">
-                        ${(parseFloat(item.quantity) * parseFloat(item.unit_price)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={addLineItem}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Line Item
-            </Button>
-
-            <div className="flex gap-3 pt-4">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={cancelEdit}
-                disabled={saving}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={saveChanges}
-                disabled={saving || !lineItems.some(item => item.name && item.unit_price)}
-              >
-                {saving ? (
-                  <>
-                    <Save className="h-4 w-4 mr-2 animate-pulse" />
-                    {estimate?.status === 'accepted' ? 'Sending...' : 'Saving...'}
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    {estimate?.status === 'accepted' ? 'Send Change Order' : 'Save Changes'}
-                  </>
-                )}
-              </Button>
+              ))
+          ) : (
+            <div className="p-4 text-center text-muted-foreground">
+              No line items found
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="px-4 mt-4">
@@ -945,7 +770,7 @@ export default function EstimateDetail() {
         </div>
       </div>
 
-      {estimate.has_pending_changes && !editMode && (
+      {estimate.has_pending_changes && (
         <div className="px-4 mt-4">
           <Alert className="bg-amber-50 border-amber-200">
             <AlertCircle className="h-4 w-4 text-amber-600" />
@@ -956,7 +781,7 @@ export default function EstimateDetail() {
         </div>
       )}
 
-      {hasChangeOrders && !editMode && !estimate.has_pending_changes && (() => {
+      {hasChangeOrders && !estimate.has_pending_changes && (() => {
         const recentChanges = estimate.line_items.some((item: any) => {
           if (!item.is_change_order || !item.changed_at) return false;
           const changedDate = new Date(item.changed_at);
@@ -1038,9 +863,7 @@ export default function EstimateDetail() {
         </div>
       )}
 
-      {!editMode && (
-        <>
-          <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
+      <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
             {portalLink && (
               <div className="flex items-center gap-2 bg-card border border-border rounded-xl p-3 mb-3 shadow-sm">
                 <input
@@ -1107,8 +930,6 @@ export default function EstimateDetail() {
               )}
             </div>
           </div>
-        </>
-      )}
 
       <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <AlertDialogContent>
@@ -1129,18 +950,12 @@ export default function EstimateDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={showQuickEstimate} onOpenChange={setShowQuickEstimate}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Quick Estimate</DialogTitle>
-          </DialogHeader>
-          <QuickEstimatePanel
-            leadId={estimate.job_id || estimate.recurring_job_id || ""}
-            variant="flat"
-            onSaveToEstimate={handleQuickEstimateSave}
-          />
-        </DialogContent>
-      </Dialog>
+      <EditEstimateModal
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        estimate={estimate}
+        onSuccess={handleEstimateSuccess}
+      />
 
       <MobileNav />
     </div>
