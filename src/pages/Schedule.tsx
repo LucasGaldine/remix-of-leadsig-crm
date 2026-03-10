@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Loader2, Repeat, MapPin, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Loader as Loader2, Repeat, MapPin, Clock } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { JobCard } from "@/components/jobs/JobCard";

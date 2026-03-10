@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { CustomerCard } from "@/components/customers/CustomerCard";
 import { useCustomers } from "@/hooks/useCustomers";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, Users } from "lucide-react";
+import { Loader as Loader2, Search, Users } from "lucide-react";
 
 export default function Customers() {
   const navigate = useNavigate();
