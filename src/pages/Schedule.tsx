@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Plus, Loader2, Repeat, MapPin, Clock } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { MobileNav } from "@/components/layout/MobileNav";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { JobCard } from "@/components/jobs/JobCard";
 import { cn } from "@/lib/utils";
 import { format, addDays, startOfWeek, isSameDay } from "date-fns";
@@ -68,7 +68,7 @@ export default function Schedule() {
   const hasNoContent = todaysJobs.length === 0 && selectedProjected.length === 0;
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <AppLayout>
       <PageHeader
         title="Schedule"
         subtitle={format(selectedDate, "MMMM yyyy")}
@@ -300,8 +300,6 @@ export default function Schedule() {
           </>
         )}
       </main>
-
-      <MobileNav />
-    </div>
+    </AppLayout>
   );
 }

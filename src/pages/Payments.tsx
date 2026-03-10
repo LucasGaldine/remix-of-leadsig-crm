@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, DollarSign, FileText, CreditCard, ClipboardCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { MobileNav } from "@/components/layout/MobileNav";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { Input } from "@/components/ui/input";
 import { EstimateCard } from "@/components/payments/EstimateCard";
@@ -115,7 +115,7 @@ export default function Payments() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <AppLayout>
       <PageHeader
         title="Payments"
         subtitle={`$${totalCollected.toLocaleString()} collected this month`}
@@ -342,8 +342,6 @@ export default function Payments() {
             : []
         }
       />
-
-      <MobileNav />
-    </div>
+    </AppLayout>
   );
 }

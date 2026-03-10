@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { MobileNav } from "@/components/layout/MobileNav";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -96,7 +96,7 @@ export default function Jobs() {
   const hasAlertBadges = statusCounts.unassigned > 0 || statusCounts.needs_invoice > 0 || statusCounts.overdue > 0;
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <AppLayout>
       <PageHeader
         title="Jobs"
         subtitle={`$${revenue.toLocaleString()} collected this month`}
@@ -197,7 +197,6 @@ export default function Jobs() {
       )}
 
       <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
-      <MobileNav />
-    </div>
+    </AppLayout>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Clock, Circle as XCircle, UserPlus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { MobileNav } from "@/components/layout/MobileNav";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { ListPageFilters } from "@/components/layout/ListPageFilters";
 import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
@@ -155,7 +155,7 @@ export default function Leads() {
   const isArchiveTab = activeFilter === "archive";
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <AppLayout>
       <PageHeader
         title="Leads"
         subtitle={`${qualifiedCount} qualified, ${totalCount} total`}
@@ -334,8 +334,6 @@ export default function Leads() {
           navigate(`/leads/${leadId}`);
         }}
       />
-
-      <MobileNav />
-    </div>
+    </AppLayout>
   );
 }

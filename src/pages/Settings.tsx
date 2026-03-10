@@ -1,30 +1,8 @@
 // @ts-nocheck
 import { useState } from "react";
-import {
-  User,
-  Building2,
-  DollarSign,
-  Bell,
-  Calendar,
-  Users,
-  Zap,
-  HelpCircle,
-  LogOut,
-  ChevronRight,
-  MapPin,
-  Shield,
-  Plug,
-  ExternalLink,
-  LayoutDashboard,
-  Calculator,
-  Ruler,
-  Crown,
-  FileText,
-  Scale,
-  Trash2
-} from "lucide-react";
+import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { MobileNav } from "@/components/layout/MobileNav";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -243,7 +221,7 @@ export default function Settings() {
     .filter(section => section.items.length > 0);
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <AppLayout>
       <PageHeader title="Settings" />
 
       <main className="py-4">
@@ -325,9 +303,7 @@ export default function Settings() {
         </p>
       </main>
 
-      <MobileNav />
-
       <TwoFactorSetup open={show2FASetup} onOpenChange={setShow2FASetup} />
-    </div>
+    </AppLayout>
   );
 }
