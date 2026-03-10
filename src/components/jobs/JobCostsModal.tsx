@@ -1,8 +1,9 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useJobLineItems } from "@/hooks/useJobLineItems";
-import { Receipt } from "lucide-react";
+import { Receipt, RefreshCw } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 
 interface JobCostsModalProps {
   jobId: string;
@@ -11,16 +12,27 @@ interface JobCostsModalProps {
 }
 
 export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps) => {
-  const { lineItems, isLoading, totalCost, tax, taxRate, subtotal, totalWithTax } = useJobLineItems(jobId);
+  const { lineItems, isLoading, totalCost, resyncFromEstimate } = useJobLineItems(jobId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Receipt className="h-5 w-5" />
-            Job Costs
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Job Costs
+            </DialogTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => resyncFromEstimate.mutate()}
+              disabled={resyncFromEstimate.isPending || lineItems.length === 0}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${resyncFromEstimate.isPending ? 'animate-spin' : ''}`} />
+              Resync from Estimate
+            </Button>
+          </div>
         </DialogHeader>
 
         {isLoading ? (
@@ -77,40 +89,14 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
             </ScrollArea>
 
             <div className="border-t pt-4">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">
-                    {lineItems.length} {lineItems.length === 1 ? "item" : "items"}
-                  </span>
-                  <div className="text-right">
-                    <span className="text-muted-foreground">Subtotal: </span>
-                    <span className="font-medium">
-                      ${subtotal.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-muted-foreground">
+                  {lineItems.length} {lineItems.length === 1 ? "item" : "items"}
                 </div>
-
-                {tax > 0 && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">
-                      Tax ({(taxRate * 100).toFixed(1)}%)
-                    </span>
-                    <span className="font-medium">
-                      ${tax.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center pt-2 border-t">
-                  <span className="text-sm text-muted-foreground">Total Cost</span>
+                <div className="text-right">
+                  <p className="text-sm text-muted-foreground mb-1">Total Cost</p>
                   <p className="text-2xl font-bold">
-                    ${totalWithTax.toLocaleString(undefined, {
+                    ${totalCost.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}

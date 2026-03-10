@@ -40,24 +40,6 @@ export const useJobLineItems = (jobId: string | undefined) => {
     enabled: !!jobId && !!currentAccount?.id,
   });
 
-  const { data: jobTaxInfo } = useQuery({
-    queryKey: ["job-tax-info", jobId, currentAccount?.id],
-    queryFn: async () => {
-      if (!jobId || !currentAccount?.id) return null;
-
-      const { data, error } = await supabase
-        .from("leads")
-        .select("tax_rate, tax, subtotal, total_with_tax")
-        .eq("id", jobId)
-        .eq("account_id", currentAccount.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!jobId && !!currentAccount?.id,
-  });
-
   const addLineItem = useMutation({
     mutationFn: async (item: Omit<JobLineItem, "id" | "created_at" | "account_id">) => {
       if (!currentAccount?.id) throw new Error("No account selected");
@@ -125,22 +107,81 @@ export const useJobLineItems = (jobId: string | undefined) => {
     },
   });
 
+  const resyncFromEstimate = useMutation({
+    mutationFn: async () => {
+      if (!jobId || !currentAccount?.id) throw new Error("No job or account selected");
+
+      const { data: estimate, error: estimateError } = await supabase
+        .from("estimates")
+        .select("id")
+        .eq("job_id", jobId)
+        .eq("account_id", currentAccount.id)
+        .eq("status", "accepted")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (estimateError) throw estimateError;
+      if (!estimate) throw new Error("No accepted estimate found for this job");
+
+      const { data: estimateLineItems, error: lineItemsError } = await supabase
+        .from("estimate_line_items")
+        .select("*")
+        .eq("estimate_id", estimate.id)
+        .eq("is_change_order", false)
+        .order("sort_order", { ascending: true });
+
+      if (lineItemsError) throw lineItemsError;
+      if (!estimateLineItems || estimateLineItems.length === 0) {
+        throw new Error("No line items found in estimate");
+      }
+
+      const { error: deleteError } = await supabase
+        .from("job_line_items")
+        .delete()
+        .eq("lead_id", jobId)
+        .eq("account_id", currentAccount.id);
+
+      if (deleteError) throw deleteError;
+
+      const newLineItems = estimateLineItems.map((item) => ({
+        lead_id: jobId,
+        name: item.name,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        unit_price: item.unit_price,
+        total: item.total,
+        sort_order: item.sort_order,
+        account_id: currentAccount.id,
+        estimate_line_item_id: item.id,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("job_line_items")
+        .insert(newLineItems);
+
+      if (insertError) throw insertError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["job-line-items", jobId] });
+      toast.success("Job costs synced from estimate");
+    },
+    onError: (error) => {
+      console.error("Error syncing from estimate:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to sync from estimate");
+    },
+  });
+
   const totalCost = lineItems?.reduce((sum, item) => sum + Number(item.total), 0) || 0;
-  const taxRate = jobTaxInfo?.tax_rate ? Number(jobTaxInfo.tax_rate) : 0;
-  const tax = jobTaxInfo?.tax ? Number(jobTaxInfo.tax) : 0;
-  const subtotal = jobTaxInfo?.subtotal ? Number(jobTaxInfo.subtotal) : totalCost;
-  const totalWithTax = jobTaxInfo?.total_with_tax ? Number(jobTaxInfo.total_with_tax) : totalCost;
 
   return {
     lineItems: lineItems || [],
     isLoading,
     totalCost,
-    taxRate,
-    tax,
-    subtotal,
-    totalWithTax,
     addLineItem,
     updateLineItem,
     deleteLineItem,
+    resyncFromEstimate,
   };
 };
