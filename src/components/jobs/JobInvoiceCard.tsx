@@ -240,21 +240,37 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         .eq("id", jobId)
         .single();
 
-      const { data: estimate } = await supabase
-        .from("estimates")
-        .select("id")
-        .eq("job_id", jobId)
-        .maybeSingle();
-
       if (!job?.customer_id) {
         toast.error("Customer not found");
+        setRecordingPayment(false);
         return;
       }
 
-      await supabase.from("payments").insert({
+      const { data: invoice, error: invoiceError } = await supabase
+        .from("invoices")
+        .select("id, estimate_id")
+        .eq("lead_id", jobId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (invoiceError) {
+        console.error("Invoice query error:", invoiceError);
+        toast.error("Failed to find invoice");
+        setRecordingPayment(false);
+        return;
+      }
+
+      if (!invoice) {
+        toast.error("No invoice found for this job. Please create an invoice first.");
+        setRecordingPayment(false);
+        return;
+      }
+
+      const { error: paymentError } = await supabase.from("payments").insert({
+        invoice_id: invoice.id,
         lead_id: jobId,
         customer_id: job.customer_id,
-        estimate_id: estimate?.id,
         amount: paymentAmount,
         method,
         status: "completed",
@@ -262,7 +278,15 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         account_id: currentAccount.id,
       });
 
+      if (paymentError) {
+        console.error("Payment insert error:", paymentError);
+        toast.error("Failed to record payment");
+        setRecordingPayment(false);
+        return;
+      }
+
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
       setShowLogPaymentModal(false);
       toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${paymentAmount.toLocaleString()} recorded`);
       fetchInvoices();
