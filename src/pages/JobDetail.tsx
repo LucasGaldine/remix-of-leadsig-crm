@@ -1124,8 +1124,9 @@ export default function JobDetail() {
                   throw error;
                 }
 
-                queryClient.invalidateQueries({ queryKey: ["jobs"] });
-                queryClient.invalidateQueries({ queryKey: ["leads"] });
+                await queryClient.invalidateQueries({ queryKey: ["job", id] });
+                await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                await queryClient.invalidateQueries({ queryKey: ["leads"] });
               }
             }}
           />
