@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState } from "react";
-import { MapPin, Clock, User, ChevronRight, Users, Repeat } from "lucide-react";
+import { MapPin, Clock, User, ChevronRight, Users, Repeat, DollarSign } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ export interface Job extends DbJob {
   crew_count?: number;
   recurring_job_id?: string | null;
   recurring_instance_number?: number | null;
+  has_invoice?: boolean;
 }
 
 interface JobCardProps {
@@ -119,6 +120,12 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
                 <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
                   <Users className="h-3 w-3 mr-1" />
                   Unassigned
+                </Badge>
+              )}
+              {job.status === "completed" && !job.has_invoice && (
+                <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
+                  <DollarSign className="h-3 w-3 mr-1" />
+                  Needs Invoice: ${value > 0 ? value.toLocaleString() : "0"}
                 </Badge>
               )}
             </div>

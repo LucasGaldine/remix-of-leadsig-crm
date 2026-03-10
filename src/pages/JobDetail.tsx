@@ -91,6 +91,7 @@ export default function JobDetail() {
   const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [hasInvoice, setHasInvoice] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -99,6 +100,7 @@ export default function JobDetail() {
       fetchAfterPhotos();
       fetchBeforePhotos();
       fetchNotes();
+      checkHasInvoice();
     }
   }, [id, parentLeadId]);
 
@@ -173,6 +175,19 @@ export default function JobDetail() {
       .eq("type", "note")
       .order("created_at", { ascending: false });
     if (data) setNotes(data);
+  };
+
+  const checkHasInvoice = async () => {
+    if (!id) return;
+    try {
+      const { count } = await supabase
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", id);
+      setHasInvoice((count ?? 0) > 0);
+    } catch (error) {
+      console.error("Error checking for invoices:", error);
+    }
   };
 
   const addNote = async () => {
@@ -679,13 +694,20 @@ export default function JobDetail() {
               
               {/*Right Column */}
               <div className="flex flex-col sm:items-end gap-2">
-                <div className="flex justify-end gap-2">
-                  
-                  
+                <div className="flex justify-end gap-2 flex-wrap">
+
+
                   {isUnassigned && (
                     <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
                       <Users className="h-3 w-3 mr-1" />
                       Unassigned
+                    </Badge>
+                  )}
+
+                  {job.status === "completed" && !hasInvoice && (
+                    <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
+                      <DollarSign className="h-3 w-3 mr-1" />
+                      Needs Invoice: ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
                     </Badge>
                   )}
 
@@ -1197,45 +1219,6 @@ export default function JobDetail() {
             )}
           </div>
         )}
-
-
-{/* */}
-
-
-      {/* Bottom Action */}
-      {!job.is_estimate_visit && (hasAfterPhotos || job.status === "paid" || (job as any).display_status === "completed") && (
-        <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-          <Button
-            className="w-full h-14 text-base font-semibold"
-            onClick={() => setCompleteDialogOpen(true)}
-            disabled={job.status === "paid"}
-          >
-            {job.status === "paid" ? "Payment Received" : ((job as any).display_status === "completed" ? "Received Payment" : "Mark as Complete")}
-          </Button>
-        </div>
-      )}
-
-      {/* Payment/Complete Confirmation Dialog */}
-      <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {(job as any).display_status === "completed" ? "Record Payment" : "Mark Job as Complete"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {(job as any).display_status === "completed"
-                ? "Have you received payment for this job? This will mark the job as paid."
-                : "Are you sure you want to mark this job as complete? This will update the job status."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReceivedPayment}>
-              {(job as any).display_status === "completed" ? "Confirm Payment" : "Mark Complete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Schedule Dialog */}
       {id && (
