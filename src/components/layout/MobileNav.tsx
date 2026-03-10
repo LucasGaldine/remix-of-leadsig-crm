@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, FileText, Calendar, DollarSign, Settings } from "lucide-react";
+import { LayoutDashboard, Users, FileText, Calendar, DollarSign, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,12 +14,12 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { icon: <LayoutDashboard className="h-4 w-4" />, label: "Dashboard", path: "/", requiredRole: 'all' },
-  { icon: <Users className="h-4 w-4" />, label: "Leads", path: "/leads", badgeKey: "pendingLeads", requiredRole: 'manager' },
-  { icon: <FileText className="h-4 w-4" />, label: "Jobs", path: "/jobs", requiredRole: 'all' },
-  { icon: <Calendar className="h-4 w-4" />, label: "Calendar", path: "/schedule", requiredRole: 'all' },
-  { icon: <DollarSign className="h-4 w-4" />, label: "Payments", path: "/payments", requiredRole: 'manager' },
-  { icon: <Settings className="h-4 w-4" />, label: "Settings", path: "/settings", requiredRole: 'all' },
+  { icon: <LayoutDashboard className="h-5 w-5" />, label: "Dashboard", path: "/", requiredRole: 'all' },
+  { icon: <Users className="h-5 w-5" />, label: "Leads", path: "/leads", badgeKey: "pendingLeads", requiredRole: 'manager' },
+  { icon: <FileText className="h-5 w-5" />, label: "Jobs", path: "/jobs", requiredRole: 'all' },
+  { icon: <Calendar className="h-5 w-5" />, label: "Calendar", path: "/schedule", requiredRole: 'all' },
+  { icon: <DollarSign className="h-5 w-5" />, label: "Payments", path: "/payments", requiredRole: 'manager' },
+  { icon: <Settings className="h-5 w-5" />, label: "Settings", path: "/settings", requiredRole: 'all' },
 ];
 
 export function MobileNav() {
@@ -47,6 +47,18 @@ export function MobileNav() {
 
   const currentIndex = visibleNavItems.findIndex(item => isActiveRoute(item.path));
   const activeIndex = currentIndex === -1 ? 0 : currentIndex;
+
+  const navigateToPrevious = () => {
+    if (activeIndex > 0) {
+      navigate(visibleNavItems[activeIndex - 1].path);
+    }
+  };
+
+  const navigateToNext = () => {
+    if (activeIndex < visibleNavItems.length - 1) {
+      navigate(visibleNavItems[activeIndex + 1].path);
+    }
+  };
 
   const handleSwipe = () => {
     if (touchStartX.current === null || touchEndX.current === null) return;
@@ -93,7 +105,7 @@ export function MobileNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom">
-      <div className="flex items-stretch overflow-x-auto scrollbar-hide">
+      <div className="md:flex md:items-stretch md:overflow-x-auto md:scrollbar-hide hidden">
         {visibleNavItems.map((item) => {
           const isActive = isActiveRoute(item.path);
           const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
@@ -127,6 +139,67 @@ export function MobileNav() {
             </button>
           );
         })}
+      </div>
+
+      <div className="flex items-center justify-between px-2 py-2 md:hidden">
+        <button
+          onClick={navigateToPrevious}
+          disabled={activeIndex === 0}
+          className={cn(
+            "p-2 transition-opacity",
+            activeIndex === 0 ? "opacity-30" : "opacity-100"
+          )}
+          aria-label="Previous page"
+        >
+          <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+        </button>
+
+        <div className="flex items-center justify-center gap-3">
+          {visibleNavItems.map((item) => {
+            const isActive = isActiveRoute(item.path);
+            const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={cn(
+                  "relative flex items-center justify-center transition-all",
+                  "active:scale-95"
+                )}
+                aria-label={item.label}
+              >
+                <div
+                  className={cn(
+                    "relative flex items-center justify-center rounded-full transition-all",
+                    isActive
+                      ? "bg-primary text-primary-foreground h-12 w-12"
+                      : "text-muted-foreground h-10 w-10"
+                  )}
+                >
+                  {item.icon}
+                  {badgeCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-status-attention text-white text-[9px] font-bold flex items-center justify-center">
+                      {badgeCount > 9 ? "9+" : badgeCount}
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={navigateToNext}
+          disabled={activeIndex === visibleNavItems.length - 1}
+          className={cn(
+            "p-2 transition-opacity",
+            activeIndex === visibleNavItems.length - 1 ? "opacity-30" : "opacity-100"
+          )}
+          aria-label="Next page"
+        >
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </button>
       </div>
     </nav>
   );
