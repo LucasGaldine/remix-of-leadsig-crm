@@ -1,9 +1,21 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useJobLineItems } from "@/hooks/useJobLineItems";
-import { Receipt, RefreshCw } from "lucide-react";
+import { Receipt, RefreshCw, Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface JobCostsModalProps {
   jobId: string;
@@ -11,8 +23,98 @@ interface JobCostsModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+interface EditingLineItem {
+  id: string;
+  name: string;
+  description: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+}
+
 export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps) => {
-  const { lineItems, isLoading, totalCost, resyncFromEstimate } = useJobLineItems(jobId);
+  const { lineItems, isLoading, totalCost, resyncFromEstimate, addLineItem, updateLineItem, deleteLineItem } = useJobLineItems(jobId);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingData, setEditingData] = useState<EditingLineItem | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newItem, setNewItem] = useState({
+    name: "",
+    description: "",
+    quantity: "1",
+    unit: "each",
+    unit_price: "0",
+  });
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const startEdit = (item: any) => {
+    setEditingId(item.id);
+    setEditingData({
+      id: item.id,
+      name: item.name,
+      description: item.description || "",
+      quantity: String(item.quantity),
+      unit: item.unit,
+      unit_price: String(item.unit_price),
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingData(null);
+  };
+
+  const saveEdit = () => {
+    if (!editingData) return;
+
+    const quantity = parseFloat(editingData.quantity) || 0;
+    const unitPrice = parseFloat(editingData.unit_price) || 0;
+
+    updateLineItem.mutate({
+      id: editingData.id,
+      name: editingData.name,
+      description: editingData.description || null,
+      quantity,
+      unit: editingData.unit,
+      unit_price: unitPrice,
+      total: quantity * unitPrice,
+    });
+
+    cancelEdit();
+  };
+
+  const handleAdd = () => {
+    const quantity = parseFloat(newItem.quantity) || 0;
+    const unitPrice = parseFloat(newItem.unit_price) || 0;
+    const maxSortOrder = Math.max(...lineItems.map(item => item.sort_order), 0);
+
+    addLineItem.mutate({
+      lead_id: jobId,
+      name: newItem.name,
+      description: newItem.description || null,
+      quantity,
+      unit: newItem.unit,
+      unit_price: unitPrice,
+      total: quantity * unitPrice,
+      sort_order: maxSortOrder + 1,
+      estimate_line_item_id: null,
+    });
+
+    setNewItem({
+      name: "",
+      description: "",
+      quantity: "1",
+      unit: "each",
+      unit_price: "0",
+    });
+    setIsAdding(false);
+  };
+
+  const handleDelete = () => {
+    if (deleteId) {
+      deleteLineItem.mutate(deleteId);
+      setDeleteId(null);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -27,7 +129,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               variant="outline"
               size="sm"
               onClick={() => resyncFromEstimate.mutate()}
-              disabled={resyncFromEstimate.isPending || lineItems.length === 0}
+              disabled={resyncFromEstimate.isPending}
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${resyncFromEstimate.isPending ? 'animate-spin' : ''}`} />
               Resync from Estimate
@@ -39,51 +141,226 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           <div className="flex justify-center py-8">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
           </div>
-        ) : lineItems.length === 0 ? (
-          <div className="text-center py-8">
-            <Receipt className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground">No cost items yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Costs will be copied from estimate when approved
-            </p>
-          </div>
         ) : (
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAdding(true)}
+                disabled={isAdding}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Line Item
+              </Button>
+            </div>
+
             <ScrollArea className="h-[60vh]">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[30%]">Item</TableHead>
-                    <TableHead className="w-[30%]">Description</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="w-[25%]">Item</TableHead>
+                    <TableHead className="w-[25%]">Description</TableHead>
+                    <TableHead className="text-right w-[15%]">Quantity</TableHead>
+                    <TableHead className="text-right w-[15%]">Unit Price</TableHead>
+                    <TableHead className="text-right w-[12%]">Total</TableHead>
+                    <TableHead className="w-[8%]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lineItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {item.description || "—"}
+                    editingId === item.id && editingData ? (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <Input
+                            value={editingData.name}
+                            onChange={(e) => setEditingData({ ...editingData, name: e.target.value })}
+                            className="h-8"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={editingData.description}
+                            onChange={(e) => setEditingData({ ...editingData, description: e.target.value })}
+                            className="h-8"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Input
+                              type="number"
+                              value={editingData.quantity}
+                              onChange={(e) => setEditingData({ ...editingData, quantity: e.target.value })}
+                              className="h-8 w-16"
+                            />
+                            <Input
+                              value={editingData.unit}
+                              onChange={(e) => setEditingData({ ...editingData, unit: e.target.value })}
+                              className="h-8 w-20"
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={editingData.unit_price}
+                            onChange={(e) => setEditingData({ ...editingData, unit_price: e.target.value })}
+                            className="h-8"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          ${((parseFloat(editingData.quantity) || 0) * (parseFloat(editingData.unit_price) || 0)).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={saveEdit}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={cancelEdit}
+                              className="h-8 w-8 p-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {item.description || "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {Number(item.quantity).toLocaleString()} {item.unit}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ${Number(item.unit_price).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          ${Number(item.total).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => startEdit(item)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setDeleteId(item.id)}
+                              className="h-8 w-8 p-0 text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  ))}
+
+                  {isAdding && (
+                    <TableRow>
+                      <TableCell>
+                        <Input
+                          placeholder="Item name"
+                          value={newItem.name}
+                          onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                          className="h-8"
+                        />
                       </TableCell>
-                      <TableCell className="text-right">
-                        {Number(item.quantity).toLocaleString()} {item.unit}
+                      <TableCell>
+                        <Input
+                          placeholder="Description"
+                          value={newItem.description}
+                          onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                          className="h-8"
+                        />
                       </TableCell>
-                      <TableCell className="text-right">
-                        ${Number(item.unit_price).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Input
+                            type="number"
+                            value={newItem.quantity}
+                            onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+                            className="h-8 w-16"
+                          />
+                          <Input
+                            value={newItem.unit}
+                            onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                            className="h-8 w-20"
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={newItem.unit_price}
+                          onChange={(e) => setNewItem({ ...newItem, unit_price: e.target.value })}
+                          className="h-8"
+                        />
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        ${Number(item.total).toLocaleString(undefined, {
+                        ${((parseFloat(newItem.quantity) || 0) * (parseFloat(newItem.unit_price) || 0)).toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleAdd}
+                            disabled={!newItem.name.trim()}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setIsAdding(false);
+                              setNewItem({
+                                name: "",
+                                description: "",
+                                quantity: "1",
+                                unit: "each",
+                                unit_price: "0",
+                              });
+                            }}
+                            className="h-8 w-8 p-0"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </ScrollArea>
@@ -107,6 +384,21 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           </div>
         )}
       </DialogContent>
+
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Line Item</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this line item? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };
