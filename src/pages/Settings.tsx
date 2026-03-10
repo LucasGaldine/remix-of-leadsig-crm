@@ -1,28 +1,6 @@
 // @ts-nocheck
 import { useState } from "react";
-import {
-  User,
-  Building2,
-  DollarSign,
-  Bell,
-  Calendar,
-  Users,
-  Zap,
-  HelpCircle,
-  LogOut,
-  ChevronRight,
-  MapPin,
-  Shield,
-  Plug,
-  ExternalLink,
-  LayoutDashboard,
-  Calculator,
-  Ruler,
-  Crown,
-  FileText,
-  Scale,
-  Trash2
-} from "lucide-react";
+import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
