@@ -38,6 +38,7 @@ import { ScheduleJobDialog } from "@/components/jobs/ScheduleJobDialog";
 import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { JobTimeTracker } from "@/components/jobs/JobTimeTracker";
 import { Repeat } from "lucide-react";
+import { JobCosts } from "@/components/jobs/JobCosts";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -828,6 +829,8 @@ export default function JobDetail() {
               </div>
             ) : null}
 
+            {/* Job Costs */}
+            {id && <JobCosts jobId={id} />}
 
             {/* Schedule or Job Schedule Info */}
             {!jobAny.recurring_job_id ? (
