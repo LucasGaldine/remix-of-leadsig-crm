@@ -75,7 +75,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
   const isUnassigned = (job.crew_count || 0) === 0 && (badgeStatus === "unscheduled" || badgeStatus === "scheduled" || badgeStatus === "in_progress");
   const scheduledDateTime = formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date);
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
-  const value = Number(job.actual_value) || Number(job.estimated_value);
+  const value = Number(job.estimate_total) || 0;
 
   const handleRecurringBadgeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -122,10 +122,10 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
                   Unassigned
                 </Badge>
               )}
-              {job.status === "completed" && !job.has_invoice && (
+              {job.status === "completed" && !job.has_invoice && !job.is_estimate_visit && (
                 <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
                   <DollarSign className="h-3 w-3 mr-1" />
-                  Needs Invoice: ${job.estimate_total ? job.estimate_total.toLocaleString() : (value > 0 ? value.toLocaleString() : "0")}
+                  Needs Invoice: ${value > 0 ? value.toLocaleString() : "0"}
                 </Badge>
               )}
             </div>
@@ -170,7 +170,7 @@ export function JobCard({ job, onClick, className }: JobCardProps) {
         </div>
 
         <div className="flex items-center gap-4">
-          {value > 0 && (
+          {!job.is_estimate_visit && value > 0 && (
             <span className="text-2">
               ${value.toLocaleString()}
             </span>

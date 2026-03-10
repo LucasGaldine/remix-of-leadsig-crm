@@ -37,7 +37,7 @@ export default function Jobs() {
     }
     if (selectedStatus === "needs_invoice") {
       return allJobs.filter((job: any) =>
-        job.status === "completed" && !job.has_invoice
+        job.status === "completed" && !job.has_invoice && !job.is_estimate_visit
       );
     }
     if (selectedStatus === "overdue") {
@@ -73,7 +73,7 @@ export default function Jobs() {
       if ((job.crew_count || 0) === 0 && (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress")) {
         counts.unassigned++;
       }
-      if (job.status === "completed" && !job.has_invoice) {
+      if (job.status === "completed" && !job.has_invoice && !job.is_estimate_visit) {
         counts.needs_invoice++;
       }
       const lastDate = job.last_scheduled_date || job.scheduled_date;
