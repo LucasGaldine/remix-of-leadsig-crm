@@ -91,25 +91,47 @@ export function MobileNav() {
     };
   }, [activeIndex, visibleNavItems]);
 
+  const getVisibleItems = () => {
+    const allItems = visibleNavItems;
+    const currentIdx = activeIndex;
+
+    if (allItems.length <= 5) return allItems;
+
+    const visibleCount = 5;
+    const halfVisible = Math.floor(visibleCount / 2);
+
+    let start = Math.max(0, currentIdx - halfVisible);
+    let end = Math.min(allItems.length, start + visibleCount);
+
+    if (end - start < visibleCount) {
+      start = Math.max(0, end - visibleCount);
+    }
+
+    return allItems.slice(start, end);
+  };
+
+  const itemsToShow = getVisibleItems();
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom">
-      {/* Mobile: dots indicator */}
-      <div className="flex items-center justify-center pt-2 pb-1 gap-1.5 md:hidden">
+      <div className="flex items-center justify-center pt-2 pb-1 gap-1.5">
         {visibleNavItems.map((item, i) => (
-          <div
+          <button
             key={item.path}
+            onClick={() => navigate(item.path)}
             className={cn(
               "rounded-full transition-all duration-300",
               i === activeIndex
-                ? "w-5 h-2 bg-primary"
-                : "w-2 h-2 bg-muted-foreground/30"
+                ? "w-6 h-2 bg-primary"
+                : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
             )}
+            aria-label={item.label}
           />
         ))}
       </div>
 
-      <div className="flex items-stretch overflow-x-auto scrollbar-hide">
-        {visibleNavItems.map((item) => {
+      <div className="flex items-center justify-center gap-2 px-4 pb-2">
+        {itemsToShow.map((item) => {
           const isActive = isActiveRoute(item.path);
           const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
 
@@ -118,27 +140,20 @@ export function MobileNav() {
               key={item.path}
               onClick={() => navigate(item.path)}
               className={cn(
-                "flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] min-w-[52px] transition-colors",
-                "active:bg-muted",
+                "relative flex items-center justify-center p-3 rounded-xl transition-all duration-300",
+                "active:scale-95",
                 isActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground shadow-lg scale-110"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
               )}
+              aria-label={item.label}
             >
-              <div
-                className={cn(
-                  "relative p-1 rounded-lg transition-colors",
-                  isActive && "bg-primary/10"
-                )}
-              >
-                {item.icon}
-                {badgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-status-attention text-white text-[9px] font-bold flex items-center justify-center">
-                    {badgeCount > 9 ? "9+" : badgeCount}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] font-medium mt-0.5 leading-tight">{item.label}</span>
+              {item.icon}
+              {badgeCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-status-attention text-white text-[9px] font-bold flex items-center justify-center shadow-md">
+                  {badgeCount > 9 ? "9+" : badgeCount}
+                </span>
+              )}
             </button>
           );
         })}
