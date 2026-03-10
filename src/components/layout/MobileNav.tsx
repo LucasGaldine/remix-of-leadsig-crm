@@ -93,6 +93,21 @@ export function MobileNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom">
+      {/* Mobile: dots indicator */}
+      <div className="flex items-center justify-center pt-2 pb-1 gap-1.5 md:hidden">
+        {visibleNavItems.map((item, i) => (
+          <div
+            key={item.path}
+            className={cn(
+              "rounded-full transition-all duration-300",
+              i === activeIndex
+                ? "w-5 h-2 bg-primary"
+                : "w-2 h-2 bg-muted-foreground/30"
+            )}
+          />
+        ))}
+      </div>
+
       <div className="flex items-stretch overflow-x-auto scrollbar-hide">
         {visibleNavItems.map((item) => {
           const isActive = isActiveRoute(item.path);
