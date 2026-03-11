@@ -67,7 +67,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
-  const [selectedCrewId, setSelectedCrewId] = useState<string>("");
+  const [selectedCrewIds, setSelectedCrewIds] = useState<string[]>([]);
   const [confirmNoCrewOpen, setConfirmNoCrewOpen] = useState(false);
   const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -130,6 +130,12 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
     }
   };
 
+  const toggleCrewMember = (userId: string) => {
+    setSelectedCrewIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
   const handleSchedule = async (forceWithoutCrew = false) => {
     if (!user || !currentAccount) {
       toast.error("Authentication required");
@@ -141,12 +147,12 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       return;
     }
 
-    if (!selectedCrewId && !forceWithoutCrew) {
+    if (selectedCrewIds.length === 0 && !forceWithoutCrew) {
       setConfirmNoCrewOpen(true);
       return;
     }
-    if (selectedCrewId && schedules.length > 0 && selectedSchedules.length === 0) {
-      toast.error("Select at least one schedule date to assign the crew");
+    if (selectedCrewIds.length > 0 && schedules.length > 0 && selectedSchedules.length === 0) {
+      toast.error("Select at least one schedule date to assign crew");
       return;
     }
 
@@ -212,15 +218,17 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
 
       if (scheduleError) throw new Error("Failed to schedule estimate visit");
 
-      if (selectedCrewId) {
+      if (selectedCrewIds.length > 0) {
         const scheduleIds = selectedSchedules.length > 0 ? selectedSchedules : [scheduleRow.id];
-        const assignments = scheduleIds.map((sid) => ({
-          lead_id: lead.id,
-          user_id: selectedCrewId,
-          job_schedule_id: sid,
-          account_id: currentAccount.id,
-          assigned_by: user.id,
-        }));
+        const assignments = scheduleIds.flatMap((sid) =>
+          selectedCrewIds.map((userId) => ({
+            lead_id: lead.id,
+            user_id: userId,
+            job_schedule_id: sid,
+            account_id: currentAccount.id,
+            assigned_by: user.id,
+          }))
+        );
 
         const { error: assignError } = await supabase
           .from("job_assignments")
@@ -281,7 +289,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       await queryClient.invalidateQueries({ queryKey: ["job-schedules", lead.id] });
 
       onOpenChange(false);
-      setSelectedCrewId("");
+      setSelectedCrewIds([]);
       setSelectedSchedules([]);
       navigate(`/jobs/${lead.id}`);
     } catch (error) {
@@ -414,29 +422,32 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
               ) : (
                 <>
                   <div>
-                    <Label className="text-sm font-medium mb-1 block">Crew Member</Label>
+                    <Label className="text-sm font-medium mb-1 block">Crew Members</Label>
                     {crewMembers.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No active crew members available.</p>
                     ) : (
-                      <Select value={selectedCrewId} onValueChange={setSelectedCrewId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select crew member" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {crewMembers.map((member) => (
-                            <SelectItem key={member.user_id} value={member.user_id}>
-                              <span className="flex items-center gap-2">
-                                {member.full_name || "Unnamed"}
-                                {member.role && (
-                                  <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
-                                    {roleLabels[member.role] || member.role}
-                                  </Badge>
-                                )}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
+                        {crewMembers.map((member) => (
+                          <label
+                            key={member.user_id}
+                            className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedCrewIds.includes(member.user_id)}
+                              onChange={() => toggleCrewMember(member.user_id)}
+                            />
+                            <div className="flex items-center gap-2 flex-1">
+                              <span>{member.full_name || "Unnamed"}</span>
+                              {member.role && (
+                                <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
+                                  {roleLabels[member.role] || member.role}
+                                </Badge>
+                              )}
+                            </div>
+                          </label>
+                        ))}
+                      </div>
                     )}
                   </div>
 
@@ -473,7 +484,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
                 </>
               )}
 
-              {selectedCrewId === "" && scheduledDate && (
+              {selectedCrewIds.length === 0 && scheduledDate && (
                 <p className="text-xs text-muted-foreground">
                   You can schedule without assigning crew; we'll ask for confirmation.
                 </p>
