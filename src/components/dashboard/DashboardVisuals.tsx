@@ -309,6 +309,7 @@ export function DashboardVisuals() {
         <LeadFunnel timeframe={timeframe} />
         <CompletionDonut timeframe={timeframe} />
         
+        
         <CrewHours timeframe={timeframe} />
       </div>
     </section>
