@@ -102,6 +102,24 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   });
 
   const resolveCustomer = async (): Promise<{ id: string; name: string; phone: string | null; email: string | null; address: string | null }> => {
+    if (clientMode === "new") {
+      const customer = await createCustomerMutation.mutateAsync({
+        name: newClientData.name.trim(),
+        phone: newClientData.phone?.trim() || null,
+        email: newClientData.email?.trim() || null,
+        address: newClientData.address?.trim() || null,
+        city: newClientData.city?.trim() || null,
+      });
+
+      return {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.address,
+      };
+    }
+
     if (clientMode === "existing" && selectedCustomer) {
       return {
         id: selectedCustomer.id,
@@ -112,21 +130,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       };
     }
 
-    const customer = await createCustomerMutation.mutateAsync({
-      name: newClientData.name.trim(),
-      phone: newClientData.phone?.trim() || null,
-      email: newClientData.email?.trim() || null,
-      address: newClientData.address?.trim() || null,
-      city: newClientData.city?.trim() || null,
-    });
-
-    return {
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      email: customer.email,
-      address: customer.address,
-    };
+    throw new Error("Please select a client or create a new one");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
