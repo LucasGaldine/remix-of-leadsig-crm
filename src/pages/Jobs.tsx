@@ -1,25 +1,37 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { JobCard } from "@/components/jobs/JobCard";
 import { ListPageFilters } from "@/components/layout/ListPageFilters";
-import { Briefcase, Users, TriangleAlert as AlertTriangle, DollarSign } from "lucide-react";
+import { Briefcase, Users, TriangleAlert as AlertTriangle, DollarSign, Building2, User } from "lucide-react";
 import { useJobs, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
 
 export default function Jobs() {
   const navigate = useNavigate();
-  const { isManager } = useAuth();
+  const { isManager, role } = useAuth();
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
+  const [showMyJobsOnly, setShowMyJobsOnly] = useState<boolean>(() => {
+    const saved = localStorage.getItem('jobs-view-preference');
+    return saved === 'my-jobs';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jobs-view-preference', showMyJobsOnly ? 'my-jobs' : 'all-jobs');
+  }, [showMyJobsOnly]);
+
+  const canViewAllJobs = role === 'owner' || role === 'admin' || role === 'sales';
 
   const filter = useMemo(() => ({
     searchQuery: searchQuery,
-  }), [searchQuery]);
+    myJobsOnly: canViewAllJobs ? showMyJobsOnly : true,
+  }), [searchQuery, showMyJobsOnly, canViewAllJobs]);
 
   const { data: allJobs = [], isLoading } = useJobs(filter);
   const { data: revenue = 0 } = useJobRevenue();
@@ -101,6 +113,31 @@ export default function Jobs() {
         title="Jobs"
         subtitle={`$${revenue.toLocaleString()} collected this month`}
       />
+
+      {canViewAllJobs && (
+        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
+          <div className="flex gap-2">
+            <Button
+              variant={!showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(false)}
+              className="flex items-center gap-2"
+            >
+              <Building2 className="h-4 w-4" />
+              All Jobs
+            </Button>
+            <Button
+              variant={showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(true)}
+              className="flex items-center gap-2"
+            >
+              <User className="h-4 w-4" />
+              My Jobs
+            </Button>
+          </div>
+        </div>
+      )}
 
       {hasAlertBadges && (
         <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
