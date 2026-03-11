@@ -184,30 +184,29 @@ export default function Schedule() {
       </div>
 
       {canViewAllJobs && (
-  <div className="max-w-[var(--content-max-width)] m-auto">
-    <div className="inline-flex rounded-lg border border-border bg-muted p-1">
-
-      <button
-        onClick={() => setShowMyJobsOnly(false)}
-        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition
-        ${!showMyJobsOnly ? "bg-background shadow-sm" : "text-muted-foreground"}`}
-      >
-        <Building2 className="h-4 w-4" />
-        All Jobs
-      </button>
-
-      <button
-        onClick={() => setShowMyJobsOnly(true)}
-        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition
-        ${showMyJobsOnly ? "bg-background shadow-sm" : "text-muted-foreground"}`}
-      >
-        <User className="h-4 w-4" />
-        My Jobs
-      </button>
-
-    </div>
-  </div>
-)}
+        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto hidden">
+          <div className="flex gap-2">
+            <Button
+              variant={!showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(false)}
+              className="flex items-center gap-2"
+            >
+              <Building2 className="h-4 w-4" />
+              All Jobs
+            </Button>
+            <Button
+              variant={showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(true)}
+              className="flex items-center gap-2"
+            >
+              <User className="h-4 w-4" />
+              My Jobs
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Jobs List */}
       <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto mt-4">
