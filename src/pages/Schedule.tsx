@@ -182,7 +182,26 @@ export default function Schedule() {
         </div>
       </div>
 
-      
+      {canViewAllJobs && (
+  <div className="max-w-[var(--content-max-width)] m-auto">
+    <div className="flex items-center gap-3">
+
+      <Building2 className="h-4 w-4 text-muted-foreground" />
+
+      <Switch
+        checked={showMyJobsOnly}
+        onCheckedChange={setShowMyJobsOnly}
+      />
+
+      <User className="h-4 w-4 text-muted-foreground" />
+
+      <span className="text-sm">
+        {showMyJobsOnly ? "My Jobs" : "All Jobs"}
+      </span>
+
+    </div>
+  </div>
+)}
 
       {/* Jobs List */}
       <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto mt-4">
