@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
@@ -7,19 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, FileText, Users } from "lucide-react";
+import { Calendar as CalendarIcon, FileText, Users, Plus, X, Search, Trash2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { cn } from "@/lib/utils";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { Checkbox } from "@/components/ui/checkbox";
 
 
 const roleLabels: Record<string, string> = {
@@ -67,12 +66,15 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
-  const [selectedCrewIds, setSelectedCrewIds] = useState<string[]>([]);
   const [confirmNoCrewOpen, setConfirmNoCrewOpen] = useState(false);
-  const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
-  // Fetch busy dates for the visible month range
+  const [addedSchedules, setAddedSchedules] = useState<Array<{date: string; timeStart: string; timeEnd: string}>>([]);
+  const [showCrewAssignment, setShowCrewAssignment] = useState(false);
+  const [selectedCrewMember, setSelectedCrewMember] = useState<string>("");
+  const [selectedSchedulesForCrew, setSelectedSchedulesForCrew] = useState<number[]>([]);
+  const [crewSearchQuery, setCrewSearchQuery] = useState("");
+
   const monthStart = startOfMonth(calendarMonth);
   const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
 
@@ -93,7 +95,6 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
     enabled: !!user,
   });
 
-  // Fetch jobs for the selected date
   const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
   const { data: crewMembers = [] } = useQuery<CrewMember[]>({
@@ -114,45 +115,61 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
     enabled: !!currentAccount,
   });
 
-  const { data: schedules = [] } = useJobSchedules(lead?.id);
+  const filteredCrewMembers = crewMembers.filter(member => {
+    if (!crewSearchQuery) return true;
+    const query = crewSearchQuery.toLowerCase();
+    return (
+      member.full_name?.toLowerCase().includes(query) ||
+      member.email?.toLowerCase().includes(query)
+    );
+  });
 
-  const toggleSchedule = (id: string) => {
-    setSelectedSchedules((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+  const handleAddSchedule = () => {
+    if (!selectedDate) {
+      toast.error("Please select a date");
+      return;
+    }
+
+    const newSchedule = {
+      date: format(selectedDate, "yyyy-MM-dd"),
+      timeStart: scheduledTimeStart,
+      timeEnd: scheduledTimeEnd,
+    };
+
+    setAddedSchedules([...addedSchedules, newSchedule]);
+    setSelectedDate(undefined);
+    setScheduledTimeStart("");
+    setScheduledTimeEnd("");
+    toast.success("Schedule date added");
+  };
+
+  const handleRemoveSchedule = (index: number) => {
+    setAddedSchedules(addedSchedules.filter((_, i) => i !== index));
+    setSelectedSchedulesForCrew(selectedSchedulesForCrew.filter(i => i !== index).map(i => i > index ? i - 1 : i));
+  };
+
+  const toggleScheduleForCrew = (index: number) => {
+    setSelectedSchedulesForCrew(prev =>
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
     );
   };
 
   const toggleAllSchedules = () => {
-    if (selectedSchedules.length === schedules.length) {
-      setSelectedSchedules([]);
+    if (selectedSchedulesForCrew.length === addedSchedules.length) {
+      setSelectedSchedulesForCrew([]);
     } else {
-      setSelectedSchedules(schedules.map((s) => s.id));
+      setSelectedSchedulesForCrew(addedSchedules.map((_, i) => i));
     }
   };
 
-  const toggleCrewMember = (userId: string) => {
-    setSelectedCrewIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
-  };
-
-  const handleSchedule = async (forceWithoutCrew = false) => {
+  const handleScheduleEstimate = async (forceWithoutCrew = false) => {
     if (!user || !currentAccount) {
       toast.error("Authentication required");
       return;
     }
 
-    if (!scheduledDate) {
-      toast.error("Please select a date for the estimate visit");
-      return;
-    }
-
-    if (selectedCrewIds.length === 0 && !forceWithoutCrew) {
-      setConfirmNoCrewOpen(true);
-      return;
-    }
-    if (selectedCrewIds.length > 0 && schedules.length > 0 && selectedSchedules.length === 0) {
-      toast.error("Select at least one schedule date to assign crew");
+    if (addedSchedules.length === 0) {
+      toast.error("Please add at least one schedule date");
       return;
     }
 
@@ -211,102 +228,39 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
 
       leadWasConverted = true;
 
-      const { data: scheduleRow, error: scheduleError } = await supabase
-        .from("job_schedules")
-        .insert({
-          lead_id: lead.id,
-          scheduled_date: scheduledDate,
-          scheduled_time_start: scheduledTimeStart || null,
-          scheduled_time_end: scheduledTimeEnd || null,
-          created_by: user.id,
-          account_id: currentAccount.id,
-        })
-        .select()
-        .single();
+      const createdScheduleIds: string[] = [];
 
-      if (scheduleError) {
-        if (leadWasConverted) {
-          await supabase
-            .from("leads")
-            .update({ status: "qualified", is_estimate_visit: false })
-            .eq("id", lead.id);
-        }
-        if (scheduleError.message.includes("row-level security") || scheduleError.message.includes("policy")) {
-          throw new Error("Unable to create schedule. Please check your permissions or contact support.");
-        }
-        throw new Error(`Failed to create schedule: ${scheduleError.message}`);
-      }
-
-      if (selectedCrewIds.length > 0) {
-        const scheduleIds = selectedSchedules.length > 0 ? selectedSchedules : [scheduleRow.id];
-
-        for (const scheduleId of scheduleIds) {
-          for (const userId of selectedCrewIds) {
-            const { data: hasOverlap } = await supabase.rpc('check_assignment_overlap', {
-              p_user_id: userId,
-              p_schedule_id: scheduleId,
-              p_account_id: currentAccount.id,
-            });
-
-            if (hasOverlap) {
-              const { data: crewMemberProfile } = await supabase
-                .from('profiles')
-                .select('full_name')
-                .eq('user_id', userId)
-                .maybeSingle();
-
-              const { data: scheduleData } = await supabase
-                .from('job_schedules')
-                .select('scheduled_date, scheduled_time_start, scheduled_time_end')
-                .eq('id', scheduleId)
-                .maybeSingle();
-
-              const crewName = crewMemberProfile?.full_name || 'This crew member';
-              const dateStr = scheduleData?.scheduled_date
-                ? format(new Date(scheduleData.scheduled_date), "EEEE, MMMM d, yyyy")
-                : 'the selected date';
-
-              await supabase.from("job_schedules").delete().eq("id", scheduleRow.id);
-              if (leadWasConverted) {
-                await supabase
-                  .from("leads")
-                  .update({ status: "qualified", is_estimate_visit: false })
-                  .eq("id", lead.id);
-              }
-
-              throw new Error(`${crewName} is already assigned to another job on ${dateStr}. Please choose a different date or crew member.`);
-            }
-          }
-        }
-
-        const assignments = scheduleIds.flatMap((sid) =>
-          selectedCrewIds.map((userId) => ({
+      for (const schedule of addedSchedules) {
+        const { data: scheduleRow, error: scheduleError } = await supabase
+          .from("job_schedules")
+          .insert({
             lead_id: lead.id,
-            user_id: userId,
-            job_schedule_id: sid,
+            scheduled_date: schedule.date,
+            scheduled_time_start: schedule.timeStart || null,
+            scheduled_time_end: schedule.timeEnd || null,
+            created_by: user.id,
             account_id: currentAccount.id,
-            assigned_by: user.id,
-          }))
-        );
+          })
+          .select()
+          .single();
 
-        const { error: assignError } = await supabase
-          .from("job_assignments")
-          .insert(assignments);
-
-        if (assignError) {
-          await supabase.from("job_schedules").delete().eq("id", scheduleRow.id);
+        if (scheduleError) {
+          for (const schedId of createdScheduleIds) {
+            await supabase.from("job_schedules").delete().eq("id", schedId);
+          }
           if (leadWasConverted) {
             await supabase
               .from("leads")
               .update({ status: "qualified", is_estimate_visit: false })
               .eq("id", lead.id);
           }
-
-          if (assignError.message.includes("row-level security") || assignError.message.includes("policy")) {
-            throw new Error("This crew member is already assigned to another job at this time. Please choose a different time or crew member.");
+          if (scheduleError.message.includes("row-level security") || scheduleError.message.includes("policy")) {
+            throw new Error("Unable to create schedule. Please check your permissions or contact support.");
           }
-          throw new Error(`Failed to assign crew: ${assignError.message}`);
+          throw new Error(`Failed to create schedule: ${scheduleError.message}`);
         }
+
+        createdScheduleIds.push(scheduleRow.id);
       }
 
       const { data: existingEstimate, error: estimateCheckError } = await supabase
@@ -346,7 +300,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         type: "note",
         direction: "na",
         summary: "Estimate visit scheduled",
-        body: `Estimate visit scheduled for ${scheduledDate}.`,
+        body: `Estimate visit scheduled for ${addedSchedules.length} date${addedSchedules.length > 1 ? 's' : ''}.`,
         created_by: user.id,
       });
 
@@ -361,8 +315,9 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       await queryClient.invalidateQueries({ queryKey: ["job-schedules", lead.id] });
 
       onOpenChange(false);
-      setSelectedCrewIds([]);
-      setSelectedSchedules([]);
+      setAddedSchedules([]);
+      setSelectedSchedulesForCrew([]);
+      setSelectedCrewMember("");
       navigate(`/jobs/${lead.id}`);
     } catch (error) {
       console.error("Error scheduling estimate:", error);
@@ -389,181 +344,125 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Schedule Estimate</DialogTitle>
+            <DialogTitle>Schedule Estimate Visit</DialogTitle>
             <DialogDescription>
-              Schedule an estimate visit for {lead.name}.
+              Add schedule dates, then optionally assign crew members to specific dates.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-3">
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
               <Label className="text-base font-semibold flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4" />
-                Visit Date & Time
+                Add Schedule Dates
               </Label>
 
-              {/* Inline Calendar */}
-              <div className="flex justify-center">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={setSelectedDate}
-                  onMonthChange={setCalendarMonth}
-                  disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
-                  className={cn("rounded-md border pointer-events-auto")}
-                  modifiers={{
-                    busy: (date) => {
-                      const dateStr = format(date, "yyyy-MM-dd");
-                      return busyDatesSet?.has(dateStr) || false;
-                    },
-                  }}
-                  modifiersClassNames={{
-                    busy: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
-                  }}
-                />
-              </div>
-
-              {/* Jobs on selected date */}
-              {selectedDate && selectedDateJobs.length > 0 && (
-                <div className="rounded-lg border border-border p-3 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {selectedDateJobs.length} job{selectedDateJobs.length !== 1 ? "s" : ""} on {format(selectedDate, "MMM d")}:
-                  </p>
-                  <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                    {selectedDateJobs.map((job: any) => (
-                      <div key={job.schedule_id} className="flex items-center justify-between text-sm">
-                        <span className="truncate flex-1">{job.name || "Unnamed job"}</span>
-                        {job.scheduled_time_start && (
-                          <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">
-                            {job.scheduled_time_start}{job.scheduled_time_end ? ` - ${job.scheduled_time_end}` : ""}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedDate && selectedDateJobs.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center">No jobs scheduled on {format(selectedDate, "MMM d")}</p>
-              )}
-
-              {/* Time inputs */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="schedule-start">Start Time</Label>
-                  <Input
-                    id="schedule-start"
-                    type="time"
-                    value={scheduledTimeStart}
-                    onChange={(e) => setScheduledTimeStart(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schedule-end">End Time</Label>
-                  <Input
-                    id="schedule-end"
-                    type="time"
-                    value={scheduledTimeEnd}
-                    onChange={(e) => setScheduledTimeEnd(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-2 border-t border-border">
-              <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Assign Crew (optional)
-                </Label>
-                {schedules.length > 0 && (
-                  <button
-                    type="button"
-                    className="text-sm text-primary hover:underline"
-                    onClick={toggleAllSchedules}
-                  >
-                    {selectedSchedules.length === schedules.length ? "Deselect All" : "Select All"}
-                  </button>
-                )}
-              </div>
-
-              {!scheduledDate ? (
-                <div className="text-sm text-muted-foreground border rounded-md p-3">
-                  Select a date above to assign crew
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <Label className="text-sm font-medium mb-1 block">Crew Members</Label>
-                    {crewMembers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No active crew members available.</p>
-                    ) : (
-                      <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
-                        {crewMembers.map((member) => (
-                          <label
-                            key={member.user_id}
-                            className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedCrewIds.includes(member.user_id)}
-                              onChange={() => toggleCrewMember(member.user_id)}
-                            />
-                            <div className="flex items-center gap-2 flex-1">
-                              <span>{member.full_name || "Unnamed"}</span>
-                              {member.role && (
-                                <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
-                                  {roleLabels[member.role] || member.role}
-                                </Badge>
-                              )}
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div className="flex justify-center">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      onMonthChange={setCalendarMonth}
+                      disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                      className={cn("rounded-md border pointer-events-auto")}
+                      modifiers={{
+                        busy: (date) => {
+                          const dateStr = format(date, "yyyy-MM-dd");
+                          return busyDatesSet?.has(dateStr) || false;
+                        },
+                      }}
+                      modifiersClassNames={{
+                        busy: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
+                      }}
+                    />
                   </div>
 
-                  {schedules.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Existing Schedules</Label>
-                      <div className="border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto">
-                        {schedules.map((schedule) => (
-                          <label
-                            key={schedule.id}
-                            className="flex items-start gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              className="mt-1"
-                              checked={selectedSchedules.includes(schedule.id)}
-                              onChange={() => toggleSchedule(schedule.id)}
-                            />
-                            <div>
-                              <div className="font-medium">
-                                {format(new Date(schedule.scheduled_date), "EEEE, MMM d, yyyy")}
-                              </div>
-                              {schedule.scheduled_time_start && schedule.scheduled_time_end && (
-                                <div className="text-xs text-muted-foreground">
-                                  {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
-                                </div>
-                              )}
-                            </div>
-                          </label>
+                  {selectedDate && selectedDateJobs.length > 0 && (
+                    <div className="rounded-lg border border-border p-3 space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {selectedDateJobs.length} job{selectedDateJobs.length !== 1 ? "s" : ""} on {format(selectedDate, "MMM d")}:
+                      </p>
+                      <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                        {selectedDateJobs.map((job: any) => (
+                          <div key={job.schedule_id} className="flex items-center justify-between text-sm">
+                            <span className="truncate flex-1">{job.name || "Unnamed job"}</span>
+                            {job.scheduled_time_start && (
+                              <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">
+                                {job.scheduled_time_start}{job.scheduled_time_end ? ` - ${job.scheduled_time_end}` : ""}
+                              </span>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
                   )}
-                </>
-              )}
+                </div>
 
-              {selectedCrewIds.length === 0 && scheduledDate && (
-                <p className="text-xs text-muted-foreground">
-                  You can schedule without assigning crew; we'll ask for confirmation.
-                </p>
-              )}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="schedule-start">Start Time</Label>
+                      <Input
+                        id="schedule-start"
+                        type="time"
+                        value={scheduledTimeStart}
+                        onChange={(e) => setScheduledTimeStart(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="schedule-end">End Time</Label>
+                      <Input
+                        id="schedule-end"
+                        type="time"
+                        value={scheduledTimeEnd}
+                        onChange={(e) => setScheduledTimeEnd(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleAddSchedule}
+                    disabled={!selectedDate}
+                    className="w-full"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Schedule Date
+                  </Button>
+
+                  {addedSchedules.length > 0 && (
+                    <div className="border rounded-lg p-3 space-y-2">
+                      <p className="text-sm font-medium">Added Schedules ({addedSchedules.length})</p>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {addedSchedules.map((schedule, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
+                            <div className="text-sm">
+                              <div className="font-medium">
+                                {format(new Date(schedule.date), "EEEE, MMM d, yyyy")}
+                              </div>
+                              {schedule.timeStart && schedule.timeEnd && (
+                                <div className="text-xs text-muted-foreground">
+                                  {schedule.timeStart} - {schedule.timeEnd}
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveSchedule(index)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {!hasEstimate && (
@@ -585,10 +484,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
               Cancel
             </Button>
             <Button
-              onClick={handleSchedule}
-              disabled={scheduling || !scheduledDate}
+              onClick={() => handleScheduleEstimate()}
+              disabled={scheduling || addedSchedules.length === 0}
             >
-              {scheduling ? "Scheduling..." : "Schedule Estimate"}
+              {scheduling ? "Scheduling..." : `Schedule ${addedSchedules.length} Date${addedSchedules.length !== 1 ? 's' : ''}`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -606,7 +505,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
           <AlertDialogHeader>
             <AlertDialogTitle>No crew assigned</AlertDialogTitle>
             <AlertDialogDescription>
-              You’re about to schedule this estimate without assigning a crew. Continue?
+              You're about to schedule this estimate without assigning a crew. Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -616,7 +515,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
             <AlertDialogAction
               onClick={() => {
                 setConfirmNoCrewOpen(false);
-                handleSchedule(true);
+                handleScheduleEstimate(true);
               }}
             >
               Yes, schedule
