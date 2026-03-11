@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { MobileNav } from "@/components/layout/MobileNav";
 import { DashboardStatCards } from "@/components/dashboard/DashboardStatCards";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
 import { LeadCard, Lead } from "@/components/leads/LeadCard";
@@ -11,7 +11,7 @@ import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader as Loader2, ChevronRight } from "lucide-react";
+import { Loader2, ChevronRight } from "lucide-react";
 import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
@@ -98,8 +98,7 @@ export default function Index() {
   }
 
   return (
-    <AppLayout>
-      <div className="pb-24 md:pb-0">
+    <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
         title={`${getGreeting()}${firstName ? `, ${firstName}` : ""}`}
         subtitle={format(new Date(), "EEEE, MMMM d")}
@@ -263,26 +262,15 @@ export default function Index() {
                 <p className="text-muted-foreground">No customers need attention</p>
               </div>
             ) : (
-              <>
-                <div className="space-y-3">
-                  {customersData.slice(0, SECTION_LIMIT).map((customer) => (
-                    <CustomerCard
-                      key={customer.id}
-                      customer={customer}
-                      onClick={() => navigate(`/customers/${customer.id}`)}
-                    />
-                  ))}
-                </div>
-                {customersData.length > SECTION_LIMIT && (
-                  <button
-                    onClick={() => navigate("/customers")}
-                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                  >
-                    View {customersData.length - SECTION_LIMIT} more
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                )}
-              </>
+              <div className="space-y-1">
+                <CustomerCard
+                  customer={customersData[0]}
+                  onClick={() => navigate(`/customers/${customersData[0].id}`)}
+                />
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  {customersData[0].reason}
+                </p>
+              </div>
             )}
           </section>
         )}
@@ -291,7 +279,8 @@ export default function Index() {
         {/* Analytics Visuals */}
         <DashboardVisuals />
       </main>
-      </div>
-    </AppLayout>
+
+      <MobileNav />
+    </div>
   );
 }
