@@ -201,7 +201,7 @@ export default function Jobs() {
 
         {canViewAllJobs && (
 
-          <div className="flex gap-2 p-4 pb-0">
+          <div className="flex gap-2 ">
             <Button
               variant={!showMyJobsOnly ? "default" : "ghost"}
               size="sm"
