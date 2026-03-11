@@ -23,7 +23,7 @@ export default function Schedule() {
 
   const [showMyJobsOnly, setShowMyJobsOnly] = useState<boolean>(() => {
     const saved = localStorage.getItem('schedule-view-preference');
-    return saved === 'my-jobs';
+    return saved === 'all-jobs';
   });
 
   useEffect(() => {
@@ -184,7 +184,7 @@ export default function Schedule() {
       </div>
 
       {canViewAllJobs && (
-        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
+        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto hidden">
           <div className="flex gap-2">
             <Button
               variant={!showMyJobsOnly ? "default" : "outline"}
