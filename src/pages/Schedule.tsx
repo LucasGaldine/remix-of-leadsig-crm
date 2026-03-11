@@ -183,7 +183,7 @@ export default function Schedule() {
       </div>
 
       {canViewAllJobs && (
-        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
+        <div className=" max-w-[var(--content-max-width)] m-auto">
           <div className="flex gap-2">
             <Button
               variant={!showMyJobsOnly ? "default" : "outline"}
