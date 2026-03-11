@@ -11,7 +11,7 @@ import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, ChevronRight } from "lucide-react";
+import { Loader as Loader2, ChevronRight } from "lucide-react";
 import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
