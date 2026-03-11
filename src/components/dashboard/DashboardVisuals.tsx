@@ -14,10 +14,9 @@ import {
   useCrewHours,
 } from "@/hooks/useDashboardVisuals";
 
-type Timeframe = "30d" | "week" | "month";
+type Timeframe = "week" | "month";
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
-  { value: "30d", label: "30 Days" },
   { value: "week", label: "This Week" },
   { value: "month", label: "This Month" },
 ];
@@ -297,7 +296,7 @@ function CrewHours({ timeframe }: { timeframe: Timeframe }) {
 }
 
 export function DashboardVisuals() {
-  const [timeframe, setTimeframe] = useState<Timeframe>("30d");
+  const [timeframe, setTimeframe] = useState<Timeframe>("week");
 
   return (
     <section className="space-y-4">
