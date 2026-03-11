@@ -224,6 +224,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         account_id: currentAccount.id,
       });
 
+      let leadWasConverted = false;
 
       const { error: convertError } = await supabase
         .from("leads")
@@ -241,6 +242,8 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         throw new Error(`Failed to convert lead to estimate job: ${convertError.message}`);
       }
 
+      leadWasConverted = true;
+
       const { data: scheduleRow, error: scheduleError } = await supabase
         .from("job_schedules")
         .insert({
@@ -255,6 +258,12 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         .single();
 
       if (scheduleError) {
+        if (leadWasConverted) {
+          await supabase
+            .from("leads")
+            .update({ status: "qualified", is_estimate_visit: false })
+            .eq("id", lead.id);
+        }
         throw new Error(`Failed to schedule estimate visit: ${scheduleError.message}`);
       }
 
@@ -275,6 +284,13 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
           .insert(assignments);
 
         if (assignError) {
+          await supabase.from("job_schedules").delete().eq("id", scheduleRow.id);
+          if (leadWasConverted) {
+            await supabase
+              .from("leads")
+              .update({ status: "qualified", is_estimate_visit: false })
+              .eq("id", lead.id);
+          }
           throw new Error(`Failed to assign crew: ${assignError.message}`);
         }
       }
