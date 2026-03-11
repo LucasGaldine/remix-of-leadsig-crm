@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader as Loader2 } from "lucide-react";
 import {
   useRevenueExpenses,
   useLeadFunnel,
