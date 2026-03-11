@@ -21,15 +21,15 @@ export function useScheduleJob() {
   const scheduleJob = async (input: ScheduleInput) => {
     if (!input.leadId) {
       toast.error("Missing job id");
-      return { ok: false };
+      return { ok: false, scheduleId: undefined };
     }
     if (!input.scheduledDate) {
       toast.error("Please select a date");
-      return { ok: false };
+      return { ok: false, scheduleId: undefined };
     }
 
     try {
-      await addSchedule.mutateAsync({
+      const schedule = await addSchedule.mutateAsync({
         lead_id: input.leadId,
         scheduled_date: input.scheduledDate,
         scheduled_time_start: input.startTime || undefined,
@@ -38,12 +38,12 @@ export function useScheduleJob() {
       });
 
       toast.success("Schedule added successfully!");
-      return { ok: true };
+      return { ok: true, scheduleId: schedule.id };
     } catch (error) {
       console.error("Error adding schedule:", error);
       const message = error instanceof Error ? error.message : "Failed to add schedule";
       toast.error(message);
-      return { ok: false, error: error as Error };
+      return { ok: false, scheduleId: undefined, error: error as Error };
     }
   };
 

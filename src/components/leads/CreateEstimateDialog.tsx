@@ -176,42 +176,6 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         return;
       }
 
-      if (selectedCrewIds.length > 0) {
-        const scheduleIds = selectedSchedules.length > 0 ? selectedSchedules : [];
-        const datesToCheck = scheduleIds.length > 0
-          ? await supabase
-              .from("job_schedules")
-              .select("scheduled_date, scheduled_time_start, scheduled_time_end")
-              .in("id", scheduleIds)
-          : { data: [{ scheduled_date: scheduledDate, scheduled_time_start: scheduledTimeStart || null, scheduled_time_end: scheduledTimeEnd || null }] };
-
-        if (datesToCheck.data) {
-          for (const scheduleToCheck of datesToCheck.data) {
-            const { data: conflicts } = await supabase
-              .from("job_assignments")
-              .select(`
-                user_id,
-                job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end),
-                profiles!inner(full_name)
-              `)
-              .in("user_id", selectedCrewIds)
-              .eq("job_schedules.scheduled_date", scheduleToCheck.scheduled_date);
-
-            if (conflicts && conflicts.length > 0) {
-              const conflictingMembers = conflicts
-                .map((c: any) => c.profiles?.full_name || "Unknown")
-                .filter((name, index, self) => self.indexOf(name) === index);
-
-              toast.error(
-                `Scheduling conflict: ${conflictingMembers.join(", ")} ${conflictingMembers.length > 1 ? "are" : "is"} already assigned to another job on ${format(new Date(scheduleToCheck.scheduled_date), "MMM d, yyyy")}`
-              );
-              setScheduling(false);
-              return;
-            }
-          }
-        }
-      }
-
       loadingToast = toast.loading("Scheduling estimate...");
 
       const { id: customerId } = await findOrCreateCustomer({
@@ -275,6 +239,46 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
 
       if (selectedCrewIds.length > 0) {
         const scheduleIds = selectedSchedules.length > 0 ? selectedSchedules : [scheduleRow.id];
+
+        for (const scheduleId of scheduleIds) {
+          for (const userId of selectedCrewIds) {
+            const { data: hasOverlap } = await supabase.rpc('check_assignment_overlap', {
+              p_user_id: userId,
+              p_schedule_id: scheduleId,
+              p_account_id: currentAccount.id,
+            });
+
+            if (hasOverlap) {
+              const { data: crewMemberProfile } = await supabase
+                .from('profiles')
+                .select('full_name')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+              const { data: scheduleData } = await supabase
+                .from('job_schedules')
+                .select('scheduled_date, scheduled_time_start, scheduled_time_end')
+                .eq('id', scheduleId)
+                .maybeSingle();
+
+              const crewName = crewMemberProfile?.full_name || 'This crew member';
+              const dateStr = scheduleData?.scheduled_date
+                ? format(new Date(scheduleData.scheduled_date), "EEEE, MMMM d, yyyy")
+                : 'the selected date';
+
+              await supabase.from("job_schedules").delete().eq("id", scheduleRow.id);
+              if (leadWasConverted) {
+                await supabase
+                  .from("leads")
+                  .update({ status: "qualified", is_estimate_visit: false })
+                  .eq("id", lead.id);
+              }
+
+              throw new Error(`${crewName} is already assigned to another job on ${dateStr}. Please choose a different date or crew member.`);
+            }
+          }
+        }
+
         const assignments = scheduleIds.flatMap((sid) =>
           selectedCrewIds.map((userId) => ({
             lead_id: lead.id,
@@ -299,7 +303,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
           }
 
           if (assignError.message.includes("row-level security") || assignError.message.includes("policy")) {
-            throw new Error("Unable to assign crew members. Please check your permissions or contact support.");
+            throw new Error("This crew member is already assigned to another job at this time. Please choose a different time or crew member.");
           }
           throw new Error(`Failed to assign crew: ${assignError.message}`);
         }
