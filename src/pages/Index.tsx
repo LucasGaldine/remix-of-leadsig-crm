@@ -262,15 +262,26 @@ export default function Index() {
                 <p className="text-muted-foreground">No customers need attention</p>
               </div>
             ) : (
-              <div className="space-y-1">
-                <CustomerCard
-                  customer={customersData[0]}
-                  onClick={() => navigate(`/customers/${customersData[0].id}`)}
-                />
-                <p className="text-xs text-muted-foreground text-center pt-1">
-                  {customersData[0].reason}
-                </p>
-              </div>
+              <>
+                <div className="space-y-3">
+                  {customersData.slice(0, SECTION_LIMIT).map((customer) => (
+                    <CustomerCard
+                      key={customer.id}
+                      customer={customer}
+                      onClick={() => navigate(`/customers/${customer.id}`)}
+                    />
+                  ))}
+                </div>
+                {customersData.length > SECTION_LIMIT && (
+                  <button
+                    onClick={() => navigate("/customers")}
+                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    View {customersData.length - SECTION_LIMIT} more
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )}
+              </>
             )}
           </section>
         )}
