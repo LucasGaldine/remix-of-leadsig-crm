@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Upload } from "lucide-react";
+import { Loader as Loader2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
