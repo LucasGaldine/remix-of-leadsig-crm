@@ -141,7 +141,7 @@ export function MobileNav() {
         })}
       </div>
 
-      <div className="flex items-center justify-between px-2 py-2 md:hidden">
+      <div className="flex items-center justify-between md:hidden">
         <button
           onClick={navigateToPrevious}
           disabled={activeIndex === 0}
@@ -154,7 +154,7 @@ export function MobileNav() {
           <ChevronLeft className="h-5 w-5 text-muted-foreground" />
         </button>
 
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex items-center justify-center gap-3 pt-2">
           {visibleNavItems.map((item) => {
             const isActive = isActiveRoute(item.path);
             const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
