@@ -102,10 +102,6 @@ export default function Payments() {
     expiresAt: estimate.expires_at ? format(new Date(estimate.expires_at), "MMM d") : undefined,
   });
 
-  const handleCreateInvoice = () => {
-    navigate("/payments/invoices/new");
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-24 flex items-center justify-center">
@@ -319,29 +315,7 @@ export default function Payments() {
 
 
 
-      <FloatingActionButton
-        actions={
-          activeTab === "invoices"
-            ? [
-                {
-                  icon: <DollarSign className="h-5 w-5" />,
-                  label: "New Invoice",
-                  onClick: handleCreateInvoice,
-                  primary: true,
-                },
-              ]
-            : activeTab === "charge"
-            ? [
-                {
-                  icon: <CreditCard className="h-5 w-5" />,
-                  label: "Charge Now",
-                  onClick: () => navigate("/payments/charge"),
-                  primary: true,
-                },
-              ]
-            : []
-        }
-      />
+      
 
       <MobileNav />
     </div>
