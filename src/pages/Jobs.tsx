@@ -203,7 +203,7 @@ export default function Jobs() {
 
           <div className="flex gap-2 p-4 pb-0">
             <Button
-              variant={!showMyJobsOnly ? "default" : "outline"}
+              variant={!showMyJobsOnly ? "default" : "ghost"}
               size="sm"
               onClick={() => setShowMyJobsOnly(false)}
               className="flex items-center gap-2"
