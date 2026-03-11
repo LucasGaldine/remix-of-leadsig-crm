@@ -19,6 +19,7 @@ import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { cn } from "@/lib/utils";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 
 
 const roleLabels: Record<string, string> = {
@@ -74,6 +75,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   const [selectedCrewMember, setSelectedCrewMember] = useState<string>("");
   const [selectedSchedulesForCrew, setSelectedSchedulesForCrew] = useState<number[]>([]);
   const [crewSearchQuery, setCrewSearchQuery] = useState("");
+  const [createAsRegularJob, setCreateAsRegularJob] = useState(false);
 
   const monthStart = startOfMonth(calendarMonth);
   const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
@@ -193,7 +195,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         return;
       }
 
-      loadingToast = toast.loading("Scheduling estimate...");
+      loadingToast = toast.loading(createAsRegularJob ? "Scheduling job..." : "Scheduling estimate...");
 
       const { id: customerId } = await findOrCreateCustomer({
         name: lead.name,
@@ -212,8 +214,8 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         .update({
           customer_id: customerId,
           status: "job",
-          is_estimate_visit: true,
-          name: `${lead.name}, Estimate`,
+          is_estimate_visit: !createAsRegularJob,
+          name: createAsRegularJob ? lead.name : `${lead.name}, Estimate`,
           approval_status: "approved",
         })
         .eq("id", lead.id)
@@ -263,35 +265,37 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         createdScheduleIds.push(scheduleRow.id);
       }
 
-      const { data: existingEstimate, error: estimateCheckError } = await supabase
-        .from("estimates")
-        .select("id")
-        .eq("job_id", lead.id)
-        .maybeSingle();
-
-      if (estimateCheckError) {
-        console.error("Error checking for existing estimate:", estimateCheckError);
-      }
-
-      if (!existingEstimate) {
-        const { error: estimateError } = await supabase
+      if (!createAsRegularJob) {
+        const { data: existingEstimate, error: estimateCheckError } = await supabase
           .from("estimates")
-          .insert({
-            customer_id: customerId,
-            job_id: lead.id,
-            subtotal: 0,
-            profit_margin: currentAccount?.default_profit_margin ?? 0,
-            tax_rate: (currentAccount?.default_tax_rate ?? 0) / 100,
-            tax: 0,
-            discount: 0,
-            total: 0,
-            status: "draft",
-            created_by: user.id,
-            account_id: currentAccount.id,
-          });
+          .select("id")
+          .eq("job_id", lead.id)
+          .maybeSingle();
 
-        if (estimateError && !estimateError.message.includes("duplicate key")) {
-          console.error("Error creating estimate:", estimateError);
+        if (estimateCheckError) {
+          console.error("Error checking for existing estimate:", estimateCheckError);
+        }
+
+        if (!existingEstimate) {
+          const { error: estimateError } = await supabase
+            .from("estimates")
+            .insert({
+              customer_id: customerId,
+              job_id: lead.id,
+              subtotal: 0,
+              profit_margin: currentAccount?.default_profit_margin ?? 0,
+              tax_rate: (currentAccount?.default_tax_rate ?? 0) / 100,
+              tax: 0,
+              discount: 0,
+              total: 0,
+              status: "draft",
+              created_by: user.id,
+              account_id: currentAccount.id,
+            });
+
+          if (estimateError && !estimateError.message.includes("duplicate key")) {
+            console.error("Error creating estimate:", estimateError);
+          }
         }
       }
 
@@ -299,13 +303,15 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         lead_id: lead.id,
         type: "note",
         direction: "na",
-        summary: "Estimate visit scheduled",
-        body: `Estimate visit scheduled for ${addedSchedules.length} date${addedSchedules.length > 1 ? 's' : ''}.`,
+        summary: createAsRegularJob ? "Job scheduled" : "Estimate visit scheduled",
+        body: createAsRegularJob
+          ? `Job scheduled for ${addedSchedules.length} date${addedSchedules.length > 1 ? 's' : ''}.`
+          : `Estimate visit scheduled for ${addedSchedules.length} date${addedSchedules.length > 1 ? 's' : ''}.`,
         created_by: user.id,
       });
 
       toast.dismiss(loadingToast);
-      toast.success("Estimate visit scheduled!");
+      toast.success(createAsRegularJob ? "Job scheduled!" : "Estimate visit scheduled!");
 
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -318,6 +324,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       setAddedSchedules([]);
       setSelectedSchedulesForCrew([]);
       setSelectedCrewMember("");
+      setCreateAsRegularJob(false);
       navigate(`/jobs/${lead.id}`);
     } catch (error) {
       console.error("Error scheduling estimate:", error);
@@ -346,7 +353,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Schedule Estimate Visit</DialogTitle>
+            <DialogTitle>{createAsRegularJob ? "Schedule Job" : "Schedule Estimate Visit"}</DialogTitle>
             <DialogDescription>
               Add schedule dates, then optionally assign crew members to specific dates.
             </DialogDescription>
@@ -467,14 +474,16 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
 
             {!hasEstimate && (
               <div className="pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={handleCreateEstimateClick}
-                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <FileText className="h-4 w-4" />
-                  Create regular job instead
-                </button>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="regular-job-toggle" className="text-sm font-normal cursor-pointer">
+                    Create regular job instead of estimate visit
+                  </Label>
+                  <Switch
+                    id="regular-job-toggle"
+                    checked={createAsRegularJob}
+                    onCheckedChange={setCreateAsRegularJob}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -487,7 +496,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
               onClick={() => handleScheduleEstimate()}
               disabled={scheduling || addedSchedules.length === 0}
             >
-              {scheduling ? "Scheduling..." : `Schedule ${addedSchedules.length} Date${addedSchedules.length !== 1 ? 's' : ''}`}
+              {scheduling
+                ? "Scheduling..."
+                : `Schedule ${addedSchedules.length} Date${addedSchedules.length !== 1 ? 's' : ''}`
+              }
             </Button>
           </DialogFooter>
         </DialogContent>
