@@ -6,6 +6,7 @@ export interface CustomerCardData {
   phone: string | null;
   address: string | null;
   city: string | null;
+  reason?: string;
 }
 
 interface CustomerCardProps {
@@ -25,6 +26,11 @@ export function CustomerCard({ customer, onClick }: CustomerCardProps) {
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-foreground truncate">{customer.name}</h3>
           <div className="mt-1 space-y-0.5">
+            {customer.reason && (
+              <p className="text-sm text-muted-foreground">
+                {customer.reason}
+              </p>
+            )}
             {customer.phone && (
               <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                 <Phone className="h-3.5 w-3.5 shrink-0" />

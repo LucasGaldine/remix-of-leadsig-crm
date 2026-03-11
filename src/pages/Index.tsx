@@ -248,7 +248,7 @@ export default function Index() {
         {sections.includes("customers") && (
           <section>
             <SectionHeader
-              title="Customers"
+              title="Clients"
               count={customersData.length}
               action={{ label: "View all", onClick: () => navigate("/customers") }}
               className="mb-3"
@@ -259,7 +259,7 @@ export default function Index() {
               </div>
             ) : customersData.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No customers need attention</p>
+                <p className="text-muted-foreground">No clients need attention at the moment</p>
               </div>
             ) : (
               <>

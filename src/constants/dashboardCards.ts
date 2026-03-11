@@ -160,8 +160,8 @@ export const DASHBOARD_SECTIONS: DashboardSectionConfig[] = [
   },
   {
     id: "customers",
-    label: "Customers",
-    description: "Your customer directory",
+    label: "Clients",
+    description: "Clients needing attention",
     icon: Contact,
   },
 ];
