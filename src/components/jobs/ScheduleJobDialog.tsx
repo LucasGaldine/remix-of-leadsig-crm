@@ -152,7 +152,11 @@ export function ScheduleJobDialog({
 
       if (assignError) {
         console.error("Failed to assign crew:", assignError);
-        toast.error(`Failed to assign crew: ${assignError.message}`);
+        if (assignError.message.includes("row-level security") || assignError.message.includes("policy")) {
+          toast.error("Unable to assign crew member. Please check your permissions or contact support.");
+        } else {
+          toast.error(`Failed to assign crew: ${assignError.message}`);
+        }
         return;
       }
     }

@@ -239,7 +239,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         .neq("status", "job");
 
       if (convertError) {
-        throw new Error(`Failed to convert lead to estimate job: ${convertError.message}`);
+        if (convertError.message.includes("row-level security") || convertError.message.includes("policy")) {
+          throw new Error("Unable to schedule this visit. Please check your permissions or contact support.");
+        }
+        throw new Error(`Failed to schedule visit: ${convertError.message}`);
       }
 
       leadWasConverted = true;
@@ -264,7 +267,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
             .update({ status: "qualified", is_estimate_visit: false })
             .eq("id", lead.id);
         }
-        throw new Error(`Failed to schedule estimate visit: ${scheduleError.message}`);
+        if (scheduleError.message.includes("row-level security") || scheduleError.message.includes("policy")) {
+          throw new Error("Unable to create schedule. Please check your permissions or contact support.");
+        }
+        throw new Error(`Failed to create schedule: ${scheduleError.message}`);
       }
 
       if (selectedCrewIds.length > 0) {
@@ -290,6 +296,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
               .from("leads")
               .update({ status: "qualified", is_estimate_visit: false })
               .eq("id", lead.id);
+          }
+
+          if (assignError.message.includes("row-level security") || assignError.message.includes("policy")) {
+            throw new Error("Unable to assign crew members. Please check your permissions or contact support.");
           }
           throw new Error(`Failed to assign crew: ${assignError.message}`);
         }

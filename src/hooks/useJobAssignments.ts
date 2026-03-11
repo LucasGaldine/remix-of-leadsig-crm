@@ -193,6 +193,8 @@ export function useJobAssignments(leadId: string | undefined) {
         toast.error('This crew member is already assigned to this schedule');
       } else if (error.message.includes('already assigned to')) {
         toast.error(error.message, { duration: 5000 });
+      } else if (error.message.includes('row-level security') || error.message.includes('policy')) {
+        toast.error('Unable to assign crew member. Please check your permissions or contact support.');
       } else {
         toast.error('Failed to assign crew member: ' + error.message);
       }
@@ -213,7 +215,11 @@ export function useJobAssignments(leadId: string | undefined) {
       toast.success('Crew member removed from job');
     },
     onError: (error: Error) => {
-      toast.error('Failed to remove crew member: ' + error.message);
+      if (error.message.includes('row-level security') || error.message.includes('policy')) {
+        toast.error('Unable to remove crew member. Please check your permissions or contact support.');
+      } else {
+        toast.error('Failed to remove crew member: ' + error.message);
+      }
     },
   });
 
