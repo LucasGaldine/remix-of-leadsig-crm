@@ -185,25 +185,25 @@ export default function Schedule() {
 
       {canViewAllJobs && (
   <div className="max-w-[var(--content-max-width)] m-auto">
-    <div className="flex items-center gap-3">
+    <div className="inline-flex rounded-lg border border-border bg-muted p-1">
 
-      
+      <button
+        onClick={() => setShowMyJobsOnly(false)}
+        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition
+        ${!showMyJobsOnly ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+      >
+        <Building2 className="h-4 w-4" />
+        All Jobs
+      </button>
 
-      <Switch
-        checked={showMyJobsOnly}
-        onCheckedChange={setShowMyJobsOnly}
-      />
-      {showMyJobsOnly ?
-        <Building2 className="h-4 w-4 text-muted-foreground" />
-      : 
-         <User className="h-4 w-4 text-muted-foreground" />
-      }
-      
-     
-
-      <span className="text-sm">
-        {showMyJobsOnly ? "My Jobs" : "All Jobs"}
-      </span>
+      <button
+        onClick={() => setShowMyJobsOnly(true)}
+        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition
+        ${showMyJobsOnly ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+      >
+        <User className="h-4 w-4" />
+        My Jobs
+      </button>
 
     </div>
   </div>
