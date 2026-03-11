@@ -86,30 +86,6 @@ export default function Schedule() {
         subtitle={format(selectedDate, "MMMM yyyy")}
       />
 
-      {canViewAllJobs && (
-        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
-          <div className="flex gap-2">
-            <Button
-              variant={!showMyJobsOnly ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowMyJobsOnly(false)}
-              className="flex items-center gap-2"
-            >
-              <Building2 className="h-4 w-4" />
-              All Jobs
-            </Button>
-            <Button
-              variant={showMyJobsOnly ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowMyJobsOnly(true)}
-              className="flex items-center gap-2"
-            >
-              <User className="h-4 w-4" />
-              My Jobs
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Week View */}
       <div className="bg-card border-b border-border">
