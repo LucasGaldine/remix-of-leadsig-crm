@@ -6,7 +6,7 @@ import { useAuth, AppRole } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, Mail, Phone, UserPlus, Trash2, Copy, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, CreditCard as Edit } from "lucide-react";
+import { Users, Mail, Phone, UserPlus, Trash2, Copy, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, CreditCard as Edit, Pencil } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -309,7 +309,7 @@ export default function SettingsCrewManagement() {
                                 onClick={() => handleEditRole(member)}
                                 title="Edit role"
                               >
-                                <Edit className="h-4 w-4" />
+                                <Pencil className="h-4 w-4" />
                               </Button>
                             )}
                             {canManageMembers && member.user_id !== user?.id && member.role !== 'owner' && (
