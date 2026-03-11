@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Loader2, Repeat, MapPin, Clock } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { ChevronLeft, ChevronRight, Plus, Loader2, Repeat, MapPin, Clock, Building2, User } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -18,13 +18,25 @@ export default function Schedule() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
   const weekEnd = addDays(weekStart, 6);
-  const { isManager } = useAuth();
+  const { isManager, role } = useAuth();
+
+  const [showMyJobsOnly, setShowMyJobsOnly] = useState<boolean>(() => {
+    const saved = localStorage.getItem('schedule-view-preference');
+    return saved === 'my-jobs';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('schedule-view-preference', showMyJobsOnly ? 'my-jobs' : 'all-jobs');
+  }, [showMyJobsOnly]);
+
+  const canViewAllJobs = role === 'owner' || role === 'admin' || role === 'sales';
+  const myJobsFilter = canViewAllJobs ? showMyJobsOnly : true;
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-  const { data: todaysJobs = [], isLoading } = useScheduledJobs(selectedDateStr);
-  const { data: jobDates = new Set() } = useScheduledJobsForWeek(weekStart, weekEnd);
+  const { data: todaysJobs = [], isLoading } = useScheduledJobs(selectedDateStr, myJobsFilter);
+  const { data: jobDates = new Set() } = useScheduledJobsForWeek(weekStart, weekEnd, myJobsFilter);
   const { daysOff = [] } = useDaysOff();
   const { data: projectedData } = useProjectedRecurringDates(weekStart, weekEnd);
   const createInstance = useCreateRecurringInstance();
@@ -73,6 +85,31 @@ export default function Schedule() {
         title="Schedule"
         subtitle={format(selectedDate, "MMMM yyyy")}
       />
+
+      {canViewAllJobs && (
+        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
+          <div className="flex gap-2">
+            <Button
+              variant={!showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(false)}
+              className="flex items-center gap-2"
+            >
+              <Building2 className="h-4 w-4" />
+              All Jobs
+            </Button>
+            <Button
+              variant={showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(true)}
+              className="flex items-center gap-2"
+            >
+              <User className="h-4 w-4" />
+              My Jobs
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Week View */}
       <div className="bg-card border-b border-border">
