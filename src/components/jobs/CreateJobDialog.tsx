@@ -109,6 +109,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         email: newClientData.email?.trim() || null,
         address: newClientData.address?.trim() || null,
         city: newClientData.city?.trim() || null,
+        forceNew: true,
       });
 
       return {

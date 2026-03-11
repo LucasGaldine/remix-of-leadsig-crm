@@ -102,6 +102,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           email: newClientData.email?.trim() || null,
           address: newClientData.address?.trim() || null,
           city: newClientData.city?.trim() || null,
+          forceNew: true,
         });
         customerId = customer.id;
         customerName = customer.name;
