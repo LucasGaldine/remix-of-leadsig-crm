@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { MobileNav } from "@/components/layout/MobileNav";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { DashboardStatCards } from "@/components/dashboard/DashboardStatCards";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
 import { LeadCard, Lead } from "@/components/leads/LeadCard";
@@ -98,7 +98,8 @@ export default function Index() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <AppLayout>
+      <div className="pb-24 md:pb-0">
       <PageHeader
         title={`${getGreeting()}${firstName ? `, ${firstName}` : ""}`}
         subtitle={format(new Date(), "EEEE, MMMM d")}
@@ -290,8 +291,7 @@ export default function Index() {
         {/* Analytics Visuals */}
         <DashboardVisuals />
       </main>
-
-      <MobileNav />
-    </div>
+      </div>
+    </AppLayout>
   );
 }
