@@ -6,10 +6,7 @@ import { useAuth, AppRole } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Users, Mail, Phone, UserPlus, Trash2,
-  Copy, CheckCircle2, AlertCircle
-} from "lucide-react";
+import { Users, Mail, Phone, UserPlus, Trash2, Copy, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, CreditCard as Edit } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -28,6 +25,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -61,10 +74,12 @@ const roleBadgeColors: Record<AppRole, string> = {
 
 export default function SettingsCrewManagement() {
   const navigate = useNavigate();
-  const { currentAccount, user } = useAuth();
+  const { currentAccount, user, role: currentUserRole } = useAuth();
   const queryClient = useQueryClient();
   const [copiedCode, setCopiedCode] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<AccountMember | null>(null);
+  const [memberToEdit, setMemberToEdit] = useState<AccountMember | null>(null);
+  const [newRole, setNewRole] = useState<AppRole | "">("");
 
   const { data: members, isLoading } = useQuery({
     queryKey: ['account-members', currentAccount?.id],
@@ -111,6 +126,26 @@ export default function SettingsCrewManagement() {
     },
   });
 
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({ memberId, role }: { memberId: string; role: AppRole }) => {
+      const { error } = await supabase
+        .from('account_members')
+        .update({ role })
+        .eq('id', memberId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-members'] });
+      toast.success('Member role updated');
+      setMemberToEdit(null);
+      setNewRole("");
+    },
+    onError: (error: Error) => {
+      toast.error('Failed to update role: ' + error.message);
+    },
+  });
+
   const handleCopyInviteCode = () => {
     if (currentAccount?.invite_code) {
       navigator.clipboard.writeText(currentAccount.invite_code);
@@ -126,7 +161,22 @@ export default function SettingsCrewManagement() {
     }
   };
 
+  const handleEditRole = (member: AccountMember) => {
+    setMemberToEdit(member);
+    setNewRole(member.role);
+  };
+
+  const handleUpdateRole = () => {
+    if (memberToEdit && newRole && newRole !== memberToEdit.role) {
+      updateRoleMutation.mutate({ memberId: memberToEdit.id, role: newRole as AppRole });
+    } else {
+      setMemberToEdit(null);
+      setNewRole("");
+    }
+  };
+
   const canManageMembers = currentAccount && user;
+  const isOwner = currentUserRole === 'owner';
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -251,15 +301,28 @@ export default function SettingsCrewManagement() {
                           {new Date(member.joined_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          {canManageMembers && member.user_id !== user?.id && member.role !== 'owner' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setMemberToRemove(member)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            {isOwner && member.user_id !== user?.id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditRole(member)}
+                                title="Edit role"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canManageMembers && member.user_id !== user?.id && member.role !== 'owner' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setMemberToRemove(member)}
+                                title="Remove member"
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -270,6 +333,90 @@ export default function SettingsCrewManagement() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!memberToEdit} onOpenChange={(open) => {
+        if (!open) {
+          setMemberToEdit(null);
+          setNewRole("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Member Role</DialogTitle>
+            <DialogDescription>
+              Change the role for {memberToEdit?.full_name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              <Select
+                value={newRole}
+                onValueChange={(value) => setNewRole(value as AppRole)}
+              >
+                <SelectTrigger id="role">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="owner">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-purple-500 text-white">Owner</Badge>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-blue-500 text-white">Admin</Badge>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="sales">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-500 text-white">Sales</Badge>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="crew_lead">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-orange-500 text-white">Crew Lead</Badge>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="crew_member">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-gray-500 text-white">Crew Member</Badge>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {memberToEdit?.role === 'owner' && newRole !== 'owner' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+                  <div className="text-sm text-amber-900">
+                    <p className="font-semibold">Warning</p>
+                    <p>Removing owner status from this member will reduce their permissions.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMemberToEdit(null);
+                setNewRole("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateRole}
+              disabled={!newRole || newRole === memberToEdit?.role || updateRoleMutation.isPending}
+            >
+              {updateRoleMutation.isPending ? "Updating..." : "Update Role"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
         <AlertDialogContent>
