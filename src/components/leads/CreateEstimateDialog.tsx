@@ -499,7 +499,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
                   className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <FileText className="h-4 w-4" />
-                  Create estimate instead
+                  Create regular job instead
                 </button>
               </div>
             )}

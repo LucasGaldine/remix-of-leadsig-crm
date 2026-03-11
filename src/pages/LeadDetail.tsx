@@ -849,7 +849,7 @@ export default function LeadDetail() {
                     onClick={() => setCreateEstimateDialogOpen(true)}
                   >
                     <FileTextIcon className="h-4 w-4 shrink-0" />
-                    Schedule Regular Job
+                    Schedule Visit
                   </Button>
                 )}
                 {showConvertButton && hasEstimate && isEstimateApproved && (
