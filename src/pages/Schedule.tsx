@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDaysOff } from "@/hooks/useDaysOff";
 import { useProjectedRecurringDates, useCreateRecurringInstance } from "@/hooks/useProjectedRecurringDates";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 
 export default function Schedule() {
   const navigate = useNavigate();
