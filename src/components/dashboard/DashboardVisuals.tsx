@@ -308,8 +308,7 @@ export function DashboardVisuals() {
         <RevenueExpenses timeframe={timeframe} />
         <LeadFunnel timeframe={timeframe} />
         <CompletionDonut timeframe={timeframe} />
-        <PlannedVsActual timeframe={timeframe} />
-        <CostVsQuoted timeframe={timeframe} />
+        
         <CrewHours timeframe={timeframe} />
       </div>
     </section>
