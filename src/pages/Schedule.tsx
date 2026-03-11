@@ -23,7 +23,7 @@ export default function Schedule() {
 
   const [showMyJobsOnly, setShowMyJobsOnly] = useState<boolean>(() => {
     const saved = localStorage.getItem('schedule-view-preference');
-    return saved === 'all-jobs';
+    return saved === 'my-jobs';
   });
 
   useEffect(() => {
