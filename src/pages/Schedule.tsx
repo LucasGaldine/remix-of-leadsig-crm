@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Loader as Loader2, Repeat, MapPin, Clock, Building2, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Loader2, Repeat, MapPin, Clock, Building2, User } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -12,7 +12,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDaysOff } from "@/hooks/useDaysOff";
 import { useProjectedRecurringDates, useCreateRecurringInstance } from "@/hooks/useProjectedRecurringDates";
 import { toast } from "sonner";
-import { Switch } from "@/components/ui/switch";
 
 export default function Schedule() {
   const navigate = useNavigate();
@@ -87,6 +86,30 @@ export default function Schedule() {
         subtitle={format(selectedDate, "MMMM yyyy")}
       />
 
+      {canViewAllJobs && (
+        <div className="p-4 pb-2 max-w-[var(--content-max-width)] m-auto">
+          <div className="flex gap-2">
+            <Button
+              variant={!showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(false)}
+              className="flex items-center gap-2"
+            >
+              <Building2 className="h-4 w-4" />
+              All Jobs
+            </Button>
+            <Button
+              variant={showMyJobsOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMyJobsOnly(true)}
+              className="flex items-center gap-2"
+            >
+              <User className="h-4 w-4" />
+              My Jobs
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Week View */}
       <div className="bg-card border-b border-border">
@@ -182,31 +205,6 @@ export default function Schedule() {
           })}
         </div>
       </div>
-
-      {canViewAllJobs && (
-        <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
-          <div className="flex gap-2">
-            <Button
-              variant={!showMyJobsOnly ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowMyJobsOnly(false)}
-              className="flex items-center gap-2"
-            >
-              <Building2 className="h-4 w-4" />
-              All Jobs
-            </Button>
-            <Button
-              variant={showMyJobsOnly ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowMyJobsOnly(true)}
-              className="flex items-center gap-2"
-            >
-              <User className="h-4 w-4" />
-              My Jobs
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Jobs List */}
       <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto mt-4">
