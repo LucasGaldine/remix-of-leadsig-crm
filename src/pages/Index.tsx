@@ -259,7 +259,7 @@ export default function Index() {
               </div>
             ) : customersData.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No clients need attention at the moment</p>
+                <p className="text-muted-foreground">No clients yet</p>
               </div>
             ) : (
               <>

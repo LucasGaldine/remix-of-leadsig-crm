@@ -161,7 +161,7 @@ export const DASHBOARD_SECTIONS: DashboardSectionConfig[] = [
   {
     id: "customers",
     label: "Clients",
-    description: "Clients needing attention",
+    description: "Your recent clients",
     icon: Contact,
   },
 ];
