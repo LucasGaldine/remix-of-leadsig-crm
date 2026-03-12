@@ -733,11 +733,12 @@ export default function LeadDetail() {
   const isEstimateApproved = estimate?.status === "accepted";
 
   const handleCall = (phone) => {
-  if (!phone) return;
-  logCall("outbound");
-  const formattedPhone = phone.replace(/[^\d+]/g, ""); // remove spaces, dashes, etc
-  window.location.href = `tel:${formattedPhone}`;
-};
+    if (!phone) return;
+    console.log("worked")
+    logCall("outbound");
+    const formattedPhone = phone.replace(/[^\d+]/g, ""); // remove spaces, dashes, etc
+    window.location.href = `tel:${formattedPhone}`;
+  };
 
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24 ">
