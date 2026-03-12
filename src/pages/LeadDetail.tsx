@@ -732,10 +732,12 @@ export default function LeadDetail() {
   const showConvertButton = lead.status === "qualified";
   const isEstimateApproved = estimate?.status === "accepted";
 
-  function handleCall(){
-    logCall("outbound");
-    
-  }
+  const handleCall = (phone) => {
+  if (!phone) return;
+  logCall("outbound");
+  const formattedPhone = phone.replace(/[^\d+]/g, ""); // remove spaces, dashes, etc
+  window.location.href = `tel:${formattedPhone}`;
+};
 
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24 ">
@@ -802,7 +804,7 @@ export default function LeadDetail() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={handleCall()}
+                    onClick={handleCall(lead.phone)}
                   >
                     <Phone className="h-4 w-4" />
                   </Button>
