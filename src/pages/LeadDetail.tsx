@@ -732,6 +732,11 @@ export default function LeadDetail() {
   const showConvertButton = lead.status === "qualified";
   const isEstimateApproved = estimate?.status === "accepted";
 
+  function handleCall(){
+    logCall("outbound");
+    
+  }
+
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24 ">
 
@@ -797,7 +802,7 @@ export default function LeadDetail() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => logCall("outbound")}
+                    onClick={handleCall()}
                   >
                     <Phone className="h-4 w-4" />
                   </Button>
