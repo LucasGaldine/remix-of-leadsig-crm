@@ -734,9 +734,8 @@ export default function LeadDetail() {
 
   const handleCall = (phone) => {
     if (!phone) return;
-    console.log("worked")
     logCall("outbound");
-    const formattedPhone = phone.replace(/[^\d+]/g, ""); // remove spaces, dashes, etc
+    const formattedPhone = phone.replace(/[^\d+]/g, "");
     window.location.href = `tel:${formattedPhone}`;
   };
 
@@ -805,7 +804,7 @@ export default function LeadDetail() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={handleCall(lead.phone)}
+                    onClick={() => handleCall(lead.phone)}
                   >
                     <Phone className="h-4 w-4" />
                   </Button>
