@@ -27,18 +27,16 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
           id,
           lead_id,
           scheduled_date,
-          job:leads!lead_id(
-            account_id
-          )
+          account_id
         `)
+        .eq("account_id", currentAccount.id)
         .gte("scheduled_date", startDateStr)
         .lte("scheduled_date", endDateStr);
 
       if (schedulesError) throw schedulesError;
       if (!schedules || schedules.length === 0) return [];
 
-      const accountSchedules = schedules.filter(s => s.job?.account_id === currentAccount.id);
-      const scheduleIds = accountSchedules.map(s => s.id);
+      const scheduleIds = schedules.map(s => s.id);
 
       if (scheduleIds.length === 0) return [];
 
@@ -82,7 +80,7 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
       const { data: timeEntries, error: timeEntriesError } = await timeEntriesQuery;
       if (timeEntriesError) throw timeEntriesError;
 
-      const scheduleMap = new Map(accountSchedules.map(s => [s.id, s.lead_id]));
+      const scheduleMap = new Map(schedules.map(s => [s.id, s.lead_id]));
       const crewMap = new Map<string, CrewHoursData & { jobIds: Set<string> }>();
 
       (assignments || []).forEach((assignment: any) => {
