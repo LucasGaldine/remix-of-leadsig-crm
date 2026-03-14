@@ -24,6 +24,7 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
     const [mentionSearch, setMentionSearch] = useState("");
     const [cursorPosition, setCursorPosition] = useState(0);
     const [mentionStartPos, setMentionStartPos] = useState(0);
+    const [selectedIndex, setSelectedIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
@@ -34,29 +35,54 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       }
     }, [ref]);
 
+    const displayValue = value.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
+
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newValue = e.target.value;
+      const newDisplayValue = e.target.value;
       const cursor = e.target.selectionStart;
 
-      onChange(newValue);
+      const newActualValue = syncActualValue(newDisplayValue, value);
+      onChange(newActualValue);
       setCursorPosition(cursor);
 
-      const textBeforeCursor = newValue.substring(0, cursor);
+      const textBeforeCursor = newDisplayValue.substring(0, cursor);
       const lastAtSymbol = textBeforeCursor.lastIndexOf('@');
 
       if (lastAtSymbol !== -1) {
         const textAfterAt = textBeforeCursor.substring(lastAtSymbol + 1);
 
-        if (!textAfterAt.includes(' ') && !textAfterAt.includes('\n') && !textAfterAt.includes('[')) {
+        if (!textAfterAt.includes(' ') && !textAfterAt.includes('\n')) {
           setMentionSearch(textAfterAt);
           setMentionStartPos(lastAtSymbol);
           setShowMentions(true);
+          setSelectedIndex(0);
         } else {
           setShowMentions(false);
         }
       } else {
         setShowMentions(false);
       }
+    };
+
+    const syncActualValue = (newDisplayValue: string, oldActualValue: string): string => {
+      let result = newDisplayValue;
+      const oldDisplayValue = oldActualValue.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
+
+      if (newDisplayValue === oldDisplayValue) {
+        return oldActualValue;
+      }
+
+      const mentions = Array.from(oldActualValue.matchAll(/@\[([^\]]+)\]\(([a-f0-9-]+)\)/g));
+      mentions.reverse().forEach((match) => {
+        const displayName = `@${match[1]}`;
+        const fullMention = match[0];
+        const displayIndex = oldDisplayValue.indexOf(displayName);
+        if (displayIndex !== -1 && newDisplayValue.substring(displayIndex, displayIndex + displayName.length) === displayName) {
+          result = result.substring(0, displayIndex) + fullMention + result.substring(displayIndex + displayName.length);
+        }
+      });
+
+      return result;
     };
 
     const insertMention = (member: TeamMember) => {
@@ -84,6 +110,23 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       member.email.toLowerCase().includes(mentionSearch.toLowerCase())
     );
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!showMentions || filteredMembers.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % filteredMembers.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(filteredMembers[selectedIndex]);
+      } else if (e.key === 'Escape') {
+        setShowMentions(false);
+      }
+    };
+
     const getInitials = (name: string) => {
       const parts = name.split(' ');
       if (parts.length >= 2) {
@@ -96,11 +139,11 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       <div className="relative">
         <Textarea
           ref={textareaRef}
-          value={value}
+          value={displayValue}
           onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={rows}
-          className="font-mono text-sm"
         />
         {showMentions && (
           <div className="absolute z-50 mt-1 w-80 rounded-lg border bg-popover shadow-lg">
@@ -122,11 +165,11 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
                   <p>No team members found</p>
                 </CommandEmpty>
                 <CommandGroup>
-                  {filteredMembers.map((member) => (
+                  {filteredMembers.map((member, index) => (
                     <CommandItem
                       key={member.user_id}
                       onSelect={() => insertMention(member)}
-                      className="cursor-pointer py-3 px-3 hover:bg-accent"
+                      className={`cursor-pointer py-3 px-3 hover:bg-accent ${index === selectedIndex ? 'bg-accent' : ''}`}
                     >
                       <div className="flex items-center gap-3 w-full">
                         <Avatar className="h-10 w-10 border-2 border-background">

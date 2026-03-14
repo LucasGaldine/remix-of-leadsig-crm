@@ -1412,7 +1412,7 @@ export default function LeadDetail() {
 
                         <div className="flex-1 items-center justify-between gap-2 mb-0.5">
                           <p className="text-3">
-                          {renderMentionsAsText(interaction.body || interaction.summary || "", teamMembers)}
+                          {renderMentionsAsText(interaction.body || interaction.summary || "")}
                           </p>
                           <span className="text-xs text-muted-foreground ml-auto">
                             {format(new Date(interaction.created_at), "MMM d, yyyy 'at' h:mm a")}
