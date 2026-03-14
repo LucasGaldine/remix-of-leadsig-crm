@@ -23,73 +23,97 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
 
       const { data: schedules, error: schedulesError } = await supabase
         .from("job_schedules")
-        .select("id, lead_id, scheduled_date")
+        .select(`
+          id,
+          lead_id,
+          scheduled_date,
+          job:leads!lead_id(
+            account_id
+          )
+        `)
         .gte("scheduled_date", startDateStr)
         .lte("scheduled_date", endDateStr);
 
       if (schedulesError) throw schedulesError;
       if (!schedules || schedules.length === 0) return [];
 
-      const scheduleIds = schedules.map(s => s.id);
+      const accountSchedules = schedules.filter(s => s.job?.account_id === currentAccount.id);
+      const scheduleIds = accountSchedules.map(s => s.id);
 
-      let query = supabase
-        .from("job_time_entries")
+      if (scheduleIds.length === 0) return [];
+
+      let assignmentsQuery = supabase
+        .from("job_schedule_assignments")
         .select(`
-          *,
-          job_schedule:job_schedules!job_schedule_id(
-            scheduled_date,
-            lead_id,
-            job:leads!lead_id(
-              account_id
-            )
-          ),
+          user_id,
+          job_schedule_id,
           user:profiles!user_id(
             id,
             full_name
           )
         `)
+        .in("job_schedule_id", scheduleIds);
+
+      if (userId) {
+        assignmentsQuery = assignmentsQuery.eq("user_id", userId);
+      }
+
+      const { data: assignments, error: assignmentsError } = await assignmentsQuery;
+      if (assignmentsError) throw assignmentsError;
+
+      let timeEntriesQuery = supabase
+        .from("job_time_entries")
+        .select(`
+          user_id,
+          job_schedule_id,
+          start_time,
+          end_time
+        `)
         .in("job_schedule_id", scheduleIds)
         .not("end_time", "is", null);
 
       if (userId) {
-        query = query.eq("user_id", userId);
+        timeEntriesQuery = timeEntriesQuery.eq("user_id", userId);
       }
 
-      const { data, error } = await query;
+      const { data: timeEntries, error: timeEntriesError } = await timeEntriesQuery;
+      if (timeEntriesError) throw timeEntriesError;
 
-      if (error) throw error;
+      const scheduleMap = new Map(accountSchedules.map(s => [s.id, s.lead_id]));
+      const crewMap = new Map<string, CrewHoursData & { jobIds: Set<string> }>();
 
-      const hoursMap = new Map<string, CrewHoursData & { jobIds: Set<string> }>();
+      (assignments || []).forEach((assignment: any) => {
+        const userId = assignment.user_id;
+        const fullName = assignment.user?.full_name || "Unknown";
+        const leadId = scheduleMap.get(assignment.job_schedule_id);
 
-      (data || []).forEach((entry: any) => {
-        if (entry.job_schedule?.job?.account_id !== currentAccount.id) return;
+        if (!crewMap.has(userId)) {
+          crewMap.set(userId, {
+            user_id: userId,
+            full_name: fullName,
+            total_hours: 0,
+            job_count: 0,
+            jobIds: new Set(),
+          });
+        }
 
+        if (leadId) {
+          crewMap.get(userId)!.jobIds.add(leadId);
+        }
+      });
+
+      (timeEntries || []).forEach((entry: any) => {
         const userId = entry.user_id;
-        const fullName = entry.user?.full_name || "Unknown";
-        const leadId = entry.job_schedule?.lead_id;
-
         const startTime = new Date(entry.start_time);
         const endTime = new Date(entry.end_time);
         const hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
 
-        if (hoursMap.has(userId)) {
-          const existing = hoursMap.get(userId)!;
-          existing.total_hours += hours;
-          if (leadId) existing.jobIds.add(leadId);
-        } else {
-          const jobIds = new Set<string>();
-          if (leadId) jobIds.add(leadId);
-          hoursMap.set(userId, {
-            user_id: userId,
-            full_name: fullName,
-            total_hours: hours,
-            job_count: 0,
-            jobIds,
-          });
+        if (crewMap.has(userId)) {
+          crewMap.get(userId)!.total_hours += hours;
         }
       });
 
-      return Array.from(hoursMap.values()).map(({ jobIds, ...rest }) => ({
+      return Array.from(crewMap.values()).map(({ jobIds, ...rest }) => ({
         ...rest,
         job_count: jobIds.size,
       })).sort((a, b) => b.total_hours - a.total_hours);
