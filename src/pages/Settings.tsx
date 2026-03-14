@@ -1,28 +1,6 @@
 // @ts-nocheck
 import { useState } from "react";
-import {
-  User,
-  Building2,
-  DollarSign,
-  Bell,
-  Calendar,
-  Users,
-  Zap,
-  HelpCircle,
-  LogOut,
-  ChevronRight,
-  MapPin,
-  Shield,
-  Plug,
-  ExternalLink,
-  LayoutDashboard,
-  Calculator,
-  Ruler,
-  Crown,
-  FileText,
-  Scale,
-  Trash2
-} from "lucide-react";
+import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
@@ -32,6 +10,7 @@ import { type PricingPlan, hasPlanAccess } from "@/lib/planGating";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 interface SettingItem {
   icon: React.ReactNode;
@@ -52,6 +31,7 @@ interface SettingSection {
 
 export default function Settings() {
   const [show2FASetup, setShow2FASetup] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const { signOut, profile, role, currentAccount } = useAuth();
   const navigate = useNavigate();
   
@@ -242,12 +222,37 @@ export default function Settings() {
     }))
     .filter(section => section.items.length > 0);
 
+  const filteredSections = searchQuery
+    ? visibleSections
+        .map(section => ({
+          ...section,
+          items: section.items.filter(item =>
+            item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            item.description?.toLowerCase().includes(searchQuery.toLowerCase())
+          ),
+        }))
+        .filter(section => section.items.length > 0)
+    : visibleSections;
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Settings" />
 
-      <main className="py-4">
-        {visibleSections.map((section) => (
+      <div className="max-w-[var(--content-max-width)] m-auto p-4">
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search settings..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+
+      <main className="max-w-[var(--content-max-width)] m-auto">
+        {filteredSections.map((section) => (
           <div key={section.title} className="mb-6">
             <h2 className="px-4 mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               {section.title}
@@ -320,7 +325,13 @@ export default function Settings() {
           </div>
         ))}
 
-        <p className="text-center text-sm text-muted-foreground mt-8">
+        {filteredSections.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">No settings found</p>
+          </div>
+        )}
+
+        <p className="text-center text-sm text-muted-foreground mt-8 px-4">
           LeadSig CRM v1.0
         </p>
       </main>
