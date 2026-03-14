@@ -32,6 +32,7 @@ import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { parseMentionsToHTML } from "@/lib/mentionParser";
+import { formatCurrency } from "@/lib/formatter";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -847,7 +848,7 @@ export default function LeadDetail() {
                   </div>
 
                   <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
-                    <p className="text-2">${lead.estimated_value}</p>
+                    <p className="text-2">{formatCurrency(lead.estimated_value || 0)}</p>
                     <p>{lead.service_type || "No service type"}</p>
                   </div>
                 </div>
