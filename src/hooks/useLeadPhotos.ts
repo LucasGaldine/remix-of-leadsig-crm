@@ -32,7 +32,7 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
       .from("lead_photos")
       .select(`
         *,
-        uploader:uploaded_by (
+        uploader:profiles!lead_photos_uploaded_by_profiles_fkey (
           full_name
         )
       `)
