@@ -212,6 +212,8 @@ export function useJobAssignments(leadId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-assignments', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['crew-hours'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-jobs'] });
       toast.success('Crew member assigned to job');
     },
     onError: (error: Error) => {
@@ -238,6 +240,8 @@ export function useJobAssignments(leadId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-assignments', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['crew-hours'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-jobs'] });
       toast.success('Crew member removed from job');
     },
     onError: (error: Error) => {

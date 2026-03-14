@@ -118,6 +118,7 @@ export function useAddJobSchedule() {
       queryClient.invalidateQueries({ queryKey: ["job", variables.lead_id] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["crew-hours"] });
     },
   });
 }
@@ -199,6 +200,7 @@ export function useUpdateJobSchedule() {
       queryClient.invalidateQueries({ queryKey: ["job", data.lead_id] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["crew-hours"] });
     },
   });
 }
@@ -221,6 +223,7 @@ export function useDeleteJobSchedule() {
       queryClient.invalidateQueries({ queryKey: ["job", variables.lead_id] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["crew-hours"] });
     },
   });
 }
