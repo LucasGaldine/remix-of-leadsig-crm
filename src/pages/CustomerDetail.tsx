@@ -5,8 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText, Navigation, Share2, CreditCard as Edit, Trash2 } from "lucide-react";
+import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText, Navigation, Share2, CreditCard as Edit, Trash2, EllipsisVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -196,105 +197,107 @@ export default function CustomerDetail() {
       <main className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
         {/* Contact Info Card */}
         <div className="bg-card rounded-lg border border-border">
-          <div className="p-6">
-            {/* Header with Name and Actions */}
-            <div className="flex items-start justify-between mb-4">
-              <h1 className="text-2xl font-bold text-foreground">{customer.name}</h1>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setShowEditDialog(true)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+          <div className="flex flex-col pt-8 pb-8 p-4 gap-4">
+            <div className="flex gap-4">
+              {/* Left Column */}
+              <div className="flex flex-col gap-2 w-full">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-1">{customer.name}</h1>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        <EllipsisVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setShowEditDialog(true)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit Customer
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowDeleteDialog(true)}>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Customer
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
 
-            {/* Contact Info and Summary Row */}
-            <div className="flex flex-col lg:flex-row justify-between gap-6 mb-6">
-              {/* Contact Info */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className={cn(!customer.phone && "text-muted-foreground italic")}>
-                    {customer.phone || "No phone"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className={cn(!customer.email && "text-muted-foreground italic")}>
-                    {customer.email || "No email"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className={cn(!customer.address && !customer.city && "text-muted-foreground italic")}>
-                    {customer.address && customer.city
-                      ? `${customer.address}, ${customer.city}`
-                      : customer.address || customer.city || "No address"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Summary Stats */}
-              <div className="flex flex-col items-start lg:items-end gap-1">
-                {totalValue > 0 && (
-                  <div className="text-2xl font-bold text-foreground">
-                    ${totalValue.toLocaleString()}
+                <div className="text-5">
+                  <div className="flex items-center gap-1">
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    <span className={cn(!customer.phone && "text-muted-foreground italic")}>
+                      {customer.phone || "No phone"}
+                    </span>
                   </div>
-                )}
-                <div className="text-sm text-muted-foreground">
-                  {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}
+                  <div className="flex items-center gap-1">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    <span className={cn(!customer.email && "text-muted-foreground italic")}>
+                      {customer.email || "No email"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className={cn(!customer.address && !customer.city && "text-muted-foreground italic")}>
+                      {customer.address && customer.city
+                        ? `${customer.address}, ${customer.city}`
+                        : customer.address || customer.city || "No address"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="flex flex-col gap-2">
+                <div className="text-right text-muted-foreground">
+                  {totalValue > 0 && (
+                    <p className="text-2">
+                      ${totalValue.toLocaleString()}
+                    </p>
+                  )}
+                  <p className="text-xs">
+                    {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Action Buttons Row */}
-            <div className="flex flex-wrap items-center gap-2 justify-between">
-              {/* Quick Actions */}
-              <div className="flex gap-2">
-                {customer.phone && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => window.open(`tel:${customer.phone}`)}
-                  >
-                    <Phone className="h-4 w-4" />
-                  </Button>
-                )}
-                {customer.phone && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => window.open(`sms:${customer.phone}`)}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
-                )}
-                {(customer.address || customer.city) && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      const location = [customer.address, customer.city].filter(Boolean).join(", ");
-                      window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`);
-                    }}
-                  >
-                    <Navigation className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-
-              {/* Portal Link Button */}
-              <PortalLinkButton customerId={customer.id} />
+            {/* Quick Actions */}
+            <div className="grid grid-cols-3 gap-2">
+              {customer.phone && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs px-2"
+                  onClick={() => window.open(`tel:${customer.phone}`)}
+                >
+                  <Phone className="h-4 w-4 shrink-0" />
+                  <span className="hidden sm:inline">Call</span>
+                </Button>
+              )}
+              {customer.phone && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs px-2"
+                  onClick={() => window.open(`sms:${customer.phone}`)}
+                >
+                  <MessageSquare className="h-4 w-4 shrink-0" />
+                  <span className="hidden sm:inline">Text</span>
+                </Button>
+              )}
+              {(customer.address || customer.city) && (
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs px-2"
+                  onClick={() => {
+                    const location = [customer.address, customer.city].filter(Boolean).join(", ");
+                    window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`);
+                  }}
+                >
+                  <Navigation className="h-4 w-4 shrink-0" />
+                  <span className="hidden sm:inline">Navigate</span>
+                </Button>
+              )}
             </div>
           </div>
 
@@ -323,6 +326,11 @@ export default function CustomerDetail() {
           </div>
         </div>
       </main>
+
+      {/* Portal Link */}
+      <div className="p-4 max-w-[var(--content-max-width)] m-auto">
+        <PortalLinkButton customerId={customer.id} />
+      </div>
 
       {/* Tab Content */}
       <div className="p-4 max-w-[var(--content-max-width)] m-auto">{activeTab === "jobs" && (
