@@ -22,6 +22,7 @@ interface SettingItem {
   comingSoon?: boolean;
   external?: boolean;
   requiredPlan?: PricingPlan;
+  searchTerms?: string[];
 }
 
 interface SettingSection {
@@ -57,24 +58,28 @@ export default function Settings() {
           label: "Company Profile",
           description: "Name, logo, contact info",
           onClick: () => navigate("/settings/company"),
+          searchTerms: ["business name", "company logo", "phone number", "email", "address", "business info"],
         },
         {
           icon: <MapPin className="h-5 w-5" />,
           label: "Service Area",
           description: "Define where you work",
           onClick: () => navigate("/settings/service-area"),
+          searchTerms: ["geofence", "radius", "zip codes", "service radius", "coverage area", "location", "map"],
         },
         {
           icon: <Calculator className="h-5 w-5" />,
           label: "Pricing Rules",
           description: "Configure estimate calculations",
           onClick: () => navigate("/settings/pricing-rules"),
+          searchTerms: ["pricing", "rates", "square foot", "per foot", "linear foot", "margin", "markup", "tax rate", "labor cost", "material cost"],
         },
         {
           icon: <Ruler className="h-5 w-5" />,
           label: "Minimum Job Size",
           description: "Set your floor",
           onClick: () => navigate("/settings/min-job-size"),
+          searchTerms: ["minimum", "floor", "smallest job", "min size"],
         },
       ],
     },
@@ -87,6 +92,7 @@ export default function Settings() {
           label: "Stripe Payments",
           description: "Accept credit cards",
           onClick: () => navigate("/settings/stripe"),
+          searchTerms: ["stripe", "payment", "credit card", "online payments", "merchant", "connect", "disconnect"],
         },
       ],
     },
@@ -98,12 +104,14 @@ export default function Settings() {
           label: "Availability",
           description: "Working hours and blocked dates",
           onClick: () => navigate("/settings/availability"),
+          searchTerms: ["business hours", "working hours", "schedule", "days off", "blocked dates", "vacation", "closed", "hours of operation"],
         },
         {
           icon: <Users className="h-5 w-5" />,
           label: "Crew Management",
           description: "Teams and assignments",
           onClick: () => navigate("/settings/crew"),
+          searchTerms: ["crew", "team", "employees", "workers", "staff", "invite", "team members", "roles"],
         },
       ],
     },
@@ -116,6 +124,7 @@ export default function Settings() {
           description: "Missed calls, follow-ups",
           onClick: () => navigate("/settings/auto-responses"),
           requiredPlan: "premium",
+          searchTerms: ["auto response", "automatic", "missed call", "follow up", "sms", "text message"],
         },
         {
           icon: <Bell className="h-5 w-5" />,
@@ -123,6 +132,7 @@ export default function Settings() {
           description: "Push and SMS settings",
           onClick: () => navigate("/settings/notifications"),
           requiredPlan: "basic",
+          searchTerms: ["notifications", "alerts", "sms", "text", "push", "email digest", "mentions"],
         },
       ],
     },
@@ -136,6 +146,7 @@ export default function Settings() {
           description: "Connect platforms to capture leads",
           onClick: () => navigate("/settings/lead-sources"),
           requiredPlan: "basic",
+          searchTerms: ["lead sources", "integrations", "facebook", "meta", "api", "webhook", "connect", "platforms"],
         },
       ],
     },
@@ -147,6 +158,7 @@ export default function Settings() {
           label: "Two-Factor Authentication",
           description: "Add extra security to your account",
           onClick: () => setShow2FASetup(true),
+          searchTerms: ["2fa", "two factor", "security", "authentication", "mfa", "multi-factor"],
         },
       ],
     },
@@ -158,50 +170,57 @@ export default function Settings() {
           label: "Dashboard",
           description: "Customize your stat cards",
           onClick: () => navigate("/settings/dashboard"),
+          searchTerms: ["dashboard", "stats", "cards", "widgets", "customize", "visuals", "charts"],
         }] : []),
         {
           icon: <User className="h-5 w-5" />,
           label: "Profile",
           description: profile?.full_name || profile?.email || "Your account settings",
           onClick: () => navigate("/settings/profile"),
+          searchTerms: ["profile", "account", "name", "email", "password", "avatar", "personal info"],
         },
         ...(role === "owner" ? [{
           icon: <Crown className="h-5 w-5" />,
           label: "Pricing Plans",
           description: "Manage your subscription",
           onClick: () => navigate("/settings/pricing"),
+          searchTerms: ["pricing", "plan", "subscription", "upgrade", "billing", "free", "basic", "premium"],
         }] : []),
-      
+
       ],
     },
     {
       title: "FAQ",
       items: [
-        
+
         {
           icon: <HelpCircle className="h-5 w-5" />,
           label: "Help & Support",
           description: "Get assistance",
           onClick: handleHelpSupport,
           external: true,
+          searchTerms: ["help", "support", "contact", "assistance", "questions"],
         },
         {
           icon: <FileText className="h-5 w-5" />,
           label: "Privacy Policy",
           description: "Review data usage",
           onClick: () => navigate("/privacy"),
+          searchTerms: ["privacy", "data", "gdpr", "policy"],
         },
         {
           icon: <Scale className="h-5 w-5" />,
           label: "Terms of Service",
           description: "View service terms",
           onClick: () => navigate("/terms"),
+          searchTerms: ["terms", "service", "agreement", "legal"],
         },
         {
           icon: <Trash2 className="h-5 w-5" />,
           label: "Data Deletion",
           description: "Request data removal",
           onClick: () => navigate("/data-deletion"),
+          searchTerms: ["delete", "removal", "data deletion", "remove account"],
         },
       ],
     },
@@ -226,10 +245,14 @@ export default function Settings() {
     ? visibleSections
         .map(section => ({
           ...section,
-          items: section.items.filter(item =>
-            item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.description?.toLowerCase().includes(searchQuery.toLowerCase())
-          ),
+          items: section.items.filter(item => {
+            const query = searchQuery.toLowerCase();
+            return (
+              item.label.toLowerCase().includes(query) ||
+              item.description?.toLowerCase().includes(query) ||
+              item.searchTerms?.some(term => term.toLowerCase().includes(query))
+            );
+          }),
         }))
         .filter(section => section.items.length > 0)
     : visibleSections;
