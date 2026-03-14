@@ -126,11 +126,12 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
         service_type,
         status,
         created_at,
-        updated_at
+        updated_at,
+        is_estimate_visit,
+        estimate_job_id
       `)
       .eq("customer_id", customer.id)
       .neq("status", "archived")
-      .eq("is_estimate_visit", false)
       .order("created_at", { ascending: false });
 
     const { data: recurringJobs } = await supabase
@@ -175,14 +176,16 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
         phone: customer.phone,
       },
       company: account || {},
-      jobs: (jobs || []).map((j: any) => ({
-        id: j.id,
-        name: j.name,
-        address: j.address,
-        service_type: j.service_type,
-        status: j.status,
-        created_at: j.created_at,
-      })),
+      jobs: (jobs || [])
+        .filter((j: any) => !j.is_estimate_visit || !j.estimate_job_id)
+        .map((j: any) => ({
+          id: j.id,
+          name: j.name,
+          address: j.address,
+          service_type: j.service_type,
+          status: j.status,
+          created_at: j.created_at,
+        })),
       recurring_jobs: (recurringJobs || []).map((rj: any) => ({
         id: rj.id,
         name: rj.name,
