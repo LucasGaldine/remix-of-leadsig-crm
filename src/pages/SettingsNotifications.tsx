@@ -1,24 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Bell,
-  Mail,
-  MessageSquare,
-  Smartphone,
-  DollarSign,
-  CalendarClock,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  Inbox,
-  Send,
-  History,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  UserCheck,
-  Sun,
-  RotateCcw,
-} from "lucide-react";
+import { Bell, Mail, MessageSquare, Smartphone, DollarSign, CalendarClock, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Clock, Inbox, Send, History, CircleCheck as CheckCircle, Circle as XCircle, Loader as Loader2, UserCheck, Sun, RotateCcw, AtSign } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -114,6 +95,7 @@ export default function SettingsNotifications() {
 
   const hasEmail = Boolean(profile?.email || user?.email);
   const hasPhone = Boolean(profile?.phone);
+  const [mentionNotificationsEnabled, setMentionNotificationsEnabled] = useState(profile?.mention_notifications_enabled ?? true);
 
   const defaultPrefs: NotificationPreferences = useMemo(
     () => ({
@@ -150,7 +132,8 @@ export default function SettingsNotifications() {
     setQuietStart(prefs.quiet_hours?.start ?? defaultPrefs.quiet_hours.start);
     setQuietEnd(prefs.quiet_hours?.end ?? defaultPrefs.quiet_hours.end);
     setDigestFrequency(prefs.digest?.frequency ?? defaultPrefs.digest.frequency);
-  }, [profile?.notification_preferences, defaultPrefs]);
+    setMentionNotificationsEnabled(profile?.mention_notifications_enabled ?? true);
+  }, [profile?.notification_preferences, profile?.mention_notifications_enabled, defaultPrefs]);
 
   const channelAvailability: Record<Channel, { available: boolean; reason?: string }> = {
     push: { available: false, reason: "Coming soon" },
@@ -296,17 +279,24 @@ export default function SettingsNotifications() {
     // Try update first
     let { data, error } = await supabase
       .from("profiles")
-      .update({ notification_preferences: payload })
+      .update({
+        notification_preferences: payload,
+        mention_notifications_enabled: mentionNotificationsEnabled
+      })
       .eq("user_id", user.id)
-      .select("notification_preferences")
+      .select("notification_preferences, mention_notifications_enabled")
       .maybeSingle();
 
     // If no row was updated, try insert (profile may not exist yet)
     if (!error && !data) {
       const insertResult = await supabase
         .from("profiles")
-        .insert({ user_id: user.id, notification_preferences: payload })
-        .select("notification_preferences")
+        .insert({
+          user_id: user.id,
+          notification_preferences: payload,
+          mention_notifications_enabled: mentionNotificationsEnabled
+        })
+        .select("notification_preferences, mention_notifications_enabled")
         .maybeSingle();
 
       data = insertResult.data;
@@ -439,6 +429,38 @@ export default function SettingsNotifications() {
                 </div>
               );
             })}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AtSign className="h-5 w-5" />
+              Mention Notifications
+            </CardTitle>
+            <CardDescription>Control notifications when someone mentions you in a note using @.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start justify-between rounded-lg border px-4 py-3 gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-secondary text-secondary-foreground mt-0.5">
+                  <AtSign className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">@ Mention notifications</p>
+                  <p className="text-sm text-muted-foreground">
+                    Receive a notification when someone mentions you in a note using @yourname
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={mentionNotificationsEnabled}
+                onCheckedChange={(v) => {
+                  setMentionNotificationsEnabled(v);
+                  setIsDirty(true);
+                }}
+              />
+            </div>
           </CardContent>
         </Card>
 

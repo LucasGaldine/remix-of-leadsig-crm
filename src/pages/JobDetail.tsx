@@ -39,6 +39,9 @@ import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { JobTimeTracker } from "@/components/jobs/JobTimeTracker";
 import { Repeat } from "lucide-react";
 import { JobCosts } from "@/components/jobs/JobCosts";
+import { MentionInput } from "@/components/ui/mention-input";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { extractMentions, renderMentionsAsText } from "@/lib/mentionParser";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -88,6 +91,7 @@ export default function JobDetail() {
   const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const { data: teamMembers = [] } = useTeamMembers();
   const [hasInvoice, setHasInvoice] = useState(false);
 
   useEffect(() => {
@@ -1162,11 +1166,12 @@ export default function JobDetail() {
         {activeTab === "notes" && (
           <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
             <div className="card-elevated rounded-lg p-4">
-                <Textarea
+                <MentionInput
                   value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add a note..."
+                  onChange={setNewNote}
+                  placeholder="Add a note... (use @ to mention team members)"
                   rows={2}
+                  teamMembers={teamMembers}
                 />
                 <Button
                   size="sm"
@@ -1189,7 +1194,7 @@ export default function JobDetail() {
                       </div>
 
                     <div className="flex-1 items-center justify-between gap-2 mb-0.5">
-                    <p className="text-3">{note.body || note.summary}</p>
+                    <p className="text-3 whitespace-pre-wrap">{renderMentionsAsText(note.body || note.summary || "")}</p>
 
                     <span className="text-xs text-muted-foreground ml-auto">
                       {format(new Date(note.created_at), "MMM d, yyyy 'at' h:mm a")}
