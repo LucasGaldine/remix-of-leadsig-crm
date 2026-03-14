@@ -169,6 +169,11 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
       .eq("leads.customer_id", customer.id)
       .order("created_at", { ascending: false });
 
+    const regularJobs = (jobs || []).filter((j: any) => !j.is_estimate_visit);
+    const estimateVisitJobs = (jobs || []).filter((j: any) => j.is_estimate_visit && !j.estimate_job_id);
+
+    const displayJobs = regularJobs.length > 0 ? regularJobs : estimateVisitJobs;
+
     return jsonResponse({
       customer: {
         name: customer.name,
@@ -176,16 +181,14 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
         phone: customer.phone,
       },
       company: account || {},
-      jobs: (jobs || [])
-        .filter((j: any) => !j.is_estimate_visit || !j.estimate_job_id)
-        .map((j: any) => ({
-          id: j.id,
-          name: j.name,
-          address: j.address,
-          service_type: j.service_type,
-          status: j.status,
-          created_at: j.created_at,
-        })),
+      jobs: displayJobs.map((j: any) => ({
+        id: j.id,
+        name: j.name,
+        address: j.address,
+        service_type: j.service_type,
+        status: j.status,
+        created_at: j.created_at,
+      })),
       recurring_jobs: (recurringJobs || []).map((rj: any) => ({
         id: rj.id,
         name: rj.name,
