@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Loader as Loader2, Repeat, MapPin, Clock, Calendar as CalendarIcon, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Loader as Loader2, Repeat, MapPin, Clock, Calendar as CalendarIcon, Users, ChevronDown } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -17,6 +17,7 @@ import { useCrewHours } from "@/hooks/useCrewHours";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 type ViewMode = 'week' | 'month';
 
@@ -160,26 +161,50 @@ export default function Schedule() {
           </Tabs>
 
           {canViewCrewHours && (
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-lg">
-                <Clock className="h-4 w-4 text-primary" />
-                <div className="flex flex-col">
-                  <span className="text-xs text-muted-foreground">Total Hours</span>
-                  <span className="text-lg font-bold text-primary">
+            <Collapsible>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Clock className="h-4 w-4" />
+                  <span className="font-semibold">
                     {crewHours.reduce((sum, crew) => sum + crew.total_hours, 0).toFixed(1)}h
                   </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-lg">
-                <CalendarIcon className="h-4 w-4 text-primary" />
-                <div className="flex flex-col">
-                  <span className="text-xs text-muted-foreground">Total Jobs</span>
-                  <span className="text-lg font-bold text-primary">
-                    {crewHours.reduce((sum, crew) => sum + crew.job_count, 0)}
+                  <span className="text-muted-foreground">|</span>
+                  <CalendarIcon className="h-4 w-4" />
+                  <span className="font-semibold">
+                    {crewHours.reduce((sum, crew) => sum + crew.job_count, 0)} jobs
                   </span>
-                </div>
-              </div>
-            </div>
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="absolute right-4 mt-2 z-10">
+                <Card className="w-80 shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">
+                      {selectedCrewMember ? "Crew Member Summary" : "Crew Summary"}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {crewHours.slice(0, selectedCrewMember ? 1 : 10).map((crew) => (
+                        <div key={crew.user_id} className="flex items-center justify-between text-sm border-b pb-2 last:border-b-0 last:pb-0">
+                          <span className="font-medium">{crew.full_name}</span>
+                          <div className="flex items-center gap-3 text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {crew.total_hours.toFixed(1)}h
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <CalendarIcon className="h-3 w-3" />
+                              {crew.job_count}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </CollapsibleContent>
+            </Collapsible>
           )}
 
           {canViewCrewHours && (
@@ -202,31 +227,6 @@ export default function Schedule() {
             </Select>
           )}
         </div>
-
-        {canViewCrewHours && crewHours.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">
-                {selectedCrewMember ? "Crew Member Hours" : "Crew Hours Summary"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {crewHours.slice(0, selectedCrewMember ? 1 : 5).map((crew) => (
-                  <div key={crew.user_id} className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{crew.full_name}</span>
-                    <div className="flex items-center gap-3 text-muted-foreground">
-                      <span>{crew.job_count} {crew.job_count === 1 ? 'job' : 'jobs'}</span>
-                      <span className="font-semibold text-foreground">
-                        {crew.total_hours.toFixed(1)}h
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* Week/Month View */}
