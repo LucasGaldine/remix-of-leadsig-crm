@@ -57,9 +57,6 @@ export default function JobDetail() {
     service_type: "",
     address: "",
     description: "",
-    customer_name: "",
-    customer_phone: "",
-    customer_email: "",
   });
 
   const queryClient = useQueryClient();
@@ -392,9 +389,6 @@ export default function JobDetail() {
       service_type: job?.service_type || "",
       address: job?.address || "",
       description: job?.description || "",
-      customer_name: job?.customer?.name || "",
-      customer_phone: job?.customer?.phone || "",
-      customer_email: job?.customer?.email || "",
     });
     setEditDialogOpen(true);
   };
@@ -403,18 +397,6 @@ export default function JobDetail() {
     if (!id) return;
 
     try {
-      if (job?.customer?.id) {
-        await supabase
-          .from("customers")
-          .update({
-            name: editForm.customer_name.trim(),
-            phone: editForm.customer_phone.trim() || null,
-            email: editForm.customer_email.trim() || null,
-            address: editForm.address.trim() || null,
-          })
-          .eq("id", job.customer.id);
-      }
-
       await updateJobMutation.mutateAsync({
         id,
         name: editForm.name.trim() || null,
@@ -1262,97 +1244,59 @@ export default function JobDetail() {
           <DialogHeader>
             <DialogTitle>Edit Job Details</DialogTitle>
             <DialogDescription>
-              Update job and customer information.
+              Update job information. To edit customer details, visit the customer page.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-6 py-4">
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Customer Info</h3>
-              <div className="space-y-2">
-                <Label htmlFor="edit-customer-name">Customer Name</Label>
-                <Input
-                  id="edit-customer-name"
-                  value={editForm.customer_name}
-                  onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
-                  placeholder="John Smith"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-customer-phone">Phone</Label>
-                  <Input
-                    id="edit-customer-phone"
-                    type="tel"
-                    value={editForm.customer_phone}
-                    onChange={(e) => setEditForm({ ...editForm, customer_phone: e.target.value })}
-                    placeholder="(555) 123-4567"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-customer-email">Email</Label>
-                  <Input
-                    id="edit-customer-email"
-                    type="email"
-                    value={editForm.customer_email}
-                    onChange={(e) => setEditForm({ ...editForm, customer_email: e.target.value })}
-                    placeholder="john@email.com"
-                  />
-                </div>
-              </div>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Job Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                placeholder="Smith Patio Project"
+              />
             </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Job Details</h3>
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Job Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  placeholder="Smith Patio Project"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-service-type">Service Type</Label>
-                <Select
-                  value={editForm.service_type}
-                  onValueChange={(v) => setEditForm({ ...editForm, service_type: v })}
-                >
-                  <SelectTrigger id="edit-service-type">
-                    <SelectValue placeholder="Select service type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pavers / Patio">Pavers / Patio</SelectItem>
-                    <SelectItem value="Concrete">Concrete</SelectItem>
-                    <SelectItem value="Sod / Lawn">Sod / Lawn</SelectItem>
-                    <SelectItem value="Deck">Deck</SelectItem>
-                    <SelectItem value="Fencing">Fencing</SelectItem>
-                    <SelectItem value="Retaining Wall">Retaining Wall</SelectItem>
-                    <SelectItem value="Landscaping">Landscaping</SelectItem>
-                    <SelectItem value="Hardscaping">Hardscaping</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-address">Job Address</Label>
-                <Input
-                  id="edit-address"
-                  value={editForm.address}
-                  onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                  placeholder="123 Main St, Austin, TX"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea
-                  id="edit-description"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  placeholder="Project scope and details..."
-                  rows={3}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-service-type">Service Type</Label>
+              <Select
+                value={editForm.service_type}
+                onValueChange={(v) => setEditForm({ ...editForm, service_type: v })}
+              >
+                <SelectTrigger id="edit-service-type">
+                  <SelectValue placeholder="Select service type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pavers / Patio">Pavers / Patio</SelectItem>
+                  <SelectItem value="Concrete">Concrete</SelectItem>
+                  <SelectItem value="Sod / Lawn">Sod / Lawn</SelectItem>
+                  <SelectItem value="Deck">Deck</SelectItem>
+                  <SelectItem value="Fencing">Fencing</SelectItem>
+                  <SelectItem value="Retaining Wall">Retaining Wall</SelectItem>
+                  <SelectItem value="Landscaping">Landscaping</SelectItem>
+                  <SelectItem value="Hardscaping">Hardscaping</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-address">Job Address</Label>
+              <Input
+                id="edit-address"
+                value={editForm.address}
+                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                placeholder="123 Main St, Austin, TX"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                placeholder="Project scope and details..."
+                rows={3}
+              />
             </div>
           </div>
           <DialogFooter>
