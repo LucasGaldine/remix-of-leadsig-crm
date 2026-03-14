@@ -31,7 +31,7 @@ import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
-import { parseMentionsForDisplay } from "@/lib/mentionParser";
+import { parseMentionsToHTML } from "@/lib/mentionParser";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -1361,10 +1361,10 @@ export default function LeadDetail() {
                           </span>
                         </div>
                         {interaction.summary && (
-                          <p className="text-sm text-muted-foreground">{interaction.summary}</p>
+                          <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: parseMentionsToHTML(interaction.summary) }} />
                         )}
                         {interaction.body && interaction.body !== interaction.summary && (
-                          <p className="text-sm mt-1">{interaction.body}</p>
+                          <p className="text-sm mt-1" dangerouslySetInnerHTML={{ __html: parseMentionsToHTML(interaction.body) }} />
                         )}
                       </div>
                     </div>

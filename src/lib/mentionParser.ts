@@ -46,3 +46,7 @@ export function parseMentionsForDisplay(text: string): Array<{ type: 'text' | 'm
 
   return parts;
 }
+
+export function parseMentionsToHTML(text: string): string {
+  return text.replace(/@\[([^\]]+)\]\(([a-f0-9-]+)\)/g, '<span class="font-semibold text-primary">@$1</span>');
+}
