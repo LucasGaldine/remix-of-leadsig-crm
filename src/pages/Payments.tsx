@@ -300,7 +300,13 @@ export default function Payments() {
                 <PaymentCard
                   key={payment.id}
                   payment={transformedPayment}
-                  onClick={() => navigate(`/payments/${payment.id}`)}
+                  onClick={() => {
+                    if (payment.invoice_id) {
+                      navigate(`/payments/invoices/${payment.invoice_id}`);
+                    } else {
+                      navigate(`/payments/${payment.id}`);
+                    }
+                  }}
                 />
               );
             })}

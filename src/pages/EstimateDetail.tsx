@@ -572,8 +572,7 @@ export default function EstimateDetail() {
         </Button>
       </div>
 
-      <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4">
-        <div className="py-4 space-y-3">
+      <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
           <button
             className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
             onClick={() => estimate.customer && navigate(`/customers/${estimate.customer.id}`)}
@@ -619,7 +618,6 @@ export default function EstimateDetail() {
               </div>
             </button>
           )}
-        </div>
       </div>
 
       <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
