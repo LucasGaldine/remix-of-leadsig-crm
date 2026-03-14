@@ -87,14 +87,6 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       keywords: ["billing", "invoices", "revenue", "money"],
     },
     {
-      name: "Materials",
-      path: "/materials",
-      icon: <FileText className="h-4 w-4" />,
-      description: "Inventory and supply orders",
-      roles: ["owner", "sales"],
-      keywords: ["inventory", "supplies", "stock", "orders"],
-    },
-    {
       name: "Lead Sources",
       path: "/settings/lead-sources",
       icon: <LayoutDashboard className="h-4 w-4" />,

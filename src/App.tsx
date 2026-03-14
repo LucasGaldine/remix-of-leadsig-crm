@@ -19,12 +19,6 @@ import ChargePayment from "./pages/ChargePayment";
 import CreateEstimate from "./pages/CreateEstimate";
 import CreateInvoice from "./pages/CreateInvoice";
 import PaymentDetail from "./pages/PaymentDetail";
-import Materials from "./pages/Materials";
-import MaterialListDetail from "./pages/MaterialListDetail";
-import CreateMaterialList from "./pages/CreateMaterialList";
-import CreateSupplyOrder from "./pages/CreateSupplyOrder";
-import SupplyOrderDetail from "./pages/SupplyOrderDetail";
-import SupplierManagement from "./pages/SupplierManagement";
 import StripeSettings from "./pages/StripeSettings";
 import ApiKeys from "./pages/ApiKeys";
 import LeadSources from "./pages/LeadSources";
@@ -119,12 +113,6 @@ const router = createBrowserRouter([
       { path: "/payments/invoices/:id", element: <Protected><InvoiceDetail /></Protected> },
       { path: "/payments/charge", element: <Protected><ChargePayment /></Protected> },
       { path: "/payments/:id", element: <Protected><PaymentDetail /></Protected> },
-      { path: "/materials", element: <Protected><Materials /></Protected> },
-      { path: "/materials/lists/:id", element: <Protected><MaterialListDetail /></Protected> },
-      { path: "/materials/lists/new", element: <Protected><CreateMaterialList /></Protected> },
-      { path: "/materials/orders/new", element: <Protected><CreateSupplyOrder /></Protected> },
-      { path: "/materials/orders/:id", element: <Protected><SupplyOrderDetail /></Protected> },
-      { path: "/materials/suppliers/new", element: <Protected><SupplierManagement /></Protected> },
       { path: "/customers", element: <Protected><Customers /></Protected> },
       { path: "/customers/:id", element: <Protected><CustomerDetail /></Protected> },
       { path: "*", element: <NotFound /> },
