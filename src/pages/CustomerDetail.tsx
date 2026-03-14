@@ -62,12 +62,13 @@ function PortalLinkButton({ customerId }: { customerId: string }) {
 
   return (
     <Button
-      variant="outline"
-      size="icon"
+      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+      size="lg"
       onClick={handleGenerateAndCopy}
       disabled={loading}
     >
-      <Share2 className="h-4 w-4" />
+      <Share2 className="h-4 w-4 shrink-0" />
+      Client Portal
     </Button>
   );
 }
@@ -272,7 +273,6 @@ export default function CustomerDetail() {
                 >
                   <Navigation className="h-4 w-4" />
                 </Button>
-                <PortalLinkButton customerId={customer.id} />
               </div>
             </div>
 
@@ -285,14 +285,13 @@ export default function CustomerDetail() {
                 </div>
 
                 <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
-                  <p className="text-2">{jobs.length}</p>
-                  <p>{jobs.length === 1 ? 'job' : 'jobs'}</p>
+                  <p className="text-2">{jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}</p>
                 </div>
               </div>
 
-              {/* CTA - empty for customers but keeping structure */}
+              {/* CTA */}
               <div className="flex flex-col sm:flex-row justify-end gap-2">
-                {/* Empty space to match layout structure */}
+                <PortalLinkButton customerId={customer.id} />
               </div>
             </div>
           </div>
