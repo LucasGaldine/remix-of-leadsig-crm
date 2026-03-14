@@ -130,6 +130,9 @@ export default function LeadDetail() {
   const [addingNote, setAddingNote] = useState(false);
   const { data: teamMembers = [] } = useTeamMembers();
 
+  // Activity timeline state
+  const [showAllActivity, setShowAllActivity] = useState(false);
+
   // Qualification state
   const [qualNotes, setQualNotes] = useState("");
   const [savingQual, setSavingQual] = useState(false);
@@ -1334,7 +1337,29 @@ export default function LeadDetail() {
 
           {/* Interaction Timeline */}
             <div className="card-elevated rounded-lg p-4">
-              <h3 className="font-medium mb-3">Activity Timeline</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium">Activity Timeline</h3>
+                {interactions.length > 5 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAllActivity(!showAllActivity)}
+                    className="text-xs"
+                  >
+                    {showAllActivity ? (
+                      <>
+                        <ChevronDown className="h-3 w-3 mr-1" />
+                        Show Less
+                      </>
+                    ) : (
+                      <>
+                        <ChevronRight className="h-3 w-3 mr-1" />
+                        Show All ({interactions.length})
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
 
               <div className="space-y-3">
                 {interactions.length === 0 ? (
@@ -1342,7 +1367,7 @@ export default function LeadDetail() {
                     No activity yet
                   </p>
                 ) : (
-                  interactions.map((interaction) => (
+                  (showAllActivity ? interactions : interactions.slice(0, 5)).map((interaction) => (
                     <div key={interaction.id} className="flex gap-3 pb-3 border-b border-border last:border-0">
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                         {getInteractionIcon(interaction.type)}
