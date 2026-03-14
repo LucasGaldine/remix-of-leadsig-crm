@@ -16,6 +16,7 @@ export interface LeadPhoto {
   uploaded_by: string;
   created_at: string;
   publicUrl: string;
+  uploader_name?: string;
 }
 
 export function useLeadPhotos(leadId: string | undefined, photoType: "before" | "after" = "before") {
@@ -29,7 +30,12 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
 
     const { data, error } = await supabase
       .from("lead_photos")
-      .select("*")
+      .select(`
+        *,
+        uploader:uploaded_by (
+          full_name
+        )
+      `)
       .eq("lead_id", leadId)
       .eq("photo_type", photoType)
       .order("created_at", { ascending: true });
@@ -40,6 +46,7 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
     } else {
       const withUrls = (data || []).map((photo: any) => ({
         ...photo,
+        uploader_name: photo.uploader?.full_name || "Unknown",
         publicUrl: supabase.storage
           .from("lead-photos")
           .getPublicUrl(photo.file_path).data.publicUrl,

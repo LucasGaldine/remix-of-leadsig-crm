@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, Crown, Expand, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Camera, Crown, Expand, Loader as Loader2, Plus, Trash2, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -117,6 +117,12 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobCo
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                    <div className="flex items-center gap-1 text-white text-xs">
+                      <User className="h-3 w-3" />
+                      <span className="truncate">{photo.uploader_name}</span>
+                    </div>
+                  </div>
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                     <button
                       onClick={() => setPreviewUrl(photo.publicUrl)}
