@@ -161,8 +161,8 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobCo
         onOpenChange={setAddModalOpen}
         onSave={async (files) => {
           const result = await uploadPhotos(files);
-          if (result?.converted) {
-            onJobConverted?.();
+          if (result?.converted && onJobConverted) {
+            onJobConverted();
           }
         }}
         maxFiles={remaining}

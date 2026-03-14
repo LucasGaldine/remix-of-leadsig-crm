@@ -113,6 +113,8 @@ export default function JobDetail() {
     queryClient.invalidateQueries({ queryKey: ["jobs"] });
     queryClient.invalidateQueries({ queryKey: ["leads"] });
     toast.success("Photos uploaded and lead has been converted to a job!");
+    fetchAfterPhotos();
+    fetchBeforePhotos();
   };
 
   const fetchParentLead = async () => {
@@ -1143,6 +1145,7 @@ export default function JobDetail() {
               leadId={job?.is_estimate_visit && parentLeadId ? parentLeadId : id}
               photoType="before"
               title="Before Photos"
+              onPhotosChange={() => fetchBeforePhotos()}
               onJobConverted={handleJobConverted}
             />
             {!job?.is_estimate_visit && (
@@ -1150,6 +1153,7 @@ export default function JobDetail() {
                 leadId={id}
                 photoType="after"
                 title="After Photos"
+                onPhotosChange={() => fetchAfterPhotos()}
               />
             )}
           </div>

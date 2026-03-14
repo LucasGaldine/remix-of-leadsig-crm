@@ -92,6 +92,14 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
     setIsUploading(true);
 
     try {
+      const { data: leadBefore } = await supabase
+        .from("leads")
+        .select("status")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      const wasNotJobBefore = leadBefore && leadBefore.status !== "job";
+
       for (const file of filesToUpload) {
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const filePath = `${currentAccount.id}/${leadId}/${photoType}/${crypto.randomUUID()}.${ext}`;
@@ -124,13 +132,13 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
       await fetchPhotos();
       toast.success("Photos uploaded");
 
-      const { data: lead } = await supabase
+      const { data: leadAfter } = await supabase
         .from("leads")
         .select("status")
         .eq("id", leadId)
         .maybeSingle();
 
-      if (lead?.status === "job") {
+      if (wasNotJobBefore && leadAfter?.status === "job") {
         return { converted: true };
       }
       return { converted: false };
