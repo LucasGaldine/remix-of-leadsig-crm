@@ -33,6 +33,7 @@ interface SettingSection {
 export default function Settings() {
   const [show2FASetup, setShow2FASetup] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchBar, setShowSearchBar] = useState(false);
   const { signOut, profile, role, currentAccount } = useAuth();
   const navigate = useNavigate();
   
@@ -259,20 +260,27 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Settings" />
+      <PageHeader
+        title="Settings"
+        showSearch={true}
+        onSearchClick={() => setShowSearchBar(!showSearchBar)}
+      />
 
-      <div className="max-w-[var(--content-max-width)] m-auto p-4">
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search settings..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      {showSearchBar && (
+        <div className="max-w-[var(--content-max-width)] m-auto p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search settings..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+              autoFocus
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <main className="max-w-[var(--content-max-width)] m-auto">
         {filteredSections.map((section) => (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Bell } from "lucide-react";
+import { ArrowLeft, Bell, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "./UserMenu";
@@ -12,6 +12,8 @@ export interface PageHeaderProps {
   showBack?: boolean;
   backTo?: string;
   showNotifications?: boolean;
+  showSearch?: boolean;
+  onSearchClick?: () => void;
   notificationCount?: number;
   actions?: React.ReactNode;
   className?: string;
@@ -23,6 +25,8 @@ export function PageHeader({
   showBack,
   backTo,
   showNotifications = true,
+  showSearch = false,
+  onSearchClick,
   actions,
   className,
 }: PageHeaderProps) {
@@ -68,6 +72,14 @@ export function PageHeader({
 
           <div className="flex items-center gap-2">
             {actions}
+            {showSearch && (
+              <button
+                onClick={onSearchClick}
+                className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+            )}
             {showNotifications && (
               <button
                 onClick={() => setPanelOpen(true)}
