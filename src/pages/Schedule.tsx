@@ -159,7 +159,7 @@ export default function Schedule() {
             </TabsList>
           </Tabs>
 
-          {canViewCrewHours && crewHours.length > 0 && (
+          {canViewCrewHours && (
             <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-lg">
               <Clock className="h-4 w-4 text-primary" />
               <div className="flex flex-col">
