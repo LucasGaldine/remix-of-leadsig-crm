@@ -29,6 +29,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/database";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
+import { MentionInput } from "@/components/ui/mention-input";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { extractMentions, renderMentionsAsText } from "@/lib/mentionParser";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -124,6 +127,7 @@ export default function LeadDetail() {
   // New note state
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const { data: teamMembers = [] } = useTeamMembers();
 
   // Qualification state
   const [qualNotes, setQualNotes] = useState("");
@@ -302,6 +306,9 @@ export default function LeadDetail() {
     if (!newNote.trim() || !lead) return;
 
     setAddingNote(true);
+
+    const mentionedUserIds = extractMentions(newNote);
+
     const { error } = await supabase.from("interactions").insert({
       lead_id: lead.id,
       account_id: currentAccount?.id,
@@ -310,6 +317,7 @@ export default function LeadDetail() {
       body: newNote,
       summary: newNote.slice(0, 100),
       created_by: user?.id,
+      mentioned_user_ids: mentionedUserIds.length > 0 ? mentionedUserIds : null,
     });
 
     if (error) {
@@ -1374,11 +1382,12 @@ export default function LeadDetail() {
         <div className="px-4 py-4 max-w-[var(--content-max-width)] m-auto flex flex-col gap-4">
           <div className="card-elevated rounded-lg p-4">
 
-              <Textarea
+              <MentionInput
                 value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="Add a note..."
+                onChange={setNewNote}
+                placeholder="Add a note... (use @ to mention team members)"
                 rows={2}
+                teamMembers={teamMembers}
               />
               <Button
                 size="sm"
@@ -1403,16 +1412,16 @@ export default function LeadDetail() {
                         <FileText className="h-4 w-4" />
                       </div>
 
-                      
+
                         <div className="flex-1 items-center justify-between gap-2 mb-0.5">
                           <p className="text-3">
-                          {interaction.body || interaction.summary}
+                          {renderMentionsAsText(interaction.body || interaction.summary || "", teamMembers)}
                           </p>
                           <span className="text-xs text-muted-foreground ml-auto">
                             {format(new Date(interaction.created_at), "MMM d, yyyy 'at' h:mm a")}
                           </span>
                         </div>
-                        
+
                     </div>
                   ))
               )}
