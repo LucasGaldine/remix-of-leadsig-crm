@@ -527,7 +527,7 @@ export default function EstimateDetail() {
       <PageHeader title={displayTitle} showBack backTo="/payments" />
 
 
-      <div className="bg-card border-b border-border px-4 py-4">
+      <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
         <div className="flex items-start justify-between mb-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -572,54 +572,58 @@ export default function EstimateDetail() {
         </Button>
       </div>
 
-      <div className="px-4 py-4 space-y-3">
-        <div
-          className="w-full card-elevated rounded-lg p-4 text-left"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-secondary">
-              <User className="h-5 w-5 text-secondary-foreground" />
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-foreground">Customer</p>
-              <p className="text-sm text-muted-foreground">{estimate.customer?.name || "Unknown"}</p>
-            </div>
-          </div>
-        </div>
-
-        {isRecurringQuote ? (
-          <div className="card-elevated rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-secondary">
-                <Calendar className="h-5 w-5 text-secondary-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-foreground">Job Schedule</p>
-                <p className="text-sm text-muted-foreground">{estimate.recurring_job?.name || "Unknown"}</p>
-              </div>
-            </div>
-          </div>
-        ) : (
+      <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4">
+        <div className="py-4 space-y-3">
           <button
             className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-            onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
+            onClick={() => estimate.customer && navigate(`/customers/${estimate.customer.id}`)}
           >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-secondary">
-                <Calendar className="h-5 w-5 text-secondary-foreground" />
+                <User className="h-5 w-5 text-secondary-foreground" />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-foreground">Job</p>
-                <p className="text-sm text-muted-foreground">{estimate.job?.name || "Unknown"}</p>
+                <p className="font-medium text-foreground">Customer</p>
+                <p className="text-sm text-muted-foreground">{estimate.customer?.name || "Unknown"}</p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
           </button>
-        )}
+
+          {isRecurringQuote ? (
+            <div className="card-elevated rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-secondary">
+                  <Calendar className="h-5 w-5 text-secondary-foreground" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">Job Schedule</p>
+                  <p className="text-sm text-muted-foreground">{estimate.recurring_job?.name || "Unknown"}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+              onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-secondary">
+                  <Calendar className="h-5 w-5 text-secondary-foreground" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">Job</p>
+                  <p className="text-sm text-muted-foreground">{estimate.job?.name || "Unknown"}</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </div>
+            </button>
+          )}
+        </div>
       </div>
 
-      {estimate.status === "accepted" && (
-        <div className="px-4">
+      <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
+        {estimate.status === "accepted" && (
           <div className="card-elevated rounded-lg p-4 border-l-4 border-l-emerald-500">
             <div className="flex items-center gap-2 mb-1">
               <Check className="h-4 w-4 text-emerald-600" />
@@ -636,11 +640,9 @@ export default function EstimateDetail() {
               )}
             </p>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="px-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground">Line Items</h3>
           <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
             <Edit2 className="h-4 w-4 mr-2" />
@@ -649,7 +651,7 @@ export default function EstimateDetail() {
         </div>
 
         {hasOriginalEstimate && (
-          <div className="flex gap-2 mb-3">
+          <div className="flex gap-2">
             <Button
               variant={!showingOriginal ? "default" : "outline"}
               size="sm"
@@ -739,9 +741,7 @@ export default function EstimateDetail() {
             </div>
           )}
         </div>
-      </div>
 
-      <div className="px-4 mt-4">
         <div className="card-elevated rounded-lg p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
@@ -768,100 +768,96 @@ export default function EstimateDetail() {
             <span className="font-bold text-lg text-foreground">${Number(estimate.total).toLocaleString()}</span>
           </div>
         </div>
-      </div>
 
-      {estimate.has_pending_changes && (
-        <div className="px-4 mt-4">
+        {estimate.has_pending_changes && (
           <Alert className="bg-amber-50 border-amber-200">
             <AlertCircle className="h-4 w-4 text-amber-600" />
             <AlertDescription className="text-amber-900">
               This estimate has pending changes awaiting customer approval. Changes have been sent to the customer for review.
             </AlertDescription>
           </Alert>
-        </div>
-      )}
+        )}
 
-      {hasChangeOrders && !estimate.has_pending_changes && (() => {
-        const recentChanges = estimate.line_items.some((item: any) => {
-          if (!item.is_change_order || !item.changed_at) return false;
-          const changedDate = new Date(item.changed_at);
-          const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
-          return hoursSinceChange < 24;
-        });
+        {hasChangeOrders && !estimate.has_pending_changes && (() => {
+          const recentChanges = estimate.line_items.some((item: any) => {
+            if (!item.is_change_order || !item.changed_at) return false;
+            const changedDate = new Date(item.changed_at);
+            const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
+            return hoursSinceChange < 24;
+          });
 
-        if (!recentChanges) return null;
+          if (!recentChanges) return null;
 
-        return (
-          <div className="px-4 mt-4">
+          return (
             <Alert>
               <History className="h-4 w-4" />
               <AlertDescription>
                 This estimate has been modified. Recent changes are marked with badges on the line items above.
               </AlertDescription>
             </Alert>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
-      {estimate.notes && (
-        <div className="px-4 mt-4">
-          <h3 className="font-semibold text-foreground mb-2">Notes</h3>
-          <div className="card-elevated rounded-lg p-4">
-            <p className="text-sm text-muted-foreground">{estimate.notes}</p>
-          </div>
-        </div>
-      )}
+        {estimate.notes && (
+          <>
+            <h3 className="font-semibold text-foreground">Notes</h3>
+            <div className="card-elevated rounded-lg p-4">
+              <p className="text-sm text-muted-foreground">{estimate.notes}</p>
+            </div>
+          </>
+        )}
 
-      {relatedInvoices.length > 0 && (
-        <div className="px-4 mt-4">
-          <h3 className="font-semibold text-foreground mb-2">Invoices</h3>
-          <div className="space-y-2">
-            {relatedInvoices.map((invoice) => (
-              <button
-                key={invoice.id}
-                onClick={() => navigate(`/payments/invoices/${invoice.id}`)}
-                className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium text-foreground">
-                        Invoice {invoice.invoice_number ? `#${invoice.invoice_number}` : ''}
-                      </p>
-                      <span className={cn(
-                        "text-2xs px-2 py-1 rounded-full",
-                        invoice.status === "paid" && "bg-emerald-100 text-emerald-800",
-                        invoice.status === "sent" && "bg-blue-100 text-blue-800",
-                        invoice.status === "draft" && "bg-secondary text-secondary-foreground",
-                        invoice.status === "overdue" && "bg-red-100 text-red-800"
-                      )}>
-                        {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                      </span>
+        {relatedInvoices.length > 0 && (
+          <>
+            <h3 className="font-semibold text-foreground">Invoices</h3>
+            <div className="space-y-2">
+              {relatedInvoices.map((invoice) => (
+                <button
+                  key={invoice.id}
+                  onClick={() => navigate(`/payments/invoices/${invoice.id}`)}
+                  className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-medium text-foreground">
+                          Invoice {invoice.invoice_number ? `#${invoice.invoice_number}` : ''}
+                        </p>
+                        <span className={cn(
+                          "text-2xs px-2 py-1 rounded-full",
+                          invoice.status === "paid" && "bg-emerald-100 text-emerald-800",
+                          invoice.status === "sent" && "bg-blue-100 text-blue-800",
+                          invoice.status === "draft" && "bg-secondary text-secondary-foreground",
+                          invoice.status === "overdue" && "bg-red-100 text-red-800"
+                        )}>
+                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                        </span>
+                      </div>
+                      {invoice.due_date && (
+                        <p className="text-sm text-muted-foreground">
+                          Due {format(new Date(invoice.due_date), "MMM d, yyyy")}
+                        </p>
+                      )}
                     </div>
-                    {invoice.due_date && (
-                      <p className="text-sm text-muted-foreground">
-                        Due {format(new Date(invoice.due_date), "MMM d, yyyy")}
-                      </p>
-                    )}
+                    <div className="text-right ml-4">
+                      <p className="font-bold text-foreground">${Number(invoice.total).toLocaleString()}</p>
+                      {Number(invoice.balance_due) > 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          ${Number(invoice.balance_due).toLocaleString()} due
+                        </p>
+                      )}
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground ml-2" />
                   </div>
-                  <div className="text-right ml-4">
-                    <p className="font-bold text-foreground">${Number(invoice.total).toLocaleString()}</p>
-                    {Number(invoice.balance_due) > 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        ${Number(invoice.balance_due).toLocaleString()} due
-                      </p>
-                    )}
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground ml-2" />
-                </div>
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 text-sm text-muted-foreground">
-            Total Invoiced: ${relatedInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toLocaleString()} of ${Number(estimate.total).toLocaleString()}
-          </div>
-        </div>
-      )}
+                </button>
+              ))}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Total Invoiced: ${relatedInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toLocaleString()} of ${Number(estimate.total).toLocaleString()}
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
             {portalLink && (
