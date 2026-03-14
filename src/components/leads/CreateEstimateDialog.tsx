@@ -444,27 +444,31 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
                     <div className="border rounded-lg p-3 space-y-2">
                       <p className="text-sm font-medium">Added Schedules ({addedSchedules.length})</p>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {addedSchedules.map((schedule, index) => (
-                          <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
-                            <div className="text-sm">
-                              <div className="font-medium">
-                                {format(new Date(schedule.date), "EEEE, MMM d, yyyy")}
-                              </div>
-                              {schedule.timeStart && schedule.timeEnd && (
-                                <div className="text-xs text-muted-foreground">
-                                  {schedule.timeStart} - {schedule.timeEnd}
+                        {addedSchedules.map((schedule, index) => {
+                          const [year, month, day] = schedule.date.split('-').map(Number);
+                          const localDate = new Date(year, month - 1, day);
+                          return (
+                            <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
+                              <div className="text-sm">
+                                <div className="font-medium">
+                                  {format(localDate, "EEEE, MMM d, yyyy")}
                                 </div>
-                              )}
+                                {schedule.timeStart && schedule.timeEnd && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {schedule.timeStart} - {schedule.timeEnd}
+                                  </div>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveSchedule(index)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveSchedule(index)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
