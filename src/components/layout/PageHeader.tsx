@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "./UserMenu";
 import { NotificationsPanel } from "@/components/notifications/NotificationsPanel";
+import { GlobalSearch } from "./GlobalSearch";
 import { useNotifications } from "@/hooks/useNotifications";
 
 export interface PageHeaderProps {
@@ -25,14 +26,23 @@ export function PageHeader({
   showBack,
   backTo,
   showNotifications = true,
-  showSearch = false,
+  showSearch = true,
   onSearchClick,
   actions,
   className,
 }: PageHeaderProps) {
   const navigate = useNavigate();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { unreadCount } = useNotifications();
+
+  const handleSearchClick = () => {
+    if (onSearchClick) {
+      onSearchClick();
+    } else {
+      setSearchOpen(true);
+    }
+  };
 
   const handleBack = () => {
     if (window.history.state?.idx > 0) {
@@ -74,7 +84,7 @@ export function PageHeader({
             {actions}
             {showSearch && (
               <button
-                onClick={onSearchClick}
+                onClick={handleSearchClick}
                 className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
               >
                 <Search className="h-5 w-5" />
@@ -100,6 +110,8 @@ export function PageHeader({
       {showNotifications && (
         <NotificationsPanel open={panelOpen} onOpenChange={setPanelOpen} />
       )}
+
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </>
   );
 }
