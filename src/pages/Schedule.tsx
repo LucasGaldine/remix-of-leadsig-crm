@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Loader as Loader2, Repeat, MapPin, Clock, Calendar as CalendarIcon, Users, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Loader as Loader2, Repeat, MapPin, Clock, Calendar as CalendarIcon, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -173,7 +173,6 @@ export default function Schedule() {
                   <span className="font-semibold">
                     {crewHours.reduce((sum, crew) => sum + crew.job_count, 0)} jobs
                   </span>
-                  <ChevronDown className="h-4 w-4" />
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="absolute right-4 mt-2 z-10">
