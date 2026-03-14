@@ -31,7 +31,7 @@ import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
-import { extractMentions, renderMentionsAsText } from "@/lib/mentionParser";
+import { renderMentionsAsText } from "@/lib/mentionParser";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -307,8 +307,6 @@ export default function LeadDetail() {
 
     setAddingNote(true);
 
-    const mentionedUserIds = extractMentions(newNote);
-
     const { error } = await supabase.from("interactions").insert({
       lead_id: lead.id,
       account_id: currentAccount?.id,
@@ -317,7 +315,6 @@ export default function LeadDetail() {
       body: newNote,
       summary: newNote.slice(0, 100),
       created_by: user?.id,
-      mentioned_user_ids: mentionedUserIds.length > 0 ? mentionedUserIds : null,
     });
 
     if (error) {
