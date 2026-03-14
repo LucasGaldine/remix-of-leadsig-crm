@@ -72,11 +72,10 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
       const { data: timeEntries, error: timeEntriesError } = await timeEntriesQuery;
       if (timeEntriesError) throw timeEntriesError;
 
-      const crewMap = new Map<string, CrewHoursData & { jobIds: Set<string> }>();
+      const crewMap = new Map<string, CrewHoursData>();
 
       (assignments || []).forEach((assignment) => {
         const uid = assignment.user_id;
-        const leadId = assignment.lead_id;
 
         if (!crewMap.has(uid)) {
           crewMap.set(uid, {
@@ -84,13 +83,10 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
             full_name: profileMap.get(uid) || "Unknown",
             total_hours: 0,
             job_count: 0,
-            jobIds: new Set(),
           });
         }
 
-        if (leadId) {
-          crewMap.get(uid)!.jobIds.add(leadId);
-        }
+        crewMap.get(uid)!.job_count += 1;
       });
 
       (timeEntries || []).forEach((entry: any) => {
@@ -104,10 +100,7 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
         }
       });
 
-      return Array.from(crewMap.values()).map(({ jobIds, ...rest }) => ({
-        ...rest,
-        job_count: jobIds.size,
-      })).sort((a, b) => b.total_hours - a.total_hours);
+      return Array.from(crewMap.values()).sort((a, b) => b.total_hours - a.total_hours);
     },
     enabled: !!currentAccount?.id,
   });
