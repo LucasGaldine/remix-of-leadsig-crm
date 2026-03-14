@@ -46,13 +46,14 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
 
       if (error) throw error;
 
-      const hoursMap = new Map<string, CrewHoursData>();
+      const hoursMap = new Map<string, CrewHoursData & { jobIds: Set<string> }>();
 
       (data || []).forEach((entry: any) => {
         if (entry.job_schedule?.job?.account_id !== currentAccount.id) return;
 
         const userId = entry.user_id;
         const fullName = entry.user?.full_name || "Unknown";
+        const leadId = entry.job_schedule?.lead_id;
 
         const startTime = new Date(entry.start_time);
         const endTime = new Date(entry.end_time);
@@ -61,18 +62,25 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
         if (hoursMap.has(userId)) {
           const existing = hoursMap.get(userId)!;
           existing.total_hours += hours;
-          existing.job_count += 1;
+          if (leadId) existing.jobIds.add(leadId);
         } else {
+          const jobIds = new Set<string>();
+          if (leadId) jobIds.add(leadId);
           hoursMap.set(userId, {
             user_id: userId,
             full_name: fullName,
             total_hours: hours,
-            job_count: 1,
+            job_count: 0,
+            jobIds,
           });
         }
       });
 
-      return Array.from(hoursMap.values()).sort((a, b) => b.total_hours - a.total_hours);
+      return Array.from(hoursMap.values()).map(({ jobIds, ...rest }) => ({
+        ...rest,
+        job_count: jobIds.size,
+      })).sort((a, b) => b.total_hours - a.total_hours);
+
     },
     enabled: !!currentAccount?.id,
   });
