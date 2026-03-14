@@ -285,10 +285,8 @@ export default function CustomerDetail() {
                 </div>
 
                 <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
-                  {totalValue > 0 && (
-                    <p className="text-2">${totalValue.toLocaleString()}</p>
-                  )}
-                  <p>{jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}</p>
+                  <p className="text-2">{jobs.length}</p>
+                  <p>{jobs.length === 1 ? 'job' : 'jobs'}</p>
                 </div>
               </div>
 
