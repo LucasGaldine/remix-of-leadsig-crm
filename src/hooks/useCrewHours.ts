@@ -18,6 +18,20 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
     queryFn: async () => {
       if (!currentAccount?.id) return [];
 
+      const startDateStr = format(startDate, "yyyy-MM-dd");
+      const endDateStr = format(endDate, "yyyy-MM-dd");
+
+      const { data: schedules, error: schedulesError } = await supabase
+        .from("job_schedules")
+        .select("id, lead_id, scheduled_date")
+        .gte("scheduled_date", startDateStr)
+        .lte("scheduled_date", endDateStr);
+
+      if (schedulesError) throw schedulesError;
+      if (!schedules || schedules.length === 0) return [];
+
+      const scheduleIds = schedules.map(s => s.id);
+
       let query = supabase
         .from("job_time_entries")
         .select(`
@@ -34,8 +48,7 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
             full_name
           )
         `)
-        .gte("job_schedule.scheduled_date", format(startDate, "yyyy-MM-dd"))
-        .lte("job_schedule.scheduled_date", format(endDate, "yyyy-MM-dd"))
+        .in("job_schedule_id", scheduleIds)
         .not("end_time", "is", null);
 
       if (userId) {
