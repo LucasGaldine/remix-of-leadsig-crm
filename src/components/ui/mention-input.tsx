@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, forwardRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AtSign, User } from "lucide-react";
 
@@ -48,7 +47,7 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       if (lastAtSymbol !== -1) {
         const textAfterAt = textBeforeCursor.substring(lastAtSymbol + 1);
 
-        if (!textAfterAt.includes(' ') && !textAfterAt.includes('\n')) {
+        if (!textAfterAt.includes(' ') && !textAfterAt.includes('\n') && !textAfterAt.includes('[')) {
           setMentionSearch(textAfterAt);
           setMentionStartPos(lastAtSymbol);
           setShowMentions(true);
@@ -65,7 +64,7 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       const afterCursor = value.substring(cursorPosition);
 
       const mentionText = `@[${member.full_name}](${member.user_id})`;
-      const newValue = beforeMention + mentionText + afterCursor;
+      const newValue = beforeMention + mentionText + ' ' + afterCursor;
 
       onChange(newValue);
       setShowMentions(false);
@@ -73,7 +72,7 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
 
       setTimeout(() => {
         if (textareaRef.current) {
-          const newCursorPos = beforeMention.length + mentionText.length;
+          const newCursorPos = beforeMention.length + mentionText.length + 1;
           textareaRef.current.focus();
           textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
         }
@@ -84,8 +83,6 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       member.full_name.toLowerCase().includes(mentionSearch.toLowerCase()) ||
       member.email.toLowerCase().includes(mentionSearch.toLowerCase())
     );
-
-    const displayValue = value.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
 
     const getInitials = (name: string) => {
       const parts = name.split(' ');
@@ -99,10 +96,11 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       <div className="relative">
         <Textarea
           ref={textareaRef}
-          value={displayValue}
+          value={value}
           onChange={handleInputChange}
           placeholder={placeholder}
           rows={rows}
+          className="font-mono text-sm"
         />
         {showMentions && (
           <div className="absolute z-50 mt-1 w-80 rounded-lg border bg-popover shadow-lg">
