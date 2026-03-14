@@ -3,11 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { format } from "date-fns";
 
-export function useScheduledJobs(date: string, myJobsOnly: boolean = false) {
+export function useScheduledJobs(date: string, myJobsOnly: boolean = false, crewMemberId?: string) {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["scheduled-jobs", date, myJobsOnly, user?.id],
+    queryKey: ["scheduled-jobs", date, myJobsOnly, crewMemberId, user?.id],
     queryFn: async () => {
       if (!user) return [];
 
@@ -29,11 +29,13 @@ export function useScheduledJobs(date: string, myJobsOnly: boolean = false) {
 
       let filteredData = data || [];
 
-      if (myJobsOnly) {
+      const targetUserId = crewMemberId || (myJobsOnly ? user.id : null);
+
+      if (targetUserId) {
         filteredData = filteredData.filter((schedule) => {
           const assignments = schedule.job?.job_assignments || [];
           return assignments.some((assignment: any) =>
-            assignment.user_id === user.id &&
+            assignment.user_id === targetUserId &&
             (assignment.job_schedule_id === schedule.id || assignment.job_schedule_id === null)
           );
         });
@@ -51,11 +53,11 @@ export function useScheduledJobs(date: string, myJobsOnly: boolean = false) {
   });
 }
 
-export function useScheduledJobsForWeek(startDate: Date, endDate: Date, myJobsOnly: boolean = false) {
+export function useScheduledJobsForWeek(startDate: Date, endDate: Date, myJobsOnly: boolean = false, crewMemberId?: string) {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["scheduled-jobs-week", format(startDate, "yyyy-MM-dd"), format(endDate, "yyyy-MM-dd"), myJobsOnly, user?.id],
+    queryKey: ["scheduled-jobs-week", format(startDate, "yyyy-MM-dd"), format(endDate, "yyyy-MM-dd"), myJobsOnly, crewMemberId, user?.id],
     queryFn: async () => {
       if (!user) return new Set<string>();
 
@@ -75,11 +77,13 @@ export function useScheduledJobsForWeek(startDate: Date, endDate: Date, myJobsOn
 
       let filteredData = data || [];
 
-      if (myJobsOnly) {
+      const targetUserId = crewMemberId || (myJobsOnly ? user.id : null);
+
+      if (targetUserId) {
         filteredData = filteredData.filter((schedule) => {
           const assignments = schedule.job?.job_assignments || [];
           return assignments.some((assignment: any) =>
-            assignment.user_id === user.id &&
+            assignment.user_id === targetUserId &&
             (assignment.job_schedule_id === schedule.id || assignment.job_schedule_id === null)
           );
         });
