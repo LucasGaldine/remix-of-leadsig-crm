@@ -26,9 +26,23 @@ export function renderMentionsAsText(text: string): string {
   return text.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
 }
 
-export function highlightMentions(text: string): string {
-  return text.replace(
-    /@\[([^\]]+)\]\([a-f0-9-]+\)/g,
-    '<span class="mention">@$1</span>'
-  );
+export function parseMentionsForDisplay(text: string): Array<{ type: 'text' | 'mention'; content: string; userId?: string }> {
+  const parts: Array<{ type: 'text' | 'mention'; content: string; userId?: string }> = [];
+  const mentionRegex = /@\[([^\]]+)\]\(([a-f0-9-]+)\)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mentionRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
+    }
+    parts.push({ type: 'mention', content: match[1], userId: match[2] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.substring(lastIndex) });
+  }
+
+  return parts;
 }

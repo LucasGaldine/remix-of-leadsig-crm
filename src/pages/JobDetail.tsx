@@ -41,7 +41,7 @@ import { Repeat } from "lucide-react";
 import { JobCosts } from "@/components/jobs/JobCosts";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
-import { extractMentions, renderMentionsAsText } from "@/lib/mentionParser";
+import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -1194,7 +1194,15 @@ export default function JobDetail() {
                       </div>
 
                     <div className="flex-1 items-center justify-between gap-2 mb-0.5">
-                    <p className="text-3 whitespace-pre-wrap">{renderMentionsAsText(note.body || note.summary || "")}</p>
+                    <p className="text-3 whitespace-pre-wrap">
+                      {parseMentionsForDisplay(note.body || note.summary || "").map((part, idx) =>
+                        part.type === 'mention' ? (
+                          <span key={idx} className="font-bold text-primary">@{part.content}</span>
+                        ) : (
+                          <span key={idx}>{part.content}</span>
+                        )
+                      )}
+                    </p>
 
                     <span className="text-xs text-muted-foreground ml-auto">
                       {format(new Date(note.created_at), "MMM d, yyyy 'at' h:mm a")}

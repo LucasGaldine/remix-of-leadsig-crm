@@ -31,7 +31,7 @@ import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
-import { renderMentionsAsText } from "@/lib/mentionParser";
+import { parseMentionsForDisplay } from "@/lib/mentionParser";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -1412,7 +1412,13 @@ export default function LeadDetail() {
 
                         <div className="flex-1 items-center justify-between gap-2 mb-0.5">
                           <p className="text-3">
-                          {renderMentionsAsText(interaction.body || interaction.summary || "")}
+                          {parseMentionsForDisplay(interaction.body || interaction.summary || "").map((part, idx) =>
+                            part.type === 'mention' ? (
+                              <span key={idx} className="font-bold text-primary">@{part.content}</span>
+                            ) : (
+                              <span key={idx}>{part.content}</span>
+                            )
+                          )}
                           </p>
                           <span className="text-xs text-muted-foreground ml-auto">
                             {format(new Date(interaction.created_at), "MMM d, yyyy 'at' h:mm a")}
