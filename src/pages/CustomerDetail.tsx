@@ -23,12 +23,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Copy, Check } from "lucide-react";
 
 function PortalLinkButton({ customerId }: { customerId: string }) {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [portalLink, setPortalLink] = useState("");
 
-  const handleGenerateAndCopy = async () => {
+  const handleGenerateLink = async () => {
     setLoading(true);
     try {
       const { data: customer } = await supabase
@@ -49,10 +54,8 @@ function PortalLinkButton({ customerId }: { customerId: string }) {
       }
 
       const link = `${window.location.origin}/client/job?token=${token}`;
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      toast.success("Portal link copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
+      setPortalLink(link);
+      setDialogOpen(true);
     } catch (err) {
       toast.error("Failed to generate portal link");
     } finally {
@@ -60,15 +63,63 @@ function PortalLinkButton({ customerId }: { customerId: string }) {
     }
   };
 
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(portalLink);
+      setCopied(true);
+      toast.success("Portal link copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast.error("Failed to copy link");
+    }
+  };
+
   return (
-    <Button
-      size="lg"
-      onClick={handleGenerateAndCopy}
-      disabled={loading}
-    >
-      <Share2 className="h-4 w-4 shrink-0" />
-      Client Portal
-    </Button>
+    <>
+      <Button
+        size="lg"
+        onClick={handleGenerateLink}
+        disabled={loading}
+      >
+        <Share2 className="h-4 w-4 shrink-0" />
+        Client Portal
+      </Button>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Client Portal Link</DialogTitle>
+            <DialogDescription>
+              Share this link with your client so they can view their jobs, estimates, and invoices.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <Input
+              value={portalLink}
+              readOnly
+              className="flex-1"
+              onClick={(e) => e.currentTarget.select()}
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleCopyLink}
+            >
+              {copied ? (
+                <Check className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
