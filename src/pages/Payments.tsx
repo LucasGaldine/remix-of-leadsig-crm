@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, DollarSign, FileText, CreditCard, ClipboardCheck } from "lucide-react";
+import { Search, DollarSign, FileText, CreditCard, ClipboardCheck, Download, History } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { EstimateCard } from "@/components/payments/EstimateCard";
 import { InvoiceCard } from "@/components/payments/InvoiceCard";
 import { PaymentCard } from "@/components/payments/PaymentCard";
+import { ExportInvoicesModal } from "@/components/payments/ExportInvoicesModal";
+import { ExportHistoryModal } from "@/components/payments/ExportHistoryModal";
 import { cn } from "@/lib/utils";
 import { useEstimates, EstimateWithDetails } from "@/hooks/useEstimates";
 import { useInvoices } from "@/hooks/useInvoices";
@@ -23,6 +26,8 @@ export default function Payments() {
   const [searchQuery, setSearchQuery] = useState("");
   const [agingFilter, setAgingFilter] = useState<AgingFilter>("all");
   const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   const { data: allEstimates = [], isLoading: estimatesLoading } = useEstimates({ limit: 100 });
   const { data: allInvoices = [], isLoading: invoicesLoading } = useInvoices({ limit: 100 });
@@ -115,6 +120,26 @@ export default function Payments() {
       <PageHeader
         title="Payments"
         subtitle={`$${totalCollected.toLocaleString()} collected this month`}
+        actions={
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setHistoryModalOpen(true)}
+              title="Export History"
+            >
+              <History className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setExportModalOpen(true)}
+              title="Export Data"
+            >
+              <Download className="h-5 w-5" />
+            </Button>
+          </div>
+        }
       />
 
       {allNeedsReview.length > 0 && (
@@ -324,6 +349,9 @@ export default function Payments() {
       
 
       <MobileNav />
+
+      <ExportInvoicesModal open={exportModalOpen} onOpenChange={setExportModalOpen} />
+      <ExportHistoryModal open={historyModalOpen} onOpenChange={setHistoryModalOpen} />
     </div>
   );
 }
