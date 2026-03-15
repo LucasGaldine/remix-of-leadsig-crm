@@ -34,6 +34,11 @@ export interface ExportRow {
   payment_status: string;
   status: string;
   crew_hours: string;
+  job_cost_equipment: string;
+  job_cost_materials: string;
+  job_cost_labor: string;
+  job_cost_other: string;
+  job_cost_total: string;
 }
 
 export function useFinancialExportHistory() {
@@ -84,6 +89,11 @@ function buildCSV(rows: ExportRow[]): string {
     "Payment Status",
     "Status",
     "Crew Hours",
+    "Job Cost (Equipment)",
+    "Job Cost (Materials)",
+    "Job Cost (Labor)",
+    "Job Cost (Other)",
+    "Job Cost Total",
   ];
 
   const lines = [headers.map(escapeCSVField).join(",")];
@@ -108,6 +118,11 @@ function buildCSV(rows: ExportRow[]): string {
         row.payment_status,
         row.status,
         row.crew_hours,
+        row.job_cost_equipment,
+        row.job_cost_materials,
+        row.job_cost_labor,
+        row.job_cost_other,
+        row.job_cost_total,
       ]
         .map(escapeCSVField)
         .join(",")
@@ -128,7 +143,7 @@ export function useGenerateExport() {
       const startStr = format(dateFrom, "yyyy-MM-dd");
       const endStr = format(dateTo, "yyyy-MM-dd");
 
-      const [invoicesRes, paymentsRes, timeEntriesRes] = await Promise.all([
+      const [invoicesRes, paymentsRes, timeEntriesRes, jobLineItemsRes] = await Promise.all([
         supabase
           .from("invoices")
           .select(`
@@ -159,15 +174,22 @@ export function useGenerateExport() {
           .gte("clock_in", `${startStr}T00:00:00`)
           .lte("clock_in", `${endStr}T23:59:59`)
           .not("clock_out", "is", null),
+
+        supabase
+          .from("job_line_items")
+          .select("lead_id, category, total")
+          .eq("account_id", currentAccount.id),
       ]);
 
       if (invoicesRes.error) throw invoicesRes.error;
       if (paymentsRes.error) throw paymentsRes.error;
       if (timeEntriesRes.error) throw timeEntriesRes.error;
+      if (jobLineItemsRes.error) throw jobLineItemsRes.error;
 
       const invoices = invoicesRes.data || [];
       const payments = paymentsRes.data || [];
       const timeEntries = timeEntriesRes.data || [];
+      const jobLineItems = jobLineItemsRes.data || [];
 
       const crewHoursByJob = new Map<string, number>();
       for (const entry of timeEntries) {
@@ -180,6 +202,28 @@ export function useGenerateExport() {
         );
       }
 
+      interface JobCostBreakdown {
+        equipment: number;
+        materials: number;
+        labor: number;
+        other: number;
+        total: number;
+      }
+      const jobCostsByJob = new Map<string, JobCostBreakdown>();
+      for (const item of jobLineItems) {
+        const existing = jobCostsByJob.get(item.lead_id) || {
+          equipment: 0, materials: 0, labor: 0, other: 0, total: 0,
+        };
+        const amount = Number(item.total);
+        const cat = item.category as string;
+        if (cat === "equipment") existing.equipment += amount;
+        else if (cat === "materials") existing.materials += amount;
+        else if (cat === "labor") existing.labor += amount;
+        else existing.other += amount;
+        existing.total += amount;
+        jobCostsByJob.set(item.lead_id, existing);
+      }
+
       const rows: ExportRow[] = [];
 
       for (const inv of invoices) {
@@ -189,6 +233,7 @@ export function useGenerateExport() {
         const description = lineItems.map((li: any) => `${li.name} x${li.quantity}`).join("; ");
         const leadId = inv.lead_id;
         const hours = leadId ? crewHoursByJob.get(leadId) : undefined;
+        const costs = leadId ? jobCostsByJob.get(leadId) : undefined;
 
         rows.push({
           date: inv.created_at ? format(new Date(inv.created_at), "yyyy-MM-dd") : "",
@@ -208,12 +253,19 @@ export function useGenerateExport() {
           payment_status: "",
           status: inv.status,
           crew_hours: hours ? hours.toFixed(1) : "",
+          job_cost_equipment: costs ? costs.equipment.toFixed(2) : "",
+          job_cost_materials: costs ? costs.materials.toFixed(2) : "",
+          job_cost_labor: costs ? costs.labor.toFixed(2) : "",
+          job_cost_other: costs ? costs.other.toFixed(2) : "",
+          job_cost_total: costs ? costs.total.toFixed(2) : "",
         });
       }
 
       for (const pmt of payments) {
         const customerName = (pmt.customer as any)?.name || "";
         const jobName = (pmt.job as any)?.name || "";
+        const pmtLeadId = pmt.job_id;
+        const pmtCosts = pmtLeadId ? jobCostsByJob.get(pmtLeadId) : undefined;
 
         rows.push({
           date: pmt.created_at ? format(new Date(pmt.created_at), "yyyy-MM-dd") : "",
@@ -233,6 +285,11 @@ export function useGenerateExport() {
           payment_status: pmt.status,
           status: "",
           crew_hours: "",
+          job_cost_equipment: pmtCosts ? pmtCosts.equipment.toFixed(2) : "",
+          job_cost_materials: pmtCosts ? pmtCosts.materials.toFixed(2) : "",
+          job_cost_labor: pmtCosts ? pmtCosts.labor.toFixed(2) : "",
+          job_cost_other: pmtCosts ? pmtCosts.other.toFixed(2) : "",
+          job_cost_total: pmtCosts ? pmtCosts.total.toFixed(2) : "",
         });
       }
 

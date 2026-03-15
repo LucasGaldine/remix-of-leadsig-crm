@@ -181,6 +181,7 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
               <li>Customer and job information</li>
               <li>Tax breakdown (subtotal, rate, tax amount)</li>
               <li>Crew hours worked per job</li>
+              <li>Job costs by category (equipment, materials, labor, other)</li>
             </ul>
           </div>
 
