@@ -122,6 +122,35 @@ export default function Payments() {
         subtitle={`$${totalCollected.toLocaleString()} collected this month`}
       />
 
+      <div className="px-4 pb-4 max-w-[var(--content-max-width)] m-auto">
+        <div className="rounded-lg bg-card border border-border p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-1">Accounting Export</h3>
+          <p className="text-xs text-muted-foreground mb-3">
+            Export financial data as CSV for QuickBooks or other accounting software.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => setExportModalOpen(true)}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export Data
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => setHistoryModalOpen(true)}
+            >
+              <History className="mr-2 h-4 w-4" />
+              Past Exports
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {allNeedsReview.length > 0 && (
         <div className="px-4 py-3 bg-card border-b border-border">
           <div className="flex gap-2">
@@ -324,34 +353,6 @@ export default function Payments() {
         )}
       </main>
 
-      <div className="px-4 pb-4 max-w-[var(--content-max-width)] m-auto">
-        <div className="rounded-lg bg-card border border-border p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-1">Accounting Export</h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            Export financial data as CSV for QuickBooks or other accounting software.
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setExportModalOpen(true)}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export Data
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setHistoryModalOpen(true)}
-            >
-              <History className="mr-2 h-4 w-4" />
-              Past Exports
-            </Button>
-          </div>
-        </div>
-      </div>
 
       <MobileNav />
 
