@@ -148,7 +148,7 @@ export default function Payments() {
 
 
 
-
+        <div className="border border-b-border p-4">
           <h3 className="text-sm font-semibold text-foreground mb-1">Accounting Export</h3>
           <p className="text-xs text-muted-foreground mb-3">
             Export financial data as CSV for QuickBooks or other accounting software.
@@ -173,7 +173,7 @@ export default function Payments() {
               Past Exports
             </Button>
           </div>
-
+        </div>
 
 
   
