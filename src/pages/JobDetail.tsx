@@ -693,9 +693,7 @@ export default function JobDetail() {
                   )}
 
                   {job.status === "completed" && !hasInvoice && (
-                    <Badge variant="outline" 
-                      className="flex justify-end text-right items-center gap-2 text-xs border-orange-300 bg-orange-50 text-orange-700"
->
+                    <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
                       <DollarSign className="h-3 w-3 mr-1" />
                       Needs Invoice: ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
                     </Badge>
