@@ -286,7 +286,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               Job Costs
             </DialogTitle>
 
-            <div className = "flex gap-4">
+            <div className = "flex gap-4 pr-4">
             <Button
               variant="outline"
               size="sm"
