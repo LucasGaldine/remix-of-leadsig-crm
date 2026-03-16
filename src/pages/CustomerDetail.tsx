@@ -275,17 +275,17 @@ export default function CustomerDetail() {
                 </div>
 
                 <div className="text-5 animate-in fade-in slide-in-from-top-1 duration-200">
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{customer.phone || "No phone"}</span>
+                  <div className="flex items-start gap-2">
+                    <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0">{customer.phone || "No phone"}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{customer.email || "No email"}</span>
+                  <div className="flex items-start gap-2">
+                    <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0">{customer.email || "No email"}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0">
                       {customer.address && customer.city
                         ? `${customer.address}, ${customer.city}`
                         : customer.address || customer.city || "No address"}

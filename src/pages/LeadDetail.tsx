@@ -793,17 +793,17 @@ export default function LeadDetail() {
                   
 
                   <div className="text-5 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{formatPhone(lead.phone)}</span>
+                    <div className="flex items-start gap-2">
+                      <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{formatPhone(lead.phone)}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{lead.email || "No email"}</span>
+                    <div className="flex items-start gap-2">
+                      <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{lead.email || "No email"}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
                     </div>
                   </div>
                 </div>

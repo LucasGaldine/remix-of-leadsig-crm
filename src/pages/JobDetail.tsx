@@ -667,15 +667,15 @@ export default function JobDetail() {
                 </div>
                 
                 <div className="text-5">
-                  <div className="flex items-center gap-1">
-                    <Briefcase className="h-3.5 w-3.5 shrink-0"></Briefcase>
-                  <p >
-                    {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
-                  </p>
+                  <div className="flex items-start gap-1">
+                    <Briefcase className="h-3.5 w-3.5 shrink-0 mt-0.5"></Briefcase>
+                    <p className="break-words min-w-0">
+                      {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
+                    </p>
                   </div>
-                  <button onClick={openAddressDialog} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{clientAddress || "No address"}</span>
+                  <button onClick={openAddressDialog} className="flex items-start gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors text-left">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0">{clientAddress || "No address"}</span>
                   </button>
                 </div>
               </div>
