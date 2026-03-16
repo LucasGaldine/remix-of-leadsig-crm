@@ -147,7 +147,18 @@ export default function Schedule() {
       {/* View Controls */}
       <div className="bg-card border-b border-border px-4 py-3 space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
+          <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+            <SelectTrigger className="w-28 md:hidden">
+              <CalendarIcon className="h-4 w-4 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="week">Week</SelectItem>
+              <SelectItem value="month">Month</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto hidden md:block">
             <TabsList>
               <TabsTrigger value="week" className="gap-2">
                 <CalendarIcon className="h-4 w-4" />
