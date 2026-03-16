@@ -135,7 +135,7 @@ function ExpandedLineItem({
               onUpdate("description", description);
             }}
           />
-          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove} disabled={!canRemove}>
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
