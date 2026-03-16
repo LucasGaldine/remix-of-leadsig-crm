@@ -89,16 +89,14 @@ function ExpandedLineItem({
   jobId,
   onUpdate,
   onCollapse,
-  onRemove,
-  canRemove,
+  onRevert,
 }: {
   item: LineItemForm;
   index: number;
   jobId: string;
   onUpdate: (field: keyof LineItemForm, value: string) => void;
   onCollapse: () => void;
-  onRemove: () => void;
-  canRemove: boolean;
+  onRevert: () => void;
 }) {
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
@@ -108,26 +106,16 @@ function ExpandedLineItem({
     <div className="p-4 border border-border rounded-lg space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-        <div className="flex items-center gap-1">
-          <QuickEstimateLineItem
-            leadId={jobId}
-            onApply={(name, quantity, unit, unitPrice, description) => {
-              onUpdate("name", name);
-              onUpdate("quantity", quantity);
-              onUpdate("unit", unit);
-              onUpdate("unit_price", unitPrice);
-              onUpdate("description", description);
-            }}
-          />
-          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onCollapse} title="Done editing">
-            <Check className="h-4 w-4" />
-          </Button>
-          {canRemove && (
-            <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRemove}>
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+        <QuickEstimateLineItem
+          leadId={jobId}
+          onApply={(name, quantity, unit, unitPrice, description) => {
+            onUpdate("name", name);
+            onUpdate("quantity", quantity);
+            onUpdate("unit", unit);
+            onUpdate("unit_price", unitPrice);
+            onUpdate("description", description);
+          }}
+        />
       </div>
 
       <div className="space-y-2">
@@ -217,10 +205,20 @@ function ExpandedLineItem({
         />
       </div>
 
-      <div className="pt-2 border-t border-border">
+      <div className="pt-2 border-t border-border space-y-3">
         <div className="flex justify-between items-center">
           <span className="text-sm text-muted-foreground">Line Total:</span>
           <span className="font-semibold">${lineTotal}</span>
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" className="flex-1" onClick={onRevert}>
+            <X className="h-4 w-4 mr-2" />
+            Revert
+          </Button>
+          <Button type="button" className="flex-1" onClick={onCollapse}>
+            <Check className="h-4 w-4 mr-2" />
+            Done
+          </Button>
         </div>
       </div>
     </div>
@@ -230,6 +228,7 @@ function ExpandedLineItem({
 export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: EditEstimateModalProps) {
   const [saving, setSaving] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
   });
@@ -264,8 +263,25 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         isNew: true,
       },
     ];
+    const newIndex = newItems.length - 1;
     setLineItems(newItems);
-    setExpandedIndex(newItems.length - 1);
+    setSnapshots(prev => ({ ...prev, [newIndex]: { ...newItems[newIndex] } }));
+    setExpandedIndex(newIndex);
+  };
+
+  const expandLineItem = (index: number) => {
+    setSnapshots(prev => ({ ...prev, [index]: { ...lineItems[index] } }));
+    setExpandedIndex(index);
+  };
+
+  const revertLineItem = (index: number) => {
+    const snapshot = snapshots[index];
+    if (snapshot) {
+      const updated = [...lineItems];
+      updated[index] = { ...snapshot };
+      setLineItems(updated);
+    }
+    setExpandedIndex(null);
   };
 
   const updateLineItem = (index: number, field: keyof LineItemForm, value: string) => {
@@ -517,15 +533,14 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                   jobId={estimate.job_id}
                   onUpdate={(field, value) => updateLineItem(index, field, value)}
                   onCollapse={() => setExpandedIndex(null)}
-                  onRemove={() => removeLineItem(index)}
-                  canRemove={lineItems.length > 1}
+                  onRevert={() => revertLineItem(index)}
                 />
               ) : (
                 <CompactLineItem
                   key={index}
                   item={item}
                   index={index}
-                  onExpand={() => setExpandedIndex(index)}
+                  onExpand={() => expandLineItem(index)}
                   onRemove={() => removeLineItem(index)}
                   canRemove={lineItems.length > 1}
                 />
