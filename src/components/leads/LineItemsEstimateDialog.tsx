@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,7 +108,17 @@ function ExpandedLineItem({
   onRemove: () => void;
   canRemove: boolean;
 }) {
+  const [priceDisplay, setPriceDisplay] = useState(
+    item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""
+  );
+  const [isFocused, setIsFocused] = useState(false);
   const lineTotal = parseFloat(item.quantity || "0") * parseFloat(item.unit_price || "0");
+
+  useEffect(() => {
+    if (!isFocused) {
+      setPriceDisplay(item.unit_price ? formatDollar(parseFloat(item.unit_price)) : "");
+    }
+  }, [item.unit_price, isFocused]);
 
   return (
     <div className="p-4 border border-border rounded-lg space-y-3">
@@ -125,11 +135,9 @@ function ExpandedLineItem({
               onUpdate("description", description);
             }}
           />
-          {canRemove && (
-            <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove} disabled={!canRemove}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
 
@@ -215,10 +223,20 @@ function ExpandedLineItem({
             id={`item-price-${index}`}
             type="text"
             inputMode="decimal"
-            value={item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""}
+            value={priceDisplay}
             onChange={(e) => {
               const raw = e.target.value.replace(/[^0-9.]/g, "");
+              setPriceDisplay(e.target.value.replace(/[^0-9.,]/g, ""));
               onUpdate("unit_price", raw);
+            }}
+            onFocus={() => {
+              setIsFocused(true);
+              setPriceDisplay(item.unit_price || "");
+            }}
+            onBlur={() => {
+              setIsFocused(false);
+              const val = parseFloat(item.unit_price || "0");
+              setPriceDisplay(val ? formatDollar(val) : "");
             }}
             placeholder="0.00"
             className="pl-7"
