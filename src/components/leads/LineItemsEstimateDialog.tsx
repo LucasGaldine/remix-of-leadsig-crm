@@ -206,15 +206,19 @@ function ExpandedLineItem({
 
       <div className="space-y-2">
         <Label htmlFor={`item-price-${index}`}>Unit Price *</Label>
-        <Input
-          id={`item-price-${index}`}
-          type="number"
-          value={item.unit_price}
-          onChange={(e) => onUpdate("unit_price", e.target.value)}
-          placeholder="0.00"
-          min="0"
-          step="0.01"
-        />
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+          <Input
+            id={`item-price-${index}`}
+            type="number"
+            value={item.unit_price}
+            onChange={(e) => onUpdate("unit_price", e.target.value)}
+            placeholder="0.00"
+            min="0"
+            step="0.01"
+            className="pl-7"
+          />
+        </div>
       </div>
 
       <div className="pt-2 border-t border-border space-y-3">
@@ -227,8 +231,8 @@ function ExpandedLineItem({
             <RotateCcw className="h-4 w-4 mr-2" />
             Revert
           </Button>
-          <Button type="button" className="flex-1" onClick={onCollapse}>
-            Done
+          <Button type="button" variant="outline" size="icon" onClick={onCollapse} title="Done">
+            <Check className="h-4 w-4" />
           </Button>
         </div>
       </div>
