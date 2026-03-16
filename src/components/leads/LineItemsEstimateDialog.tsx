@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, Check, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { QuickEstimateLineItem } from "./QuickEstimateLineItem";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -47,17 +47,40 @@ interface LineItemsEstimateDialogProps {
 function CompactLineItem({
   item,
   index,
+  pendingDelete,
   onExpand,
   onRemove,
-  canRemove,
+  onUndoRemove,
 }: {
   item: EstimateLineItemInit;
   index: number;
+  pendingDelete: boolean;
   onExpand: () => void;
   onRemove: () => void;
-  canRemove: boolean;
+  onUndoRemove: () => void;
 }) {
   const lineTotal = parseFloat(item.quantity || "0") * parseFloat(item.unit_price || "0");
+
+  if (pendingDelete) {
+    return (
+      <div className="p-3 border border-destructive/30 rounded-lg flex items-center justify-between gap-3 bg-destructive/5">
+        <div className="flex-1 min-w-0 opacity-50">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate line-through">
+              {item.name || `Item ${index + 1}`}
+            </span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap line-through">
+              {item.quantity} x ${formatDollar(parseFloat(item.unit_price || "0"))}
+            </span>
+          </div>
+        </div>
+        <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground shrink-0" onClick={onUndoRemove}>
+          <Undo2 className="h-3.5 w-3.5" />
+          <span className="text-xs">Undo</span>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-3 border border-border rounded-lg flex items-center justify-between gap-3 bg-card">
@@ -79,11 +102,9 @@ function CompactLineItem({
         <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
           <Pencil className="h-3.5 w-3.5" />
         </Button>
-        {canRemove && (
-          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRemove}>
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
+          <X className="h-3.5 w-3.5" />
+        </Button>
       </div>
     </div>
   );
@@ -97,7 +118,6 @@ function ExpandedLineItem({
   onCollapse,
   onRevert,
   onRemove,
-  canRemove,
 }: {
   item: EstimateLineItemInit;
   index: number;
@@ -106,7 +126,6 @@ function ExpandedLineItem({
   onCollapse: () => void;
   onRevert: () => void;
   onRemove: () => void;
-  canRemove: boolean;
 }) {
   const [priceDisplay, setPriceDisplay] = useState(
     item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""
@@ -273,6 +292,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
 
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
+  const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
   const [creating, setCreating] = useState(false);
@@ -282,6 +302,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
   useEffect(() => {
     if (open) {
       setLineItems(defaultLineItems);
+      setPendingDeleteIndices(new Set());
       setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
       setSurcharge(String(currentAccount?.default_surcharge ?? 0));
       setExpandedIndex(0);
@@ -312,13 +333,17 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     setExpandedIndex(null);
   };
 
-  const removeLineItem = (index: number) => {
-    setLineItems(lineItems.filter((_, i) => i !== index));
-    if (expandedIndex === index) {
-      setExpandedIndex(null);
-    } else if (expandedIndex !== null && expandedIndex > index) {
-      setExpandedIndex(expandedIndex - 1);
-    }
+  const markForDelete = (index: number) => {
+    setPendingDeleteIndices(prev => new Set(prev).add(index));
+    if (expandedIndex === index) setExpandedIndex(null);
+  };
+
+  const undoDelete = (index: number) => {
+    setPendingDeleteIndices(prev => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
   };
 
   const updateLineItem = (index: number, field: keyof EstimateLineItemInit, value: string) => {
@@ -327,8 +352,10 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     setLineItems(updated);
   };
 
+  const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
+
   const calculateSubtotal = () => {
-    return lineItems
+    return activeLineItems
       .filter(item => item.unit_price && item.quantity)
       .reduce((sum, item) => {
         const quantity = parseFloat(item.quantity || "0");
@@ -369,7 +396,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       return;
     }
 
-    const validLineItems = lineItems.filter(item => item.name && item.unit_price);
+    const validLineItems = activeLineItems.filter(item => item.name && item.unit_price);
     if (validLineItems.length === 0) {
       toast.error("At least one line item is required");
       return;
@@ -506,7 +533,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
             <Label className="text-base font-semibold">Line Items *</Label>
 
             {lineItems.map((item, index) =>
-              expandedIndex === index ? (
+              expandedIndex === index && !pendingDeleteIndices.has(index) ? (
                 <ExpandedLineItem
                   key={index}
                   item={item}
@@ -515,17 +542,17 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
                   onUpdate={(field, value) => updateLineItem(index, field, value)}
                   onCollapse={() => setExpandedIndex(null)}
                   onRevert={() => revertLineItem(index)}
-                  onRemove={() => removeLineItem(index)}
-                  canRemove={lineItems.length > 1}
+                  onRemove={() => markForDelete(index)}
                 />
               ) : (
                 <CompactLineItem
                   key={index}
                   item={item}
                   index={index}
+                  pendingDelete={pendingDeleteIndices.has(index)}
                   onExpand={() => expandLineItem(index)}
-                  onRemove={() => removeLineItem(index)}
-                  canRemove={lineItems.length > 1}
+                  onRemove={() => markForDelete(index)}
+                  onUndoRemove={() => undoDelete(index)}
                 />
               )
             )}
@@ -612,7 +639,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={creating || !lineItems.some(item => item.name && item.unit_price)}
+            disabled={creating || !activeLineItems.some(item => item.name && item.unit_price)}
           >
             {creating ? "Creating..." : "Create Estimate"}
           </Button>

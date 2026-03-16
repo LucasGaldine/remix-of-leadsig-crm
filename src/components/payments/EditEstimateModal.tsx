@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, X, Check, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,19 +43,42 @@ interface EditEstimateModalProps {
 function CompactLineItem({
   item,
   index,
+  pendingDelete,
   onExpand,
   onRemove,
-  canRemove,
+  onUndoRemove,
 }: {
   item: LineItemForm;
   index: number;
+  pendingDelete: boolean;
   onExpand: () => void;
   onRemove: () => void;
-  canRemove: boolean;
+  onUndoRemove: () => void;
 }) {
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
   const lineTotal = qty * price;
+
+  if (pendingDelete) {
+    return (
+      <div className="p-3 border border-destructive/30 rounded-lg flex items-center justify-between gap-3 bg-destructive/5">
+        <div className="flex-1 min-w-0 opacity-50">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate line-through">
+              {item.name || `Item ${index + 1}`}
+            </span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap line-through">
+              {item.quantity} x ${formatDollar(price)}
+            </span>
+          </div>
+        </div>
+        <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground shrink-0" onClick={onUndoRemove}>
+          <Undo2 className="h-3.5 w-3.5" />
+          <span className="text-xs">Undo</span>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-3 border border-border rounded-lg flex items-center justify-between gap-3 bg-card">
@@ -77,11 +100,9 @@ function CompactLineItem({
         <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
           <Pencil className="h-3.5 w-3.5" />
         </Button>
-        {canRemove && (
-          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRemove}>
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
+          <X className="h-3.5 w-3.5" />
+        </Button>
       </div>
     </div>
   );
@@ -104,7 +125,6 @@ function ExpandedLineItem({
   onCollapse: () => void;
   onRevert: () => void;
   onRemove: () => void;
-  canRemove: boolean;
 }) {
   const [priceDisplay, setPriceDisplay] = useState(
     item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""
@@ -267,6 +287,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   const [saving, setSaving] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
+  const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
   });
@@ -328,17 +349,17 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     setLineItems(updated);
   };
 
-  const removeLineItem = (index: number) => {
-    if (lineItems.length === 1) {
-      toast.error("You must have at least one line item");
-      return;
-    }
-    setLineItems(lineItems.filter((_, i) => i !== index));
-    if (expandedIndex === index) {
-      setExpandedIndex(null);
-    } else if (expandedIndex !== null && expandedIndex > index) {
-      setExpandedIndex(expandedIndex - 1);
-    }
+  const markForDelete = (index: number) => {
+    setPendingDeleteIndices(prev => new Set(prev).add(index));
+    if (expandedIndex === index) setExpandedIndex(null);
+  };
+
+  const undoDelete = (index: number) => {
+    setPendingDeleteIndices(prev => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
   };
 
   const calculateLineItemTotal = (quantity: string, unitPrice: string) => {
@@ -347,8 +368,10 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     return qty * price;
   };
 
+  const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
+
   const calculateTotals = () => {
-    const subtotal = lineItems.reduce((sum, item) => {
+    const subtotal = activeLineItems.reduce((sum, item) => {
       return sum + calculateLineItemTotal(item.quantity, item.unit_price);
     }, 0);
     const profitMarginValue = parseFloat(profitMargin || '0') / 100;
@@ -364,7 +387,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   };
 
   const saveChanges = async () => {
-    if (lineItems.length === 0 || lineItems.every(item => !item.name)) {
+    if (activeLineItems.length === 0 || activeLineItems.every(item => !item.name)) {
       toast.error("Please add at least one line item with a name");
       return;
     }
@@ -380,7 +403,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
           .map((item: any) => item.id)
       );
 
-      const currentIds = new Set(lineItems.filter((item) => item.id).map((item) => item.id));
+      const currentIds = new Set(activeLineItems.filter((item) => item.id).map((item) => item.id));
       const deletedIds = Array.from(existingIds).filter((id) => !currentIds.has(id as string));
 
       if (shouldTrackChanges) {
@@ -408,7 +431,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         }
       }
 
-      for (const item of lineItems) {
+      for (const item of activeLineItems) {
         const quantity = parseFloat(item.quantity) || 1;
         const unitPrice = parseFloat(item.unit_price) || 0;
         const total = quantity * unitPrice;
@@ -563,7 +586,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
             <Label className="text-base font-semibold">Line Items *</Label>
 
             {lineItems.map((item, index) =>
-              expandedIndex === index ? (
+              expandedIndex === index && !pendingDeleteIndices.has(index) ? (
                 <ExpandedLineItem
                   key={index}
                   item={item}
@@ -572,17 +595,17 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                   onUpdate={(field, value) => updateLineItem(index, field, value)}
                   onCollapse={() => setExpandedIndex(null)}
                   onRevert={() => revertLineItem(index)}
-                  onRemove={() => removeLineItem(index)}
-                  canRemove={lineItems.length > 1}
+                  onRemove={() => markForDelete(index)}
                 />
               ) : (
                 <CompactLineItem
                   key={index}
                   item={item}
                   index={index}
+                  pendingDelete={pendingDeleteIndices.has(index)}
                   onExpand={() => expandLineItem(index)}
-                  onRemove={() => removeLineItem(index)}
-                  canRemove={lineItems.length > 1}
+                  onRemove={() => markForDelete(index)}
+                  onUndoRemove={() => undoDelete(index)}
                 />
               )
             )}
