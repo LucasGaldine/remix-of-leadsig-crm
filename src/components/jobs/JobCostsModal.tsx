@@ -34,6 +34,13 @@ interface EditingLineItem {
   category: LineItemCategory;
 }
 
+const CATEGORY_OPTIONS: { value: LineItemCategory; label: string }[] = [
+  { value: "equipment", label: "Equipment" },
+  { value: "materials", label: "Materials" },
+  { value: "labor", label: "Labor" },
+  { value: "other", label: "Other" },
+];
+
 export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps) => {
   const { lineItems, isLoading, totalCost, resyncFromEstimate, addLineItem, updateLineItem, deleteLineItem } = useJobLineItems(jobId);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -123,11 +130,157 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     }
   };
 
+  const formatCurrency = (value: number) =>
+    `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const renderMobileEditForm = (
+    data: typeof newItem | EditingLineItem,
+    setData: (d: any) => void,
+    onSave: () => void,
+    onCancel: () => void,
+    saveDisabled?: boolean,
+  ) => (
+    <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Item</label>
+          <Input
+            placeholder="Item name"
+            value={data.name}
+            onChange={(e) => setData({ ...data, name: e.target.value })}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Category</label>
+          <Select
+            value={data.category}
+            onValueChange={(value) => setData({ ...data, category: value as LineItemCategory })}
+          >
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORY_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-muted-foreground mb-1 block">Description</label>
+        <Input
+          placeholder="Description"
+          value={data.description}
+          onChange={(e) => setData({ ...data, description: e.target.value })}
+          className="h-8 text-sm"
+        />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Qty</label>
+          <Input
+            type="number"
+            value={data.quantity}
+            onChange={(e) => setData({ ...data, quantity: e.target.value })}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Unit</label>
+          <Input
+            value={data.unit}
+            onChange={(e) => setData({ ...data, unit: e.target.value })}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Unit Price</label>
+          <Input
+            type="number"
+            step="0.01"
+            value={data.unit_price}
+            onChange={(e) => setData({ ...data, unit_price: e.target.value })}
+            className="h-8 text-sm"
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-between pt-1">
+        <p className="text-sm font-medium">
+          Total: {formatCurrency((parseFloat(data.quantity) || 0) * (parseFloat(data.unit_price) || 0))}
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={onCancel} className="h-8">
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onSave} disabled={saveDisabled} className="h-8">
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderMobileCard = (item: any) => {
+    if (editingId === item.id && editingData) {
+      return (
+        <div key={item.id}>
+          {renderMobileEditForm(
+            editingData,
+            (d: EditingLineItem) => setEditingData(d),
+            saveEdit,
+            cancelEdit,
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div key={item.id} className="border rounded-lg p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sm">{item.name}</p>
+            {item.description && (
+              <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+            )}
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+              <span className="capitalize">{item.category}</span>
+              <span>{Number(item.quantity).toLocaleString()} {item.unit}</span>
+              <span>{formatCurrency(Number(item.unit_price))}/ea</span>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="font-semibold text-sm">{formatCurrency(Number(item.total))}</p>
+            <div className="flex gap-0.5 mt-1 justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => startEdit(item)}
+                className="h-7 w-7 p-0"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setDeleteId(item.id)}
+                className="h-7 w-7 p-0 text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
               Job Costs
@@ -137,9 +290,11 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               size="sm"
               onClick={() => resyncFromEstimate.mutate()}
               disabled={resyncFromEstimate.isPending}
+              className="shrink-0"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${resyncFromEstimate.isPending ? 'animate-spin' : ''}`} />
-              Resync from Estimate
+              <span className="hidden sm:inline">Resync from Estimate</span>
+              <span className="sm:hidden">Resync</span>
             </Button>
           </div>
         </DialogHeader>
@@ -162,50 +317,181 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               </Button>
             </div>
 
-            <ScrollArea className="h-[60vh]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[20%]">Item</TableHead>
-                    <TableHead className="w-[20%]">Description</TableHead>
-                    <TableHead className="w-[12%]">Category</TableHead>
-                    <TableHead className="text-right w-[12%]">Quantity</TableHead>
-                    <TableHead className="text-right w-[12%]">Unit Price</TableHead>
-                    <TableHead className="text-right w-[12%]">Total</TableHead>
-                    <TableHead className="w-[12%]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lineItems.map((item) => (
-                    editingId === item.id && editingData ? (
-                      <TableRow key={item.id}>
+            {/* Mobile card layout */}
+            <div className="md:hidden">
+              <ScrollArea className="h-[55vh]">
+                <div className="space-y-2 pr-2">
+                  {isAdding && renderMobileEditForm(
+                    newItem,
+                    (d: typeof newItem) => setNewItem(d),
+                    handleAdd,
+                    () => {
+                      setIsAdding(false);
+                      setNewItem({ name: "", description: "", quantity: "1", unit: "each", unit_price: "0", category: "other" as LineItemCategory });
+                    },
+                    !newItem.name.trim(),
+                  )}
+                  {lineItems.map(renderMobileCard)}
+                  {lineItems.length === 0 && !isAdding && (
+                    <p className="text-center text-sm text-muted-foreground py-8">No line items yet</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {/* Desktop table layout */}
+            <div className="hidden md:block">
+              <ScrollArea className="h-[60vh]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[20%]">Item</TableHead>
+                      <TableHead className="w-[20%]">Description</TableHead>
+                      <TableHead className="w-[12%]">Category</TableHead>
+                      <TableHead className="text-right w-[12%]">Quantity</TableHead>
+                      <TableHead className="text-right w-[12%]">Unit Price</TableHead>
+                      <TableHead className="text-right w-[12%]">Total</TableHead>
+                      <TableHead className="w-[12%]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lineItems.map((item) => (
+                      editingId === item.id && editingData ? (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            <Input
+                              value={editingData.name}
+                              onChange={(e) => setEditingData({ ...editingData, name: e.target.value })}
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              value={editingData.description}
+                              onChange={(e) => setEditingData({ ...editingData, description: e.target.value })}
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={editingData.category}
+                              onValueChange={(value) => setEditingData({ ...editingData, category: value as LineItemCategory })}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CATEGORY_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                value={editingData.quantity}
+                                onChange={(e) => setEditingData({ ...editingData, quantity: e.target.value })}
+                                className="h-8 w-16"
+                              />
+                              <Input
+                                value={editingData.unit}
+                                onChange={(e) => setEditingData({ ...editingData, unit: e.target.value })}
+                                className="h-8 w-20"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={editingData.unit_price}
+                              onChange={(e) => setEditingData({ ...editingData, unit_price: e.target.value })}
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency((parseFloat(editingData.quantity) || 0) * (parseFloat(editingData.unit_price) || 0))}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" onClick={saveEdit} className="h-8 w-8 p-0">
+                                <Check className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={cancelEdit} className="h-8 w-8 p-0">
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {item.description || "\u2014"}
+                          </TableCell>
+                          <TableCell className="capitalize text-sm">
+                            {item.category}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {Number(item.quantity).toLocaleString()} {item.unit}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(Number(item.unit_price))}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(Number(item.total))}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => startEdit(item)} className="h-8 w-8 p-0">
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDeleteId(item.id)}
+                                className="h-8 w-8 p-0 text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    ))}
+
+                    {isAdding && (
+                      <TableRow>
                         <TableCell>
                           <Input
-                            value={editingData.name}
-                            onChange={(e) => setEditingData({ ...editingData, name: e.target.value })}
+                            placeholder="Item name"
+                            value={newItem.name}
+                            onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
                             className="h-8"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
-                            value={editingData.description}
-                            onChange={(e) => setEditingData({ ...editingData, description: e.target.value })}
+                            placeholder="Description"
+                            value={newItem.description}
+                            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
                             className="h-8"
                           />
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={editingData.category}
-                            onValueChange={(value) => setEditingData({ ...editingData, category: value as LineItemCategory })}
+                            value={newItem.category}
+                            onValueChange={(value) => setNewItem({ ...newItem, category: value as LineItemCategory })}
                           >
                             <SelectTrigger className="h-8">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="equipment">Equipment</SelectItem>
-                              <SelectItem value="materials">Materials</SelectItem>
-                              <SelectItem value="labor">Labor</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
+                              {CATEGORY_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </TableCell>
@@ -213,13 +499,13 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                           <div className="flex gap-1">
                             <Input
                               type="number"
-                              value={editingData.quantity}
-                              onChange={(e) => setEditingData({ ...editingData, quantity: e.target.value })}
+                              value={newItem.quantity}
+                              onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
                               className="h-8 w-16"
                             />
                             <Input
-                              value={editingData.unit}
-                              onChange={(e) => setEditingData({ ...editingData, unit: e.target.value })}
+                              value={newItem.unit}
+                              onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
                               className="h-8 w-20"
                             />
                           </div>
@@ -228,23 +514,21 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                           <Input
                             type="number"
                             step="0.01"
-                            value={editingData.unit_price}
-                            onChange={(e) => setEditingData({ ...editingData, unit_price: e.target.value })}
+                            value={newItem.unit_price}
+                            onChange={(e) => setNewItem({ ...newItem, unit_price: e.target.value })}
                             className="h-8"
                           />
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          ${((parseFloat(editingData.quantity) || 0) * (parseFloat(editingData.unit_price) || 0)).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatCurrency((parseFloat(newItem.quantity) || 0) * (parseFloat(newItem.unit_price) || 0))}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={saveEdit}
+                              onClick={handleAdd}
+                              disabled={!newItem.name.trim()}
                               className="h-8 w-8 p-0"
                             >
                               <Check className="h-4 w-4" />
@@ -252,7 +536,10 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={cancelEdit}
+                              onClick={() => {
+                                setIsAdding(false);
+                                setNewItem({ name: "", description: "", quantity: "1", unit: "each", unit_price: "0", category: "other" as LineItemCategory });
+                              }}
                               className="h-8 w-8 p-0"
                             >
                               <X className="h-4 w-4" />
@@ -260,154 +547,11 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                           </div>
                         </TableCell>
                       </TableRow>
-                    ) : (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {item.description || "—"}
-                        </TableCell>
-                        <TableCell className="capitalize text-sm">
-                          {item.category}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {Number(item.quantity).toLocaleString()} {item.unit}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          ${Number(item.unit_price).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          ${Number(item.total).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => startEdit(item)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setDeleteId(item.id)}
-                              className="h-8 w-8 p-0 text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  ))}
-
-                  {isAdding && (
-                    <TableRow>
-                      <TableCell>
-                        <Input
-                          placeholder="Item name"
-                          value={newItem.name}
-                          onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                          className="h-8"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          placeholder="Description"
-                          value={newItem.description}
-                          onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                          className="h-8"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={newItem.category}
-                          onValueChange={(value) => setNewItem({ ...newItem, category: value as LineItemCategory })}
-                        >
-                          <SelectTrigger className="h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="equipment">Equipment</SelectItem>
-                            <SelectItem value="materials">Materials</SelectItem>
-                            <SelectItem value="labor">Labor</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Input
-                            type="number"
-                            value={newItem.quantity}
-                            onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
-                            className="h-8 w-16"
-                          />
-                          <Input
-                            value={newItem.unit}
-                            onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
-                            className="h-8 w-20"
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={newItem.unit_price}
-                          onChange={(e) => setNewItem({ ...newItem, unit_price: e.target.value })}
-                          className="h-8"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${((parseFloat(newItem.quantity) || 0) * (parseFloat(newItem.unit_price) || 0)).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleAdd}
-                            disabled={!newItem.name.trim()}
-                            className="h-8 w-8 p-0"
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setIsAdding(false);
-                              setNewItem({
-                                name: "",
-                                description: "",
-                                quantity: "1",
-                                unit: "each",
-                                unit_price: "0",
-                                category: "other" as LineItemCategory,
-                              });
-                            }}
-                            className="h-8 w-8 p-0"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
 
             <div className="border-t pt-4">
               <div className="flex justify-between items-center">
@@ -417,10 +561,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                 <div className="text-right">
                   <p className="text-sm text-muted-foreground mb-1">Total Cost</p>
                   <p className="text-2xl font-bold">
-                    ${totalCost.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(totalCost)}
                   </p>
                 </div>
               </div>
