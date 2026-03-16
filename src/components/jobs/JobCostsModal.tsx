@@ -296,6 +296,16 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               <span className="hidden sm:inline">Resync from Estimate</span>
               <span className="sm:hidden">Resync</span>
             </Button>
+
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAdding(true)}
+                disabled={isAdding}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Line Item
+              </Button>
           </div>
         </DialogHeader>
 
@@ -305,17 +315,6 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsAdding(true)}
-                disabled={isAdding}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Line Item
-              </Button>
-            </div>
 
             {/* Mobile card layout */}
             <div className="md:hidden">
