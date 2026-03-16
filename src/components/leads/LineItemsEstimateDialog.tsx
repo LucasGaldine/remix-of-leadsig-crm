@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Check, Pencil } from "lucide-react";
 import { QuickEstimateLineItem } from "./QuickEstimateLineItem";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -41,6 +41,193 @@ interface LineItemsEstimateDialogProps {
   initialLineItems?: EstimateLineItemInit[];
 }
 
+function CompactLineItem({
+  item,
+  index,
+  onExpand,
+  onRemove,
+  canRemove,
+}: {
+  item: EstimateLineItemInit;
+  index: number;
+  onExpand: () => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const lineTotal = (parseFloat(item.quantity || "0") * parseFloat(item.unit_price || "0")).toFixed(2);
+
+  return (
+    <div className="p-3 border border-border rounded-lg flex items-center justify-between gap-3 bg-card">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium truncate">
+            {item.name || `Item ${index + 1}`}
+          </span>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {item.quantity} x ${parseFloat(item.unit_price || "0").toFixed(2)}
+          </span>
+        </div>
+        {item.description && (
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{item.description}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-sm font-semibold mr-1">${lineTotal}</span>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        {canRemove && (
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRemove}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExpandedLineItem({
+  item,
+  index,
+  leadId,
+  onUpdate,
+  onCollapse,
+  onRemove,
+  canRemove,
+}: {
+  item: EstimateLineItemInit;
+  index: number;
+  leadId: string;
+  onUpdate: (field: keyof EstimateLineItemInit, value: string) => void;
+  onCollapse: () => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const lineTotal = (parseFloat(item.quantity || "0") * parseFloat(item.unit_price || "0")).toFixed(2);
+
+  return (
+    <div className="p-4 border border-border rounded-lg space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+        <div className="flex items-center gap-1">
+          <QuickEstimateLineItem
+            leadId={leadId}
+            onApply={(name, quantity, unit, unitPrice, description) => {
+              onUpdate("name", name);
+              onUpdate("quantity", quantity);
+              onUpdate("unit", unit);
+              onUpdate("unit_price", unitPrice);
+              onUpdate("description", description);
+            }}
+          />
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onCollapse} title="Done editing">
+            <Check className="h-4 w-4" />
+          </Button>
+          {canRemove && (
+            <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRemove}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`item-name-${index}`}>Title *</Label>
+        <Input
+          id={`item-name-${index}`}
+          value={item.name}
+          onChange={(e) => onUpdate("name", e.target.value)}
+          placeholder="e.g., Paver Installation"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`item-description-${index}`}>Description</Label>
+        <Textarea
+          id={`item-description-${index}`}
+          value={item.description}
+          onChange={(e) => onUpdate("description", e.target.value)}
+          placeholder="Additional details..."
+          rows={2}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`item-category-${index}`}>Category</Label>
+        <Select
+          value={item.category}
+          onValueChange={(value) => onUpdate("category", value)}
+        >
+          <SelectTrigger id={`item-category-${index}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="equipment">Equipment</SelectItem>
+            <SelectItem value="materials">Materials</SelectItem>
+            <SelectItem value="labor">Labor</SelectItem>
+            <SelectItem value="other">Other</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor={`item-quantity-${index}`}>Quantity *</Label>
+          <Input
+            id={`item-quantity-${index}`}
+            type="number"
+            value={item.quantity}
+            onChange={(e) => onUpdate("quantity", e.target.value)}
+            placeholder="1"
+            min="0"
+            step="0.01"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`item-unit-${index}`}>Unit</Label>
+          <Select
+            value={item.unit}
+            onValueChange={(value) => onUpdate("unit", value)}
+          >
+            <SelectTrigger id={`item-unit-${index}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="item">Item</SelectItem>
+              <SelectItem value="each">Each</SelectItem>
+              <SelectItem value="hour">Hour</SelectItem>
+              <SelectItem value="sq ft">Sq Ft</SelectItem>
+              <SelectItem value="linear ft">Linear Ft</SelectItem>
+              <SelectItem value="day">Day</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`item-price-${index}`}>Unit Price *</Label>
+        <Input
+          id={`item-price-${index}`}
+          type="number"
+          value={item.unit_price}
+          onChange={(e) => onUpdate("unit_price", e.target.value)}
+          placeholder="0.00"
+          min="0"
+          step="0.01"
+        />
+      </div>
+
+      <div className="pt-2 border-t border-border">
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-muted-foreground">Line Total:</span>
+          <span className="font-semibold">${lineTotal}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, initialLineItems }: LineItemsEstimateDialogProps) {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
@@ -52,21 +239,32 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
 
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
   const [profitMargin, setProfitMargin] = useState<string>("");
+  const [surcharge, setSurcharge] = useState<string>("");
   const [creating, setCreating] = useState(false);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
 
   useEffect(() => {
     if (open) {
       setLineItems(defaultLineItems);
       setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
+      setSurcharge(String(currentAccount?.default_surcharge ?? 0));
+      setExpandedIndex(0);
     }
-  }, [open, currentAccount?.default_profit_margin]);
+  }, [open, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
 
   const addLineItem = () => {
-    setLineItems([...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
+    const newItems = [...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" as LineItemCategory }];
+    setLineItems(newItems);
+    setExpandedIndex(newItems.length - 1);
   };
 
   const removeLineItem = (index: number) => {
     setLineItems(lineItems.filter((_, i) => i !== index));
+    if (expandedIndex === index) {
+      setExpandedIndex(null);
+    } else if (expandedIndex !== null && expandedIndex > index) {
+      setExpandedIndex(expandedIndex - 1);
+    }
   };
 
   const updateLineItem = (index: number, field: keyof EstimateLineItemInit, value: string) => {
@@ -91,18 +289,24 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     return subtotal * margin;
   };
 
-  const calculateSubtotalAfterProfit = () => {
-    return calculateSubtotal() + calculateProfit();
+  const calculateSurcharge = () => {
+    const subtotal = calculateSubtotal();
+    const rate = (parseFloat(surcharge) || 0) / 100;
+    return subtotal * rate;
+  };
+
+  const calculateSubtotalAfterAdjustments = () => {
+    return calculateSubtotal() + calculateProfit() + calculateSurcharge();
   };
 
   const calculateTax = () => {
-    const subtotalAfterProfit = calculateSubtotalAfterProfit();
+    const subtotalAfterAdjustments = calculateSubtotalAfterAdjustments();
     const taxRate = (currentAccount?.default_tax_rate ?? 0) / 100;
-    return subtotalAfterProfit * taxRate;
+    return subtotalAfterAdjustments * taxRate;
   };
 
   const calculateTotal = () => {
-    return calculateSubtotalAfterProfit() + calculateTax();
+    return calculateSubtotalAfterAdjustments() + calculateTax();
   };
 
   const handleCreate = async () => {
@@ -141,11 +345,14 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       const profitMarginPercent = parseFloat(profitMargin) || 0;
       const profitMarginValue = profitMarginPercent / 100;
       const profitAmount = estimateSubtotal * profitMarginValue;
-      const subtotalAfterProfit = estimateSubtotal + profitAmount;
+      const surchargePercent = parseFloat(surcharge) || 0;
+      const surchargeValue = surchargePercent / 100;
+      const surchargeAmount = estimateSubtotal * surchargeValue;
+      const subtotalAfterAdjustments = estimateSubtotal + profitAmount + surchargeAmount;
       const taxRatePercent = currentAccount?.default_tax_rate ?? 0;
       const taxRate = taxRatePercent / 100;
-      const taxAmount = subtotalAfterProfit * taxRate;
-      const estimateTotal = subtotalAfterProfit + taxAmount;
+      const taxAmount = subtotalAfterAdjustments * taxRate;
+      const estimateTotal = subtotalAfterAdjustments + taxAmount;
 
       const { error: updateError } = await supabase
         .from("leads")
@@ -164,6 +371,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           job_id: lead.id,
           subtotal: estimateSubtotal,
           profit_margin: profitMarginPercent,
+          surcharge: surchargePercent,
           tax_rate: taxRate,
           tax: taxAmount,
           discount: 0,
@@ -241,144 +449,42 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
 
         <div className="space-y-4 py-4">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">Line Items *</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addLineItem}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Item
-              </Button>
-            </div>
+            <Label className="text-base font-semibold">Line Items *</Label>
 
-            {lineItems.map((item, index) => (
-              <div key={index} className="p-4 border border-border rounded-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-                  <div className="flex items-center gap-1">
-                    <QuickEstimateLineItem
-                      leadId={lead.id}
-                      onApply={(name, quantity, unit, unitPrice, description) => {
-                        updateLineItem(index, "name", name);
-                        updateLineItem(index, "quantity", quantity);
-                        updateLineItem(index, "unit", unit);
-                        updateLineItem(index, "unit_price", unitPrice);
-                        updateLineItem(index, "description", description);
-                      }}
-                    />
-                    {lineItems.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeLineItem(index)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
+            {lineItems.map((item, index) =>
+              expandedIndex === index ? (
+                <ExpandedLineItem
+                  key={index}
+                  item={item}
+                  index={index}
+                  leadId={lead.id}
+                  onUpdate={(field, value) => updateLineItem(index, field, value)}
+                  onCollapse={() => setExpandedIndex(null)}
+                  onRemove={() => removeLineItem(index)}
+                  canRemove={lineItems.length > 1}
+                />
+              ) : (
+                <CompactLineItem
+                  key={index}
+                  item={item}
+                  index={index}
+                  onExpand={() => setExpandedIndex(index)}
+                  onRemove={() => removeLineItem(index)}
+                  canRemove={lineItems.length > 1}
+                />
+              )
+            )}
 
-                <div className="space-y-2">
-                  <Label htmlFor={`item-name-${index}`}>Title *</Label>
-                  <Input
-                    id={`item-name-${index}`}
-                    value={item.name}
-                    onChange={(e) => updateLineItem(index, "name", e.target.value)}
-                    placeholder="e.g., Paver Installation"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-description-${index}`}>Description</Label>
-                  <Textarea
-                    id={`item-description-${index}`}
-                    value={item.description}
-                    onChange={(e) => updateLineItem(index, "description", e.target.value)}
-                    placeholder="Additional details..."
-                    rows={2}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-category-${index}`}>Category</Label>
-                  <Select
-                    value={item.category}
-                    onValueChange={(value) => updateLineItem(index, "category", value)}
-                  >
-                    <SelectTrigger id={`item-category-${index}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="equipment">Equipment</SelectItem>
-                      <SelectItem value="materials">Materials</SelectItem>
-                      <SelectItem value="labor">Labor</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-quantity-${index}`}>Quantity *</Label>
-                    <Input
-                      id={`item-quantity-${index}`}
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(index, "quantity", e.target.value)}
-                      placeholder="1"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-unit-${index}`}>Unit</Label>
-                    <Select
-                      value={item.unit}
-                      onValueChange={(value) => updateLineItem(index, "unit", value)}
-                    >
-                      <SelectTrigger id={`item-unit-${index}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="item">Item</SelectItem>
-                        <SelectItem value="each">Each</SelectItem>
-                        <SelectItem value="hour">Hour</SelectItem>
-                        <SelectItem value="sq ft">Sq Ft</SelectItem>
-                        <SelectItem value="linear ft">Linear Ft</SelectItem>
-                        <SelectItem value="day">Day</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-price-${index}`}>Unit Price *</Label>
-                  <Input
-                    id={`item-price-${index}`}
-                    type="number"
-                    value={item.unit_price}
-                    onChange={(e) => updateLineItem(index, "unit_price", e.target.value)}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-border">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Line Total:</span>
-                    <span className="font-semibold">
-                      ${((parseFloat(item.quantity || "0") * parseFloat(item.unit_price || "0")).toFixed(2))}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addLineItem}
+              className="w-full"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Item
+            </Button>
 
             <div className="bg-secondary p-4 rounded-lg space-y-2">
               <div className="flex justify-between items-center text-sm">
@@ -405,6 +511,26 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
                 </div>
                 <span className="font-medium">
                   ${calculateProfit().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Surcharge:</span>
+                  <div className="relative w-20">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={surcharge}
+                      onChange={(e) => setSurcharge(e.target.value)}
+                      className="h-7 text-xs pr-6"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <span className="font-medium">
+                  ${calculateSurcharge().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="flex justify-between items-center text-sm">
