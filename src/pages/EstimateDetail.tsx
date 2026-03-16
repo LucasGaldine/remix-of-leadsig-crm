@@ -26,6 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
+import { CreateInvoiceModal } from "@/components/payments/CreateInvoiceModal";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
@@ -53,6 +54,7 @@ export default function EstimateDetail() {
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
 
   const handleDownloadPDF = () => {
     if (!estimate) return;
@@ -209,7 +211,7 @@ export default function EstimateDetail() {
   };
 
   const handleCreateInvoice = () => {
-    navigate(`/invoices/create?estimateId=${id}`);
+    setInvoiceModalOpen(true);
   };
 
   const handleQuickEstimateSave = async (breakdown: QuickEstimateBreakdown) => {
@@ -949,6 +951,12 @@ export default function EstimateDetail() {
         onOpenChange={setEditModalOpen}
         estimate={estimate}
         onSuccess={handleEstimateSuccess}
+      />
+
+      <CreateInvoiceModal
+        open={invoiceModalOpen}
+        onOpenChange={setInvoiceModalOpen}
+        estimate={estimate}
       />
 
       <MobileNav />
