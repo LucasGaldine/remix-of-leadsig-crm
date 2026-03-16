@@ -285,6 +285,8 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               <Receipt className="h-5 w-5" />
               Job Costs
             </DialogTitle>
+
+            <div className = "flex gap-4">
             <Button
               variant="outline"
               size="sm"
@@ -306,6 +308,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                 <Plus className="h-4 w-4 mr-2" />
                 Add Line Item
               </Button>
+              </div>
           </div>
         </DialogHeader>
 
