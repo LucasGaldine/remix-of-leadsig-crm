@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, X, Check, Pencil } from "lucide-react";
+import { Plus, X, Check, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -90,6 +90,8 @@ function ExpandedLineItem({
   onUpdate,
   onCollapse,
   onRevert,
+  onRemove,
+  canRemove,
 }: {
   item: LineItemForm;
   index: number;
@@ -97,6 +99,8 @@ function ExpandedLineItem({
   onUpdate: (field: keyof LineItemForm, value: string) => void;
   onCollapse: () => void;
   onRevert: () => void;
+  onRemove: () => void;
+  canRemove: boolean;
 }) {
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
@@ -106,16 +110,23 @@ function ExpandedLineItem({
     <div className="p-4 border border-border rounded-lg space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-        <QuickEstimateLineItem
-          leadId={jobId}
-          onApply={(name, quantity, unit, unitPrice, description) => {
-            onUpdate("name", name);
-            onUpdate("quantity", quantity);
-            onUpdate("unit", unit);
-            onUpdate("unit_price", unitPrice);
-            onUpdate("description", description);
-          }}
-        />
+        <div className="flex items-center gap-1">
+          <QuickEstimateLineItem
+            leadId={jobId}
+            onApply={(name, quantity, unit, unitPrice, description) => {
+              onUpdate("name", name);
+              onUpdate("quantity", quantity);
+              onUpdate("unit", unit);
+              onUpdate("unit_price", unitPrice);
+              onUpdate("description", description);
+            }}
+          />
+          {canRemove && (
+            <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -212,11 +223,10 @@ function ExpandedLineItem({
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onRevert}>
-            <X className="h-4 w-4 mr-2" />
+            <RotateCcw className="h-4 w-4 mr-2" />
             Revert
           </Button>
           <Button type="button" className="flex-1" onClick={onCollapse}>
-            <Check className="h-4 w-4 mr-2" />
             Done
           </Button>
         </div>
@@ -534,6 +544,8 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                   onUpdate={(field, value) => updateLineItem(index, field, value)}
                   onCollapse={() => setExpandedIndex(null)}
                   onRevert={() => revertLineItem(index)}
+                  onRemove={() => removeLineItem(index)}
+                  canRemove={lineItems.length > 1}
                 />
               ) : (
                 <CompactLineItem
