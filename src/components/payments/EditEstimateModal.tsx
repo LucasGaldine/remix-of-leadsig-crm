@@ -17,6 +17,10 @@ import { toast } from "sonner";
 import { QuickEstimateLineItem } from "@/components/leads/QuickEstimateLineItem";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
 
+function formatDollar(value: number): string {
+  return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 interface LineItemForm {
   id?: string;
   name: string;
@@ -51,7 +55,7 @@ function CompactLineItem({
 }) {
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
-  const lineTotal = (qty * price).toFixed(2);
+  const lineTotal = qty * price;
 
   return (
     <div className="p-3 border border-border rounded-lg flex items-center justify-between gap-3 bg-card">
@@ -61,7 +65,7 @@ function CompactLineItem({
             {item.name || `Item ${index + 1}`}
           </span>
           <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {item.quantity} x ${price.toFixed(2)}
+            {item.quantity} x ${formatDollar(price)}
           </span>
         </div>
         {item.description && (
@@ -69,7 +73,7 @@ function CompactLineItem({
         )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <span className="text-sm font-semibold mr-1">${lineTotal}</span>
+        <span className="text-sm font-semibold mr-1">${formatDollar(lineTotal)}</span>
         <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
           <Pencil className="h-3.5 w-3.5" />
         </Button>
@@ -104,7 +108,7 @@ function ExpandedLineItem({
 }) {
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
-  const lineTotal = (qty * price).toFixed(2);
+  const lineTotal = qty * price;
 
   return (
     <div className="p-4 border border-border rounded-lg space-y-3">
@@ -209,12 +213,14 @@ function ExpandedLineItem({
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
           <Input
             id={`edit-item-price-${index}`}
-            type="number"
-            value={item.unit_price}
-            onChange={(e) => onUpdate("unit_price", e.target.value)}
+            type="text"
+            inputMode="decimal"
+            value={item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9.]/g, "");
+              onUpdate("unit_price", raw);
+            }}
             placeholder="0.00"
-            min="0"
-            step="0.01"
             className="pl-7"
           />
         </div>
@@ -223,14 +229,14 @@ function ExpandedLineItem({
       <div className="pt-2 border-t border-border space-y-3">
         <div className="flex justify-between items-center">
           <span className="text-sm text-muted-foreground">Line Total:</span>
-          <span className="font-semibold">${lineTotal}</span>
+          <span className="font-semibold">${formatDollar(lineTotal)}</span>
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={onRevert}>
+          <Button type="button" variant="ghost" className="flex-1" onClick={onRevert}>
             <RotateCcw className="h-4 w-4 mr-2" />
             Revert
           </Button>
-          <Button type="button" variant="outline" size="icon" onClick={onCollapse} title="Done">
+          <Button type="button" variant="ghost" className="flex-1" onClick={onCollapse}>
             <Check className="h-4 w-4" />
           </Button>
         </div>
