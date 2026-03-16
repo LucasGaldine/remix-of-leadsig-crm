@@ -46,6 +46,8 @@ export default function EstimateDetail() {
   const { data: allInvoices } = useInvoices();
 
   const relatedInvoices = allInvoices?.filter(inv => inv.estimate_id === id) || [];
+  const totalInvoiced = relatedInvoices.reduce((sum, inv) => sum + Number(inv.total), 0);
+  const isFullyInvoiced = estimate ? totalInvoiced >= Number(estimate.total) : false;
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
@@ -915,13 +917,15 @@ export default function EstimateDetail() {
                     <Link2 className="h-4 w-4" />
                     {generatingLink ? "Generating..." : "Client Portal"}
                   </Button>
-                  <Button
-                    className="flex-1 h-14 gap-2"
-                    onClick={handleCreateInvoice}
-                  >
-                    <FileCheck className="h-4 w-4" />
-                    Create Invoice
-                  </Button>
+                  {!isFullyInvoiced && (
+                    <Button
+                      className="flex-1 h-14 gap-2"
+                      onClick={handleCreateInvoice}
+                    >
+                      <FileCheck className="h-4 w-4" />
+                      Create Invoice
+                    </Button>
+                  )}
                 </>
               )}
             </div>
