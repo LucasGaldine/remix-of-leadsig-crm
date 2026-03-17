@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
     const taskPayload: Record<string, unknown> = {
       name: `Bug: ${page}`,
       description,
-      status: "open",
+      status: "backlog",
       priority: 2,
     };
 
