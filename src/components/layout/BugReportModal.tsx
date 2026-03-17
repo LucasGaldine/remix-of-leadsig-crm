@@ -84,6 +84,8 @@ export function BugReportModal({ open, onOpenChange }: BugReportModalProps) {
       });
 
       if (!response.ok) {
+        const errBody = await response.text();
+        console.error('Bug report error:', response.status, errBody);
         throw new Error('Failed to submit bug report');
       }
 
