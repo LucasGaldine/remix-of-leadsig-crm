@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Paperclip, X, Loader as Loader2 } from 'lucide-react';
 
@@ -67,12 +66,11 @@ export function BugReportModal({ open, onOpenChange }: BugReportModalProps) {
       }
 
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/report-bug`;
-      const { data: { session } } = await supabase.auth.getSession();
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
