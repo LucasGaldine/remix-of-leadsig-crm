@@ -43,6 +43,7 @@ Deno.serve(async (req: Request) => {
       description,
       status: "backlog",
       priority: 2,
+      assignees: [198274954],
     };
 
     const createRes = await fetch(`https://api.clickup.com/api/v2/list/${CLICKUP_LIST_ID}/task`, {
