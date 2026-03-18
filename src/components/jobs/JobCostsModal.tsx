@@ -1,12 +1,13 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useJobLineItems, LineItemCategory } from "@/hooks/useJobLineItems";
-import { Receipt, RefreshCw, Plus, Pencil, Trash2, Check, X } from "lucide-react";
+import { Receipt, RefreshCw, Plus, Pencil, Trash2, Check, X, ScanLine } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +56,69 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     category: "other" as LineItemCategory,
   });
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isScanningReceipt, setIsScanningReceipt] = useState(false);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
+
+  const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsScanningReceipt(true);
+    try {
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scan-receipt`;
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ imageBase64 }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to scan receipt");
+      }
+
+      const { lineItems: scannedItems } = await response.json();
+
+      if (!scannedItems || scannedItems.length === 0) {
+        toast.warning("No items found in receipt");
+        return;
+      }
+
+      const maxSortOrder = Math.max(...lineItems.map((item) => item.sort_order), 0);
+      for (let i = 0; i < scannedItems.length; i++) {
+        const item = scannedItems[i];
+        await addLineItem.mutateAsync({
+          lead_id: jobId,
+          name: item.name,
+          description: item.description ?? null,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total: item.total,
+          sort_order: maxSortOrder + i + 1,
+          estimate_line_item_id: null,
+          category: "materials" as LineItemCategory,
+        });
+      }
+
+      toast.success(`Added ${scannedItems.length} item${scannedItems.length !== 1 ? "s" : ""} from receipt`);
+    } catch (err) {
+      console.error("Receipt scan error:", err);
+      toast.error("Failed to scan receipt. Please try again.");
+    } finally {
+      setIsScanningReceipt(false);
+      if (receiptInputRef.current) receiptInputRef.current.value = "";
+    }
+  };
 
   const startEdit = (item: any) => {
     setEditingId(item.id);
@@ -286,7 +350,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               Job Costs
             </DialogTitle>
 
-            <div className = "flex gap-4 pr-4">
+            <div className="flex gap-2 pr-4 flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -298,6 +362,24 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               <span className="hidden sm:inline">Resync from Estimate</span>
               <span className="sm:hidden">Resync</span>
             </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => receiptInputRef.current?.click()}
+              disabled={isScanningReceipt}
+              className="shrink-0"
+            >
+              <ScanLine className={`h-4 w-4 mr-2 ${isScanningReceipt ? 'animate-pulse' : ''}`} />
+              {isScanningReceipt ? "Scanning..." : "Scan Receipt"}
+            </Button>
+            <input
+              ref={receiptInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleScanReceipt}
+            />
 
             <Button
                 variant="outline"
