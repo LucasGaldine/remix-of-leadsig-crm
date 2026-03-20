@@ -169,6 +169,32 @@ export function useJobAssignments(leadId: string | undefined) {
         }
       }
 
+      for (const scheduleId of schedules) {
+        const { data: hasOverlap } = await supabase.rpc('check_assignment_overlap', {
+          p_user_id: userId,
+          p_schedule_id: scheduleId,
+          p_account_id: lead.account_id,
+        });
+
+        if (hasOverlap) {
+          const { data: scheduleData } = await supabase
+            .from('job_schedules')
+            .select('scheduled_date')
+            .eq('id', scheduleId)
+            .maybeSingle();
+
+          const dateStr = scheduleData?.scheduled_date
+            ? new Date(scheduleData.scheduled_date).toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric'
+              })
+            : 'the selected date';
+
+          throw new Error(`${userName} is already assigned to another job on ${dateStr}. Please choose a different date or crew member.`);
+        }
+      }
+
       const assignments = schedules.map(sId => ({
         lead_id: leadId,
         user_id: userId,
@@ -186,6 +212,8 @@ export function useJobAssignments(leadId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-assignments', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['crew-hours'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-jobs'] });
       toast.success('Crew member assigned to job');
     },
     onError: (error: Error) => {
@@ -193,6 +221,8 @@ export function useJobAssignments(leadId: string | undefined) {
         toast.error('This crew member is already assigned to this schedule');
       } else if (error.message.includes('already assigned to')) {
         toast.error(error.message, { duration: 5000 });
+      } else if (error.message.includes('row-level security') || error.message.includes('policy')) {
+        toast.error('This crew member is already assigned to another job at this time. Please choose a different time or crew member.', { duration: 5000 });
       } else {
         toast.error('Failed to assign crew member: ' + error.message);
       }
@@ -210,10 +240,16 @@ export function useJobAssignments(leadId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-assignments', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['crew-hours'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-jobs'] });
       toast.success('Crew member removed from job');
     },
     onError: (error: Error) => {
-      toast.error('Failed to remove crew member: ' + error.message);
+      if (error.message.includes('row-level security') || error.message.includes('policy')) {
+        toast.error('Unable to remove crew member. Please check your permissions or contact support.');
+      } else {
+        toast.error('Failed to remove crew member: ' + error.message);
+      }
     },
   });
 

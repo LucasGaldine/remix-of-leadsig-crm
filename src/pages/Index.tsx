@@ -11,7 +11,7 @@ import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, ChevronRight } from "lucide-react";
+import { Loader as Loader2, ChevronRight } from "lucide-react";
 import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
@@ -248,7 +248,7 @@ export default function Index() {
         {sections.includes("customers") && (
           <section>
             <SectionHeader
-              title="Customers"
+              title="Clients"
               count={customersData.length}
               action={{ label: "View all", onClick: () => navigate("/customers") }}
               className="mb-3"
@@ -259,18 +259,29 @@ export default function Index() {
               </div>
             ) : customersData.length === 0 ? (
               <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No customers need attention</p>
+                <p className="text-muted-foreground">No clients yet</p>
               </div>
             ) : (
-              <div className="space-y-1">
-                <CustomerCard
-                  customer={customersData[0]}
-                  onClick={() => navigate(`/customers/${customersData[0].id}`)}
-                />
-                <p className="text-xs text-muted-foreground text-center pt-1">
-                  {customersData[0].reason}
-                </p>
-              </div>
+              <>
+                <div className="space-y-3">
+                  {customersData.slice(0, SECTION_LIMIT).map((customer) => (
+                    <CustomerCard
+                      key={customer.id}
+                      customer={customer}
+                      onClick={() => navigate(`/customers/${customer.id}`)}
+                    />
+                  ))}
+                </div>
+                {customersData.length > SECTION_LIMIT && (
+                  <button
+                    onClick={() => navigate("/customers")}
+                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    View {customersData.length - SECTION_LIMIT} more
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )}
+              </>
             )}
           </section>
         )}

@@ -414,8 +414,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
               <Button
                 className="flex-1"
                 variant="outline"
-                onClick={() => setShowLogPaymentModal(true)}
-                disabled={loading}
+                disabled
               >
                 <DollarSign className="h-4 w-4 mr-2" />
                 Log Payment

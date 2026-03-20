@@ -16,6 +16,7 @@ export interface LeadPhoto {
   uploaded_by: string;
   created_at: string;
   publicUrl: string;
+  uploader_name?: string;
 }
 
 export function useLeadPhotos(leadId: string | undefined, photoType: "before" | "after" = "before") {
@@ -29,7 +30,12 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
 
     const { data, error } = await supabase
       .from("lead_photos")
-      .select("*")
+      .select(`
+        *,
+        uploader:profiles!lead_photos_uploaded_by_profiles_fkey (
+          full_name
+        )
+      `)
       .eq("lead_id", leadId)
       .eq("photo_type", photoType)
       .order("created_at", { ascending: true });
@@ -40,6 +46,7 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
     } else {
       const withUrls = (data || []).map((photo: any) => ({
         ...photo,
+        uploader_name: photo.uploader?.full_name || "Unknown",
         publicUrl: supabase.storage
           .from("lead-photos")
           .getPublicUrl(photo.file_path).data.publicUrl,
@@ -85,6 +92,14 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
     setIsUploading(true);
 
     try {
+      const { data: leadBefore } = await supabase
+        .from("leads")
+        .select("status")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      const wasNotJobBefore = leadBefore && leadBefore.status !== "job";
+
       for (const file of filesToUpload) {
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const filePath = `${currentAccount.id}/${leadId}/${photoType}/${crypto.randomUUID()}.${ext}`;
@@ -117,13 +132,13 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
       await fetchPhotos();
       toast.success("Photos uploaded");
 
-      const { data: lead } = await supabase
+      const { data: leadAfter } = await supabase
         .from("leads")
         .select("status")
         .eq("id", leadId)
         .maybeSingle();
 
-      if (lead?.status === "job") {
+      if (wasNotJobBefore && leadAfter?.status === "job") {
         return { converted: true };
       }
       return { converted: false };

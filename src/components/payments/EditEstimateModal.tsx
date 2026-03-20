@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { QuickEstimateLineItem } from "@/components/leads/QuickEstimateLineItem";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
+
+function formatDollar(value: number): string {
+  return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 interface LineItemForm {
   id?: string;
@@ -36,10 +40,259 @@ interface EditEstimateModalProps {
   onSuccess: () => void;
 }
 
+function CompactLineItem({
+  item,
+  index,
+  pendingDelete,
+  onExpand,
+  onRemove,
+  onUndoRemove,
+}: {
+  item: LineItemForm;
+  index: number;
+  pendingDelete: boolean;
+  onExpand: () => void;
+  onRemove: () => void;
+  onUndoRemove: () => void;
+}) {
+  const qty = parseFloat(item.quantity) || 0;
+  const price = parseFloat(item.unit_price) || 0;
+  const lineTotal = qty * price;
+
+  if (pendingDelete) {
+    return (
+      <div className="p-3 border border-destructive/30 rounded-lg flex items-center justify-between gap-3 bg-destructive/5">
+        <div className="flex-1 min-w-0 opacity-50">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate line-through">
+              {item.name || `Item ${index + 1}`}
+            </span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap line-through">
+              {item.quantity} x ${formatDollar(price)}
+            </span>
+          </div>
+        </div>
+        <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground shrink-0" onClick={onUndoRemove}>
+          <Undo2 className="h-3.5 w-3.5" />
+          <span className="text-xs">Undo</span>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 border border-border rounded-lg flex items-center justify-between gap-3 bg-card">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium truncate">
+            {item.name || `Item ${index + 1}`}
+          </span>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {item.quantity} x ${formatDollar(price)}
+          </span>
+        </div>
+        {item.description && (
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{item.description}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-sm font-semibold mr-1">${formatDollar(lineTotal)}</span>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ExpandedLineItem({
+  item,
+  index,
+  jobId,
+  onUpdate,
+  onCollapse,
+  onRevert,
+  onRemove,
+  canRemove,
+}: {
+  item: LineItemForm;
+  index: number;
+  jobId: string;
+  onUpdate: (field: keyof LineItemForm, value: string) => void;
+  onCollapse: () => void;
+  onRevert: () => void;
+  onRemove: () => void;
+}) {
+  const [priceDisplay, setPriceDisplay] = useState(
+    item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""
+  );
+  const [isFocused, setIsFocused] = useState(false);
+  const qty = parseFloat(item.quantity) || 0;
+  const price = parseFloat(item.unit_price) || 0;
+  const lineTotal = qty * price;
+
+  useEffect(() => {
+    if (!isFocused) {
+      setPriceDisplay(item.unit_price ? formatDollar(parseFloat(item.unit_price)) : "");
+    }
+  }, [item.unit_price, isFocused]);
+
+  return (
+    <div className="p-4 border border-border rounded-lg space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+        <div className="flex items-center gap-1">
+          <QuickEstimateLineItem
+            leadId={jobId}
+            onApply={(name, quantity, unit, unitPrice, description) => {
+              onUpdate("name", name);
+              onUpdate("quantity", quantity);
+              onUpdate("unit", unit);
+              onUpdate("unit_price", unitPrice);
+              onUpdate("description", description);
+            }}
+          />
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`edit-item-name-${index}`}>Title *</Label>
+        <Input
+          id={`edit-item-name-${index}`}
+          value={item.name}
+          onChange={(e) => onUpdate("name", e.target.value)}
+          placeholder="e.g., Paver Installation"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`edit-item-description-${index}`}>Description</Label>
+        <Textarea
+          id={`edit-item-description-${index}`}
+          value={item.description}
+          onChange={(e) => onUpdate("description", e.target.value)}
+          placeholder="Additional details..."
+          rows={2}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`edit-item-category-${index}`}>Category</Label>
+        <Select
+          value={item.category}
+          onValueChange={(value) => onUpdate("category", value)}
+        >
+          <SelectTrigger id={`edit-item-category-${index}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="equipment">Equipment</SelectItem>
+            <SelectItem value="materials">Materials</SelectItem>
+            <SelectItem value="labor">Labor</SelectItem>
+            <SelectItem value="other">Other</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor={`edit-item-quantity-${index}`}>Quantity *</Label>
+          <Input
+            id={`edit-item-quantity-${index}`}
+            type="number"
+            value={item.quantity}
+            onChange={(e) => onUpdate("quantity", e.target.value)}
+            placeholder="1"
+            min="0"
+            step="0.01"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`edit-item-unit-${index}`}>Unit</Label>
+          <Select
+            value={item.unit}
+            onValueChange={(value) => onUpdate("unit", value)}
+          >
+            <SelectTrigger id={`edit-item-unit-${index}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="item">Item</SelectItem>
+              <SelectItem value="each">Each</SelectItem>
+              <SelectItem value="hour">Hour</SelectItem>
+              <SelectItem value="sq ft">Sq Ft</SelectItem>
+              <SelectItem value="linear ft">Linear Ft</SelectItem>
+              <SelectItem value="day">Day</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`edit-item-price-${index}`}>Unit Price *</Label>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+          <Input
+            id={`edit-item-price-${index}`}
+            type="text"
+            inputMode="decimal"
+            value={priceDisplay}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9.]/g, "");
+              setPriceDisplay(e.target.value.replace(/[^0-9.,]/g, ""));
+              onUpdate("unit_price", raw);
+            }}
+            onFocus={() => {
+              setIsFocused(true);
+              setPriceDisplay(item.unit_price || "");
+            }}
+            onBlur={() => {
+              setIsFocused(false);
+              const val = parseFloat(item.unit_price || "0");
+              setPriceDisplay(val ? formatDollar(val) : "");
+            }}
+            placeholder="0.00"
+            className="pl-7"
+          />
+        </div>
+      </div>
+
+      <div className="pt-2 border-t border-border space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-muted-foreground">Line Total:</span>
+          <span className="font-semibold">${formatDollar(lineTotal)}</span>
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" className="flex-1" onClick={onRevert}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Revert
+          </Button>
+          <Button type="button" variant="ghost" className="flex-1" onClick={onCollapse}>
+            <Check className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: EditEstimateModalProps) {
   const [saving, setSaving] = useState(false);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
+  const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
+  });
+  const [surcharge, setSurcharge] = useState<string>(() => {
+    return (estimate.surcharge || 0).toString();
   });
   const [lineItems, setLineItems] = useState<LineItemForm[]>(() => {
     const activeItems = estimate.line_items.filter(
@@ -57,7 +310,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   });
 
   const addLineItem = () => {
-    setLineItems([
+    const newItems = [
       ...lineItems,
       {
         name: '',
@@ -65,10 +318,29 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         quantity: '1',
         unit: 'each',
         unit_price: '',
-        category: 'other',
+        category: 'other' as LineItemCategory,
         isNew: true,
       },
-    ]);
+    ];
+    const newIndex = newItems.length - 1;
+    setLineItems(newItems);
+    setSnapshots(prev => ({ ...prev, [newIndex]: { ...newItems[newIndex] } }));
+    setExpandedIndex(newIndex);
+  };
+
+  const expandLineItem = (index: number) => {
+    setSnapshots(prev => ({ ...prev, [index]: { ...lineItems[index] } }));
+    setExpandedIndex(index);
+  };
+
+  const revertLineItem = (index: number) => {
+    const snapshot = snapshots[index];
+    if (snapshot) {
+      const updated = [...lineItems];
+      updated[index] = { ...snapshot };
+      setLineItems(updated);
+    }
+    setExpandedIndex(null);
   };
 
   const updateLineItem = (index: number, field: keyof LineItemForm, value: string) => {
@@ -77,12 +349,17 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     setLineItems(updated);
   };
 
-  const removeLineItem = (index: number) => {
-    if (lineItems.length === 1) {
-      toast.error("You must have at least one line item");
-      return;
-    }
-    setLineItems(lineItems.filter((_, i) => i !== index));
+  const markForDelete = (index: number) => {
+    setPendingDeleteIndices(prev => new Set(prev).add(index));
+    if (expandedIndex === index) setExpandedIndex(null);
+  };
+
+  const undoDelete = (index: number) => {
+    setPendingDeleteIndices(prev => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
   };
 
   const calculateLineItemTotal = (quantity: string, unitPrice: string) => {
@@ -91,22 +368,26 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     return qty * price;
   };
 
+  const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
+
   const calculateTotals = () => {
-    const subtotal = lineItems.reduce((sum, item) => {
+    const subtotal = activeLineItems.reduce((sum, item) => {
       return sum + calculateLineItemTotal(item.quantity, item.unit_price);
     }, 0);
     const profitMarginValue = parseFloat(profitMargin || '0') / 100;
     const profitAmount = subtotal * profitMarginValue;
-    const subtotalWithProfit = subtotal + profitAmount;
-    const taxAmount = subtotalWithProfit * parseFloat(estimate.tax_rate.toString());
+    const surchargeValue = parseFloat(surcharge || '0') / 100;
+    const surchargeAmount = subtotal * surchargeValue;
+    const subtotalWithAdjustments = subtotal + profitAmount + surchargeAmount;
+    const taxAmount = subtotalWithAdjustments * parseFloat(estimate.tax_rate.toString());
     const discountAmount = parseFloat(estimate.discount.toString());
-    const total = subtotalWithProfit + taxAmount - discountAmount;
+    const total = subtotalWithAdjustments + taxAmount - discountAmount;
 
-    return { subtotal, profitAmount, taxAmount, discountAmount, total };
+    return { subtotal, profitAmount, surchargeAmount, taxAmount, discountAmount, total };
   };
 
   const saveChanges = async () => {
-    if (lineItems.length === 0 || lineItems.every(item => !item.name)) {
+    if (activeLineItems.length === 0 || activeLineItems.every(item => !item.name)) {
       toast.error("Please add at least one line item with a name");
       return;
     }
@@ -122,7 +403,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
           .map((item: any) => item.id)
       );
 
-      const currentIds = new Set(lineItems.filter((item) => item.id).map((item) => item.id));
+      const currentIds = new Set(activeLineItems.filter((item) => item.id).map((item) => item.id));
       const deletedIds = Array.from(existingIds).filter((id) => !currentIds.has(id as string));
 
       if (shouldTrackChanges) {
@@ -150,7 +431,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         }
       }
 
-      for (const item of lineItems) {
+      for (const item of activeLineItems) {
         const quantity = parseFloat(item.quantity) || 1;
         const unitPrice = parseFloat(item.unit_price) || 0;
         const total = quantity * unitPrice;
@@ -253,15 +534,18 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         );
         const profitMarginValue = parseFloat(profitMargin || '0') / 100;
         const profitAmount = newSubtotal * profitMarginValue;
-        const subtotalWithProfit = newSubtotal + profitAmount;
-        const newTax = subtotalWithProfit * parseFloat(estimate.tax_rate.toString());
-        const newTotal = subtotalWithProfit + newTax - parseFloat(estimate.discount.toString());
+        const surchargeValue = parseFloat(surcharge || '0') / 100;
+        const surchargeAmount = newSubtotal * surchargeValue;
+        const subtotalWithAdjustments = newSubtotal + profitAmount + surchargeAmount;
+        const newTax = subtotalWithAdjustments * parseFloat(estimate.tax_rate.toString());
+        const newTotal = subtotalWithAdjustments + newTax - parseFloat(estimate.discount.toString());
 
         await supabase
           .from('estimates')
           .update({
             subtotal: newSubtotal,
             profit_margin: parseFloat(profitMargin || '0'),
+            surcharge: parseFloat(surcharge || '0'),
             tax: newTax,
             total: newTotal,
             updated_at: new Date().toISOString(),
@@ -285,7 +569,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     }
   };
 
-  const { subtotal, profitAmount, taxAmount, discountAmount, total } = calculateTotals();
+  const { subtotal, profitAmount, surchargeAmount, taxAmount, discountAmount, total } = calculateTotals();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -299,144 +583,43 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
         <div className="space-y-4 py-4">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">Line Items *</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addLineItem}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Item
-              </Button>
-            </div>
+            <Label className="text-base font-semibold">Line Items *</Label>
 
-            {lineItems.map((item, index) => (
-              <div key={index} className="p-4 border border-border rounded-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-                  <div className="flex items-center gap-1">
-                    <QuickEstimateLineItem
-                      leadId={estimate.job_id}
-                      onApply={(name, quantity, unit, unitPrice, description) => {
-                        updateLineItem(index, "name", name);
-                        updateLineItem(index, "quantity", quantity);
-                        updateLineItem(index, "unit", unit);
-                        updateLineItem(index, "unit_price", unitPrice);
-                        updateLineItem(index, "description", description);
-                      }}
-                    />
-                    {lineItems.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeLineItem(index)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
+            {lineItems.map((item, index) =>
+              expandedIndex === index && !pendingDeleteIndices.has(index) ? (
+                <ExpandedLineItem
+                  key={index}
+                  item={item}
+                  index={index}
+                  jobId={estimate.job_id}
+                  onUpdate={(field, value) => updateLineItem(index, field, value)}
+                  onCollapse={() => setExpandedIndex(null)}
+                  onRevert={() => revertLineItem(index)}
+                  onRemove={() => markForDelete(index)}
+                />
+              ) : (
+                <CompactLineItem
+                  key={index}
+                  item={item}
+                  index={index}
+                  pendingDelete={pendingDeleteIndices.has(index)}
+                  onExpand={() => expandLineItem(index)}
+                  onRemove={() => markForDelete(index)}
+                  onUndoRemove={() => undoDelete(index)}
+                />
+              )
+            )}
 
-                <div className="space-y-2">
-                  <Label htmlFor={`item-name-${index}`}>Title *</Label>
-                  <Input
-                    id={`item-name-${index}`}
-                    value={item.name}
-                    onChange={(e) => updateLineItem(index, "name", e.target.value)}
-                    placeholder="e.g., Paver Installation"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-description-${index}`}>Description</Label>
-                  <Textarea
-                    id={`item-description-${index}`}
-                    value={item.description}
-                    onChange={(e) => updateLineItem(index, "description", e.target.value)}
-                    placeholder="Additional details..."
-                    rows={2}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-category-${index}`}>Category</Label>
-                  <Select
-                    value={item.category}
-                    onValueChange={(value) => updateLineItem(index, "category", value)}
-                  >
-                    <SelectTrigger id={`item-category-${index}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="equipment">Equipment</SelectItem>
-                      <SelectItem value="materials">Materials</SelectItem>
-                      <SelectItem value="labor">Labor</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-quantity-${index}`}>Quantity *</Label>
-                    <Input
-                      id={`item-quantity-${index}`}
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(index, "quantity", e.target.value)}
-                      placeholder="1"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`item-unit-${index}`}>Unit</Label>
-                    <Select
-                      value={item.unit}
-                      onValueChange={(value) => updateLineItem(index, "unit", value)}
-                    >
-                      <SelectTrigger id={`item-unit-${index}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="item">Item</SelectItem>
-                        <SelectItem value="each">Each</SelectItem>
-                        <SelectItem value="hour">Hour</SelectItem>
-                        <SelectItem value="sq ft">Sq Ft</SelectItem>
-                        <SelectItem value="linear ft">Linear Ft</SelectItem>
-                        <SelectItem value="day">Day</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`item-price-${index}`}>Unit Price *</Label>
-                  <Input
-                    id={`item-price-${index}`}
-                    type="number"
-                    value={item.unit_price}
-                    onChange={(e) => updateLineItem(index, "unit_price", e.target.value)}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-border">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Line Total:</span>
-                    <span className="font-semibold">
-                      ${calculateLineItemTotal(item.quantity, item.unit_price).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addLineItem}
+              className="w-full"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Item
+            </Button>
 
             <div className="bg-secondary p-4 rounded-lg space-y-2">
               <div className="flex justify-between items-center text-sm">
@@ -463,6 +646,26 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                 </div>
                 <span className="font-medium">
                   ${profitAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Surcharge:</span>
+                  <div className="relative w-20">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={surcharge}
+                      onChange={(e) => setSurcharge(e.target.value)}
+                      className="h-7 text-xs pr-6"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <span className="font-medium">
+                  ${surchargeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="flex justify-between items-center text-sm">

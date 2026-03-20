@@ -6,6 +6,7 @@ export interface CustomerCardData {
   phone: string | null;
   address: string | null;
   city: string | null;
+  reason?: string;
 }
 
 interface CustomerCardProps {

@@ -15,7 +15,7 @@ type JobInsert = Omit<LeadInsert, "approval_status"> & { customer_id: string };
 type JobUpdate = LeadUpdate;
 type JobStatus = UnifiedStatus;
 
-export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: number; searchQuery?: string }) {
+export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: number; searchQuery?: string; myJobsOnly?: boolean }) {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
 
@@ -46,9 +46,9 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
   }, [user, queryClient]);
 
   return useQuery({
-    queryKey: ["jobs", filter, currentAccount?.id],
+    queryKey: ["jobs", filter, currentAccount?.id, user?.id],
     queryFn: async () => {
-      if (!currentAccount) return [];
+      if (!currentAccount || !user) return [];
 
       let query = supabase
         .from("leads")
@@ -57,7 +57,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end),
-          job_assignments!lead_id(id),
+          job_assignments!lead_id(id, user_id),
           invoices!lead_id(id),
           estimates!job_id(id, total)
         `)
@@ -87,7 +87,16 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
 
       if (error) throw error;
 
-      return (data || []).map((job: any) => {
+      let filteredData = data || [];
+
+      if (filter?.myJobsOnly) {
+        filteredData = filteredData.filter((job: any) => {
+          const assignments = job.job_assignments || [];
+          return assignments.some((assignment: any) => assignment.user_id === user.id);
+        });
+      }
+
+      return filteredData.map((job: any) => {
         const schedules = job.job_schedules || [];
         const sortedSchedules = schedules.length > 0
           ? schedules.sort((a: any, b: any) => {

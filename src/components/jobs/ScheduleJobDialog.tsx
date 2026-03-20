@@ -109,6 +109,26 @@ export function ScheduleJobDialog({
       return;
     }
 
+    if (selectedCrewId) {
+      const { data: conflicts } = await supabase
+        .from("job_assignments")
+        .select(`
+          user_id,
+          job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end),
+          profiles!inner(full_name)
+        `)
+        .eq("user_id", selectedCrewId)
+        .eq("job_schedules.scheduled_date", scheduledDate);
+
+      if (conflicts && conflicts.length > 0) {
+        const crewMemberName = conflicts[0]?.profiles?.full_name || "This crew member";
+        toast.error(
+          `Scheduling conflict: ${crewMemberName} is already assigned to another job on ${format(new Date(scheduledDate), "MMM d, yyyy")}`
+        );
+        return;
+      }
+    }
+
     const result = await scheduleJob({
       leadId: jobId,
       scheduledDate,
@@ -116,31 +136,59 @@ export function ScheduleJobDialog({
       endTime: scheduledTimeEnd || undefined,
     });
 
-    if (result.ok) {
-      // Assign crew if selected
-      if (selectedCrewId && currentAccount && user) {
-        const { error: assignError } = await supabase
-          .from("job_assignments")
-          .insert({
-            lead_id: jobId,
-            user_id: selectedCrewId,
-            account_id: currentAccount.id,
-            assigned_by: user.id,
-          });
+    if (!result.ok || !result.scheduleId) {
+      return;
+    }
 
-        if (assignError) {
-          console.error("Failed to assign crew:", assignError);
-          toast.error("Scheduled, but failed to assign crew");
-        }
+    if (selectedCrewId && currentAccount && user) {
+      const { data: hasOverlap } = await supabase.rpc('check_assignment_overlap', {
+        p_user_id: selectedCrewId,
+        p_schedule_id: result.scheduleId,
+        p_account_id: currentAccount.id,
+      });
+
+      if (hasOverlap) {
+        const { data: crewMemberProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('user_id', selectedCrewId)
+          .maybeSingle();
+
+        const crewName = crewMemberProfile?.full_name || 'This crew member';
+        const dateStr = scheduledDate
+          ? format(new Date(scheduledDate), "EEEE, MMMM d, yyyy")
+          : 'the selected date';
+
+        toast.error(`${crewName} is already assigned to another job on ${dateStr}. Please choose a different date or crew member.`, { duration: 5000 });
+        return;
       }
 
-      // Reset form
-      setSelectedDate(undefined);
-      setScheduledTimeStart("");
-      setScheduledTimeEnd("");
-      setSelectedCrewId("");
-      onOpenChange(false);
+      const { error: assignError } = await supabase
+        .from("job_assignments")
+        .insert({
+          lead_id: jobId,
+          user_id: selectedCrewId,
+          job_schedule_id: result.scheduleId,
+          account_id: currentAccount.id,
+          assigned_by: user.id,
+        });
+
+      if (assignError) {
+        console.error("Failed to assign crew:", assignError);
+        if (assignError.message.includes("row-level security") || assignError.message.includes("policy")) {
+          toast.error("This crew member is already assigned to another job at this time. Please choose a different time or crew member.", { duration: 5000 });
+        } else {
+          toast.error(`Failed to assign crew: ${assignError.message}`);
+        }
+        return;
+      }
     }
+
+    setSelectedDate(undefined);
+    setScheduledTimeStart("");
+    setScheduledTimeEnd("");
+    setSelectedCrewId("");
+    onOpenChange(false);
   };
 
   const handleOpenChange = (newOpen: boolean) => {

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, Bell } from "lucide-react";
+import { ArrowLeft, Bell, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "./UserMenu";
 import { NotificationsPanel } from "@/components/notifications/NotificationsPanel";
+import { GlobalSearch } from "./GlobalSearch";
 import { useNotifications } from "@/hooks/useNotifications";
 
 export interface PageHeaderProps {
@@ -12,6 +13,8 @@ export interface PageHeaderProps {
   showBack?: boolean;
   backTo?: string;
   showNotifications?: boolean;
+  showSearch?: boolean;
+  onSearchClick?: () => void;
   notificationCount?: number;
   actions?: React.ReactNode;
   className?: string;
@@ -23,12 +26,23 @@ export function PageHeader({
   showBack,
   backTo,
   showNotifications = true,
+  showSearch = true,
+  onSearchClick,
   actions,
   className,
 }: PageHeaderProps) {
   const navigate = useNavigate();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { unreadCount } = useNotifications();
+
+  const handleSearchClick = () => {
+    if (onSearchClick) {
+      onSearchClick();
+    } else {
+      setSearchOpen(true);
+    }
+  };
 
   const handleBack = () => {
     if (window.history.state?.idx > 0) {
@@ -68,6 +82,14 @@ export function PageHeader({
 
           <div className="flex items-center gap-2">
             {actions}
+            {showSearch && (
+              <button
+                onClick={handleSearchClick}
+                className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+            )}
             {showNotifications && (
               <button
                 onClick={() => setPanelOpen(true)}
@@ -88,6 +110,8 @@ export function PageHeader({
       {showNotifications && (
         <NotificationsPanel open={panelOpen} onOpenChange={setPanelOpen} />
       )}
+
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </>
   );
 }

@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader as Loader2 } from "lucide-react";
 import {
   useRevenueExpenses,
   useLeadFunnel,
@@ -14,10 +14,9 @@ import {
   useCrewHours,
 } from "@/hooks/useDashboardVisuals";
 
-type Timeframe = "30d" | "week" | "month";
+type Timeframe = "week" | "month";
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
-  { value: "30d", label: "30 Days" },
   { value: "week", label: "This Week" },
   { value: "month", label: "This Month" },
 ];
@@ -297,7 +296,7 @@ function CrewHours({ timeframe }: { timeframe: Timeframe }) {
 }
 
 export function DashboardVisuals() {
-  const [timeframe, setTimeframe] = useState<Timeframe>("30d");
+  const [timeframe, setTimeframe] = useState<Timeframe>("week");
 
   return (
     <section className="space-y-4">
@@ -309,8 +308,8 @@ export function DashboardVisuals() {
         <RevenueExpenses timeframe={timeframe} />
         <LeadFunnel timeframe={timeframe} />
         <CompletionDonut timeframe={timeframe} />
-        <PlannedVsActual timeframe={timeframe} />
-        <CostVsQuoted timeframe={timeframe} />
+        
+        
         <CrewHours timeframe={timeframe} />
       </div>
     </section>

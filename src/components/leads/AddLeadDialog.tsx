@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Upload } from "lucide-react";
+import { Loader as Loader2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,20 +95,14 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
       let customerAddress: string | null = null;
       let customerCity: string | null = null;
 
-      if (clientMode === "existing" && selectedCustomer) {
-        customerId = selectedCustomer.id;
-        customerName = selectedCustomer.name;
-        customerPhone = selectedCustomer.phone;
-        customerEmail = selectedCustomer.email;
-        customerAddress = selectedCustomer.address;
-        customerCity = selectedCustomer.city;
-      } else {
+      if (clientMode === "new") {
         const customer = await createCustomer.mutateAsync({
           name: newClientData.name.trim(),
           phone: newClientData.phone?.trim() || null,
           email: newClientData.email?.trim() || null,
           address: newClientData.address?.trim() || null,
           city: newClientData.city?.trim() || null,
+          forceNew: true,
         });
         customerId = customer.id;
         customerName = customer.name;
@@ -116,6 +110,16 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
         customerEmail = customer.email;
         customerAddress = customer.address;
         customerCity = customer.city;
+      } else if (clientMode === "existing" && selectedCustomer) {
+        customerId = selectedCustomer.id;
+        customerName = selectedCustomer.name;
+        customerPhone = selectedCustomer.phone;
+        customerEmail = selectedCustomer.email;
+        customerAddress = selectedCustomer.address;
+        customerCity = selectedCustomer.city;
+      } else {
+        toast.error("Please select a client or create a new one");
+        return;
       }
 
       const { data, error } = await supabase

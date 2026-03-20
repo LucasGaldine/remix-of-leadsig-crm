@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoveVertical as MoreVertical, CreditCard as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
+import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoveVertical as MoreVertical, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -29,6 +29,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Database } from "@/types/database";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
+import { MentionInput } from "@/components/ui/mention-input";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { parseMentionsToHTML } from "@/lib/mentionParser";
+import { formatCurrency } from "@/lib/formatter";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -124,6 +128,10 @@ export default function LeadDetail() {
   // New note state
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const { data: teamMembers = [] } = useTeamMembers();
+
+  // Activity timeline state
+  const [showAllActivity, setShowAllActivity] = useState(false);
 
   // Qualification state
   const [qualNotes, setQualNotes] = useState("");
@@ -302,6 +310,7 @@ export default function LeadDetail() {
     if (!newNote.trim() || !lead) return;
 
     setAddingNote(true);
+
     const { error } = await supabase.from("interactions").insert({
       lead_id: lead.id,
       account_id: currentAccount?.id,
@@ -732,6 +741,13 @@ export default function LeadDetail() {
   const showConvertButton = lead.status === "qualified";
   const isEstimateApproved = estimate?.status === "accepted";
 
+  const handleCall = (phone) => {
+    if (!phone) return;
+    logCall("outbound");
+    const formattedPhone = phone.replace(/[^\d+]/g, "");
+    window.location.href = `tel:${formattedPhone}`;
+  };
+
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24 ">
 
@@ -777,17 +793,17 @@ export default function LeadDetail() {
                   
 
                   <div className="text-5 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{formatPhone(lead.phone)}</span>
+                    <div className="flex items-start gap-2">
+                      <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{formatPhone(lead.phone)}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{lead.email || "No email"}</span>
+                    <div className="flex items-start gap-2">
+                      <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{lead.email || "No email"}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
                     </div>
                   </div>
                 </div>
@@ -797,7 +813,7 @@ export default function LeadDetail() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => logCall("outbound")}
+                    onClick={() => handleCall(lead.phone)}
                   >
                     <Phone className="h-4 w-4" />
                   </Button>
@@ -835,7 +851,7 @@ export default function LeadDetail() {
                   </div>
 
                   <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
-                    <p className="text-2">${lead.estimated_value}</p>
+                    <p className="text-2">{formatCurrency(lead.estimated_value || 0)}</p>
                     <p>{lead.service_type || "No service type"}</p>
                   </div>
                 </div>
@@ -1321,7 +1337,29 @@ export default function LeadDetail() {
 
           {/* Interaction Timeline */}
             <div className="card-elevated rounded-lg p-4">
-              <h3 className="font-medium mb-3">Activity Timeline</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium">Activity Timeline</h3>
+                {interactions.length > 5 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAllActivity(!showAllActivity)}
+                    className="text-xs"
+                  >
+                    {showAllActivity ? (
+                      <>
+                        <ChevronDown className="h-3 w-3 mr-1" />
+                        Show Less
+                      </>
+                    ) : (
+                      <>
+                        <ChevronRight className="h-3 w-3 mr-1" />
+                        Show All ({interactions.length})
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
 
               <div className="space-y-3">
                 {interactions.length === 0 ? (
@@ -1329,7 +1367,7 @@ export default function LeadDetail() {
                     No activity yet
                   </p>
                 ) : (
-                  interactions.map((interaction) => (
+                  (showAllActivity ? interactions : interactions.slice(0, 5)).map((interaction) => (
                     <div key={interaction.id} className="flex gap-3 pb-3 border-b border-border last:border-0">
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                         {getInteractionIcon(interaction.type)}
@@ -1349,10 +1387,10 @@ export default function LeadDetail() {
                           </span>
                         </div>
                         {interaction.summary && (
-                          <p className="text-sm text-muted-foreground">{interaction.summary}</p>
+                          <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: parseMentionsToHTML(interaction.summary) }} />
                         )}
                         {interaction.body && interaction.body !== interaction.summary && (
-                          <p className="text-sm mt-1">{interaction.body}</p>
+                          <p className="text-sm mt-1" dangerouslySetInnerHTML={{ __html: parseMentionsToHTML(interaction.body) }} />
                         )}
                       </div>
                     </div>
@@ -1367,11 +1405,12 @@ export default function LeadDetail() {
         <div className="px-4 py-4 max-w-[var(--content-max-width)] m-auto flex flex-col gap-4">
           <div className="card-elevated rounded-lg p-4">
 
-              <Textarea
+              <MentionInput
                 value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="Add a note..."
+                onChange={setNewNote}
+                placeholder="Add a note... (use @ to mention team members)"
                 rows={2}
+                teamMembers={teamMembers}
               />
               <Button
                 size="sm"
@@ -1396,16 +1435,22 @@ export default function LeadDetail() {
                         <FileText className="h-4 w-4" />
                       </div>
 
-                      
+
                         <div className="flex-1 items-center justify-between gap-2 mb-0.5">
                           <p className="text-3">
-                          {interaction.body || interaction.summary}
+                          {parseMentionsForDisplay(interaction.body || interaction.summary || "").map((part, idx) =>
+                            part.type === 'mention' ? (
+                              <span key={idx} className="font-bold text-primary">@{part.content}</span>
+                            ) : (
+                              <span key={idx}>{part.content}</span>
+                            )
+                          )}
                           </p>
                           <span className="text-xs text-muted-foreground ml-auto">
                             {format(new Date(interaction.created_at), "MMM d, yyyy 'at' h:mm a")}
                           </span>
                         </div>
-                        
+
                     </div>
                   ))
               )}

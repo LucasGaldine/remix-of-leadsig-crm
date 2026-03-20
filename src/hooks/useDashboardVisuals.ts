@@ -3,18 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { subDays, startOfWeek, endOfWeek, format, differenceInMinutes } from "date-fns";
 
-type Timeframe = "30d" | "week" | "month";
+type Timeframe = "week" | "month";
 
 function getDateRange(tf: Timeframe) {
   const now = new Date();
   if (tf === "week") {
     return { from: startOfWeek(now, { weekStartsOn: 1 }), to: endOfWeek(now, { weekStartsOn: 1 }) };
   }
-  if (tf === "month") {
-    const from = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { from, to: now };
-  }
-  return { from: subDays(now, 30), to: now };
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { from, to: now };
 }
 
 const isMissingTable = (error: any) =>

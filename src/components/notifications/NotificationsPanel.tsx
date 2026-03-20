@@ -15,6 +15,7 @@ import {
   CheckCheck,
   Trash2,
   Briefcase,
+  AtSign,
 } from "lucide-react";
 
 interface NotificationsPanelProps {
@@ -29,6 +30,7 @@ const EVENT_CONFIG: Record<string, { icon: typeof UserPlus; color: string }> = {
   schedule_change: { icon: CalendarDays, color: "text-sky-600 bg-sky-50" },
   estimate_approved: { icon: FileCheck, color: "text-teal-600 bg-teal-50" },
   job_assignment: { icon: Briefcase, color: "text-primary bg-primary/10" },
+  mention: { icon: AtSign, color: "text-primary bg-primary/10" },
 };
 
 function getRoute(notification: Notification): string | null {

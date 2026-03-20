@@ -45,7 +45,7 @@ export function DashboardStatCards() {
 
   return (
     <div>
-      <div className="hidden sm:flex gap-3">
+      <div className="flex gap-3 overflow-x-scroll">
         {cards.map(({ cardId, config, value }) => (
           <StatCard
             key={cardId}
@@ -57,43 +57,7 @@ export function DashboardStatCards() {
         ))}
       </div>
 
-      <div className="sm:hidden -mx-4">
-        <Carousel
-          setApi={handleSetApi}
-          opts={{ align: "start", loop: false }}
-          className="w-full"
-        >
-          <CarouselContent className="-ml-2 pl-4">
-            {cards.map(({ cardId, config, value }) => (
-              <CarouselItem key={cardId} className="basis-[45%] pl-2">
-                <StatCard
-                  label={config.label}
-                  value={value}
-                  icon={config.icon}
-                  onClick={() => navigate(config.navigateTo)}
-                />
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-        </Carousel>
-
-        {totalDots > 1 && (
-          <div className="flex justify-center gap-1.5 mt-3">
-            {cards.map((_, index) => (
-              <button
-                key={index}
-                className={cn(
-                  "h-1.5 rounded-full transition-all duration-200",
-                  index === currentSlide
-                    ? "w-4 bg-foreground/60"
-                    : "w-1.5 bg-foreground/15"
-                )}
-                onClick={() => api?.scrollTo(index)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      
     </div>
   );
 }

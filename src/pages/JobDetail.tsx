@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Clock, User, Users, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, ChevronRight, Calendar, CreditCard as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation } from "lucide-react";
+import { MapPin, Clock, User, Users, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, ChevronRight, Calendar, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -39,6 +39,9 @@ import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { JobTimeTracker } from "@/components/jobs/JobTimeTracker";
 import { Repeat } from "lucide-react";
 import { JobCosts } from "@/components/jobs/JobCosts";
+import { MentionInput } from "@/components/ui/mention-input";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -57,9 +60,6 @@ export default function JobDetail() {
     service_type: "",
     address: "",
     description: "",
-    customer_name: "",
-    customer_phone: "",
-    customer_email: "",
   });
 
   const queryClient = useQueryClient();
@@ -91,6 +91,7 @@ export default function JobDetail() {
   const [notes, setNotes] = useState<Array<{ id: string; body: string | null; summary: string | null; created_at: string; created_by: string | null }>>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const { data: teamMembers = [] } = useTeamMembers();
   const [hasInvoice, setHasInvoice] = useState(false);
 
   useEffect(() => {
@@ -116,6 +117,8 @@ export default function JobDetail() {
     queryClient.invalidateQueries({ queryKey: ["jobs"] });
     queryClient.invalidateQueries({ queryKey: ["leads"] });
     toast.success("Photos uploaded and lead has been converted to a job!");
+    fetchAfterPhotos();
+    fetchBeforePhotos();
   };
 
   const fetchParentLead = async () => {
@@ -392,9 +395,6 @@ export default function JobDetail() {
       service_type: job?.service_type || "",
       address: job?.address || "",
       description: job?.description || "",
-      customer_name: job?.customer?.name || "",
-      customer_phone: job?.customer?.phone || "",
-      customer_email: job?.customer?.email || "",
     });
     setEditDialogOpen(true);
   };
@@ -403,18 +403,6 @@ export default function JobDetail() {
     if (!id) return;
 
     try {
-      if (job?.customer?.id) {
-        await supabase
-          .from("customers")
-          .update({
-            name: editForm.customer_name.trim(),
-            phone: editForm.customer_phone.trim() || null,
-            email: editForm.customer_email.trim() || null,
-            address: editForm.address.trim() || null,
-          })
-          .eq("id", job.customer.id);
-      }
-
       await updateJobMutation.mutateAsync({
         id,
         name: editForm.name.trim() || null,
@@ -616,9 +604,9 @@ export default function JobDetail() {
           {/* Main Content */}
           <div className="flex flex-col pt-8 pb-8 p-4 gap-4">
 
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex  gap-4">
               {/*Left Column */}
-              <div className="flex flex-col flex-1 min-w-0 gap-2">
+              <div className="flex flex-col gap-2 w-full">
 
                 <div className="flex items-center gap-2">
                 {job.customer?.id ? (
@@ -679,22 +667,22 @@ export default function JobDetail() {
                 </div>
                 
                 <div className="text-5">
-                  <div className="flex items-center gap-1">
-                    <Briefcase className="h-3.5 w-3.5 shrink-0"></Briefcase>
-                  <p >
-                    {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
-                  </p>
+                  <div className="flex items-start gap-1">
+                    <Briefcase className="h-3.5 w-3.5 shrink-0 mt-0.5"></Briefcase>
+                    <p className="break-words min-w-0">
+                      {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
+                    </p>
                   </div>
-                  <button onClick={openAddressDialog} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{clientAddress || "No address"}</span>
+                  <button onClick={openAddressDialog} className="flex items-start gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors text-left">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0">{clientAddress || "No address"}</span>
                   </button>
                 </div>
               </div>
               
               {/*Right Column */}
-              <div className="flex flex-col sm:items-end gap-2">
-                <div className="flex justify-end gap-2 flex-wrap">
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-end gap-2 flex-wrap ">
 
 
                   {isUnassigned && (
@@ -724,7 +712,7 @@ export default function JobDetail() {
 
                 </div>
                 
-                <div className="sm:text-right text-muted-foreground">
+                <div className="text-right text-muted-foreground">
                   <p className="text-2 ">
                   ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
                   </p>
@@ -1161,6 +1149,7 @@ export default function JobDetail() {
               leadId={job?.is_estimate_visit && parentLeadId ? parentLeadId : id}
               photoType="before"
               title="Before Photos"
+              onPhotosChange={() => fetchBeforePhotos()}
               onJobConverted={handleJobConverted}
             />
             {!job?.is_estimate_visit && (
@@ -1168,6 +1157,7 @@ export default function JobDetail() {
                 leadId={id}
                 photoType="after"
                 title="After Photos"
+                onPhotosChange={() => fetchAfterPhotos()}
               />
             )}
           </div>
@@ -1176,11 +1166,12 @@ export default function JobDetail() {
         {activeTab === "notes" && (
           <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
             <div className="card-elevated rounded-lg p-4">
-                <Textarea
+                <MentionInput
                   value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add a note..."
+                  onChange={setNewNote}
+                  placeholder="Add a note... (use @ to mention team members)"
                   rows={2}
+                  teamMembers={teamMembers}
                 />
                 <Button
                   size="sm"
@@ -1203,7 +1194,15 @@ export default function JobDetail() {
                       </div>
 
                     <div className="flex-1 items-center justify-between gap-2 mb-0.5">
-                    <p className="text-3">{note.body || note.summary}</p>
+                    <p className="text-3 whitespace-pre-wrap">
+                      {parseMentionsForDisplay(note.body || note.summary || "").map((part, idx) =>
+                        part.type === 'mention' ? (
+                          <span key={idx} className="font-bold text-primary">@{part.content}</span>
+                        ) : (
+                          <span key={idx}>{part.content}</span>
+                        )
+                      )}
+                    </p>
 
                     <span className="text-xs text-muted-foreground ml-auto">
                       {format(new Date(note.created_at), "MMM d, yyyy 'at' h:mm a")}
@@ -1262,97 +1261,59 @@ export default function JobDetail() {
           <DialogHeader>
             <DialogTitle>Edit Job Details</DialogTitle>
             <DialogDescription>
-              Update job and customer information.
+              Update job information. To edit customer details, visit the customer page.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-6 py-4">
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Customer Info</h3>
-              <div className="space-y-2">
-                <Label htmlFor="edit-customer-name">Customer Name</Label>
-                <Input
-                  id="edit-customer-name"
-                  value={editForm.customer_name}
-                  onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
-                  placeholder="John Smith"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-customer-phone">Phone</Label>
-                  <Input
-                    id="edit-customer-phone"
-                    type="tel"
-                    value={editForm.customer_phone}
-                    onChange={(e) => setEditForm({ ...editForm, customer_phone: e.target.value })}
-                    placeholder="(555) 123-4567"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-customer-email">Email</Label>
-                  <Input
-                    id="edit-customer-email"
-                    type="email"
-                    value={editForm.customer_email}
-                    onChange={(e) => setEditForm({ ...editForm, customer_email: e.target.value })}
-                    placeholder="john@email.com"
-                  />
-                </div>
-              </div>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Job Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                placeholder="Smith Patio Project"
+              />
             </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Job Details</h3>
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Job Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  placeholder="Smith Patio Project"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-service-type">Service Type</Label>
-                <Select
-                  value={editForm.service_type}
-                  onValueChange={(v) => setEditForm({ ...editForm, service_type: v })}
-                >
-                  <SelectTrigger id="edit-service-type">
-                    <SelectValue placeholder="Select service type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pavers / Patio">Pavers / Patio</SelectItem>
-                    <SelectItem value="Concrete">Concrete</SelectItem>
-                    <SelectItem value="Sod / Lawn">Sod / Lawn</SelectItem>
-                    <SelectItem value="Deck">Deck</SelectItem>
-                    <SelectItem value="Fencing">Fencing</SelectItem>
-                    <SelectItem value="Retaining Wall">Retaining Wall</SelectItem>
-                    <SelectItem value="Landscaping">Landscaping</SelectItem>
-                    <SelectItem value="Hardscaping">Hardscaping</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-address">Job Address</Label>
-                <Input
-                  id="edit-address"
-                  value={editForm.address}
-                  onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                  placeholder="123 Main St, Austin, TX"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea
-                  id="edit-description"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  placeholder="Project scope and details..."
-                  rows={3}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-service-type">Service Type</Label>
+              <Select
+                value={editForm.service_type}
+                onValueChange={(v) => setEditForm({ ...editForm, service_type: v })}
+              >
+                <SelectTrigger id="edit-service-type">
+                  <SelectValue placeholder="Select service type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pavers / Patio">Pavers / Patio</SelectItem>
+                  <SelectItem value="Concrete">Concrete</SelectItem>
+                  <SelectItem value="Sod / Lawn">Sod / Lawn</SelectItem>
+                  <SelectItem value="Deck">Deck</SelectItem>
+                  <SelectItem value="Fencing">Fencing</SelectItem>
+                  <SelectItem value="Retaining Wall">Retaining Wall</SelectItem>
+                  <SelectItem value="Landscaping">Landscaping</SelectItem>
+                  <SelectItem value="Hardscaping">Hardscaping</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-address">Job Address</Label>
+              <Input
+                id="edit-address"
+                value={editForm.address}
+                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                placeholder="123 Main St, Austin, TX"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                placeholder="Project scope and details..."
+                rows={3}
+              />
             </div>
           </div>
           <DialogFooter>

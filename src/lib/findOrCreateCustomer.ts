@@ -16,19 +16,21 @@ interface CustomerInput {
  */
 export async function findOrCreateCustomer(input: CustomerInput): Promise<{ id: string }> {
   const normalizedAddress = input.address?.trim().toLowerCase() || "";
+  const normalizedName = input.name?.trim().toLowerCase() || "";
   const accountId = input.account_id || null;
 
-  // 1. Match by address (strongest dedup signal)
-  if (normalizedAddress) {
-    const { data: byAddress } = await supabase
+  // 1. Match by address AND name (strongest dedup signal)
+  if (normalizedAddress && normalizedName) {
+    const { data: byAddressAndName } = await supabase
       .from("customers")
       .select("id")
       .eq("account_id", accountId as any)
       .ilike("address", normalizedAddress)
+      .ilike("name", normalizedName)
       .limit(1)
       .maybeSingle();
 
-    if (byAddress) return { id: byAddress.id };
+    if (byAddressAndName) return { id: byAddressAndName.id };
   }
 
   // 2. Match by phone

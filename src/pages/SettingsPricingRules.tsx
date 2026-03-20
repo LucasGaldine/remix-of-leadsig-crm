@@ -45,6 +45,7 @@ export default function SettingsPricingRules() {
   const [activeTab, setActiveTab] = useState<ServiceType>("pavers");
   const [taxRate, setTaxRate] = useState<string>("");
   const [profitMargin, setProfitMargin] = useState<string>("");
+  const [surcharge, setSurcharge] = useState<string>("");
 
   useEffect(() => {
     fetchRules();
@@ -54,8 +55,9 @@ export default function SettingsPricingRules() {
     if (currentAccount) {
       setTaxRate(String(currentAccount.default_tax_rate ?? 8));
       setProfitMargin(String(currentAccount.default_profit_margin ?? 0));
+      setSurcharge(String(currentAccount.default_surcharge ?? 0));
     }
-  }, [currentAccount?.default_tax_rate, currentAccount?.default_profit_margin]);
+  }, [currentAccount?.default_tax_rate, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
 
   const fetchRules = async () => {
     if (!user?.id || !currentAccount?.id) return;
@@ -111,11 +113,13 @@ export default function SettingsPricingRules() {
     try {
       const parsedTax = parseFloat(taxRate) || 0;
       const parsedProfitMargin = parseFloat(profitMargin) || 0;
+      const parsedSurcharge = parseFloat(surcharge) || 0;
       const { error: taxError } = await supabase
         .from("accounts")
         .update({
           default_tax_rate: parsedTax,
-          default_profit_margin: parsedProfitMargin
+          default_profit_margin: parsedProfitMargin,
+          default_surcharge: parsedSurcharge,
         })
         .eq("id", currentAccount.id);
 
@@ -263,6 +267,32 @@ export default function SettingsPricingRules() {
                     value={profitMargin}
                     onChange={(e) => {
                       setProfitMargin(e.target.value);
+                      setIsDirty(true);
+                    }}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Default Surcharge */}
+            <div className="card-elevated rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">Default Surcharge</h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Applied automatically to new estimates (editable per estimate)
+                  </p>
+                </div>
+                <div className="relative w-28">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={surcharge}
+                    onChange={(e) => {
+                      setSurcharge(e.target.value);
                       setIsDirty(true);
                     }}
                   />

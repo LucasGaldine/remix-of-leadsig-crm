@@ -49,12 +49,12 @@ export function StatCard({
       onClick={onClick}
       disabled={!onClick}
       className={cn(
-        "flex-1 min-w-[140px] card-elevated rounded-lg p-8 text-left transition-all",
+        "flex-1 min-w-[220px] card-elevated rounded-lg p-8 text-left transition-all",
         onClick && "levitate",
         !onClick && "cursor-default"
       )}
     >
-      <div >
+      <div>
         <div className="flex items-start justify-between">
           <div>
             <p className="text-5">{label}</p>

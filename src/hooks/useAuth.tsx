@@ -29,6 +29,7 @@ interface Account {
   invite_code: string;
   default_tax_rate: number;
   default_profit_margin: number;
+  default_surcharge: number;
   pricing_plan: 'free' | 'basic' | 'premium';
 }
 
@@ -106,7 +107,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           invite_code,
           pricing_plan,
           default_tax_rate,
-          default_profit_margin
+          default_profit_margin,
+          default_surcharge
         )
       `)
       .eq('user_id', userId)

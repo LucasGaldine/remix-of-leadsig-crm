@@ -26,7 +26,8 @@ export function useDashboardPreferences() {
     }
 
     if (savedSections && Array.isArray(savedSections)) {
-      setSections(savedSections);
+      const mergedSections = [...new Set([...savedSections, ...DEFAULT_SECTION_IDS])];
+      setSections(mergedSections);
     } else {
       setSections(DEFAULT_SECTION_IDS);
     }
