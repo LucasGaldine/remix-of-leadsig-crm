@@ -1,1 +1,13 @@
 project_id = "ylzixqcbesbmxojzmzmb"
+
+[functions.stripe-terminal-create-payment]
+verify_jwt = false
+
+[functions.stripe-terminal-connection-token]
+verify_jwt = false
+
+[functions.stripe-terminal-capture-payment]
+verify_jwt = false
+
+[functions.stripe-terminal-cancel-payment]
+verify_jwt = false

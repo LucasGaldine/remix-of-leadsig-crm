@@ -4,6 +4,7 @@ import {
   buildTapToPayPayload,
   buildTapToPayHandoffPayload,
   createTapToPayDeepLink,
+  formatTapToPaySessionError,
   isDirectTapToPayHandoffSupported,
   type TapToPayPaymentSessionRequest,
   type TapToPayPaymentSessionResponse,
@@ -179,5 +180,15 @@ describe("tap to pay handoff helpers", () => {
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Version/17.4 Mobile/15E148 Safari/604.1",
       ),
     ).toBe(true);
+  });
+
+  it("formats estimate-overage errors into a clearer tap to pay message", () => {
+    expect(
+      formatTapToPaySessionError(
+        "Failed to create Tap to Pay invoice: Invoice total ($7.00) would exceed estimate total ($6.72). Remaining: $0.72",
+      ),
+    ).toBe(
+      "Tap to Pay amount exceeds the remaining estimate balance. Remaining available: $0.72. Lower the amount and try again.",
+    );
   });
 });

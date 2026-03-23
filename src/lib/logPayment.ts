@@ -21,6 +21,13 @@ interface ReconcileInvoiceForLoggedPaymentInput {
   paymentAmount: number;
 }
 
+interface LoggedPaymentInvoiceCandidate {
+  id: string;
+  status: string | null;
+  balance_due: number | null;
+  created_at?: string | null;
+}
+
 export async function ensureInvoiceForLoggedPayment(
   input: EnsureInvoiceForLoggedPaymentInput,
 ): Promise<string> {
@@ -117,4 +124,15 @@ export async function reconcileInvoiceForLoggedPayment(
   if (error) {
     throw new Error("Failed to update invoice after recording payment");
   }
+}
+
+export function selectInvoiceForLoggedPayment(
+  invoices: LoggedPaymentInvoiceCandidate[],
+): LoggedPaymentInvoiceCandidate | null {
+  const openInvoice = invoices.find((invoice) => {
+    const balanceDue = Number(invoice.balance_due || 0);
+    return invoice.status !== "paid" && balanceDue > 0;
+  });
+
+  return openInvoice ?? null;
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildTapToPayPayload,
+  formatTapToPaySessionError,
   type TapToPayPaymentSessionInput,
   type TapToPayPaymentSessionResponse,
 } from "@/lib/tapToPay";
@@ -172,7 +173,9 @@ export function useStripeConnect() {
       });
 
       if (error) {
-        const errorMsg = extractFunctionError(error) || "Failed to create tap to pay payment session";
+        const errorMsg = formatTapToPaySessionError(
+          extractFunctionError(error) || "Failed to create tap to pay payment session",
+        );
         toast.error(errorMsg);
         console.error("Tap to Pay payment error:", error);
         return null;

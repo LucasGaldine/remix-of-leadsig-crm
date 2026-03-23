@@ -100,3 +100,13 @@ export function isDirectTapToPayHandoffSupported(userAgent?: string): boolean {
 
   return /Android|iPhone|iPad|iPod/i.test(userAgent);
 }
+
+export function formatTapToPaySessionError(message: string): string {
+  const remainingMatch = message.match(/Remaining:\s*(\$\d+(?:\.\d{1,2})?)/i);
+
+  if (/would exceed estimate total/i.test(message) && remainingMatch?.[1]) {
+    return `Tap to Pay amount exceeds the remaining estimate balance. Remaining available: ${remainingMatch[1]}. Lower the amount and try again.`;
+  }
+
+  return message;
+}

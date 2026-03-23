@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
+import { decodeJwtPayload, extractBearerToken } from "../_shared/auth-header.ts";
+import {
+  buildPendingTerminalPaymentRecord,
+  shouldRetryTerminalPaymentInsertWithoutTracking,
+} from "../_shared/terminal-payment-record.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,15 +59,36 @@ async function createDraftInvoiceForTerminalPayment(params: {
 }): Promise<string> {
   const { supabase, accountId, userId, customerId, jobId, amount, description } = params;
 
-  const { data: estimate } = await supabase
+  const { data: estimate, error: estimateError } = await supabase
     .from("estimates")
     .select("id")
     .eq("job_id", jobId)
     .maybeSingle();
 
+  if (estimateError) {
+    console.error("Tap to Pay estimate lookup failed:", {
+      message: estimateError.message,
+      details: estimateError.details,
+      hint: estimateError.hint,
+      code: estimateError.code,
+      jobId,
+    });
+  }
+
   const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
     p_account_id: accountId,
   });
+
+  if (invoiceNumber.error) {
+    console.error("Tap to Pay invoice number lookup failed:", {
+      message: invoiceNumber.error.message,
+      details: invoiceNumber.error.details,
+      hint: invoiceNumber.error.hint,
+      code: invoiceNumber.error.code,
+      accountId,
+    });
+    throw new HttpError(500, `Failed to get next invoice number: ${invoiceNumber.error.message}`);
+  }
 
   const dueDate = new Date().toISOString().split("T")[0];
 
@@ -89,7 +115,22 @@ async function createDraftInvoiceForTerminalPayment(params: {
     .single();
 
   if (invoiceError || !newInvoice?.id) {
-    throw new HttpError(500, "Failed to create Tap to Pay invoice");
+    console.error("Tap to Pay invoice insert failed:", {
+      message: invoiceError?.message,
+      details: invoiceError?.details,
+      hint: invoiceError?.hint,
+      code: invoiceError?.code,
+      accountId,
+      userId,
+      customerId,
+      jobId,
+      estimateId: estimate?.id || null,
+      amount,
+    });
+    throw new HttpError(
+      500,
+      `Failed to create Tap to Pay invoice: ${invoiceError?.message || "unknown insert error"}`,
+    );
   }
 
   const { error: lineItemError } = await supabase
@@ -107,8 +148,19 @@ async function createDraftInvoiceForTerminalPayment(params: {
     });
 
   if (lineItemError) {
+    console.error("Tap to Pay invoice line item insert failed:", {
+      message: lineItemError.message,
+      details: lineItemError.details,
+      hint: lineItemError.hint,
+      code: lineItemError.code,
+      invoiceId: newInvoice.id,
+      accountId,
+    });
     await cleanupCreatedInvoice(supabase, newInvoice.id);
-    throw new HttpError(500, "Failed to create Tap to Pay invoice line item");
+    throw new HttpError(
+      500,
+      `Failed to create Tap to Pay invoice line item: ${lineItemError.message}`,
+    );
   }
 
   return newInvoice.id;
@@ -136,20 +188,25 @@ Deno.serve(async (req: Request) => {
       throw new HttpError(401, "Missing authorization");
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const token = extractBearerToken(authHeader);
+    if (!token) {
+      throw new HttpError(401, "Missing authorization");
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) {
+    const fallbackClaims = decodeJwtPayload(token);
+    const resolvedUserId = user?.id || (typeof fallbackClaims?.sub === "string" ? fallbackClaims.sub : null);
+    if (!resolvedUserId) {
+      console.error("Terminal create payment auth failed:", userError?.message || "No user found");
       throw new HttpError(401, "Unauthorized");
     }
 
     const { data: membership } = await supabase
       .from("account_members")
       .select("account_id")
-      .eq("user_id", user.id)
+      .eq("user_id", resolvedUserId)
       .eq("is_active", true)
       .single();
 
@@ -217,7 +274,7 @@ Deno.serve(async (req: Request) => {
       resolvedInvoiceId = await createDraftInvoiceForTerminalPayment({
         supabase,
         accountId: membership.account_id,
-        userId: user.id,
+        userId: resolvedUserId,
         customerId,
         jobId: jobId!,
         amount,
@@ -239,30 +296,53 @@ Deno.serve(async (req: Request) => {
       { stripeAccount: stripeAccount.stripe_user_id },
     );
 
-    const { data: paymentRecord, error: paymentError } = await supabase
+    const paymentInsertInput = {
+      invoiceId: resolvedInvoiceId,
+      customerId,
+      jobId,
+      accountId: membership.account_id,
+      amount,
+      stripePaymentIntentId: paymentIntent.id,
+      stripeAccountId: stripeAccount.stripe_user_id,
+      stripeTerminalPaymentIntentStatus: paymentIntent.status,
+      processedBy: resolvedUserId,
+    };
+
+    let paymentInsert = await supabase
       .from("payments")
-      .insert({
-        invoice_id: resolvedInvoiceId,
-        customer_id: customerId,
-        lead_id: jobId,
-        account_id: membership.account_id,
-        amount,
-        method: "tap-to-pay",
-        status: "pending",
-        payment_channel: "terminal",
-        stripe_payment_intent_id: paymentIntent.id,
-        stripe_account_id: stripeAccount.stripe_user_id,
-        stripe_terminal_payment_intent_status: paymentIntent.status,
-        processed_by: user.id,
-      })
+      .insert(buildPendingTerminalPaymentRecord(paymentInsertInput))
       .select("id")
       .single();
 
+    if (
+      paymentInsert.error &&
+      shouldRetryTerminalPaymentInsertWithoutTracking(paymentInsert.error.message)
+    ) {
+      console.warn("Retrying terminal payment insert without tracking columns:", paymentInsert.error.message);
+      paymentInsert = await supabase
+        .from("payments")
+        .insert(buildPendingTerminalPaymentRecord(paymentInsertInput, false))
+        .select("id")
+        .single();
+    }
+
+    const { data: paymentRecord, error: paymentError } = paymentInsert;
+
     if (paymentError) {
+      console.error("Tap to Pay payment insert failed:", {
+        message: paymentError.message,
+        details: paymentError.details,
+        hint: paymentError.hint,
+        code: paymentError.code,
+        invoiceId: resolvedInvoiceId,
+        customerId,
+        jobId,
+        accountId: membership.account_id,
+      });
       if (createdInvoiceId) {
         await cleanupCreatedInvoice(supabase, createdInvoiceId);
       }
-      throw new HttpError(500, "Failed to create pending payment record");
+      throw new HttpError(500, `Failed to create pending payment record: ${paymentError.message}`);
     }
 
     return new Response(

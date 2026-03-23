@@ -12,9 +12,11 @@ import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { OtherPaymentOptionsModal, type PaymentOption } from "@/components/payments/OtherPaymentOptionsModal";
+import { roundCurrencyAmount } from "@/lib/formatter";
 import {
   ensureInvoiceForLoggedPayment,
   reconcileInvoiceForLoggedPayment,
+  selectInvoiceForLoggedPayment,
 } from "@/lib/logPayment";
 
 interface ExistingInvoice {
@@ -75,20 +77,24 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   }, [jobId]);
 
   useEffect(() => {
-    if (dialogOpen && estimateTotal) {
-      const totalInvoiced = invoices.reduce((sum, inv) => sum + Number(inv.total), 0);
-      const remaining = estimateTotal - totalInvoiced;
-      setAmount(remaining > 0 ? remaining.toString() : "");
+    if (dialogOpen && estimateTotal !== null && estimateTotal !== undefined) {
+      const totalInvoiced = roundCurrencyAmount(invoices.reduce((sum, inv) => sum + Number(inv.total), 0));
+      const remaining = roundCurrencyAmount(estimateTotal - totalInvoiced);
+      setAmount(remaining > 0 ? remaining.toFixed(2) : "");
     }
   }, [dialogOpen, estimateTotal, invoices]);
 
-  const totalInvoiced = invoices.reduce((sum, inv) => sum + Number(inv.total), 0);
-  const remainingAmount = estimateTotal ? estimateTotal - totalInvoiced : null;
+  const totalInvoiced = roundCurrencyAmount(invoices.reduce((sum, inv) => sum + Number(inv.total), 0));
+  const remainingAmount = estimateTotal !== null && estimateTotal !== undefined
+    ? roundCurrencyAmount(estimateTotal - totalInvoiced)
+    : null;
 
   const handleOpenDialog = () => {
     setTitle("");
     setDescription("");
-    setAmount(estimateTotal ? estimateTotal.toString() : "");
+    setAmount(estimateTotal !== null && estimateTotal !== undefined
+      ? roundCurrencyAmount(estimateTotal).toFixed(2)
+      : "");
     setDialogOpen(true);
   };
 
@@ -110,7 +116,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       return;
     }
 
-    if (estimateTotal && (totalInvoiced + invoiceAmount) > estimateTotal) {
+    if (
+      estimateTotal !== null &&
+      estimateTotal !== undefined &&
+      roundCurrencyAmount(totalInvoiced + invoiceAmount) > roundCurrencyAmount(estimateTotal)
+    ) {
       toast.error(`Invoice amount exceeds estimate. Maximum remaining: $${remainingAmount?.toLocaleString()}`);
       return;
     }
@@ -249,13 +259,14 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         return;
       }
 
-      const { data: existingInvoice } = await supabase
+      const { data: existingInvoices } = await supabase
         .from("invoices")
-        .select("id, balance_due")
+        .select("id, balance_due, status, created_at")
         .eq("lead_id", jobId)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
+
+      const existingInvoice = selectInvoiceForLoggedPayment(existingInvoices || []);
 
       const methodLabel = method === "ach"
         ? "ACH"

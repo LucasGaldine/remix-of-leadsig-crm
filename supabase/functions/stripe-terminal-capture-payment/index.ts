@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
+import { decodeJwtPayload, extractBearerToken } from "../_shared/auth-header.ts";
 
 import {
   assertTerminalPaymentIntentStatus,
@@ -51,20 +52,25 @@ Deno.serve(async (req: Request) => {
       throw new HttpError(401, "Missing authorization");
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const token = extractBearerToken(authHeader);
+    if (!token) {
+      throw new HttpError(401, "Missing authorization");
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) {
+    const fallbackClaims = decodeJwtPayload(token);
+    const resolvedUserId = user?.id || (typeof fallbackClaims?.sub === "string" ? fallbackClaims.sub : null);
+    if (!resolvedUserId) {
+      console.error("Terminal capture payment auth failed:", userError?.message || "No user found");
       throw new HttpError(401, "Unauthorized");
     }
 
     const { data: membership } = await supabase
       .from("account_members")
       .select("account_id")
-      .eq("user_id", user.id)
+      .eq("user_id", resolvedUserId)
       .eq("is_active", true)
       .single();
 

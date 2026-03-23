@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ensureInvoiceForLoggedPayment,
   reconcileInvoiceForLoggedPayment,
+  selectInvoiceForLoggedPayment,
 } from "@/lib/logPayment";
 
 describe("ensureInvoiceForLoggedPayment", () => {
@@ -145,5 +146,44 @@ describe("reconcileInvoiceForLoggedPayment", () => {
       }),
     );
     expect(updateEq).toHaveBeenCalledWith("id", "inv_existing");
+  });
+});
+
+describe("selectInvoiceForLoggedPayment", () => {
+  it("prefers the newest open invoice over a newer paid invoice", () => {
+    expect(
+      selectInvoiceForLoggedPayment([
+        {
+          id: "inv_paid",
+          status: "paid",
+          balance_due: 0,
+          created_at: "2026-03-23T12:00:00.000Z",
+        },
+        {
+          id: "inv_sent",
+          status: "sent",
+          balance_due: 100,
+          created_at: "2026-03-23T11:00:00.000Z",
+        },
+      ]),
+    ).toEqual({
+      id: "inv_sent",
+      status: "sent",
+      balance_due: 100,
+      created_at: "2026-03-23T11:00:00.000Z",
+    });
+  });
+
+  it("returns null when every existing invoice is already closed", () => {
+    expect(
+      selectInvoiceForLoggedPayment([
+        {
+          id: "inv_paid",
+          status: "paid",
+          balance_due: 0,
+          created_at: "2026-03-23T12:00:00.000Z",
+        },
+      ]),
+    ).toBeNull();
   });
 });
