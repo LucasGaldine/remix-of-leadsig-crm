@@ -14,6 +14,13 @@ interface EnsureInvoiceForLoggedPaymentInput {
   methodLabel: string;
 }
 
+interface ReconcileInvoiceForLoggedPaymentInput {
+  supabase: SupabaseLike;
+  invoiceId: string;
+  balanceDue: number;
+  paymentAmount: number;
+}
+
 export async function ensureInvoiceForLoggedPayment(
   input: EnsureInvoiceForLoggedPaymentInput,
 ): Promise<string> {
@@ -87,4 +94,27 @@ export async function ensureInvoiceForLoggedPayment(
   }
 
   return newInvoice.id;
+}
+
+export async function reconcileInvoiceForLoggedPayment(
+  input: ReconcileInvoiceForLoggedPaymentInput,
+): Promise<void> {
+  const { supabase, invoiceId, balanceDue, paymentAmount } = input;
+  const newBalance = Math.max(0, balanceDue - paymentAmount);
+  const isPaid = newBalance <= 0;
+
+  const updatePayload = {
+    balance_due: newBalance,
+    status: isPaid ? "paid" : "partial",
+    ...(isPaid ? { paid_at: new Date().toISOString() } : {}),
+  };
+
+  const { error } = await supabase
+    .from("invoices")
+    .update(updatePayload)
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error("Failed to update invoice after recording payment");
+  }
 }

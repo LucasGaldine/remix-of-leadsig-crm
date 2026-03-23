@@ -12,7 +12,10 @@ import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { OtherPaymentOptionsModal, type PaymentOption } from "@/components/payments/OtherPaymentOptionsModal";
-import { ensureInvoiceForLoggedPayment } from "@/lib/logPayment";
+import {
+  ensureInvoiceForLoggedPayment,
+  reconcileInvoiceForLoggedPayment,
+} from "@/lib/logPayment";
 
 interface ExistingInvoice {
   id: string;
@@ -248,7 +251,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
 
       const { data: existingInvoice } = await supabase
         .from("invoices")
-        .select("id")
+        .select("id, balance_due")
         .eq("lead_id", jobId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -285,6 +288,15 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         toast.error("Failed to record payment");
         setRecordingPayment(false);
         return;
+      }
+
+      if (existingInvoice?.id && existingInvoice.balance_due !== null) {
+        await reconcileInvoiceForLoggedPayment({
+          supabase,
+          invoiceId: existingInvoice.id,
+          balanceDue: Number(existingInvoice.balance_due),
+          paymentAmount,
+        });
       }
 
       await queryClient.invalidateQueries({ queryKey: ["payments"] });

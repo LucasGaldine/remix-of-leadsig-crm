@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ensureInvoiceForLoggedPayment } from "@/lib/logPayment";
+import {
+  ensureInvoiceForLoggedPayment,
+  reconcileInvoiceForLoggedPayment,
+} from "@/lib/logPayment";
 
 describe("ensureInvoiceForLoggedPayment", () => {
   it("creates a paid invoice when a logged payment starts without one", async () => {
@@ -80,5 +83,67 @@ describe("ensureInvoiceForLoggedPayment", () => {
       sort_order: 0,
       account_id: "acct_1",
     });
+  });
+});
+
+describe("reconcileInvoiceForLoggedPayment", () => {
+  it("marks an existing invoice partial when a logged payment does not cover the full balance", async () => {
+    const updateEq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn(() => ({
+      eq: updateEq,
+    }));
+    const from = vi.fn((table: string) => {
+      if (table === "invoices") {
+        return {
+          update,
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await reconcileInvoiceForLoggedPayment({
+      supabase: { from, rpc: vi.fn() },
+      invoiceId: "inv_existing",
+      balanceDue: 200,
+      paymentAmount: 50,
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      balance_due: 150,
+      status: "partial",
+    });
+    expect(updateEq).toHaveBeenCalledWith("id", "inv_existing");
+  });
+
+  it("marks an existing invoice paid when a logged payment clears the balance", async () => {
+    const updateEq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn(() => ({
+      eq: updateEq,
+    }));
+    const from = vi.fn((table: string) => {
+      if (table === "invoices") {
+        return {
+          update,
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await reconcileInvoiceForLoggedPayment({
+      supabase: { from, rpc: vi.fn() },
+      invoiceId: "inv_existing",
+      balanceDue: 200,
+      paymentAmount: 200,
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        balance_due: 0,
+        status: "paid",
+      }),
+    );
+    expect(updateEq).toHaveBeenCalledWith("id", "inv_existing");
   });
 });
