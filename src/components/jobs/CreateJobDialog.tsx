@@ -18,6 +18,7 @@ import { useCreateRecurringJob, RecurrenceFrequency } from "@/hooks/useRecurring
 import { useCreateCustomer, type Customer, type CreateCustomerInput } from "@/hooks/useCustomers";
 import { useAddJobSchedule } from "@/hooks/useJobSchedules";
 import { supabase } from "@/integrations/supabase/client";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -84,22 +85,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const createRecurringJob = useCreateRecurringJob();
   const addJobSchedule = useAddJobSchedule();
 
-  const { data: crewMembers = [] } = useQuery({
-    queryKey: ["crew-members", currentAccount?.id],
-    queryFn: async () => {
-      if (!currentAccount) return [];
-      const { data, error } = await supabase
-        .from("account_members_with_profiles")
-        .select("user_id, role, full_name, email")
-        .eq("account_id", currentAccount.id)
-        .eq("is_active", true)
-        .order("full_name", { ascending: true });
-
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!currentAccount && isRecurring,
-  });
+  const { data: crewMembers = [] } = useTeamMembers();
 
   const resolveCustomer = async (): Promise<{ id: string; name: string; phone: string | null; email: string | null; address: string | null }> => {
     if (clientMode === "new") {

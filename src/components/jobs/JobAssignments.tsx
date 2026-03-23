@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
 import { useJobSchedules } from '@/hooks/useJobSchedules';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -58,14 +57,6 @@ interface JobAssignmentsProps {
   onCrewChanged?: () => void;
 }
 
-interface CrewMember {
-  user_id: string;
-  role: string;
-  profiles: {
-    full_name: string | null;
-    email: string | null;
-  };
-}
 
 export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
   const { currentAccount, isManager } = useAuth();
@@ -77,31 +68,7 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assignmentToRemove, setAssignmentToRemove] = useState<string | null>(null);
 
-  const { data: availableMembers } = useQuery({
-    queryKey: ['crew-members', currentAccount?.id],
-    queryFn: async () => {
-      if (!currentAccount) return [];
-
-      const { data, error } = await supabase
-        .from('account_members_with_profiles')
-        .select('user_id, role, full_name, email')
-        .eq('account_id', currentAccount.id)
-        .eq('is_active', true)
-        .order('full_name', { ascending: true });
-
-      if (error) throw error;
-
-      return data.map(member => ({
-        user_id: member.user_id,
-        role: member.role,
-        profiles: {
-          full_name: member.full_name,
-          email: member.email
-        }
-      })) as CrewMember[];
-    },
-    enabled: !!currentAccount && isManager(),
-  });
+  const { data: teamMembers } = useTeamMembers();
 
   const getScheduleAssignments = (scheduleId: string) => {
     return assignments?.filter(a => a.job_schedule_id === scheduleId) || [];
@@ -286,15 +253,15 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
                   <SelectValue placeholder="Select crew member" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableMembers?.length === 0 ? (
+                  {teamMembers?.length === 0 ? (
                     <div className="p-2 text-sm text-muted-foreground text-center">
                       No crew members available
                     </div>
                   ) : (
-                    availableMembers?.map((member) => (
+                    teamMembers?.map((member) => (
                       <SelectItem key={member.user_id} value={member.user_id}>
                         <span className="flex items-center gap-2">
-                          {member.profiles?.full_name || 'Unknown'}
+                          {member.full_name || 'Unknown'}
                           <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
                             {roleLabels[member.role] || member.role}
                           </Badge>

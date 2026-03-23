@@ -12,9 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useConvertToRecurring, RecurrenceFrequency } from "@/hooks/useRecurringJobs";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { toast } from "sonner";
 import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -60,21 +59,7 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
   const [selectedDayOfMonth, setSelectedDayOfMonth] = useState<string>("");
   const [selectedCrew, setSelectedCrew] = useState<string[]>([]);
 
-  const { data: crewMembers = [] } = useQuery({
-    queryKey: ["crew-members", currentAccount?.id],
-    queryFn: async () => {
-      if (!currentAccount) return [];
-      const { data, error } = await supabase
-        .from("account_members_with_profiles")
-        .select("user_id, role, full_name, email")
-        .eq("account_id", currentAccount.id)
-        .eq("is_active", true)
-        .order("full_name", { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!currentAccount && open,
-  });
+  const { data: crewMembers = [] } = useTeamMembers();
 
   const toggleDayOfWeek = (day: number) => {
     setSelectedDaysOfWeek((prev) =>

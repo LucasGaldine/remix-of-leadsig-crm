@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -52,8 +53,6 @@ export function ScheduleJobDialog({
   const { user, currentAccount } = useAuth();
   const { scheduleJob, isScheduling } = useScheduleJob();
   
-  type CrewMember = { user_id: string; full_name: string | null; email: string | null; role: string | null };
-
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
@@ -85,23 +84,7 @@ export function ScheduleJobDialog({
   // Fetch jobs for the selected date
   const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
-  const { data: crewMembers = [] } = useQuery<CrewMember[]>({
-    queryKey: ["crew-members", currentAccount?.id],
-    queryFn: async () => {
-      if (!currentAccount) return [];
-
-      const { data, error } = await supabase
-        .from("account_members_with_profiles")
-        .select("user_id, full_name, email, role")
-        .eq("account_id", currentAccount.id)
-        .eq("is_active", true)
-        .order("full_name", { ascending: true });
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!currentAccount && open,
-  });
+  const { data: crewMembers = [] } = useTeamMembers();
 
   const handleSchedule = async () => {
     if (!scheduledDate) {

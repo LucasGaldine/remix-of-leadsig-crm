@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
 import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
@@ -59,8 +60,6 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  type CrewMember = { user_id: string; full_name: string | null; email: string | null; role: string | null };
-
   const [scheduling, setScheduling] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
@@ -99,23 +98,7 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
 
   const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
-  const { data: crewMembers = [] } = useQuery<CrewMember[]>({
-    queryKey: ["crew-members", currentAccount?.id],
-    queryFn: async () => {
-      if (!currentAccount) return [];
-
-      const { data, error } = await supabase
-        .from("account_members_with_profiles")
-        .select("user_id, full_name, email, role")
-        .eq("account_id", currentAccount.id)
-        .eq("is_active", true)
-        .order("full_name", { ascending: true });
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!currentAccount,
-  });
+  const { data: crewMembers = [] } = useTeamMembers();
 
   const filteredCrewMembers = crewMembers.filter(member => {
     if (!crewSearchQuery) return true;

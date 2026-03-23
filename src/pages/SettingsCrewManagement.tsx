@@ -86,23 +86,37 @@ export default function SettingsCrewManagement() {
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data, error } = await supabase
-        .from('account_members_with_profiles')
-        .select(`
-          id,
-          user_id,
-          role,
-          joined_at,
-          full_name,
-          email,
-          phone
-        `)
+      const { data: membersData, error: membersError } = await supabase
+        .from('account_members')
+        .select('id, user_id, role, joined_at')
         .eq('account_id', currentAccount.id)
         .eq('is_active', true)
         .order('joined_at', { ascending: false });
 
-      if (error) throw error;
-      return data as AccountMember[];
+      if (membersError) throw membersError;
+      if (!membersData || membersData.length === 0) return [];
+
+      const userIds = membersData.map(m => m.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email, phone')
+        .in('user_id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      const profilesMap = new Map(
+        (profiles || []).map(p => [p.user_id, p])
+      );
+
+      return membersData.map(member => ({
+        id: member.id,
+        user_id: member.user_id,
+        role: member.role,
+        joined_at: member.joined_at,
+        full_name: profilesMap.get(member.user_id)?.full_name || null,
+        email: profilesMap.get(member.user_id)?.email || null,
+        phone: profilesMap.get(member.user_id)?.phone || null,
+      })) as AccountMember[];
     },
     enabled: !!currentAccount,
   });
