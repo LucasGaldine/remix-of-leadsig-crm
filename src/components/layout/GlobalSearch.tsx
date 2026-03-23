@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Chrome as Home, Users, Briefcase, DollarSign, FileText, Settings, Calendar, LayoutDashboard, Search, Crown } from "lucide-react";
+import { Chrome as Home, Users, Briefcase, DollarSign, Settings, Calendar, LayoutDashboard, Search, Crown, BookOpen } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,15 +9,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
-
-interface Page {
-  name: string;
-  path: string;
-  icon: React.ReactNode;
-  description?: string;
-  roles?: string[];
-  keywords?: string[];
-}
+import { filterSearchPages } from "@/lib/globalSearch";
+import type { SearchPage } from "@/lib/globalSearch";
 
 interface GlobalSearchProps {
   open: boolean;
@@ -29,191 +22,36 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   const navigate = useNavigate();
   const { role } = useAuth();
 
-  const pages: Page[] = [
-    {
-      name: "Dashboard",
-      path: "/",
-      icon: <Home className="h-4 w-4" />,
-      description: "Overview and stats",
-      keywords: ["home", "main", "overview", "stats", "metrics"],
-    },
-    {
-      name: "Leads",
-      path: "/leads",
-      icon: <Users className="h-4 w-4" />,
-      description: "Manage incoming leads",
-      keywords: ["prospects", "potential customers", "new leads"],
-    },
-    {
-      name: "Pending Leads",
-      path: "/leads/pending",
-      icon: <Users className="h-4 w-4" />,
-      description: "Leads awaiting approval",
-      keywords: ["approval", "pending approval", "review"],
-    },
-    {
-      name: "Rejected Leads",
-      path: "/leads/rejected",
-      icon: <Users className="h-4 w-4" />,
-      description: "Declined leads",
-      keywords: ["declined", "rejected"],
-    },
-    {
-      name: "Jobs",
-      path: "/jobs",
-      icon: <Briefcase className="h-4 w-4" />,
-      description: "Active and completed work",
-      keywords: ["projects", "work orders", "tasks"],
-    },
-    {
-      name: "Schedule",
-      path: "/schedule",
-      icon: <Calendar className="h-4 w-4" />,
-      description: "Calendar and appointments",
-      keywords: ["calendar", "appointments", "timeline", "booking"],
-    },
-    {
-      name: "Customers",
-      path: "/customers",
-      icon: <Users className="h-4 w-4" />,
-      description: "Client directory",
-      keywords: ["clients", "contacts"],
-    },
-    {
-      name: "Payments",
-      path: "/payments",
-      icon: <DollarSign className="h-4 w-4" />,
-      description: "Invoices and transactions",
-      keywords: ["billing", "invoices", "revenue", "money"],
-    },
-    {
-      name: "Lead Sources",
-      path: "/settings/lead-sources",
-      icon: <LayoutDashboard className="h-4 w-4" />,
-      description: "Integration settings",
-      roles: ["owner"],
-      keywords: ["integrations", "api", "connections", "facebook"],
-    },
-    {
-      name: "API Keys",
-      path: "/settings/api-keys",
-      icon: <LayoutDashboard className="h-4 w-4" />,
-      description: "Developer access",
-      roles: ["owner"],
-      keywords: ["developer", "api", "keys", "integration"],
-    },
-    {
-      name: "Settings",
-      path: "/settings",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Account and preferences",
-      keywords: ["preferences", "configuration", "setup"],
-    },
-    {
-      name: "Company Profile",
-      path: "/settings/company",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Business information",
-      roles: ["owner", "sales"],
-      keywords: ["business", "company name", "logo", "contact"],
-    },
-    {
-      name: "Service Area",
-      path: "/settings/service-area",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Coverage and geofence",
-      roles: ["owner", "sales"],
-      keywords: ["geofence", "coverage", "location", "radius"],
-    },
-    {
-      name: "Pricing Rules",
-      path: "/settings/pricing-rules",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Estimate calculations",
-      roles: ["owner", "sales"],
-      keywords: ["pricing", "rates", "estimates", "calculator"],
-    },
-    {
-      name: "Availability",
-      path: "/settings/availability",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Working hours and days off",
-      keywords: ["schedule", "hours", "calendar", "business hours"],
-    },
-    {
-      name: "Crew Management",
-      path: "/settings/crew",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Team members",
-      keywords: ["team", "staff", "employees", "workers"],
-    },
-    {
-      name: "Auto-Responses",
-      path: "/settings/auto-responses",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Automated messages",
-      keywords: ["automation", "sms", "messages"],
-    },
-    {
-      name: "Notifications",
-      path: "/settings/notifications",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Alerts and reminders",
-      keywords: ["alerts", "push", "sms", "email"],
-    },
-    {
-      name: "Stripe Payments",
-      path: "/settings/stripe",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Payment processing",
-      roles: ["owner"],
-      keywords: ["stripe", "payments", "credit card"],
-    },
-    {
-      name: "Dashboard Settings",
-      path: "/settings/dashboard",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Customize stats",
-      roles: ["owner", "sales"],
-      keywords: ["dashboard", "widgets", "cards"],
-    },
-    {
-      name: "Profile",
-      path: "/settings/profile",
-      icon: <Settings className="h-4 w-4" />,
-      description: "Account details",
-      keywords: ["account", "password", "email"],
-    },
-    {
-      name: "Pricing Plans",
-      path: "/settings/pricing",
-      icon: <Crown className="h-4 w-4" />,
-      description: "Subscription management",
-      roles: ["owner"],
-      keywords: ["subscription", "billing", "upgrade", "plan"],
-    },
-  ];
-
   const filteredPages = useMemo(() => {
-    if (!query) return [];
-
-    const lowerQuery = query.toLowerCase();
-    return pages
-      .filter((page) => {
-        if (page.roles && !page.roles.includes(role)) return false;
-
-        return (
-          page.name.toLowerCase().includes(lowerQuery) ||
-          page.description?.toLowerCase().includes(lowerQuery) ||
-          page.path.toLowerCase().includes(lowerQuery) ||
-          page.keywords?.some((keyword) => keyword.toLowerCase().includes(lowerQuery))
-        );
-      })
-      .slice(0, 8);
+    return filterSearchPages(query, role);
   }, [query, role]);
 
+  const renderIcon = (page: SearchPage) => {
+    switch (page.icon) {
+      case "home":
+        return <Home className="h-4 w-4" />;
+      case "users":
+        return <Users className="h-4 w-4" />;
+      case "briefcase":
+        return <Briefcase className="h-4 w-4" />;
+      case "dollar-sign":
+        return <DollarSign className="h-4 w-4" />;
+      case "calendar":
+        return <Calendar className="h-4 w-4" />;
+      case "layout-dashboard":
+        return <LayoutDashboard className="h-4 w-4" />;
+      case "crown":
+        return <Crown className="h-4 w-4" />;
+      case "book-open":
+        return <BookOpen className="h-4 w-4" />;
+      case "settings":
+      default:
+        return <Settings className="h-4 w-4" />;
+    }
+  };
+
   const handleSelect = (path: string) => {
-    navigate(path);
+    navigate(path === "/tutorial" ? "/tutorial?source=search" : path);
     onOpenChange(false);
     setQuery("");
   };
@@ -247,7 +85,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
                   className="w-full flex items-start gap-3 px-4 py-3 hover:bg-muted/50 active:bg-muted transition-colors text-left"
                 >
                   <div className="mt-0.5 p-2 rounded-lg bg-secondary text-secondary-foreground">
-                    {page.icon}
+                    {renderIcon(page)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{page.name}</p>

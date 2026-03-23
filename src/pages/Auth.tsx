@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { usePasswordStrength } from '@/hooks/usePasswordStrength';
 import { PasswordStrengthIndicator } from '@/components/auth/PasswordStrengthIndicator';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
+import { getPostAuthRedirectPath } from '@/lib/onboarding';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
@@ -63,7 +64,7 @@ export default function Auth() {
 
   useEffect(() => {
     if (user && !authLoading) {
-      navigate('/');
+      navigate(getPostAuthRedirectPath({ isNewSignup: false }));
     }
   }, [user, authLoading, navigate]);
 
@@ -170,7 +171,7 @@ export default function Auth() {
       }
     } else {
       toast.success('Account created successfully!');
-      navigate('/');
+      navigate(getPostAuthRedirectPath({ isNewSignup: true }));
     }
   };
 
