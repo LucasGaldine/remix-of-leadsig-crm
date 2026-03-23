@@ -3,8 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { ensureInvoiceForLoggedPayment } from "@/lib/logPayment";
 
 describe("ensureInvoiceForLoggedPayment", () => {
-  it("creates an invoice when a logged tap to pay flow starts without one", async () => {
+  it("creates a paid invoice when a logged payment starts without one", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: 42 });
+    const invoiceInsert = vi.fn();
     const invoiceInsertSingle = vi.fn().mockResolvedValue({
       data: { id: "inv_new" },
       error: null,
@@ -24,7 +25,7 @@ describe("ensureInvoiceForLoggedPayment", () => {
 
       if (table === "invoices") {
         return {
-          insert: vi.fn(() => ({
+          insert: invoiceInsert.mockImplementation(() => ({
             select: vi.fn(() => ({
               single: invoiceInsertSingle,
             })),
@@ -61,6 +62,12 @@ describe("ensureInvoiceForLoggedPayment", () => {
     expect(rpc).toHaveBeenCalledWith("get_next_invoice_number", {
       p_account_id: "acct_1",
     });
+    expect(invoiceInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        balance_due: 0,
+        status: "paid",
+      }),
+    );
     expect(invoiceInsertSingle).toHaveBeenCalled();
     expect(lineItemInsert).toHaveBeenCalledWith({
       invoice_id: "inv_new",

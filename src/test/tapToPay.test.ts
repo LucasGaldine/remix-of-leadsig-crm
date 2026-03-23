@@ -82,16 +82,35 @@ describe("buildTapToPayPayload", () => {
     });
   });
 
+  it("allows job-initiated tap to pay requests before an invoice exists", () => {
+    expect(
+      buildTapToPayPayload({
+        amount: 199,
+        customerId: "cust_job",
+        jobId: "job_123",
+        customerName: "Job Customer",
+      }),
+    ).toEqual({
+      amount: 199,
+      customerId: "cust_job",
+      jobId: "job_123",
+      customerName: "Job Customer",
+      channel: "terminal",
+      paymentMethod: "tap-to-pay",
+    });
+  });
+
   it("exports request and response types used by the hook", () => {
     expectTypeOf<TapToPayPaymentSessionRequest>().toMatchTypeOf<{
       amount: number;
-      invoiceId: string;
+      invoiceId?: string;
       customerId: string;
       channel: "terminal";
       paymentMethod: "tap-to-pay";
     }>();
     expectTypeOf<TapToPayPaymentSessionResponse>().toMatchTypeOf<{
       clientSecret: string | null;
+      invoiceId: string;
       paymentIntentId: string;
       paymentId: string | null;
       channel: "terminal";

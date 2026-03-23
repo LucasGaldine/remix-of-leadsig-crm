@@ -321,33 +321,13 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
           return;
         }
 
-        const { data: existingInvoice } = await supabase
-          .from("invoices")
-          .select("id")
-          .eq("lead_id", jobId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const invoiceId = await ensureInvoiceForLoggedPayment({
-          supabase,
-          existingInvoiceId: existingInvoice?.id ?? null,
-          customerId: job.customer_id,
-          jobId,
-          accountId: currentAccount.id,
-          userId: user.id,
-          amount: paymentAmount,
-          methodLabel: "Tap to Pay",
-        });
-
         navigate("/payments/charge", {
           state: {
             invoice: {
-              id: invoiceId,
-              invoiceId,
               customerId: job.customer_id,
               customerName: customerName || "Unknown",
               balanceDue: paymentAmount,
+              jobId,
               jobName: job.name || "Job Payment",
               email: customerEmail || "",
             },

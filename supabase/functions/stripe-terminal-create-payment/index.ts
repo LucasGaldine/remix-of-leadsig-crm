@@ -19,7 +19,7 @@ class HttpError extends Error {
 
 interface TerminalPaymentRequest {
   amount: number;
-  invoiceId: string;
+  invoiceId?: string;
   customerId: string;
   jobId?: string;
   customerEmail?: string;
@@ -27,6 +27,91 @@ interface TerminalPaymentRequest {
   description?: string;
   channel?: string;
   paymentMethod?: string;
+}
+
+async function cleanupCreatedInvoice(
+  supabase: ReturnType<typeof createClient>,
+  invoiceId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("invoices")
+    .delete()
+    .eq("id", invoiceId);
+
+  if (error) {
+    console.error("Failed to clean up Tap to Pay invoice:", error);
+  }
+}
+
+async function createDraftInvoiceForTerminalPayment(params: {
+  supabase: ReturnType<typeof createClient>;
+  accountId: string;
+  userId: string;
+  customerId: string;
+  jobId: string;
+  amount: number;
+  description?: string;
+}): Promise<string> {
+  const { supabase, accountId, userId, customerId, jobId, amount, description } = params;
+
+  const { data: estimate } = await supabase
+    .from("estimates")
+    .select("id")
+    .eq("job_id", jobId)
+    .maybeSingle();
+
+  const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
+    p_account_id: accountId,
+  });
+
+  const dueDate = new Date().toISOString().split("T")[0];
+
+  const { data: newInvoice, error: invoiceError } = await supabase
+    .from("invoices")
+    .insert({
+      customer_id: customerId,
+      lead_id: jobId,
+      estimate_id: estimate?.id || null,
+      invoice_number: invoiceNumber.data || 1,
+      subtotal: amount,
+      tax_rate: 0,
+      tax: 0,
+      discount: 0,
+      total: amount,
+      balance_due: amount,
+      notes: description || "Tap to Pay payment in progress",
+      status: "draft",
+      due_date: dueDate,
+      created_by: userId,
+      account_id: accountId,
+    })
+    .select("id")
+    .single();
+
+  if (invoiceError || !newInvoice?.id) {
+    throw new HttpError(500, "Failed to create Tap to Pay invoice");
+  }
+
+  const { error: lineItemError } = await supabase
+    .from("invoice_line_items")
+    .insert({
+      invoice_id: newInvoice.id,
+      name: description || "Tap to Pay payment",
+      description: description || "Tap to Pay payment in progress",
+      quantity: 1,
+      unit: "item",
+      unit_price: amount,
+      total: amount,
+      sort_order: 0,
+      account_id: accountId,
+    });
+
+  if (lineItemError) {
+    await cleanupCreatedInvoice(supabase, newInvoice.id);
+    throw new HttpError(500, "Failed to create Tap to Pay invoice line item");
+  }
+
+  return newInvoice.id;
 }
 
 Deno.serve(async (req: Request) => {
@@ -75,8 +160,12 @@ Deno.serve(async (req: Request) => {
     const body: TerminalPaymentRequest = await req.json();
     const { amount, invoiceId, customerId, jobId, customerEmail, description, channel, paymentMethod } = body;
 
-    if (!amount || !invoiceId || !customerId) {
-      throw new HttpError(400, "Missing required fields: amount, invoiceId, customerId");
+    if (!amount || !customerId) {
+      throw new HttpError(400, "Missing required fields: amount, customerId");
+    }
+
+    if (!invoiceId && !jobId) {
+      throw new HttpError(400, "Tap to Pay requires either an invoiceId or jobId");
     }
 
     if (channel && channel !== "terminal") {
@@ -110,13 +199,42 @@ Deno.serve(async (req: Request) => {
         payment_method_types: ["card_present"],
         capture_method: "automatic",
         metadata: {
-          invoice_id: invoiceId,
           customer_id: customerId,
           account_id: membership.account_id,
+          ...(invoiceId ? { invoice_id: invoiceId } : {}),
           ...(jobId ? { lead_id: jobId } : {}),
         },
-        description: description || `Tap to Pay payment for invoice ${invoiceId}`,
+        description: description || "Tap to Pay payment",
         receipt_email: customerEmail,
+      },
+      { stripeAccount: stripeAccount.stripe_user_id },
+    );
+
+    let resolvedInvoiceId = invoiceId;
+    let createdInvoiceId: string | null = null;
+
+    if (!resolvedInvoiceId) {
+      resolvedInvoiceId = await createDraftInvoiceForTerminalPayment({
+        supabase,
+        accountId: membership.account_id,
+        userId: user.id,
+        customerId,
+        jobId: jobId!,
+        amount,
+        description,
+      });
+      createdInvoiceId = resolvedInvoiceId;
+    }
+
+    await stripe.paymentIntents.update(
+      paymentIntent.id,
+      {
+        metadata: {
+          customer_id: customerId,
+          account_id: membership.account_id,
+          invoice_id: resolvedInvoiceId,
+          ...(jobId ? { lead_id: jobId } : {}),
+        },
       },
       { stripeAccount: stripeAccount.stripe_user_id },
     );
@@ -124,7 +242,7 @@ Deno.serve(async (req: Request) => {
     const { data: paymentRecord, error: paymentError } = await supabase
       .from("payments")
       .insert({
-        invoice_id: invoiceId,
+        invoice_id: resolvedInvoiceId,
         customer_id: customerId,
         lead_id: jobId,
         account_id: membership.account_id,
@@ -141,12 +259,16 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (paymentError) {
+      if (createdInvoiceId) {
+        await cleanupCreatedInvoice(supabase, createdInvoiceId);
+      }
       throw new HttpError(500, "Failed to create pending payment record");
     }
 
     return new Response(
       JSON.stringify({
         clientSecret: paymentIntent.client_secret,
+        invoiceId: resolvedInvoiceId,
         paymentIntentId: paymentIntent.id,
         paymentId: paymentRecord?.id ?? null,
         channel: "terminal",

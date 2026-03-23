@@ -155,6 +155,21 @@ Deno.serve(async (req: Request) => {
       throw new HttpError(500, "Failed to reconcile terminal payment");
     }
 
+    if (outcome.paymentStatus === "completed" && paymentRecord.invoice_id) {
+      const { error: invoiceUpdateError } = await supabase
+        .from("invoices")
+        .update({
+          balance_due: 0,
+          status: "paid",
+          paid_at: new Date().toISOString(),
+        })
+        .eq("id", paymentRecord.invoice_id);
+
+      if (invoiceUpdateError) {
+        throw new HttpError(500, "Failed to update invoice for terminal payment");
+      }
+    }
+
     const responseStatus = outcome.paymentStatus === "completed" || outcome.paymentStatus === "failed"
       ? 200
       : 409;

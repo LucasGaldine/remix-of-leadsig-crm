@@ -148,4 +148,57 @@ describe("ChargePayment tap to pay handoff", () => {
       expect(createTapToPayPaymentSession).not.toHaveBeenCalled();
     });
   });
+
+  it("supports a job detail tap to pay redirect before an invoice exists", async () => {
+    createTapToPayPaymentSession.mockResolvedValueOnce({
+      clientSecret: "pi_job_secret_abc",
+      invoiceId: "inv_job_created",
+      paymentIntentId: "pi_job_123",
+      paymentId: "pay_job_123",
+      channel: "terminal",
+      paymentMethod: "tap-to-pay",
+      status: "terminal_pending",
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/payments/charge",
+            state: {
+              invoice: {
+                customerId: "cust_job",
+                customerName: "Job Customer",
+                balanceDue: 249.5,
+                jobId: "job_123",
+                jobName: "Fence Repair",
+                email: "job@example.com",
+              },
+              selectedMethod: "tap-to-pay",
+            },
+          },
+        ]}
+      >
+        <ChargePayment />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Generate mobile handoff/i }));
+
+    await waitFor(() => {
+      expect(createTapToPayPaymentSession).toHaveBeenCalledWith({
+        amount: 249.5,
+        customerId: "cust_job",
+        jobId: "job_123",
+        customerEmail: "job@example.com",
+        customerName: "Job Customer",
+        description: "Payment for Fence Repair",
+      });
+    });
+
+    expect(screen.getByRole("link", { name: /Open in mobile app/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("invoiceId=inv_job_created"),
+    );
+  });
 });

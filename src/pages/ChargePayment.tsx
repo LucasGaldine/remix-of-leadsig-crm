@@ -28,7 +28,17 @@ import {
 import { toast } from "sonner";
 
 // Demo customers with open invoices
-const customersWithBalance = [
+interface ChargeCustomer {
+  id: string;
+  name: string;
+  invoiceId?: string;
+  balance: number;
+  jobId?: string;
+  jobName: string;
+  email: string;
+}
+
+const customersWithBalance: ChargeCustomer[] = [
   { id: "cust-1", name: "Martinez Backyard", invoiceId: "inv-1", balance: 4536, jobName: "Walkway Installation", email: "martinez@example.com" },
   { id: "cust-2", name: "Chen Residence", invoiceId: "inv-3", balance: 2764.80, jobName: "Retaining Wall", email: "chen@example.com" },
   { id: "cust-3", name: "Wilson Property", invoiceId: "inv-4", balance: 9180, jobName: "Driveway Extension", email: "wilson@example.com" },
@@ -63,6 +73,7 @@ export default function ChargePayment() {
           name: preselectedInvoice.customerName,
           invoiceId: preselectedInvoice.invoiceId || preselectedInvoice.id,
           balance: Number(preselectedInvoice.balanceDue || 0),
+          jobId: preselectedInvoice.jobId,
           jobName: preselectedInvoice.jobName || "Invoice Payment",
           email: preselectedInvoice.email || "",
         }
@@ -129,6 +140,11 @@ export default function ChargePayment() {
 
   const handleCardPayment = async () => {
     if (!selectedCustomerData || !amount) return;
+
+    if (!selectedCustomerData.invoiceId) {
+      toast.error("Create an invoice before charging this payment method.");
+      return;
+    }
     
     setProcessingCard(true);
     try {
@@ -159,6 +175,7 @@ export default function ChargePayment() {
         amount: parsedAmount,
         invoiceId: selectedCustomerData.invoiceId,
         customerId: selectedCustomerData.id,
+        jobId: selectedCustomerData.jobId,
         customerEmail: selectedCustomerData.email,
         customerName: selectedCustomerData.name,
         description: `Payment for ${selectedCustomerData.jobName}`,
@@ -169,7 +186,7 @@ export default function ChargePayment() {
       }
 
       const handoffUrl = createTapToPayDeepLink({
-        invoiceId: selectedCustomerData.invoiceId,
+        invoiceId: session.invoiceId,
         customerId: selectedCustomerData.id,
         amount: parsedAmount,
         paymentIntentId: session.paymentIntentId,

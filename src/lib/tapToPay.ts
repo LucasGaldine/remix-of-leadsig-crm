@@ -1,6 +1,6 @@
 export interface TapToPayPaymentSessionInput {
   amount: number;
-  invoiceId: string;
+  invoiceId?: string;
   customerId: string;
   jobId?: string;
   customerEmail?: string;
@@ -15,6 +15,7 @@ export interface TapToPayPaymentSessionRequest extends TapToPayPaymentSessionInp
 
 export interface TapToPayPaymentSessionResponse {
   clientSecret: string | null;
+  invoiceId: string;
   paymentIntentId: string;
   paymentId: string | null;
   channel: "terminal";
