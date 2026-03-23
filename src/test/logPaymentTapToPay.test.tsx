@@ -35,7 +35,7 @@ vi.mock("@/hooks/useStripeConnect", () => ({
 }));
 
 describe("log payment tap to pay entry", () => {
-  it("shows tap to pay in the shared log payment modal and routes it through the handoff callback", () => {
+  it("shows tap to pay as coming soon in the shared log payment modal", () => {
     const onOpenTapToPay = vi.fn();
 
     render(
@@ -49,37 +49,24 @@ describe("log payment tap to pay entry", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Tap to Pay/i }));
+    const tapToPayButton = screen.getByRole("button", { name: /Tap to Pay/i });
+    expect(tapToPayButton).toBeDisabled();
+    expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
 
-    expect(onOpenTapToPay).toHaveBeenCalledWith(249.5);
+    fireEvent.click(tapToPayButton);
+
+    expect(onOpenTapToPay).not.toHaveBeenCalled();
   });
 
-  it("prefills tap to pay when opened from an invoice detail redirect", () => {
+  it("shows tap to pay as coming soon on the charge page", () => {
     render(
-      <MemoryRouter
-        initialEntries={[
-          {
-            pathname: "/payments/charge",
-            state: {
-              invoice: {
-                id: "inv_live",
-                customerId: "cust_live",
-                customerName: "Live Customer",
-                balanceDue: 249.5,
-                jobName: "Walkway Repair",
-                email: "live@example.com",
-              },
-              selectedMethod: "tap-to-pay",
-            },
-          },
-        ]}
-      >
+      <MemoryRouter>
         <ChargePayment />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(/Live Customer • Tap to Pay/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue("249.5")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Generate mobile handoff/i })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: /Tap to Pay Coming Soon/i }).length,
+    ).toBeGreaterThan(0);
   });
 });

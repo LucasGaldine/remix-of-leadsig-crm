@@ -61,12 +61,6 @@ export function OtherPaymentOptionsModal({
     setAmount("");
   };
 
-  const handleTapToPay = () => {
-    if (!onOpenTapToPay || busy || totalAmount <= 0) return;
-    onOpenTapToPay(totalAmount);
-    handleClose();
-  };
-
   const handleConfirmPayment = async () => {
     if (!selectedMethod) return;
     const parsedAmount = parseFloat(amount);
@@ -178,12 +172,11 @@ export function OtherPaymentOptionsModal({
 
           {onOpenTapToPay && (
             <button
-              onClick={handleTapToPay}
-              disabled={busy || totalAmount <= 0}
+              type="button"
+              disabled
               className={cn(
                 "w-full flex items-center gap-3 p-4 rounded-lg border border-border text-left",
-                "hover:bg-secondary/50 transition-colors active:scale-[0.98]",
-                busy && "opacity-50 cursor-not-allowed"
+                "opacity-60 cursor-not-allowed"
               )}
             >
               <div className="p-2 rounded-lg bg-secondary">
@@ -191,7 +184,7 @@ export function OtherPaymentOptionsModal({
               </div>
               <div className="flex-1">
                 <p className="font-medium text-foreground">Tap to Pay</p>
-                <p className="text-sm text-muted-foreground">Continue in the mobile app</p>
+                <p className="text-sm text-muted-foreground">Coming soon</p>
               </div>
             </button>
           )}

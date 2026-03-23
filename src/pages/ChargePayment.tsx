@@ -20,11 +20,6 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { PaymentMethod } from "@/types/payments";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
-import {
-  createTapToPayDeepLink,
-  isDirectTapToPayHandoffSupported,
-  type TapToPayPaymentSessionResponse,
-} from "@/lib/tapToPay";
 import { toast } from "sonner";
 
 // Demo customers with open invoices
@@ -44,9 +39,9 @@ const customersWithBalance: ChargeCustomer[] = [
   { id: "cust-3", name: "Wilson Property", invoiceId: "inv-4", balance: 9180, jobName: "Driveway Extension", email: "wilson@example.com" },
 ];
 
-const paymentMethods: { id: PaymentMethod; label: string; icon: React.ReactNode; description: string; requiresStripe?: boolean }[] = [
+const paymentMethods: { id: PaymentMethod; label: string; icon: React.ReactNode; description: string; requiresStripe?: boolean; comingSoon?: boolean }[] = [
   { id: "card", label: "Credit/Debit Card", icon: <CreditCard className="h-5 w-5" />, description: "Visa, Mastercard, Amex", requiresStripe: true },
-  { id: "tap-to-pay", label: "Tap to Pay", icon: <Smartphone className="h-5 w-5" />, description: "Contactless payment", requiresStripe: true },
+  { id: "tap-to-pay", label: "Tap to Pay", icon: <Smartphone className="h-5 w-5" />, description: "Contactless payment", requiresStripe: true, comingSoon: true },
   { id: "cash", label: "Cash", icon: <Banknote className="h-5 w-5" />, description: "Record cash payment" },
   { id: "check", label: "Check", icon: <FileText className="h-5 w-5" />, description: "Record check payment" },
   { id: "ach", label: "ACH Transfer", icon: <Building2 className="h-5 w-5" />, description: "Bank transfer", requiresStripe: true },
@@ -61,7 +56,6 @@ export default function ChargePayment() {
     status: stripeStatus,
     isReady: stripeReady,
     createPaymentSession,
-    createTapToPayPaymentSession,
     startOnboarding,
   } = useStripeConnect();
 
@@ -95,12 +89,6 @@ export default function ChargePayment() {
     preselectedInvoice && preselectedMethod ? "details" : preselectedInvoice ? "method" : "select"
   );
   const [processingCard, setProcessingCard] = useState(false);
-  const [creatingTapToPaySession, setCreatingTapToPaySession] = useState(false);
-  const [tapToPaySession, setTapToPaySession] = useState<TapToPayPaymentSessionResponse | null>(null);
-  const [tapToPayHandoffUrl, setTapToPayHandoffUrl] = useState<string | null>(null);
-  const supportsDirectMobileHandoff = isDirectTapToPayHandoffSupported(
-    typeof navigator === "undefined" ? undefined : navigator.userAgent,
-  );
 
   const selectedCustomerData = availableCustomers.find(c => c.id === selectedCustomer);
   const parsedAmount = Number(amount);
@@ -108,8 +96,6 @@ export default function ChargePayment() {
 
   const handleCustomerSelect = (customerId: string) => {
     setSelectedCustomer(customerId);
-    setTapToPaySession(null);
-    setTapToPayHandoffUrl(null);
       const customer = availableCustomers.find(c => c.id === customerId);
     if (customer) {
       setAmount(customer.balance.toString());
@@ -117,24 +103,13 @@ export default function ChargePayment() {
     setStep("method");
   };
 
-  const handleTapToPay = (customerId: string) => {
-    setSelectedCustomer(customerId);
-    setTapToPaySession(null);
-    setTapToPayHandoffUrl(null);
-    const customer = availableCustomers.find(c => c.id === customerId);
-    if (customer) {
-      setAmount(customer.balance.toString());
-    }
-    setSelectedMethod("tap-to-pay");
-    setStep("details");
-  };
-
   const handleMethodSelect = (method: PaymentMethod) => {
-    setSelectedMethod(method);
-    if (method !== "tap-to-pay") {
-      setTapToPaySession(null);
-      setTapToPayHandoffUrl(null);
+    if (method === "tap-to-pay") {
+      toast.error("Tap to Pay is coming soon.");
+      return;
     }
+
+    setSelectedMethod(method);
     setStep("details");
   };
 
@@ -163,41 +138,6 @@ export default function ChargePayment() {
       }
     } finally {
       setProcessingCard(false);
-    }
-  };
-
-  const handleTapToPayHandoff = async () => {
-    if (!selectedCustomerData || !hasValidAmount) return;
-
-    setCreatingTapToPaySession(true);
-    try {
-      const session = await createTapToPayPaymentSession({
-        amount: parsedAmount,
-        invoiceId: selectedCustomerData.invoiceId,
-        customerId: selectedCustomerData.id,
-        jobId: selectedCustomerData.jobId,
-        customerEmail: selectedCustomerData.email,
-        customerName: selectedCustomerData.name,
-        description: `Payment for ${selectedCustomerData.jobName}`,
-      });
-
-      if (!session) {
-        return;
-      }
-
-      const handoffUrl = createTapToPayDeepLink({
-        invoiceId: session.invoiceId,
-        customerId: selectedCustomerData.id,
-        amount: parsedAmount,
-        paymentIntentId: session.paymentIntentId,
-        paymentId: session.paymentId ?? undefined,
-      });
-
-      setTapToPaySession(session);
-      setTapToPayHandoffUrl(handoffUrl);
-      toast.success("Tap to Pay handoff ready");
-    } finally {
-      setCreatingTapToPaySession(false);
     }
   };
 
@@ -257,10 +197,10 @@ export default function ChargePayment() {
                     variant="default"
                     size="sm"
                     className="w-full mt-3 gap-2"
-                    onClick={() => handleTapToPay(customer.id)}
+                    disabled
                   >
                     <Smartphone className="h-4 w-4" />
-                    Tap to Pay
+                    Tap to Pay Coming Soon
                   </Button>
                 </div>
               ))}
@@ -283,19 +223,26 @@ export default function ChargePayment() {
                 <button
                   key={method.id}
                   onClick={() => handleMethodSelect(method.id)}
+                  disabled={method.comingSoon}
                   className={cn(
                     "w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all",
-                    selectedMethod === method.id && "ring-2 ring-primary"
+                    selectedMethod === method.id && "ring-2 ring-primary",
+                    method.comingSoon && "opacity-60 cursor-not-allowed hover:shadow-none active:scale-100"
                   )}
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-secondary">
                       {method.icon}
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-semibold text-foreground">{method.label}</h3>
                       <p className="text-sm text-muted-foreground">{method.description}</p>
                     </div>
+                    {method.comingSoon && (
+                      <span className="rounded-full bg-secondary px-2 py-1 text-xs font-medium text-muted-foreground">
+                        Coming soon
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}
@@ -328,10 +275,6 @@ export default function ChargePayment() {
                   value={amount}
                   onChange={(e) => {
                     setAmount(e.target.value);
-                    if (selectedMethod === "tap-to-pay") {
-                      setTapToPaySession(null);
-                      setTapToPayHandoffUrl(null);
-                    }
                   }}
                   className="pl-10 text-lg font-semibold"
                   placeholder="0.00"
@@ -385,85 +328,6 @@ export default function ChargePayment() {
                     </div>
                     <p className="text-sm text-muted-foreground mb-4">
                       Connect your Stripe account to accept credit card payments from customers.
-                    </p>
-                    <Button 
-                      className="w-full gap-2" 
-                      onClick={startOnboarding}
-                    >
-                      <CreditCard className="h-4 w-4" />
-                      Connect Stripe Account
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Tap to Pay handoff */}
-            {selectedMethod === "tap-to-pay" && (
-              <div className="card-elevated rounded-lg p-4">
-                {stripeReady ? (
-                  <>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 rounded-lg bg-[hsl(var(--status-pending-bg))]">
-                        <Smartphone className="h-5 w-5 text-[hsl(var(--status-pending))]" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">Mobile App Required</p>
-                        <p className="text-sm text-muted-foreground">Tap to Pay must continue in the mobile app.</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      This browser creates the Stripe Terminal payment session, then hands off the payment to the mobile app for card collection.
-                    </p>
-                    {!supportsDirectMobileHandoff && (
-                      <div className="mb-4 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-                        This desktop browser can only prepare the handoff. Open the generated link from a supported iPhone or Android device running the LeadSig Tap to Pay app.
-                      </div>
-                    )}
-
-                    {tapToPayHandoffUrl ? (
-                      <div className="space-y-3">
-                        <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs break-all text-muted-foreground">
-                          {tapToPayHandoffUrl}
-                        </div>
-                        <a
-                          href={tapToPayHandoffUrl}
-                          className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 w-full"
-                        >
-                          Open in mobile app
-                        </a>
-                        <p className="text-xs text-muted-foreground">
-                          Payment session {tapToPaySession?.paymentIntentId} is ready to continue on mobile.
-                        </p>
-                      </div>
-                    ) : (
-                      <Button
-                        className="w-full gap-2"
-                        onClick={handleTapToPayHandoff}
-                        disabled={creatingTapToPaySession || !hasValidAmount}
-                      >
-                        {creatingTapToPaySession ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Smartphone className="h-4 w-4" />
-                        )}
-                        Generate mobile handoff
-                      </Button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 rounded-lg bg-[hsl(var(--status-attention-bg))]">
-                        <AlertTriangle className="h-5 w-5 text-[hsl(var(--status-attention))]" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">Stripe Not Connected</p>
-                        <p className="text-sm text-muted-foreground">Connect to hand off Tap to Pay sessions</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Connect your Stripe account before you create a mobile Tap to Pay handoff.
                     </p>
                     <Button 
                       className="w-full gap-2" 

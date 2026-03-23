@@ -1,21 +1,13 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import ChargePayment from "@/pages/ChargePayment";
 
-const {
-  createPaymentSession,
-  createTapToPayPaymentSession,
-  startOnboarding,
-  toastSuccess,
-  toastError,
-} = vi.hoisted(() => ({
+const { createPaymentSession, createTapToPayPaymentSession, startOnboarding } = vi.hoisted(() => ({
   createPaymentSession: vi.fn(),
   createTapToPayPaymentSession: vi.fn(),
   startOnboarding: vi.fn(),
-  toastSuccess: vi.fn(),
-  toastError: vi.fn(),
 }));
 
 vi.mock("@/components/layout/PageHeader", () => ({
@@ -47,158 +39,23 @@ vi.mock("@/hooks/useStripeConnect", () => ({
   }),
 }));
 
-vi.mock("sonner", () => ({
-  toast: {
-    success: toastSuccess,
-    error: toastError,
-  },
-}));
-
-describe("ChargePayment tap to pay handoff", () => {
-  beforeEach(() => {
-    createPaymentSession.mockReset();
-    createTapToPayPaymentSession.mockReset();
-    startOnboarding.mockReset();
-    toastSuccess.mockReset();
-    toastError.mockReset();
-
-    createTapToPayPaymentSession.mockResolvedValue({
-      clientSecret: "pi_123_secret_abc",
-      paymentIntentId: "pi_123",
-      paymentId: "pay_123",
-      channel: "terminal",
-      paymentMethod: "tap-to-pay",
-      status: "terminal_pending",
-    });
-  });
-
-  it("creates a mobile handoff instead of opening hosted checkout", async () => {
+describe("ChargePayment tap to pay availability", () => {
+  it("disables tap to pay across customer and payment method entry points", () => {
     render(
       <MemoryRouter>
         <ChargePayment />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Martinez Backyard/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Tap to Pay Contactless payment/i }));
+    const customerTapToPayButtons = screen.getAllByRole("button", { name: /Tap to Pay Coming Soon/i });
+    expect(customerTapToPayButtons.length).toBeGreaterThan(0);
+    customerTapToPayButtons.forEach((button) => expect(button).toBeDisabled());
 
-    expect(
-      screen.getByText(/Tap to Pay must continue in the mobile app/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/This desktop browser can only prepare the handoff/i),
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Martinez Backyard/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /Generate mobile handoff/i }));
-
-    await waitFor(() => {
-      expect(createTapToPayPaymentSession).toHaveBeenCalledWith({
-        amount: 4536,
-        invoiceId: "inv-1",
-        customerId: "cust-1",
-        customerEmail: "martinez@example.com",
-        customerName: "Martinez Backyard",
-        description: "Payment for Walkway Installation",
-      });
-    });
-
-    expect(createPaymentSession).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: /Open in mobile app/i })).toHaveAttribute(
-      "href",
-      expect.stringContaining("leadsig://tap-to-pay"),
-    );
-  });
-
-  it("clears the generated handoff when the amount changes", async () => {
-    render(
-      <MemoryRouter>
-        <ChargePayment />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Martinez Backyard/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Tap to Pay Contactless payment/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Generate mobile handoff/i }));
-
-    await screen.findByRole("link", { name: /Open in mobile app/i });
-
-    fireEvent.change(screen.getByLabelText(/Amount/i), { target: { value: "4000" } });
-
-    expect(screen.queryByRole("link", { name: /Open in mobile app/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Generate mobile handoff/i })).toBeInTheDocument();
-  });
-
-  it("keeps tap to pay disabled for invalid numeric amounts", async () => {
-    render(
-      <MemoryRouter>
-        <ChargePayment />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Martinez Backyard/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Tap to Pay Contactless payment/i }));
-    fireEvent.change(screen.getByLabelText(/Amount/i), { target: { value: "." } });
-
-    const handoffButton = screen.getByRole("button", { name: /Generate mobile handoff/i });
-    expect(handoffButton).toBeDisabled();
-
-    fireEvent.click(handoffButton);
-
-    await waitFor(() => {
-      expect(createTapToPayPaymentSession).not.toHaveBeenCalled();
-    });
-  });
-
-  it("supports a job detail tap to pay redirect before an invoice exists", async () => {
-    createTapToPayPaymentSession.mockResolvedValueOnce({
-      clientSecret: "pi_job_secret_abc",
-      invoiceId: "inv_job_created",
-      paymentIntentId: "pi_job_123",
-      paymentId: "pay_job_123",
-      channel: "terminal",
-      paymentMethod: "tap-to-pay",
-      status: "terminal_pending",
-    });
-
-    render(
-      <MemoryRouter
-        initialEntries={[
-          {
-            pathname: "/payments/charge",
-            state: {
-              invoice: {
-                customerId: "cust_job",
-                customerName: "Job Customer",
-                balanceDue: 249.5,
-                jobId: "job_123",
-                jobName: "Fence Repair",
-                email: "job@example.com",
-              },
-              selectedMethod: "tap-to-pay",
-            },
-          },
-        ]}
-      >
-        <ChargePayment />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Generate mobile handoff/i }));
-
-    await waitFor(() => {
-      expect(createTapToPayPaymentSession).toHaveBeenCalledWith({
-        amount: 249.5,
-        customerId: "cust_job",
-        jobId: "job_123",
-        customerEmail: "job@example.com",
-        customerName: "Job Customer",
-        description: "Payment for Fence Repair",
-      });
-    });
-
-    expect(screen.getByRole("link", { name: /Open in mobile app/i })).toHaveAttribute(
-      "href",
-      expect.stringContaining("invoiceId=inv_job_created"),
-    );
+    const methodButton = screen.getByRole("button", { name: /Tap to Pay Contactless payment Coming soon/i });
+    expect(methodButton).toBeDisabled();
+    expect(screen.getByText(/^Coming soon$/i)).toBeInTheDocument();
+    expect(createTapToPayPaymentSession).not.toHaveBeenCalled();
   });
 });
