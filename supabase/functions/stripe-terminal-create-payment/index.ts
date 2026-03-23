@@ -113,7 +113,7 @@ Deno.serve(async (req: Request) => {
           invoice_id: invoiceId,
           customer_id: customerId,
           account_id: membership.account_id,
-          ...(jobId ? { job_id: jobId } : {}),
+          ...(jobId ? { lead_id: jobId } : {}),
         },
         description: description || `Tap to Pay payment for invoice ${invoiceId}`,
         receipt_email: customerEmail,
@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
       .insert({
         invoice_id: invoiceId,
         customer_id: customerId,
-        job_id: jobId,
+        lead_id: jobId,
         account_id: membership.account_id,
         amount,
         method: "tap-to-pay",
