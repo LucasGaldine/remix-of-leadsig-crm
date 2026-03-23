@@ -123,6 +123,23 @@ export default function InvoiceDetail() {
     }
   };
 
+  const handleOpenTapToPay = (amount: number) => {
+    navigate("/payments/charge", {
+      state: {
+        invoice: {
+          id: invoice.id,
+          invoiceId: invoice.id,
+          customerId: invoice.customer_id,
+          customerName: invoice.customer?.name || "Unknown",
+          balanceDue: amount,
+          jobName: invoice.job?.name || "No job",
+          email: invoice.customer?.email || "",
+        },
+        selectedMethod: "tap-to-pay",
+      },
+    });
+  };
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-32">
       <PageHeader title="Invoice" showBack backTo="/payments" />
@@ -300,6 +317,7 @@ export default function InvoiceDetail() {
         onOpenChange={setShowChargeOptions}
         totalAmount={balanceDue}
         onRecordPayment={handleRecordPayment}
+        onOpenTapToPay={handleOpenTapToPay}
         recordingPayment={recordingPayment}
       />
 

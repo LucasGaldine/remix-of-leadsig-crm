@@ -331,6 +331,11 @@ export default function Payments() {
                 amount: Number(payment.amount),
                 method: payment.method,
                 status: payment.status,
+                paymentChannel: payment.payment_channel || undefined,
+                terminalStatus: payment.stripe_terminal_payment_intent_status || undefined,
+                stripeTerminalReaderId: payment.stripe_terminal_reader_id || undefined,
+                stripeTerminalLocationId: payment.stripe_terminal_location_id || undefined,
+                stripeTerminalPaymentIntentId: payment.stripe_payment_intent_id || undefined,
                 transactionRef: payment.transaction_ref || undefined,
                 createdAt: payment.created_at ? format(new Date(payment.created_at), "MMM d") : "",
                 receiptUrl: payment.receipt_url || undefined,
@@ -340,11 +345,7 @@ export default function Payments() {
                   key={payment.id}
                   payment={transformedPayment}
                   onClick={() => {
-                    if (payment.invoice_id) {
-                      navigate(`/payments/invoices/${payment.invoice_id}`);
-                    } else {
-                      navigate(`/payments/${payment.id}`);
-                    }
+                    navigate(`/payments/${payment.id}`);
                   }}
                 />
               );

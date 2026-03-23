@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileCheck, Banknote, Landmark, ArrowRightLeft, Loader2 } from "lucide-react";
+import { FileCheck, Banknote, Landmark, ArrowRightLeft, Loader2, Smartphone } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,7 @@ interface OtherPaymentOptionsModalProps {
   totalAmount: number;
   onMarkAsSent?: () => Promise<void>;
   onRecordPayment: (method: PaymentOption, amount: number) => Promise<void>;
+  onOpenTapToPay?: (amount: number) => void;
   markingAsSent?: boolean;
   recordingPayment: boolean;
 }
@@ -35,6 +36,7 @@ export function OtherPaymentOptionsModal({
   totalAmount,
   onMarkAsSent,
   onRecordPayment,
+  onOpenTapToPay,
   markingAsSent = false,
   recordingPayment,
 }: OtherPaymentOptionsModalProps) {
@@ -57,6 +59,12 @@ export function OtherPaymentOptionsModal({
   const handleBack = () => {
     setSelectedMethod(null);
     setAmount("");
+  };
+
+  const handleTapToPay = () => {
+    if (!onOpenTapToPay || busy || totalAmount <= 0) return;
+    onOpenTapToPay(totalAmount);
+    handleClose();
   };
 
   const handleConfirmPayment = async () => {
@@ -167,6 +175,26 @@ export function OtherPaymentOptionsModal({
               </div>
             </button>
           ))}
+
+          {onOpenTapToPay && (
+            <button
+              onClick={handleTapToPay}
+              disabled={busy || totalAmount <= 0}
+              className={cn(
+                "w-full flex items-center gap-3 p-4 rounded-lg border border-border text-left",
+                "hover:bg-secondary/50 transition-colors active:scale-[0.98]",
+                busy && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <div className="p-2 rounded-lg bg-secondary">
+                <Smartphone className="h-5 w-5 text-secondary-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-foreground">Tap to Pay</p>
+                <p className="text-sm text-muted-foreground">Continue in the mobile app</p>
+              </div>
+            </button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

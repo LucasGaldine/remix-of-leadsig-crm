@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  buildTapToPayPayload,
+  type TapToPayPaymentSessionInput,
+  type TapToPayPaymentSessionResponse,
+} from "@/lib/tapToPay";
 import { toast } from "sonner";
 
 export interface StripeConnectStatus {
@@ -158,6 +163,29 @@ export function useStripeConnect() {
     }
   }, []);
 
+  const createTapToPayPaymentSession = useCallback(async (
+    params: TapToPayPaymentSessionInput,
+  ): Promise<TapToPayPaymentSessionResponse | null> => {
+    try {
+      const { data, error } = await supabase.functions.invoke("stripe-terminal-create-payment", {
+        body: buildTapToPayPayload(params),
+      });
+
+      if (error) {
+        const errorMsg = extractFunctionError(error) || "Failed to create tap to pay payment session";
+        toast.error(errorMsg);
+        console.error("Tap to Pay payment error:", error);
+        return null;
+      }
+
+      return data as TapToPayPaymentSessionResponse;
+    } catch (err) {
+      console.error("Error creating tap to pay payment session:", err);
+      toast.error("Failed to create tap to pay payment session");
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     checkStatus();
   }, [checkStatus]);
@@ -171,6 +199,7 @@ export function useStripeConnect() {
     disconnect,
     openDashboard,
     createPaymentSession,
+    createTapToPayPaymentSession,
     isReady: status?.connected && status?.charges_enabled,
   };
 }

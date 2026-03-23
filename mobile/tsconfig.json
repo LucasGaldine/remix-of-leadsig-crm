@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "jsx": "react-native",
+    "lib": ["ES2020"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2020",
+    "types": ["react", "react-native", "vitest/globals"]
+  },
+  "include": ["src"]
+}

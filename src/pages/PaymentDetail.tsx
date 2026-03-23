@@ -1,91 +1,26 @@
-import { CreditCard, Receipt, CheckCircle, Clock, DollarSign } from "lucide-react";
+import { Receipt, CheckCircle, Clock, DollarSign, XCircle, RotateCcw } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
-
-// Demo data - will be replaced with real data
-const demoPayments: Record<string, {
-  id: string;
-  customerName: string;
-  jobName?: string;
-  invoiceId: string;
-  amount: number;
-  method: string;
-  status: string;
-  transactionRef?: string;
-  receiptUrl?: string;
-  createdAt: string;
-  notes?: string;
-}> = {
-  "pay-1": {
-    id: "pay-1",
-    customerName: "Thompson Estate",
-    jobName: "Full Landscape",
-    invoiceId: "inv-2",
-    amount: 31616,
-    method: "ach",
-    status: "completed",
-    transactionRef: "ACH-2024-0103-001",
-    receiptUrl: "#",
-    createdAt: "Jan 3, 2024",
-    notes: "Final payment for landscape project",
-  },
-  "pay-2": {
-    id: "pay-2",
-    customerName: "Chen Residence",
-    jobName: "Retaining Wall",
-    invoiceId: "inv-3",
-    amount: 2764.80,
-    method: "card",
-    status: "completed",
-    transactionRef: "CC-2024-0108-002",
-    receiptUrl: "#",
-    createdAt: "Jan 8, 2024",
-  },
-  "pay-3": {
-    id: "pay-3",
-    customerName: "Adams Home",
-    invoiceId: "inv-5",
-    amount: 1500,
-    method: "cash",
-    status: "completed",
-    createdAt: "Jan 10, 2024",
-  },
-  "pay-4": {
-    id: "pay-4",
-    customerName: "Baker Landscaping",
-    invoiceId: "inv-6",
-    amount: 3200,
-    method: "tap-to-pay",
-    status: "completed",
-    transactionRef: "TAP-2024-0112-001",
-    receiptUrl: "#",
-    createdAt: "Jan 12, 2024",
-  },
-};
-
-const methodLabels: Record<string, string> = {
-  card: "Credit Card",
-  ach: "Bank Transfer (ACH)",
-  cash: "Cash",
-  check: "Check",
-  "tap-to-pay": "Tap to Pay",
-  other: "Other",
-};
-
-const statusConfig: Record<string, { color: string; icon: typeof CheckCircle }> = {
-  completed: { color: "bg-status-confirmed-bg text-status-confirmed", icon: CheckCircle },
-  pending: { color: "bg-status-pending-bg text-status-pending", icon: Clock },
-  failed: { color: "bg-status-attention-bg text-status-attention", icon: Clock },
-};
+import { usePayment } from "@/hooks/usePayments";
+import { format } from "date-fns";
+import { getPaymentMethodLabel, getPaymentStatusDisplay } from "@/lib/paymentPresentation";
 
 export default function PaymentDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const payment = demoPayments[id || "pay-1"];
+  const { data: payment, isLoading } = usePayment(id);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-surface-sunken pb-24 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   if (!payment) {
     return (
@@ -98,7 +33,29 @@ export default function PaymentDetail() {
     );
   }
 
-  const StatusIcon = statusConfig[payment.status]?.icon || Clock;
+  const statusDisplay = getPaymentStatusDisplay(
+    payment.status,
+    payment.stripe_terminal_payment_intent_status || undefined,
+    payment.payment_channel || undefined,
+  );
+  const statusColor =
+    statusDisplay.tone === "confirmed"
+      ? "bg-status-confirmed-bg text-status-confirmed"
+      : statusDisplay.tone === "attention"
+        ? "bg-status-attention-bg text-status-attention"
+        : statusDisplay.tone === "neutral"
+          ? "bg-secondary text-secondary-foreground"
+          : "bg-status-pending-bg text-status-pending";
+  const StatusIcon =
+    statusDisplay.icon === "check"
+      ? CheckCircle
+      : statusDisplay.icon === "x-circle"
+        ? XCircle
+        : statusDisplay.icon === "rotate-ccw"
+          ? RotateCcw
+          : Clock;
+  const createdAt = payment.created_at ? format(new Date(payment.created_at), "MMM d, yyyy") : "";
+  const methodLabel = getPaymentMethodLabel(payment.method);
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -114,14 +71,14 @@ export default function PaymentDetail() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
-                  ${payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ${Number(payment.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </p>
-                <p className="text-sm text-muted-foreground">{payment.createdAt}</p>
+                <p className="text-sm text-muted-foreground">{createdAt}</p>
               </div>
             </div>
-            <Badge className={cn("capitalize", statusConfig[payment.status]?.color)}>
+            <Badge className={cn(statusColor)}>
               <StatusIcon className="h-3 w-3 mr-1" />
-              {payment.status}
+              {statusDisplay.label}
             </Badge>
           </div>
         </div>
@@ -133,28 +90,51 @@ export default function PaymentDetail() {
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Customer</span>
-              <span className="text-foreground font-medium">{payment.customerName}</span>
+              <span className="text-foreground font-medium">{payment.customer?.name || "Unknown"}</span>
             </div>
-            {payment.jobName && (
+            {payment.job?.name && (
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Job</span>
-                <span className="text-foreground">{payment.jobName}</span>
+                <span className="text-foreground">{payment.job.name}</span>
               </div>
             )}
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Payment Method</span>
-              <span className="text-foreground">{methodLabels[payment.method]}</span>
+              <span className="text-foreground">{methodLabel}</span>
             </div>
-            {payment.transactionRef && (
+            {(payment.payment_channel === "terminal" || payment.stripe_terminal_payment_intent_status) && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Terminal Status</span>
+                <span className="text-foreground">{statusDisplay.label}</span>
+              </div>
+            )}
+            {payment.transaction_ref && (
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Transaction ID</span>
-                <span className="text-foreground font-mono text-xs">{payment.transactionRef}</span>
+                <span className="text-foreground font-mono text-xs">{payment.transaction_ref}</span>
+              </div>
+            )}
+            {payment.stripe_terminal_reader_id && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Reader ID</span>
+                <span className="text-foreground font-mono text-xs">{payment.stripe_terminal_reader_id}</span>
+              </div>
+            )}
+            {payment.stripe_terminal_location_id && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Location ID</span>
+                <span className="text-foreground font-mono text-xs">{payment.stripe_terminal_location_id}</span>
+              </div>
+            )}
+            {payment.stripe_payment_intent_id && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Payment Intent</span>
+                <span className="text-foreground font-mono text-xs">{payment.stripe_payment_intent_id}</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Notes */}
         {payment.notes && (
           <div className="bg-card rounded-lg border border-border p-4">
             <h2 className="font-semibold text-foreground mb-2">Notes</h2>
@@ -164,11 +144,11 @@ export default function PaymentDetail() {
 
         {/* Actions */}
         <div className="space-y-2">
-          {payment.receiptUrl && (
+          {payment.receipt_url && (
             <Button 
               variant="outline" 
               className="w-full gap-2"
-              onClick={() => window.open(payment.receiptUrl, "_blank")}
+              onClick={() => window.open(payment.receipt_url, "_blank")}
             >
               <Receipt className="h-4 w-4" />
               View Receipt
@@ -177,7 +157,7 @@ export default function PaymentDetail() {
           <Button 
             variant="outline" 
             className="w-full gap-2"
-            onClick={() => navigate(`/payments/invoices/${payment.invoiceId}`)}
+            onClick={() => navigate(`/payments/invoices/${payment.invoice?.id || payment.invoice_id}`)}
           >
             View Related Invoice
           </Button>

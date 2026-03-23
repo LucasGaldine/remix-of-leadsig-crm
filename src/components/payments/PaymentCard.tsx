@@ -1,6 +1,7 @@
-import { CreditCard, Banknote, Building2, Smartphone, Check, Clock, XCircle, RotateCcw } from "lucide-react";
+import { CreditCard, Banknote, Building2, Smartphone, Check, Clock, XCircle, RotateCcw, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Payment, PaymentMethod, PaymentStatus } from "@/types/payments";
+import { Payment, PaymentMethod } from "@/types/payments";
+import { getPaymentMethodLabel, getPaymentStatusDisplay } from "@/lib/paymentPresentation";
 
 interface PaymentCardProps {
   payment: Payment;
@@ -15,25 +16,31 @@ const methodIcons: Record<PaymentMethod, React.ReactNode> = {
   'tap-to-pay': <Smartphone className="h-4 w-4" />,
 };
 
-const methodLabels: Record<PaymentMethod, string> = {
-  card: "Card",
-  cash: "Cash",
-  check: "Check",
-  ach: "ACH Transfer",
-  'tap-to-pay': "Tap to Pay",
-};
-
-const statusConfig: Record<PaymentStatus, { label: string; className: string; icon: React.ReactNode }> = {
-  pending: { label: "Pending", className: "status-pending", icon: <Clock className="h-3 w-3" /> },
-  completed: { label: "Completed", className: "status-confirmed", icon: <Check className="h-3 w-3" /> },
-  failed: { label: "Failed", className: "status-attention", icon: <XCircle className="h-3 w-3" /> },
-  refunded: { label: "Refunded", className: "bg-secondary text-secondary-foreground", icon: <RotateCcw className="h-3 w-3" /> },
-};
-
-import { FileText } from "lucide-react";
-
 export function PaymentCard({ payment, onClick }: PaymentCardProps) {
-  const statusCfg = statusConfig[payment.status];
+  const statusDisplay = getPaymentStatusDisplay(
+    payment.status,
+    payment.terminalStatus,
+    payment.paymentChannel,
+  );
+  const statusCfg = {
+    label: statusDisplay.label,
+    className:
+      statusDisplay.tone === "confirmed"
+        ? "status-confirmed"
+        : statusDisplay.tone === "attention"
+          ? "status-attention"
+          : statusDisplay.tone === "neutral"
+            ? "bg-secondary text-secondary-foreground"
+            : "status-pending",
+    icon:
+      statusDisplay.icon === "check"
+        ? <Check className="h-3 w-3" />
+        : statusDisplay.icon === "x-circle"
+          ? <XCircle className="h-3 w-3" />
+          : statusDisplay.icon === "rotate-ccw"
+            ? <RotateCcw className="h-3 w-3" />
+            : <Clock className="h-3 w-3" />,
+  };
 
   return (
     <button
@@ -48,7 +55,7 @@ export function PaymentCard({ payment, onClick }: PaymentCardProps) {
           <div>
             <h3 className="font-semibold text-foreground">{payment.customerName}</h3>
             <p className="text-sm text-muted-foreground">
-              {methodLabels[payment.method]}
+              {getPaymentMethodLabel(payment.method)}
             </p>
             <p className="text-2xs text-muted-foreground mt-1">
               {payment.createdAt}
