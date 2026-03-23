@@ -20,9 +20,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 import { openMapsWithAddress } from "@/lib/openMaps";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateJob } from "@/hooks/useJobs";
+import { useDeleteLead } from "@/hooks/useLeads";
 import { format } from "date-fns";
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -112,6 +114,7 @@ export default function LeadDetail() {
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
+  const deleteLeadMutation = useDeleteLead();
 
   const { scheduleJob, isScheduling } = useScheduleJob();
 
@@ -143,6 +146,7 @@ export default function LeadDetail() {
 
   // Mark as lost dialog
   const [markLostDialogOpen, setMarkLostDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -172,6 +176,11 @@ export default function LeadDetail() {
     scheduled_date: "",
     scheduled_time_start: "",
     scheduled_time_end: ""
+  });
+
+  const deleteLeadConfig = getDetailDeleteConfig({
+    entity: "lead",
+    name: lead?.name || "this lead",
   });
 
   useEffect(() => {
@@ -644,6 +653,21 @@ export default function LeadDetail() {
     }
   };
 
+  const deleteLead = async () => {
+    if (!lead?.id) return;
+
+    try {
+      await deleteLeadMutation.mutateAsync(lead.id);
+      toast.success(deleteLeadConfig.successMessage);
+      navigate(deleteLeadConfig.redirectPath);
+    } catch (error) {
+      console.error("Error deleting lead:", error);
+      toast.error("Failed to delete lead");
+    } finally {
+      setDeleteDialogOpen(false);
+    }
+  };
+
   const getInteractionIcon = (type: InteractionType) => {
     switch (type) {
       case "call": return <PhoneCall className="h-4 w-4" />;
@@ -787,6 +811,13 @@ export default function LeadDetail() {
                             <Archive className="h-4 w-4 mr-2" />
                             Mark as Lost
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setDeleteDialogOpen(true)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            {deleteLeadConfig.menuLabel}
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                   </DropdownMenu>
                   </div>
@@ -928,6 +959,27 @@ export default function LeadDetail() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={markAsLost}>
               Mark as Lost
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{deleteLeadConfig.dialogTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteLeadConfig.dialogDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLeadMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteLead}
+              disabled={deleteLeadMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteLeadMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -42,6 +42,7 @@ import { JobCosts } from "@/components/jobs/JobCosts";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
+import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -532,14 +533,14 @@ export default function JobDetail() {
         queryClient.invalidateQueries({ queryKey: ["jobs"] });
         queryClient.invalidateQueries({ queryKey: ["projected-recurring-dates"] });
         queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-        toast.success("Job schedule and all associated jobs deleted successfully");
+        toast.success(deleteJobConfig.successMessage);
       } else {
         await deleteJobMutation.mutateAsync(id);
-        toast.success("Job deleted successfully");
+        toast.success(deleteJobConfig.successMessage);
       }
       queryClient.invalidateQueries({ queryKey: ["projected-recurring-dates"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-      navigate("/jobs");
+      navigate(deleteJobConfig.redirectPath);
     } catch (error) {
       console.error("Error deleting:", error);
       toast.error("Failed to delete");
@@ -592,6 +593,11 @@ export default function JobDetail() {
   const displayStatus = (job as any).display_status || job.status;
   const statusLabel = statusLabelMap[displayStatus] || displayStatus;
   const isUnassigned = hasSchedules && jobAssignments.length === 0;
+  const deleteJobConfig = getDetailDeleteConfig({
+    entity: "job",
+    name: job.name || "this job",
+    isRecurring: !!jobAny.recurring_job_id,
+  });
 
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24">
@@ -652,15 +658,13 @@ export default function JobDetail() {
                           <Archive className="h-4 w-4 mr-2" />
                           {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
                         </DropdownMenuItem>
-                        {jobAny.recurring_job_id && (
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteDialogOpen(true)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Job Schedule
-                          </DropdownMenuItem>
-                        )}
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteDialogOpen(true)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          {deleteJobConfig.menuLabel}
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
@@ -1353,9 +1357,9 @@ export default function JobDetail() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Job Schedule</AlertDialogTitle>
+            <AlertDialogTitle>{deleteJobConfig.dialogTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this job schedule? This will permanently delete all jobs associated with this schedule. This action cannot be undone.
+              {deleteJobConfig.dialogDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
