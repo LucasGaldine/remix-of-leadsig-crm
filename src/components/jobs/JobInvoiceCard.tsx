@@ -15,7 +15,7 @@ import { OtherPaymentOptionsModal, type PaymentOption } from "@/components/payme
 import { roundCurrencyAmount } from "@/lib/formatter";
 import {
   ensureInvoiceForLoggedPayment,
-  reconcileInvoiceForLoggedPayment,
+  recordLoggedPaymentAgainstInvoice,
   selectInvoiceForLoggedPayment,
 } from "@/lib/logPayment";
 
@@ -24,6 +24,11 @@ interface ExistingInvoice {
   total: number;
   status: string;
   created_at: string;
+  balance_due: number | null;
+  customer_id: string | null;
+  lead_id: string | null;
+  account_id: string | null;
+  stripe_invoice_id: string | null;
   stripe_invoice_url: string | null;
 }
 
@@ -57,7 +62,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const fetchInvoices = async () => {
     const { data } = await supabase
       .from("invoices")
-      .select("id, total, status, created_at, stripe_invoice_url")
+      .select("id, total, status, created_at, balance_due, customer_id, lead_id, account_id, stripe_invoice_id, stripe_invoice_url")
       .eq("lead_id", jobId)
       .order("created_at", { ascending: false });
     setInvoices(data || []);
@@ -283,32 +288,30 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         methodLabel,
       });
 
-      const { error: paymentError } = await supabase.from("payments").insert({
-        invoice_id: invoiceId,
-        lead_id: jobId,
-        customer_id: job.customer_id,
-        amount: paymentAmount,
+      await recordLoggedPaymentAgainstInvoice({
+        supabase,
+        invoice: existingInvoice?.id
+          ? {
+              id: existingInvoice.id,
+              customer_id: existingInvoice.customer_id ?? job.customer_id,
+              lead_id: existingInvoice.lead_id ?? jobId,
+              account_id: existingInvoice.account_id ?? currentAccount.id,
+              balance_due: existingInvoice.balance_due,
+              stripe_invoice_id: existingInvoice.stripe_invoice_id ?? null,
+            }
+          : {
+              id: invoiceId,
+              customer_id: job.customer_id,
+              lead_id: jobId,
+              account_id: currentAccount.id,
+              balance_due: paymentAmount,
+              stripe_invoice_id: null,
+            },
+        paymentAmount,
         method,
-        status: "completed",
-        processed_by: user.id,
-        account_id: currentAccount.id,
+        methodLabel,
+        userId: user.id,
       });
-
-      if (paymentError) {
-        console.error("Payment insert error:", paymentError);
-        toast.error("Failed to record payment");
-        setRecordingPayment(false);
-        return;
-      }
-
-      if (existingInvoice?.id && existingInvoice.balance_due !== null) {
-        await reconcileInvoiceForLoggedPayment({
-          supabase,
-          invoiceId: existingInvoice.id,
-          balanceDue: Number(existingInvoice.balance_due),
-          paymentAmount,
-        });
-      }
 
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -319,7 +322,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       fetchInvoices();
     } catch (error) {
       console.error("Payment recording error:", error);
-      toast.error("Failed to record payment");
+      toast.error(error instanceof Error ? error.message : "Failed to record payment");
     } finally {
       setRecordingPayment(false);
     }

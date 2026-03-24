@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   ensureInvoiceForLoggedPayment,
+  recordLoggedPaymentAgainstInvoice,
   reconcileInvoiceForLoggedPayment,
   selectInvoiceForLoggedPayment,
 } from "@/lib/logPayment";
@@ -146,6 +147,83 @@ describe("reconcileInvoiceForLoggedPayment", () => {
       }),
     );
     expect(updateEq).toHaveBeenCalledWith("id", "inv_existing");
+  });
+});
+
+describe("recordLoggedPaymentAgainstInvoice", () => {
+  it("syncs offline payments to Stripe before recording a payment against a Stripe invoice", async () => {
+    const invoke = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
+    const paymentInsert = vi.fn().mockResolvedValue({ error: null });
+    const updateEq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn(() => ({
+      eq: updateEq,
+    }));
+    const from = vi.fn((table: string) => {
+      if (table === "payments") {
+        return {
+          insert: paymentInsert,
+        };
+      }
+
+      if (table === "invoices") {
+        return {
+          update,
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await recordLoggedPaymentAgainstInvoice({
+      supabase: { from, rpc: vi.fn(), functions: { invoke } },
+      invoice: {
+        id: "inv_stripe",
+        customer_id: "cust_1",
+        lead_id: "job_1",
+        account_id: "acct_1",
+        balance_due: 125,
+        stripe_invoice_id: "in_stripe_123",
+      },
+      paymentAmount: 125,
+      method: "check",
+      methodLabel: "Check",
+      userId: "user_1",
+    });
+
+    expect(invoke).toHaveBeenCalledWith("stripe-record-offline-invoice-payment", {
+      body: {
+        invoiceId: "inv_stripe",
+        amount: 125,
+        method: "check",
+      },
+    });
+    expect(paymentInsert).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects partial offline payments for Stripe invoices", async () => {
+    const invoke = vi.fn();
+    const from = vi.fn();
+
+    await expect(
+      recordLoggedPaymentAgainstInvoice({
+        supabase: { from, rpc: vi.fn(), functions: { invoke } },
+        invoice: {
+          id: "inv_stripe",
+          customer_id: "cust_1",
+          lead_id: "job_1",
+          account_id: "acct_1",
+          balance_due: 125,
+          stripe_invoice_id: "in_stripe_123",
+        },
+        paymentAmount: 50,
+        method: "check",
+        methodLabel: "Check",
+        userId: "user_1",
+      }),
+    ).rejects.toThrow("Stripe invoice offline payments must match the remaining balance");
+
+    expect(invoke).not.toHaveBeenCalled();
   });
 });
 

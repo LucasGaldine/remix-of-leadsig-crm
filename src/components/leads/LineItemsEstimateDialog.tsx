@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
@@ -172,10 +172,10 @@ function ExpandedLineItem({
 
       <div className="space-y-2">
         <Label htmlFor={`item-description-${index}`}>Description</Label>
-        <Textarea
+        <SpeechToTextTextarea
           id={`item-description-${index}`}
           value={item.description}
-          onChange={(e) => onUpdate("description", e.target.value)}
+          onValueChange={(value) => onUpdate("description", value)}
           placeholder="Additional details..."
           rows={2}
         />

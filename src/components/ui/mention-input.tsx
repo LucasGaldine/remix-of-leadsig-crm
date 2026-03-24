@@ -2,7 +2,46 @@ import { useState, useRef, useEffect, forwardRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { AtSign, User } from "lucide-react";
+import { AtSign, Mic, Square, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+type SpeechRecognitionResultLike = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionResultLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
+
+function appendTranscript(existingValue: string, transcript: string) {
+  const trimmedTranscript = transcript.trim();
+
+  if (!trimmedTranscript) {
+    return existingValue;
+  }
+
+  if (!existingValue.trim()) {
+    return trimmedTranscript;
+  }
+
+  return `${existingValue.trimEnd()} ${trimmedTranscript}`;
+}
 
 interface TeamMember {
   user_id: string;
@@ -25,7 +64,12 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
     const [cursorPosition, setCursorPosition] = useState(0);
     const [mentionStartPos, setMentionStartPos] = useState(0);
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [isListening, setIsListening] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+    const latestValueRef = useRef(value);
+
+    latestValueRef.current = value;
 
     useEffect(() => {
       if (ref && typeof ref === 'function') {
@@ -35,7 +79,16 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       }
     }, [ref]);
 
+    useEffect(() => {
+      return () => {
+        recognitionRef.current?.stop();
+      };
+    }, []);
+
     const displayValue = value.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
+    const RecognitionConstructor =
+      typeof window === "undefined" ? undefined : window.SpeechRecognition || window.webkitSpeechRecognition;
+    const speechSupported = Boolean(RecognitionConstructor);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const newDisplayValue = e.target.value;
@@ -135,6 +188,47 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       return name.substring(0, 2).toUpperCase();
     };
 
+    const stopListening = () => {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    };
+
+    const startListening = () => {
+      if (!RecognitionConstructor) {
+        return;
+      }
+
+      const recognition = new RecognitionConstructor();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .flatMap((result) => Array.from(result))
+          .map((result) => result.transcript)
+          .join(" ")
+          .trim();
+
+        if (!transcript) {
+          return;
+        }
+
+        onChange(appendTranscript(latestValueRef.current, transcript));
+      };
+      recognition.onend = () => {
+        recognitionRef.current = null;
+        setIsListening(false);
+      };
+      recognition.onerror = () => {
+        recognitionRef.current = null;
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      setIsListening(true);
+      recognition.start();
+    };
+
     return (
       <div className="relative">
         <Textarea
@@ -144,7 +238,20 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={rows}
+          className="pr-12 pb-12"
         />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          disabled={!speechSupported}
+          onClick={isListening ? stopListening : startListening}
+          aria-label={isListening ? "Stop speech to text" : "Start speech to text"}
+          title={speechSupported ? "Speech to text" : "Speech to text is not supported on this device"}
+          className="absolute bottom-2 right-2 h-8 w-8 rounded-full border-border bg-background/95 shadow-sm"
+        >
+          {isListening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+        </Button>
         {showMentions && (
           <div className="absolute z-50 mt-1 w-80 rounded-lg border bg-popover shadow-lg">
             <div className="p-3 border-b bg-muted/50">

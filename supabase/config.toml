@@ -11,3 +11,12 @@ verify_jwt = false
 
 [functions.stripe-terminal-cancel-payment]
 verify_jwt = false
+
+[functions.stripe-record-offline-invoice-payment]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.stripe-resync-invoice-payments]
+verify_jwt = false

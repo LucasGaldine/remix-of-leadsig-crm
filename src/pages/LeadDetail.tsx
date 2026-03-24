@@ -12,7 +12,7 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -1353,9 +1353,9 @@ export default function LeadDetail() {
 
                   <div>
                     <Label>Notes</Label>
-                    <Textarea
+                    <SpeechToTextTextarea
                       value={qualNotes}
-                      onChange={(e) => setQualNotes(e.target.value)}
+                      onValueChange={setQualNotes}
                       onBlur={() => updateQualification({ notes: qualNotes })}
                       placeholder="Add qualification notes..."
                       className="mt-1"

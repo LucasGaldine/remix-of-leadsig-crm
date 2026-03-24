@@ -135,6 +135,20 @@ async function handleInvoicePaid(
 
   const amountPaid = invoice.amount_paid ? invoice.amount_paid / 100 : Number(localInvoice.total);
 
+  if (!invoice.charge) {
+    const { data: existingOfflinePayment } = await supabase
+      .from("payments")
+      .select("id")
+      .eq("invoice_id", localInvoice.id)
+      .eq("transaction_ref", stripeInvoiceId)
+      .maybeSingle();
+
+    if (existingOfflinePayment) {
+      console.log("Skipping duplicate offline payment insert for:", stripeInvoiceId);
+      return;
+    }
+  }
+
   const { error: paymentError } = await supabase.from("payments").insert({
     invoice_id: localInvoice.id,
     customer_id: localInvoice.customer_id,

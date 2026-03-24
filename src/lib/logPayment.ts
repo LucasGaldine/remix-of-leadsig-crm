@@ -1,6 +1,12 @@
 interface SupabaseLike {
   from: (table: string) => any;
   rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown }>;
+  functions?: {
+    invoke: (
+      fn: string,
+      options: { body: Record<string, unknown> },
+    ) => Promise<{ data?: Record<string, any> | null; error?: { message?: string } | null }>;
+  };
 }
 
 interface EnsureInvoiceForLoggedPaymentInput {
@@ -26,6 +32,49 @@ interface LoggedPaymentInvoiceCandidate {
   status: string | null;
   balance_due: number | null;
   created_at?: string | null;
+  customer_id?: string | null;
+  lead_id?: string | null;
+  account_id?: string | null;
+  stripe_invoice_id?: string | null;
+}
+
+interface RecordLoggedPaymentAgainstInvoiceInput {
+  supabase: SupabaseLike;
+  invoice: Pick<
+    LoggedPaymentInvoiceCandidate,
+    "id" | "balance_due" | "customer_id" | "lead_id" | "account_id" | "stripe_invoice_id"
+  >;
+  paymentAmount: number;
+  method: string;
+  methodLabel: string;
+  userId: string;
+}
+
+function roundCurrencyAmount(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+async function syncLoggedPaymentToStripeInvoice(
+  supabase: SupabaseLike,
+  invoiceId: string,
+  amount: number,
+  method: string,
+) {
+  if (!supabase.functions?.invoke) {
+    throw new Error("Stripe invoice sync is not available");
+  }
+
+  const { data, error } = await supabase.functions.invoke("stripe-record-offline-invoice-payment", {
+    body: {
+      invoiceId,
+      amount,
+      method,
+    },
+  });
+
+  if (error || data?.error) {
+    throw new Error(data?.error || error?.message || "Failed to sync payment to Stripe");
+  }
 }
 
 export async function ensureInvoiceForLoggedPayment(
@@ -124,6 +173,57 @@ export async function reconcileInvoiceForLoggedPayment(
   if (error) {
     throw new Error("Failed to update invoice after recording payment");
   }
+}
+
+export async function recordLoggedPaymentAgainstInvoice(
+  input: RecordLoggedPaymentAgainstInvoiceInput,
+): Promise<void> {
+  const {
+    supabase,
+    invoice,
+    paymentAmount,
+    method,
+    methodLabel,
+    userId,
+  } = input;
+
+  const normalizedAmount = roundCurrencyAmount(paymentAmount);
+  const normalizedBalanceDue = roundCurrencyAmount(Number(invoice.balance_due || 0));
+
+  if (invoice.stripe_invoice_id) {
+    if (normalizedAmount !== normalizedBalanceDue) {
+      throw new Error("Stripe invoice offline payments must match the remaining balance");
+    }
+
+    await syncLoggedPaymentToStripeInvoice(supabase, invoice.id, normalizedAmount, method);
+    return;
+  }
+
+  const { error: paymentError } = await supabase.from("payments").insert({
+    invoice_id: invoice.id,
+    customer_id: invoice.customer_id,
+    lead_id: invoice.lead_id,
+    amount: normalizedAmount,
+    method,
+    status: "completed",
+    processed_by: userId,
+    account_id: invoice.account_id,
+    transaction_ref: invoice.stripe_invoice_id || null,
+    notes: invoice.stripe_invoice_id
+      ? `Payment received via ${methodLabel} and synced to Stripe`
+      : null,
+  });
+
+  if (paymentError) {
+    throw new Error("Failed to record payment");
+  }
+
+  await reconcileInvoiceForLoggedPayment({
+    supabase,
+    invoiceId: invoice.id,
+    balanceDue: normalizedBalanceDue,
+    paymentAmount: normalizedAmount,
+  });
 }
 
 export function selectInvoiceForLoggedPayment(

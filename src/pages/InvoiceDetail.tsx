@@ -24,6 +24,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { generateInvoicePDF } from "@/lib/pdfGenerator";
+import { recordLoggedPaymentAgainstInvoice } from "@/lib/logPayment";
+import { resyncInvoicePaymentsWithStripe } from "@/lib/stripeInvoiceResync";
 
 const statusConfig: Record<InvoiceStatus, { label: string; className: string }> = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
@@ -42,6 +44,7 @@ export default function InvoiceDetail() {
   const { currentAccount } = useAuth();
   const [showChargeOptions, setShowChargeOptions] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [resyncingStripe, setResyncingStripe] = useState(false);
 
   if (isLoading) {
     return (
@@ -128,35 +131,34 @@ export default function InvoiceDetail() {
     setRecordingPayment(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
+      const methodLabel = method === "ach"
+        ? "ACH"
+        : method.charAt(0).toUpperCase() + method.slice(1);
 
-      await supabase.from("payments").insert({
-        invoice_id: invoice.id,
-        customer_id: invoice.customer_id,
-        lead_id: invoice.lead_id,
-        amount,
+      await recordLoggedPaymentAgainstInvoice({
+        supabase,
+        invoice: {
+          id: invoice.id,
+          customer_id: invoice.customer_id,
+          lead_id: invoice.lead_id,
+          account_id: invoice.account_id,
+          balance_due: invoice.balance_due,
+          stripe_invoice_id: (invoice as any).stripe_invoice_id || null,
+        },
+        paymentAmount: amount,
         method,
-        status: "completed",
-        processed_by: user?.id,
-        account_id: invoice.account_id,
+        methodLabel,
+        userId: user?.id || "",
       });
-
-      const newBalance = Math.max(0, balanceDue - amount);
-      await supabase
-        .from("invoices")
-        .update({
-          balance_due: newBalance,
-          status: newBalance <= 0 ? "paid" : "partial",
-          ...(newBalance <= 0 ? { paid_at: new Date().toISOString() } : {}),
-        })
-        .eq("id", invoice.id);
 
       await queryClient.invalidateQueries({ queryKey: ["invoice", id] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
       setShowChargeOptions(false);
       toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${amount.toLocaleString()} recorded`);
-    } catch {
-      toast.error("Failed to record payment");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to record payment";
+      toast.error(message);
     } finally {
       setRecordingPayment(false);
     }
@@ -177,6 +179,22 @@ export default function InvoiceDetail() {
         selectedMethod: "tap-to-pay",
       },
     });
+  };
+
+  const handleResyncWithStripe = async () => {
+    setResyncingStripe(true);
+    try {
+      await resyncInvoicePaymentsWithStripe(invoice.id);
+      await queryClient.invalidateQueries({ queryKey: ["invoice", id] });
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      await queryClient.invalidateQueries({ queryKey: ["payments"] });
+      toast.success("Invoice payments resent to Stripe");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to resync with Stripe";
+      toast.error(message);
+    } finally {
+      setResyncingStripe(false);
+    }
   };
 
   return (
@@ -214,6 +232,18 @@ export default function InvoiceDetail() {
           <Download className="h-4 w-4" />
           Download PDF
         </Button>
+        {(invoice as any).stripe_invoice_id && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2 mt-2"
+            onClick={handleResyncWithStripe}
+            disabled={resyncingStripe}
+          >
+            <Link2 className="h-4 w-4" />
+            {resyncingStripe ? "Resyncing..." : "Resync with Stripe"}
+          </Button>
+        )}
       </div>
 
       <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-3">

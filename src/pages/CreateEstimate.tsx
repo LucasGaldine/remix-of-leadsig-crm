@@ -5,7 +5,7 @@ import { FileText, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
 import {
   Select,
   SelectContent,
@@ -397,9 +397,9 @@ export default function CreateEstimate() {
 
                         <div className="space-y-2">
                           <Label>Description</Label>
-                          <Textarea
+                          <SpeechToTextTextarea
                             value={item.description}
-                            onChange={(e) => updateLineItem(item.id, "description", e.target.value)}
+                            onValueChange={(value) => updateLineItem(item.id, "description", value)}
                             placeholder="Item description..."
                             className="min-h-20"
                           />

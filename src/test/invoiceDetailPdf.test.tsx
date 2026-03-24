@@ -7,6 +7,15 @@ import InvoiceDetail from "@/pages/InvoiceDetail";
 const { generateInvoicePDF } = vi.hoisted(() => ({
   generateInvoicePDF: vi.fn().mockResolvedValue(undefined),
 }));
+const { invokeMock, paymentsEqMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn().mockResolvedValue({ data: { success: true }, error: null }),
+  paymentsEqMock: vi.fn().mockResolvedValue({
+    data: [
+      { id: "pay_1", amount: 2675, method: "check", status: "completed" },
+    ],
+    error: null,
+  }),
+}));
 
 vi.mock("@/components/layout/PageHeader", () => ({
   PageHeader: ({ title }: { title: string }) => <header>{title}</header>,
@@ -18,6 +27,28 @@ vi.mock("@/components/layout/MobileNav", () => ({
 
 vi.mock("@/lib/pdfGenerator", () => ({
   generateInvoicePDF,
+}));
+
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    from: vi.fn((table: string) => {
+      if (table === "payments") {
+        return {
+          select: vi.fn(() => ({
+            eq: paymentsEqMock,
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    }),
+    functions: {
+      invoke: invokeMock,
+    },
+    auth: {
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user_1" } } }),
+    },
+  },
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -50,6 +81,8 @@ vi.mock("@/hooks/useInvoices", () => ({
       customer_id: "cust_1",
       lead_id: "lead_1",
       account_id: "acct_1",
+      stripe_invoice_id: "in_123",
+      stripe_invoice_url: "https://stripe.example.com/invoice/in_123",
       customer: { name: "Taylor Smith", email: "taylor@example.com", address: "1 Main St" },
       job: { name: "Patio Build" },
       line_items: [
@@ -101,6 +134,31 @@ describe("InvoiceDetail pdf download", () => {
           balanceDue: 2675,
         }),
       );
+    });
+  });
+
+  it("shows a Stripe resync action and retries syncing logged offline payments", async () => {
+    render(
+      <MemoryRouter initialEntries={["/payments/invoices/inv_1"]}>
+        <Routes>
+          <Route path="/payments/invoices/:id" element={<InvoiceDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Resync with Stripe/i }));
+
+    await waitFor(() => {
+      expect(paymentsEqMock).toHaveBeenCalledWith("invoice_id", "inv_1");
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("stripe-resync-invoice-payments", {
+      body: {
+        invoiceId: "inv_1",
+        payments: [
+          { id: "pay_1", amount: 2675, method: "check", status: "completed" },
+        ],
+      },
     });
   });
 });
