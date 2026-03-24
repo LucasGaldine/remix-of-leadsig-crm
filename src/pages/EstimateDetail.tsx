@@ -58,18 +58,19 @@ export default function EstimateDetail() {
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!estimate) return;
 
     const activeLineItems = estimate.line_items.filter(
       (item: any) => !item.is_change_order || item.change_order_type !== "deleted"
     );
 
-    generateEstimatePDF({
+    await generateEstimatePDF({
       customerName: estimate.customer?.name || "Unknown Customer",
       jobName: estimate.job?.name || "",
       address: estimate.job?.address || "",
       companyName: estimate.account?.company_name || "",
+      companyLogoUrl: estimate.account?.logo_url || "",
       companyEmail: estimate.account?.company_email || "",
       companyPhone: estimate.account?.company_phone || "",
       lineItems: activeLineItems.map((item: any) => ({

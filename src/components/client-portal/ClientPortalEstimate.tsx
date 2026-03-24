@@ -45,6 +45,7 @@ interface ClientPortalEstimateProps {
   jobName?: string;
   address?: string;
   companyName?: string;
+  companyLogoUrl?: string;
   companyEmail?: string;
   companyPhone?: string;
   createdAt?: string;
@@ -62,6 +63,7 @@ export function ClientPortalEstimate({
   jobName = "",
   address = "",
   companyName = "",
+  companyLogoUrl = "",
   companyEmail = "",
   companyPhone = "",
   createdAt,
@@ -78,12 +80,13 @@ export function ClientPortalEstimate({
     !item.is_change_order || item.change_order_type !== 'deleted'
   );
 
-  const handleDownloadPDF = () => {
-    generateEstimatePDF({
+  const handleDownloadPDF = async () => {
+    await generateEstimatePDF({
       customerName,
       jobName,
       address,
       companyName,
+      companyLogoUrl,
       companyEmail,
       companyPhone,
       lineItems: currentLineItems,

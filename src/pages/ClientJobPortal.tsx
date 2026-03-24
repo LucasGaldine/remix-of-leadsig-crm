@@ -454,6 +454,7 @@ export default function ClientJobPortal() {
             jobName={job.name}
             address={job.address}
             companyName={company.company_name}
+            companyLogoUrl={company.logo_url}
             companyEmail={company.company_email}
             companyPhone={company.company_phone}
             createdAt={job.created_at}
