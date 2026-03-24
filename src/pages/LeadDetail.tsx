@@ -18,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
@@ -91,6 +93,39 @@ const PIPELINE_STAGES: { value: string; label: string; color: string, bg_color: 
   { value: "qualified", label: "Qualified", color: "text-status-progress",  bg_color: "status-progress-bg" },
 ];
 
+const LEAD_STATUS_GUIDANCE = [
+  {
+    value: "new",
+    label: "New",
+    description: "A fresh lead that has been created or imported and has not been worked yet.",
+    requirement: "Create the lead record to place it in this stage.",
+  },
+  {
+    value: "contacted",
+    label: "Contacted",
+    description: "The lead has received initial outreach or has already replied.",
+    requirement: "Reach out by call, text, or email and move the lead once contact has started.",
+  },
+  {
+    value: "qualified",
+    label: "Qualified",
+    description: "The lead is a real fit for the business and ready for an estimate or next sales step.",
+    requirement: "Confirm budget, service fit, timeline, and decision-maker readiness before moving here.",
+  },
+  {
+    value: "job",
+    label: "Job",
+    description: "The lead has moved out of the sales pipeline and into active work.",
+    requirement: "Get the lead qualified, create an estimate, have the estimate approved, and convert the lead into a job.",
+  },
+  {
+    value: "lost",
+    label: "Lost",
+    description: "The lead is no longer active and should be treated as archived.",
+    requirement: "Mark the lead as lost when the opportunity is no longer worth pursuing.",
+  },
+] as const;
+
 const TIMELINE_OPTIONS: { value: TimelinePeriod; label: string }[] = [
   { value: "asap", label: "ASAP" },
   { value: "1_2_weeks", label: "1-2 weeks" },
@@ -124,6 +159,7 @@ export default function LeadDetail() {
   const [qualification, setQualification] = useState<Qualification | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [statusGuidanceOpen, setStatusGuidanceOpen] = useState(false);
   const [pipelineInfo, setPipelineInfo] = useState(false);
   const [hasEstimate, setHasEstimate] = useState(false);
   const [estimate, setEstimate] = useState<any>(null);
@@ -685,6 +721,8 @@ export default function LeadDetail() {
       case "qualified":
       case "job":
         return "confirmed";
+      case "lost":
+        return "attention";
       case "new":
       case "contacted":
         return "pending";
@@ -764,6 +802,7 @@ export default function LeadDetail() {
 
   const showConvertButton = lead.status === "qualified";
   const isEstimateApproved = estimate?.status === "accepted";
+  const scheduleVisitDisabledReason = !hasAddress ? "Add an address and city to schedule a visit." : null;
 
   const handleCall = (phone) => {
     if (!phone) return;
@@ -875,10 +914,16 @@ export default function LeadDetail() {
                 {/*Job Info*/}
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-end">
-                    
-                  <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
-                    {lead.status.replace("_", " ")}
-                  </StatusBadge>
+                    <button
+                      type="button"
+                      className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      onClick={() => setStatusGuidanceOpen(true)}
+                      aria-label={`Open lead status guide for ${lead.status.replace("_", " ")}`}
+                    >
+                      <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
+                        {lead.status.replace("_", " ")}
+                      </StatusBadge>
+                    </button>
                   </div>
 
                   <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
@@ -890,20 +935,51 @@ export default function LeadDetail() {
                 {/*CTA*/}
                 <div className="flex flex-col sm:flex-row justify-end gap-2">
                   {showConvertButton && (
-                  <Button
-                    size="lg"
-                    disabled={!hasAddress}
-                    onClick={() => setCreateEstimateDialogOpen(true)}
-                  >
-                    <FileTextIcon className="h-4 w-4 shrink-0" />
-                    Schedule Visit
-                  </Button>
+                  scheduleVisitDisabledReason ? (
+                    <Tooltip>
+                      <Popover>
+                        <TooltipTrigger asChild>
+                          <PopoverTrigger asChild>
+                            <span
+                              tabIndex={0}
+                              aria-label={`Schedule visit unavailable: ${scheduleVisitDisabledReason}`}
+                              className="inline-flex"
+                            >
+                              <Button
+                                size="lg"
+                                disabled
+                                className="pointer-events-none"
+                              >
+                                <FileTextIcon className="h-4 w-4 shrink-0" />
+                                Schedule Visit
+                              </Button>
+                            </span>
+                          </PopoverTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {scheduleVisitDisabledReason}
+                        </TooltipContent>
+                        <PopoverContent className="w-64 p-3 text-sm">
+                          {scheduleVisitDisabledReason}
+                        </PopoverContent>
+                      </Popover>
+                    </Tooltip>
+                  ) : (
+                    <Button
+                      size="lg"
+                      onClick={() => setCreateEstimateDialogOpen(true)}
+                    >
+                      <FileTextIcon className="h-4 w-4 shrink-0" />
+                      Schedule Visit
+                    </Button>
+                  )
                 )}
                 {showConvertButton && hasEstimate && isEstimateApproved && (
                   <Button
                     size="sm"
                     className="gap-1.5 text-xs whitespace-nowrap"
                     disabled={!hasAddress}
+                    title={!hasAddress ? "Add an address and city to convert the lead" : undefined}
                     onClick={() => setConvertJobDialogOpen(true)}
                   >
                     <Briefcase className="h-4 w-4 shrink-0" />
@@ -1179,6 +1255,34 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={statusGuidanceOpen} onOpenChange={setStatusGuidanceOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Lead Status Stages</DialogTitle>
+            <DialogDescription>
+              Use this guide to understand what each lead status means and what needs to happen before moving a lead into that stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {LEAD_STATUS_GUIDANCE.map((stage) => (
+              <div key={stage.value} className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-foreground">{stage.label}</p>
+                  <StatusBadge status={getStatusBadgeStatus(stage.value as LeadStatus)} size="sm">
+                    {stage.label}
+                  </StatusBadge>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{stage.description}</p>
+                <p className="mt-2 text-sm text-foreground">
+                  <span className="font-medium">To get here:</span> {stage.requirement}
+                </p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       
 
       {activeTab === "details" && (
@@ -1258,9 +1362,8 @@ export default function LeadDetail() {
                 <div className="flex gap-2 justify-center items-center ">
                   
                   {PIPELINE_STAGES.map((stage) => (
-                        <div className="flex justify-center items-center">
+                        <div key={stage.value} className="flex justify-center items-center">
                         <Button
-                          key={stage.value}
                           variant={lead.status === stage.value ? "default" : "ghost"}
                           onClick={() => updateLeadStatus(stage.value)}
                           className="rounded-full"
