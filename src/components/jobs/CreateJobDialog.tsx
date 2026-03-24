@@ -26,6 +26,7 @@ import { Repeat, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClientSelector } from "@/components/clients/ClientSelector";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
+import { resolveCreateJobAddress } from "@/lib/createJobAddress";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -142,16 +143,14 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       return;
     }
 
-    const address = jobAddress || (clientMode === "existing" ? selectedCustomer?.address : newClientData.address) || "";
-    if (!address.trim()) {
-      toast.error("Job address is required");
-      return;
-    }
-
     setIsLoading(true);
 
     try {
       const customer = await resolveCustomer();
+      const resolvedAddress = resolveCreateJobAddress({
+        jobAddress,
+        customerAddress: customer.address,
+      });
 
       if (isRecurring) {
         if (!scheduledDate) {
@@ -164,7 +163,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           customer_id: customer.id,
           name: jobName || customer.name,
           service_type: serviceType || null,
-          address: jobAddress || customer.address || "",
+          address: resolvedAddress,
           description: description || null,
           frequency,
           scheduled_time_start: scheduledTime || null,
@@ -184,7 +183,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           phone: customer.phone,
           email: customer.email,
           service_type: serviceType || null,
-          address: jobAddress || customer.address || "",
+          address: resolvedAddress,
           description: description || null,
           status: "job",
         });
@@ -312,7 +311,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
             <div className="space-y-2">
               <Label htmlFor="jobAddress" >
-                Job Address <span className="text-destructive">*</span>
+                Job Address
               </Label>
               <Input
                 id="jobAddress"
