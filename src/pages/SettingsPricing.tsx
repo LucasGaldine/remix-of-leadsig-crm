@@ -272,9 +272,19 @@ export default function SettingsPricing() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanKey | null>(null);
   const [selectedBasicTier, setSelectedBasicTier] = useState<BasicTier>(currentTier ?? "solo");
+  const [onboardingTrialDays, setOnboardingTrialDays] = useState<number>(0);
 
   useEffect(() => {
     const url = new URL(window.location.href);
+    const onboarding = url.searchParams.get("onboarding") === "1";
+    const trialValue = Number(url.searchParams.get("trial") || "0");
+    setOnboardingTrialDays(onboarding && Number.isFinite(trialValue) ? Math.max(0, trialValue) : 0);
+
+    const defaultPlan = url.searchParams.get("defaultPlan");
+    if (onboarding && defaultPlan === "basic") {
+      setPendingPlan("basic");
+    }
+
     const billingStatus = url.searchParams.get("billing");
     if (!billingStatus) {
       return;
@@ -313,6 +323,7 @@ export default function SettingsPricing() {
         accountId: currentAccount.id,
         targetPlan: pendingPlan,
         targetTier: pendingTier,
+        trialDays: pendingPlan === "basic" && onboardingTrialDays > 0 ? onboardingTrialDays : 0,
         returnUrl: `${window.location.origin}/settings/pricing`,
       },
     });
@@ -351,6 +362,17 @@ export default function SettingsPricing() {
                 : "Scale your operations with the tools and support you need."}
             </p>
           </div>
+
+          {onboardingTrialDays > 0 && (
+            <div className="mb-6 rounded-lg border border-primary/30 bg-primary/5 p-4 text-center">
+              <p className="text-sm font-medium text-foreground">
+                {onboardingTrialDays}-day free trial for Basic
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                You will only be charged after the trial period ends.
+              </p>
+            </div>
+          )}
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {plans.map((plan) => (

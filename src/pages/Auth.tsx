@@ -219,7 +219,11 @@ export default function Auth() {
       }
     } else {
       toast.success('Account created successfully!');
-      navigate(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: isCreatingCompany }));
+      if (isCreatingCompany) {
+        navigate('/settings/pricing?onboarding=1&trial=14&defaultPlan=basic');
+      } else {
+        navigate(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: false }));
+      }
     }
   };
 

@@ -141,6 +141,11 @@ Deno.serve(async (req: Request) => {
     const accountId: string | undefined = body?.accountId;
     const targetPlan: PlanKey | undefined = body?.targetPlan;
     const targetTier: BasicTier | null = body?.targetTier ?? null;
+    const requestedTrialDays = Number(body?.trialDays ?? 0);
+    const trialDays =
+      targetPlan === "basic" && Number.isFinite(requestedTrialDays) && requestedTrialDays > 0
+        ? Math.min(14, Math.floor(requestedTrialDays))
+        : 0;
     const returnUrl: string = body?.returnUrl || `${new URL(req.url).origin}/settings/pricing`;
 
     if (!accountId || !targetPlan) {
@@ -295,6 +300,7 @@ Deno.serve(async (req: Request) => {
           premium_setup_applied: targetPlan === "premium" ? "true" : "false",
         },
         subscription_data: {
+          ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
           metadata: {
             account_id: accountId,
             target_plan: targetPlan,

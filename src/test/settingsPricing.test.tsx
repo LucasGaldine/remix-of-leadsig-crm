@@ -97,4 +97,38 @@ describe("SettingsPricing", () => {
 
     expect(fromMock).not.toHaveBeenCalled();
   });
+
+  it("sends a 14-day trial when onboarding selects basic", async () => {
+    window.history.pushState({}, "", "/settings/pricing?onboarding=1&trial=14&defaultPlan=basic");
+
+    render(
+      <MemoryRouter>
+        <SettingsPricing />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Basic/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("stripe-manage-subscription", {
+        body: expect.objectContaining({
+          targetPlan: "basic",
+          trialDays: 14,
+        }),
+      });
+    });
+  });
+
+  it("shows a visible trial banner during pricing onboarding", () => {
+    window.history.pushState({}, "", "/settings/pricing?onboarding=1&trial=14&defaultPlan=basic");
+
+    render(
+      <MemoryRouter>
+        <SettingsPricing />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/14-day free trial for Basic/i)).toBeInTheDocument();
+  });
 });

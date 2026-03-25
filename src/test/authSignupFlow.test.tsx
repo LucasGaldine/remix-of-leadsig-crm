@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -156,5 +156,32 @@ describe("Auth signup flow", () => {
 
     expect(screen.getByLabelText(/Company Name/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Company Code/i)).not.toBeInTheDocument();
+  });
+
+  it("redirects new company signups to pricing onboarding", async () => {
+    signUpMock.mockResolvedValue({ error: null });
+
+    render(
+      <MemoryRouter>
+        <Auth />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Sign Up/i }));
+
+    fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Create a new company/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    fireEvent.change(screen.getByLabelText(/Company Name/i), { target: { value: "LeadSig Landscaping" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Create Company & Account$/i }));
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/settings/pricing?onboarding=1&trial=14&defaultPlan=basic");
+    });
   });
 });
