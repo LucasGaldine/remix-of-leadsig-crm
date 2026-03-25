@@ -62,11 +62,21 @@ export function completeOnboardingTutorial() {
   window.localStorage.setItem(ONBOARDING_TUTORIAL_STORAGE_KEY, "completed");
 }
 
-export function getPostAuthRedirectPath({ isNewSignup = false }: { isNewSignup?: boolean }) {
+export function getPostAuthRedirectPath({
+  isNewSignup = false,
+  shouldStartOnboarding = isNewSignup,
+}: {
+  isNewSignup?: boolean;
+  shouldStartOnboarding?: boolean;
+}) {
   if (isNewSignup) {
-    markOnboardingImportPending();
-    markOnboardingTutorialPending();
-    return "/onboarding/import";
+    if (shouldStartOnboarding) {
+      markOnboardingImportPending();
+      markOnboardingTutorialPending();
+      return "/onboarding/import";
+    }
+
+    return "/";
   }
 
   if (shouldShowOnboardingImport()) {

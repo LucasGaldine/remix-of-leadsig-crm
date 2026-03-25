@@ -31,6 +31,15 @@ describe("onboarding tutorial state", () => {
     expect(shouldShowOnboardingTutorial()).toBe(true);
   });
 
+  it("routes new signups directly home when onboarding is not requested", () => {
+    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+
+    expect(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: false })).toBe("/");
+    expect(shouldShowOnboardingImport()).toBe(false);
+    expect(shouldShowOnboardingTutorial()).toBe(false);
+  });
+
   it("routes to import onboarding before tutorial when import is pending", () => {
     localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
     localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);

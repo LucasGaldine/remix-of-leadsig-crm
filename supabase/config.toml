@@ -1,4 +1,4 @@
-project_id = "ylzixqcbesbmxojzmzmb"
+project_id = "knjbakdhjspftwqrzzcl"
 
 [functions.stripe-terminal-create-payment]
 verify_jwt = false
@@ -19,4 +19,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.stripe-resync-invoice-payments]
+verify_jwt = false
+
+[functions.stripe-manage-subscription]
 verify_jwt = false

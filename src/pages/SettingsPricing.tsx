@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, X, Crown, Zap, Leaf } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -18,8 +18,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-type PlanKey = "free" | "basic" | "premium";
+import {
+  BASIC_TIER_CONFIG,
+  getBasicTierMonthlyPrice,
+  getBasicTierSeatLabel,
+  hasLandscapingSkoolAccess,
+  type BasicTier,
+  type PlanKey,
+} from "@/lib/billingPlans";
 
 const planOrder: Record<PlanKey, number> = { free: 0, basic: 1, premium: 2 };
 
@@ -31,11 +37,9 @@ interface PlanFeature {
 interface Plan {
   key: PlanKey;
   name: string;
-  price: string;
   period: string;
   description: string;
   icon: React.ReactNode;
-  features: PlanFeature[];
   highlighted?: boolean;
   badge?: string;
 }
@@ -44,11 +48,33 @@ const plans: Plan[] = [
   {
     key: "free",
     name: "Free",
-    price: "$0",
     period: "/month",
     description: "Get started with basic lead storage and tracking.",
     icon: <Leaf className="h-6 w-6" />,
-    features: [
+  },
+  {
+    key: "basic",
+    name: "Basic",
+    period: "/month",
+    description: "Tiered pricing for growing teams with automation-ready workflows.",
+    icon: <Zap className="h-6 w-6" />,
+  },
+  {
+    key: "premium",
+    name: "Premium",
+    period: "/month",
+    description: "Full automation, lead generation support, and premium onboarding.",
+    icon: <Crown className="h-6 w-6" />,
+    highlighted: true,
+    badge: "Most Popular",
+  },
+];
+
+function getPlanFeatures(plan: PlanKey, basicTier: BasicTier): PlanFeature[] {
+  const skoolIncluded = hasLandscapingSkoolAccess(plan, plan === "basic" ? basicTier : null);
+
+  if (plan === "free") {
+    return [
       { label: "Lead storage & management", included: true },
       { label: "Job tracking", included: true },
       { label: "Basic scheduling", included: true },
@@ -56,17 +82,13 @@ const plans: Plan[] = [
       { label: "Integrations", included: false },
       { label: "Automations & auto-replies", included: false },
       { label: "SMS & email notifications", included: false },
+      { label: "Landscaping Skool", included: false },
       { label: "LeadSig lead generation", included: false },
-    ],
-  },
-  {
-    key: "basic",
-    name: "Basic",
-    price: "$500",
-    period: "/month",
-    description: "Connect your tools and stay informed with real-time alerts.",
-    icon: <Zap className="h-6 w-6" />,
-    features: [
+    ];
+  }
+
+  if (plan === "basic") {
+    return [
       { label: "Lead storage & management", included: true },
       { label: "Job tracking", included: true },
       { label: "Basic scheduling", included: true },
@@ -74,30 +96,39 @@ const plans: Plan[] = [
       { label: "Integrations", included: true },
       { label: "SMS & email notifications", included: true },
       { label: "Automations & auto-replies", included: false },
+      { label: "Landscaping Skool (Growth tier)", included: skoolIncluded },
       { label: "LeadSig lead generation", included: false },
-    ],
-  },
-  {
-    key: "premium",
-    name: "Premium",
-    price: "$3,000",
-    period: "/month",
-    description: "Full automation, auto-replies, and we bring you leads.",
-    icon: <Crown className="h-6 w-6" />,
-    highlighted: true,
-    badge: "Most Popular",
-    features: [
-      { label: "Lead storage & management", included: true },
-      { label: "Job tracking", included: true },
-      { label: "Basic scheduling", included: true },
-      { label: "Before photos on leads", included: true },
-      { label: "Integrations", included: true },
-      { label: "SMS & email notifications", included: true },
-      { label: "Automations & auto-replies", included: true },
-      { label: "LeadSig lead generation", included: true },
-    ],
-  },
-];
+    ];
+  }
+
+  return [
+    { label: "Lead storage & management", included: true },
+    { label: "Job tracking", included: true },
+    { label: "Basic scheduling", included: true },
+    { label: "Before photos on leads", included: true },
+    { label: "Integrations", included: true },
+    { label: "SMS & email notifications", included: true },
+    { label: "Automations & auto-replies", included: true },
+    { label: "Landscaping Skool", included: skoolIncluded },
+    { label: "LeadSig lead generation", included: true },
+  ];
+}
+
+function getPlanPrice(plan: PlanKey, basicTier: BasicTier): string {
+  if (plan === "free") {
+    return "$0";
+  }
+
+  if (plan === "basic") {
+    return `$${getBasicTierMonthlyPrice(basicTier)}`;
+  }
+
+  return "$497";
+}
+
+function getBasicTierDisplayName(tier: BasicTier): string {
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
 
 function PlanCard({
   plan,
@@ -105,14 +136,22 @@ function PlanCard({
   currentPlan,
   onChangePlan,
   isUpdating,
+  selectedBasicTier,
+  onSelectBasicTier,
+  currentTier,
 }: {
   plan: Plan;
   isCurrent: boolean;
   currentPlan: PlanKey;
   onChangePlan: (newPlan: PlanKey) => void;
   isUpdating: boolean;
+  selectedBasicTier: BasicTier;
+  onSelectBasicTier: (tier: BasicTier) => void;
+  currentTier: BasicTier | null;
 }) {
   const isDowngrade = planOrder[plan.key] < planOrder[currentPlan];
+  const displayTier = isCurrent && currentTier ? currentTier : selectedBasicTier;
+  const features = getPlanFeatures(plan.key, displayTier);
 
   return (
     <div
@@ -151,19 +190,42 @@ function PlanCard({
         <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
       </div>
 
+      {plan.key === "basic" && (
+        <label className="mb-4 block text-sm text-muted-foreground">
+          Tier
+          <select
+            aria-label="Basic tier"
+            className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground"
+            value={displayTier}
+            onChange={(event) => onSelectBasicTier(event.target.value as BasicTier)}
+            disabled={isCurrent || isUpdating}
+          >
+            {Object.keys(BASIC_TIER_CONFIG).map((tier) => (
+              <option key={tier} value={tier}>
+                {getBasicTierDisplayName(tier as BasicTier)} ({getBasicTierSeatLabel(tier as BasicTier)}) - ${getBasicTierMonthlyPrice(tier as BasicTier)}/mo
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <div className="mb-2 flex items-baseline gap-1">
         <span className="text-3xl font-bold tracking-tight text-foreground">
-          {plan.price}
+          {getPlanPrice(plan.key, displayTier)}
         </span>
         <span className="text-sm text-muted-foreground">{plan.period}</span>
       </div>
+
+      {plan.key === "premium" && (
+        <p className="mb-2 text-xs text-muted-foreground">+ $3,000 one-time setup fee</p>
+      )}
 
       <p className="mb-6 text-sm text-muted-foreground leading-relaxed">
         {plan.description}
       </p>
 
       <div className="mb-6 flex-1 space-y-3">
-        {plan.features.map((feature) => (
+        {features.map((feature) => (
           <div key={feature.label} className="flex items-center gap-2.5">
             {feature.included ? (
               <Check className="h-4 w-4 shrink-0 text-primary" />
@@ -204,30 +266,70 @@ function PlanCard({
 
 export default function SettingsPricing() {
   const { currentAccount, refreshProfile } = useAuth();
-  const currentPlan: PlanKey = currentAccount?.pricing_plan ?? "free";
+  const currentPlan: PlanKey = (currentAccount?.pricing_plan as PlanKey) ?? "free";
+  const currentTier: BasicTier | null = (currentAccount as { pricing_tier?: BasicTier | null } | null)?.pricing_tier ?? null;
+
   const [isUpdating, setIsUpdating] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PlanKey | null>(null);
+  const [selectedBasicTier, setSelectedBasicTier] = useState<BasicTier>(currentTier ?? "solo");
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const billingStatus = url.searchParams.get("billing");
+    if (!billingStatus) {
+      return;
+    }
+
+    if (billingStatus === "success") {
+      toast.success("Stripe checkout completed. Your plan will refresh shortly.");
+      refreshProfile();
+    } else if (billingStatus === "canceled") {
+      toast.error("Stripe checkout was canceled.");
+    }
+
+    url.searchParams.delete("billing");
+    window.history.replaceState({}, "", url.toString());
+  }, [refreshProfile]);
 
   const isDowngrade = pendingPlan ? planOrder[pendingPlan] < planOrder[currentPlan] : false;
   const pendingPlanName = pendingPlan
     ? plans.find((p) => p.key === pendingPlan)?.name
     : "";
 
+  const pendingTier: BasicTier | null = useMemo(() => {
+    if (pendingPlan !== "basic") {
+      return null;
+    }
+    return selectedBasicTier;
+  }, [pendingPlan, selectedBasicTier]);
+
   const handleChangePlan = async () => {
     if (!pendingPlan || !currentAccount) return;
 
     setIsUpdating(true);
-    const { error } = await supabase
-      .from("accounts")
-      .update({ pricing_plan: pendingPlan })
-      .eq("id", currentAccount.id);
 
-    if (error) {
-      toast.error("Failed to update plan. Please try again.");
-    } else {
-      toast.success(`Plan updated to ${pendingPlanName}.`);
-      await refreshProfile();
+    const { data, error } = await supabase.functions.invoke("stripe-manage-subscription", {
+      body: {
+        accountId: currentAccount.id,
+        targetPlan: pendingPlan,
+        targetTier: pendingTier,
+        returnUrl: `${window.location.origin}/settings/pricing`,
+      },
+    });
+
+    if (error || data?.error) {
+      toast.error(data?.error || error?.message || "Failed to update plan. Please try again.");
+      setIsUpdating(false);
+      return;
     }
+
+    if (data?.checkoutUrl) {
+      window.location.href = data.checkoutUrl;
+      return;
+    }
+
+    toast.success(data?.message || `Plan updated to ${pendingPlanName}.`);
+    await refreshProfile();
 
     setIsUpdating(false);
     setPendingPlan(null);
@@ -259,6 +361,9 @@ export default function SettingsPricing() {
                 currentPlan={currentPlan}
                 onChangePlan={setPendingPlan}
                 isUpdating={isUpdating}
+                selectedBasicTier={selectedBasicTier}
+                onSelectBasicTier={setSelectedBasicTier}
+                currentTier={currentTier}
               />
             ))}
           </div>
@@ -281,12 +386,15 @@ export default function SettingsPricing() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isDowngrade ? "Downgrade" : "Upgrade"} to {pendingPlanName}?
+              {isDowngrade ? "Downgrade" : "Upgrade"} to {pendingPlanName}
+              {pendingTier ? ` (${getBasicTierDisplayName(pendingTier)})` : ""}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {isDowngrade
-                ? `Your company will be moved to the ${pendingPlanName} plan. Some features may no longer be available.`
-                : `Your company will be upgraded to the ${pendingPlanName} plan with access to additional features.`}
+              {pendingPlan === "premium"
+                ? "Premium is $497/month plus a one-time $3,000 setup fee. Billing is managed through Stripe."
+                : isDowngrade
+                  ? `Your company will move to the ${pendingPlanName} plan and Stripe billing will update to the lower price.`
+                  : `Your company will move to the ${pendingPlanName} plan through Stripe billing.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

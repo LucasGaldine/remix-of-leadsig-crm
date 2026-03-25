@@ -58,6 +58,18 @@ Deno.serve(async (req: Request) => {
     console.log("Processing webhook event:", event.type, event.id);
 
     switch (event.type) {
+      case "checkout.session.completed": {
+        const checkoutSession = event.data.object as Stripe.Checkout.Session;
+        await handleCheckoutSessionCompleted(supabase, checkoutSession);
+        break;
+      }
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+        await handleSubscriptionChanged(supabase, subscription, event.type);
+        break;
+      }
       case "invoice.paid": {
         const invoice = event.data.object as Stripe.Invoice;
         await handleInvoicePaid(supabase, invoice);
@@ -104,6 +116,20 @@ async function handleInvoicePaid(
   supabase: ReturnType<typeof createClient>,
   invoice: Stripe.Invoice
 ) {
+  if (invoice.metadata?.billing_event === "premium_setup_fee" && invoice.metadata?.account_id) {
+    const { error } = await supabase
+      .from("accounts")
+      .update({
+        premium_setup_fee_paid: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invoice.metadata.account_id);
+
+    if (error) {
+      console.error("Failed to mark premium setup fee as paid:", error.message);
+    }
+  }
+
   const stripeInvoiceId = invoice.id;
   console.log("Invoice paid:", stripeInvoiceId);
 
@@ -297,5 +323,72 @@ async function handleAccountUpdated(
 
   if (error) {
     console.error("Failed to update Stripe account:", error.message);
+  }
+}
+
+async function handleCheckoutSessionCompleted(
+  supabase: ReturnType<typeof createClient>,
+  session: Stripe.Checkout.Session
+) {
+  if (session.mode !== "subscription") {
+    return;
+  }
+
+  const accountId = session.metadata?.account_id;
+  const targetPlan = session.metadata?.target_plan;
+  if (!accountId || !targetPlan) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("accounts")
+    .update({
+      pricing_plan: targetPlan,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", accountId);
+
+  if (error) {
+    console.error("Failed to sync checkout session:", error.message);
+  }
+}
+
+async function handleSubscriptionChanged(
+  supabase: ReturnType<typeof createClient>,
+  subscription: Stripe.Subscription,
+  eventType: string
+) {
+  const accountIdFromMetadata = subscription.metadata?.account_id || null;
+
+  const accountLookup = accountIdFromMetadata
+    ? supabase
+        .from("accounts")
+        .select("id, pricing_plan")
+        .eq("id", accountIdFromMetadata)
+        .maybeSingle()
+    : supabase
+        .from("accounts")
+        .select("id, pricing_plan")
+        .eq("stripe_subscription_id", subscription.id)
+        .maybeSingle();
+
+  const { data: account, error: accountError } = await accountLookup;
+
+  if (accountError || !account) {
+    return;
+  }
+
+  const isDeleted = eventType === "customer.subscription.deleted";
+
+  const { error } = await supabase
+    .from("accounts")
+    .update({
+      pricing_plan: isDeleted ? "free" : account.pricing_plan,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", account.id);
+
+  if (error) {
+    console.error("Failed to sync subscription:", error.message);
   }
 }

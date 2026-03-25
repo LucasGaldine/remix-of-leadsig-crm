@@ -219,7 +219,7 @@ export default function Auth() {
       }
     } else {
       toast.success('Account created successfully!');
-      navigate(getPostAuthRedirectPath({ isNewSignup: true }));
+      navigate(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: isCreatingCompany }));
     }
   };
 

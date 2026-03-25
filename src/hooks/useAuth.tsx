@@ -31,6 +31,7 @@ interface Account {
   default_profit_margin: number;
   default_surcharge: number;
   pricing_plan: 'free' | 'basic' | 'premium';
+  pricing_tier?: 'solo' | 'team' | 'growth' | null;
 }
 
 interface AccountMembership {

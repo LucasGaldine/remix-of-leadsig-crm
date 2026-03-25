@@ -142,7 +142,7 @@ input[type="number"] {
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Public Sans', sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
 
