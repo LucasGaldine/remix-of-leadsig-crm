@@ -44,6 +44,45 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 
+const JOB_STATUS_GUIDANCE = [
+  {
+    value: "unscheduled",
+    label: "Unscheduled",
+    description: "The job exists, but no visit date has been added yet.",
+    requirement: "Create the job and leave it without any scheduled dates.",
+  },
+  {
+    value: "unassigned",
+    label: "Unassigned",
+    description: "The job has a scheduled visit, but nobody has been assigned to work it yet.",
+    requirement: "Add a date to the job schedule, then leave the crew assignment empty.",
+  },
+  {
+    value: "scheduled",
+    label: "Scheduled",
+    description: "The job is on the calendar and has crew assigned for the visit.",
+    requirement: "Schedule the job and assign the right crew members to it.",
+  },
+  {
+    value: "completed",
+    label: "Completed",
+    description: "The field work is finished and the job is ready for billing or closeout.",
+    requirement: "Mark the job complete after the work has been done.",
+  },
+  {
+    value: "needs_invoice",
+    label: "Needs Invoice",
+    description: "The job is completed, but there is not an invoice created for it yet.",
+    requirement: "Complete the job without creating or sending an invoice yet.",
+  },
+  {
+    value: "paid",
+    label: "Paid",
+    description: "The invoice has been paid and the job is fully closed out.",
+    requirement: "Create the invoice for the completed job and record the payment.",
+  },
+] as const;
+
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -81,6 +120,7 @@ export default function JobDetail() {
   const [editScheduleOpen, setEditScheduleOpen] = useState(false);
   const [recurringDetailModalOpen, setRecurringDetailModalOpen] = useState(false);
   const [makeUniqueDialogOpen, setMakeUniqueDialogOpen] = useState(false);
+  const [statusGuidanceOpen, setStatusGuidanceOpen] = useState(false);
 
   const [estimate, setEstimate] = useState<any>(null);
   const makeUnique = useMakeJobUnique();
@@ -590,6 +630,28 @@ export default function JobDetail() {
     paid: "Paid",
   };
 
+  const getJobStatusBadgeStatus = (status: string) => {
+    switch (status) {
+      case "unscheduled":
+        return "unscheduled";
+      case "unassigned":
+      case "needs_invoice":
+        return "attention";
+      case "scheduled":
+        return "scheduled";
+      case "in_progress":
+      case "in-progress":
+        return "in_progress";
+      case "completed":
+      case "paid":
+        return "completed";
+      case "job":
+        return "job";
+      default:
+        return "pending";
+    }
+  };
+
   const displayStatus = (job as any).display_status || job.status;
   const statusLabel = statusLabelMap[displayStatus] || displayStatus;
   const isUnassigned = hasSchedules && jobAssignments.length === 0;
@@ -687,8 +749,6 @@ export default function JobDetail() {
               {/*Right Column */}
               <div className="flex flex-col gap-2">
                 <div className="flex justify-end gap-2 flex-wrap ">
-
-
                   {isUnassigned && (
                     <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
                       <Users className="h-3 w-3 mr-1" />
@@ -710,10 +770,16 @@ export default function JobDetail() {
                     </Badge>
                   )}
 
-                  <StatusBadge status={displayStatus as any} size="lg">
-                    {statusLabel}
-                  </StatusBadge>
-
+                  <button
+                    type="button"
+                    className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    onClick={() => setStatusGuidanceOpen(true)}
+                    aria-label={`Open job status guide for ${statusLabel.toLowerCase()}`}
+                  >
+                    <StatusBadge status={getJobStatusBadgeStatus(displayStatus) as any} size="lg">
+                      {statusLabel}
+                    </StatusBadge>
+                  </button>
                 </div>
                 
                 <div className="text-right text-muted-foreground">
@@ -722,7 +788,6 @@ export default function JobDetail() {
                   </p>
                   <p className="text-xs ">{jobAny.recurring_job_id ? "Quote Total" : "Estimate Total"}</p>
                 </div>
-
               </div>
 
             </div>
@@ -1234,6 +1299,45 @@ export default function JobDetail() {
           onMakeRecurring={!jobAny.recurring_job_id ? () => setMakeRecurringOpen(true) : undefined}
         />
       )}
+
+      <Dialog open={statusGuidanceOpen} onOpenChange={setStatusGuidanceOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Job Status Stages</DialogTitle>
+            <DialogDescription>
+              Use this guide to understand what each job status means and what needs to happen before moving a job into that stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {JOB_STATUS_GUIDANCE.map((stage) => (
+              <div key={stage.value} className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex justify-start">
+                  {stage.value === "unassigned" ? (
+                    <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
+                      <Users className="h-3 w-3 mr-1" />
+                      Unassigned
+                    </Badge>
+                  ) : stage.value === "needs_invoice" ? (
+                    <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
+                      <DollarSign className="h-3 w-3 mr-1" />
+                      Needs Invoice
+                    </Badge>
+                  ) : (
+                    <StatusBadge status={getJobStatusBadgeStatus(stage.value) as any} size="lg">
+                      {stage.label}
+                    </StatusBadge>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{stage.description}</p>
+                <p className="mt-2 text-sm text-foreground">
+                  <span className="font-medium">To get here:</span> {stage.requirement}
+                </p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Address Dialog */}
       <Dialog open={addressDialogOpen} onOpenChange={setAddressDialogOpen}>

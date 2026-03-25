@@ -208,7 +208,7 @@ describe("LeadDetail status guidance", () => {
     expect(dialogContent.getByText(/created or imported and has not been worked yet/i)).toBeInTheDocument();
     expect(dialogContent.getByText(/received initial outreach or has already replied/i)).toBeInTheDocument();
     expect(dialogContent.getByText(/confirm budget, service fit, timeline, and decision-maker readiness/i)).toBeInTheDocument();
-    expect(dialogContent.getByText(/estimate approved, and convert the lead into a job/i)).toBeInTheDocument();
+    expect(dialogContent.getByText(/added the address and city of the lead, then press the schedule vist button/i)).toBeInTheDocument();
     expect(dialogContent.getByText(/no longer active and should be treated as archived/i)).toBeInTheDocument();
 
     expect(dialogContent.queryByText("Scheduled")).not.toBeInTheDocument();

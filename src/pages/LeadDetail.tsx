@@ -104,25 +104,25 @@ const LEAD_STATUS_GUIDANCE = [
     value: "contacted",
     label: "Contacted",
     description: "The lead has received initial outreach or has already replied.",
-    requirement: "Reach out by call, text, or email and move the lead once contact has started.",
+    requirement: "Reach out by call, text, or email. Then mark the lead as contacted.",
   },
   {
     value: "qualified",
     label: "Qualified",
     description: "The lead is a real fit for the business and ready for an estimate or next sales step.",
-    requirement: "Confirm budget, service fit, timeline, and decision-maker readiness before moving here.",
+    requirement: "Confirm budget, service fit, timeline, and decision-maker readiness. Then mark the lead as qualified.",
   },
   {
     value: "job",
     label: "Job",
     description: "The lead has moved out of the sales pipeline and into active work.",
-    requirement: "Get the lead qualified, create an estimate, have the estimate approved, and convert the lead into a job.",
+    requirement: "Get the lead qualified, make sure you have added the address and city of the lead, then press the Schedule Vist button",
   },
   {
     value: "lost",
     label: "Lost",
     description: "The lead is no longer active and should be treated as archived.",
-    requirement: "Mark the lead as lost when the opportunity is no longer worth pursuing.",
+    requirement: "Press the three dots in the card header and select Mark As Lost",
   },
 ] as const;
 

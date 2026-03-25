@@ -74,6 +74,13 @@ export const searchPages: SearchPage[] = [
     keywords: ["tutorial", "onboarding", "walkthrough", "guide", "help", "training"],
   },
   {
+    name: "Replay Import Setup",
+    path: "/onboarding/import",
+    icon: "book-open",
+    description: "Run the CSV import onboarding again",
+    keywords: ["import", "csv", "onboarding", "setup", "leads", "clients", "jobs", "replay"],
+  },
+  {
     name: "Lead Sources",
     path: "/settings/lead-sources",
     icon: "layout-dashboard",

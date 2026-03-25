@@ -49,6 +49,7 @@ import DataDeletion from "./pages/DataDeletion";
 import Customers from "./pages/Customers";
 import CustomerDetail from "./pages/CustomerDetail";
 import Tutorial from "./pages/Tutorial";
+import OnboardingImport from "./pages/OnboardingImport";
 
 const queryClient = new QueryClient();
 
@@ -81,6 +82,7 @@ const router = createBrowserRouter([
       { path: "/privacy", element: <PrivacyPolicy /> },
       { path: "/terms", element: <TermsOfService /> },
       { path: "/data-deletion", element: <DataDeletion /> },
+      { path: "/onboarding/import", element: <Protected><OnboardingImport /></Protected> },
       { path: "/tutorial", element: <Protected><Tutorial /></Protected> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
       { path: "/facebook-callback", element: <Protected><FacebookCallback /></Protected> },

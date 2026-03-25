@@ -4,9 +4,12 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import {
+  completeOnboardingImport,
   completeOnboardingTutorial,
   getPostAuthRedirectPath,
+  ONBOARDING_IMPORT_STORAGE_KEY,
   ONBOARDING_TUTORIAL_STORAGE_KEY,
+  shouldShowOnboardingImport,
   shouldShowOnboardingTutorial,
 } from "@/lib/onboarding";
 import { filterSearchPages } from "@/lib/globalSearch";
@@ -19,17 +22,41 @@ vi.mock("@/components/layout/PageHeader", () => ({
 }));
 
 describe("onboarding tutorial state", () => {
-  it("routes new signups to the tutorial", () => {
+  it("routes new signups to the import onboarding step", () => {
+    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
     localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
-    expect(getPostAuthRedirectPath({ isNewSignup: true })).toBe("/tutorial");
+    expect(getPostAuthRedirectPath({ isNewSignup: true })).toBe("/onboarding/import");
+    expect(shouldShowOnboardingImport()).toBe(true);
     expect(shouldShowOnboardingTutorial()).toBe(true);
   });
 
-  it("marks the tutorial complete after finishing", () => {
+  it("routes to import onboarding before tutorial when import is pending", () => {
+    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
     localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
     getPostAuthRedirectPath({ isNewSignup: true });
+
+    expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/onboarding/import");
+  });
+
+  it("routes to tutorial after import onboarding is complete", () => {
+    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+
+    getPostAuthRedirectPath({ isNewSignup: true });
+    completeOnboardingImport();
+
+    expect(shouldShowOnboardingImport()).toBe(false);
+    expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/tutorial");
+  });
+
+  it("marks the tutorial complete after finishing", () => {
+    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+
+    getPostAuthRedirectPath({ isNewSignup: true });
+    completeOnboardingImport();
     completeOnboardingTutorial();
 
     expect(shouldShowOnboardingTutorial()).toBe(false);
@@ -42,6 +69,12 @@ describe("global search tutorial entry", () => {
     const results = filterSearchPages("tutorial", "owner");
 
     expect(results.some((page) => page.path === "/tutorial")).toBe(true);
+  });
+
+  it("finds import onboarding replay from import-related terms", () => {
+    const results = filterSearchPages("import", "owner");
+
+    expect(results.some((page) => page.path === "/onboarding/import")).toBe(true);
   });
 });
 

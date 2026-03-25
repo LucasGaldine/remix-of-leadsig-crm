@@ -12,8 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { format, subMonths, startOfMonth, endOfMonth, subDays, startOfYear } from "date-fns";
-import { useGenerateExport } from "@/hooks/useFinancialExports";
+import { format, parseISO, subMonths, startOfMonth, endOfMonth, subDays, startOfYear } from "date-fns";
+import { useFinancialExportHistory, useGenerateExport } from "@/hooks/useFinancialExports";
 
 interface ExportInvoicesModalProps {
   open: boolean;
@@ -59,6 +59,8 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
   const [toOpen, setToOpen] = useState(false);
 
   const generateExport = useGenerateExport();
+  const { data: exports = [], isLoading: isLoadingHistory } = useFinancialExportHistory();
+  const lastExport = exports[0];
 
   const handlePresetClick = (key: PresetKey) => {
     setSelectedPreset(key);
@@ -188,6 +190,13 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
           <p className="text-xs text-muted-foreground">
             {format(dateFrom, "MMM d, yyyy")} - {format(dateTo, "MMM d, yyyy")}
           </p>
+
+          {!isLoadingHistory && lastExport && (
+            <p className="text-xs text-muted-foreground">
+              Last export: {format(parseISO(lastExport.created_at), "MMM d, yyyy 'at' h:mm a")} for{" "}
+              {format(parseISO(lastExport.date_from), "MMM d")} - {format(parseISO(lastExport.date_to), "MMM d, yyyy")}
+            </p>
+          )}
         </div>
 
         <DialogFooter>
