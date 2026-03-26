@@ -116,19 +116,19 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
       >
 
         {/*Badge Div*/}
-        <div className="flex justify-between px-8 py-4 pb-0">
+        <div className="flex justify-between items-end px-4 sm:px-8 py-4 pb-0 gap-2">
 
             <Badge 
-            className="gap-2"
+            className="gap-2 shrink-0"
             variant="outline"
             > 
                 <Calendar className="h-4 w-4 flex-shrink-0" />
-              <span>{scheduledDateTime}</span>
+              <span className="whitespace-nowrap">{scheduledDateTime}</span>
             </Badge>
 
             
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-end justify-end gap-2 flex-wrap ml-auto">
             <StatusBadge status={badgeStatus as JobStatus}>
               {statusLabels[badgeStatus] || badgeStatus}
             </StatusBadge>

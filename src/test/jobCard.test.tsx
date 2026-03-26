@@ -70,4 +70,47 @@ describe("JobCard actions", () => {
     const statusRowWithMargin = container.querySelector("div.flex.items-center.gap-2.mb-1.flex-wrap");
     expect(statusRowWithMargin).toBeNull();
   });
+
+  it("keeps status badges right-aligned and uses mobile-friendly header padding", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...job,
+            status: "unscheduled",
+            display_status: "unscheduled",
+            crew_count: 0,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    const topRow = container.querySelector("div.flex.justify-between");
+    expect(topRow?.className).toContain("px-4");
+    expect(topRow?.className).toContain("sm:px-8");
+    expect(topRow?.className).toContain("items-end");
+
+    const rightBadges = container.querySelector("div.flex.items-end.gap-2.flex-wrap");
+    expect(rightBadges?.className).toContain("justify-end");
+    expect(rightBadges?.className).toContain("ml-auto");
+  });
+
+  it("keeps 'Not scheduled' date label on a single line", () => {
+    render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...job,
+            scheduled_date: undefined,
+            last_scheduled_date: undefined,
+            status: "unscheduled",
+            display_status: "unscheduled",
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    const notScheduled = screen.getByText("Not scheduled");
+    expect(notScheduled.className).toContain("whitespace-nowrap");
+  });
 });
