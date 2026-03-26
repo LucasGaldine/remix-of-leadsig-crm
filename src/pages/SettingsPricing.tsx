@@ -115,15 +115,17 @@ function getPlanFeatures(plan: PlanKey, basicTier: BasicTier): PlanFeature[] {
 }
 
 function getPlanPrice(plan: PlanKey, basicTier: BasicTier): string {
+  const formatPrice = (value: number) => `$${value.toLocaleString("en-US")}`;
+
   if (plan === "free") {
-    return "$0";
+    return formatPrice(0);
   }
 
   if (plan === "basic") {
-    return `$${getBasicTierMonthlyPrice(basicTier)}`;
+    return formatPrice(getBasicTierMonthlyPrice(basicTier));
   }
 
-  return "$497";
+  return formatPrice(497);
 }
 
 function getBasicTierDisplayName(tier: BasicTier): string {
@@ -150,19 +152,25 @@ function PlanCard({
   currentTier: BasicTier | null;
 }) {
   const isDowngrade = planOrder[plan.key] < planOrder[currentPlan];
-  const displayTier = isCurrent && currentTier ? currentTier : selectedBasicTier;
+  const isCurrentBasicPlan = plan.key === "basic" && currentPlan === "basic";
+  const displayTier = selectedBasicTier;
+  const isBasicTierChange = isCurrentBasicPlan && currentTier !== null && displayTier !== currentTier;
+  const isCurrentSelection = isCurrent && !isBasicTierChange;
+  const isBasicTierDowngrade = isCurrentBasicPlan
+    && currentTier !== null
+    && getBasicTierMonthlyPrice(displayTier) < getBasicTierMonthlyPrice(currentTier);
   const features = getPlanFeatures(plan.key, displayTier);
 
   return (
     <div
       className={cn(
         "relative flex flex-col rounded-xl border bg-card p-6 transition-shadow",
-        isCurrent
+        isCurrentSelection
           ? "border-primary shadow-lg ring-1 ring-primary/20"
           : "border-border shadow-sm"
       )}
     >
-      {isCurrent && (
+      {isCurrentSelection && (
         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 text-xs">
           Current Plan
         </Badge>
@@ -198,7 +206,7 @@ function PlanCard({
             className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground"
             value={displayTier}
             onChange={(event) => onSelectBasicTier(event.target.value as BasicTier)}
-            disabled={isCurrent || isUpdating}
+            disabled={isUpdating}
           >
             {Object.keys(BASIC_TIER_CONFIG).map((tier) => (
               <option key={tier} value={tier}>
@@ -246,18 +254,25 @@ function PlanCard({
         ))}
       </div>
 
-      {isCurrent ? (
+      {isCurrentSelection ? (
         <Button variant="outline" className="w-full" disabled>
           Current Plan
         </Button>
       ) : (
         <Button
-          variant={isDowngrade ? "outline" : "default"}
-          className={cn("w-full", plan.highlighted && !isDowngrade && "shadow-sm")}
+          variant={isDowngrade || isBasicTierDowngrade ? "outline" : "default"}
+          className={cn(
+            "w-full",
+            plan.highlighted && !isDowngrade && !isBasicTierDowngrade && "shadow-sm",
+          )}
           onClick={() => onChangePlan(plan.key)}
           disabled={isUpdating}
         >
-          {isDowngrade ? `Downgrade to ${plan.name}` : `Upgrade to ${plan.name}`}
+          {isCurrentBasicPlan
+            ? `Switch to ${getBasicTierDisplayName(displayTier)}`
+            : isDowngrade
+              ? `Downgrade to ${plan.name}`
+              : `Upgrade to ${plan.name}`}
         </Button>
       )}
     </div>
@@ -273,6 +288,12 @@ export default function SettingsPricing() {
   const [pendingPlan, setPendingPlan] = useState<PlanKey | null>(null);
   const [selectedBasicTier, setSelectedBasicTier] = useState<BasicTier>(currentTier ?? "solo");
   const [onboardingTrialDays, setOnboardingTrialDays] = useState<number>(0);
+
+  useEffect(() => {
+    if (currentTier) {
+      setSelectedBasicTier(currentTier);
+    }
+  }, [currentTier]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -302,6 +323,11 @@ export default function SettingsPricing() {
   }, [refreshProfile]);
 
   const isDowngrade = pendingPlan ? planOrder[pendingPlan] < planOrder[currentPlan] : false;
+  const isBasicTierChange = pendingPlan === "basic"
+    && currentPlan === "basic"
+    && currentTier !== null
+    && selectedBasicTier !== currentTier;
+  const pendingAction = isBasicTierChange ? "Change tier" : isDowngrade ? "Downgrade" : "Upgrade";
   const pendingPlanName = pendingPlan
     ? plans.find((p) => p.key === pendingPlan)?.name
     : "";
@@ -408,11 +434,13 @@ export default function SettingsPricing() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isDowngrade ? "Downgrade" : "Upgrade"} to {pendingPlanName}
+              {pendingAction} to {pendingPlanName}
               {pendingTier ? ` (${getBasicTierDisplayName(pendingTier)})` : ""}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingPlan === "premium"
+              {isBasicTierChange
+                ? `Your company will stay on the Basic plan and switch to the ${getBasicTierDisplayName(selectedBasicTier)} tier through Stripe billing.`
+                : pendingPlan === "premium"
                 ? "Premium is $497/month plus a one-time $3,000 setup fee. Billing is managed through Stripe."
                 : isDowngrade
                   ? `Your company will move to the ${pendingPlanName} plan and Stripe billing will update to the lower price.`

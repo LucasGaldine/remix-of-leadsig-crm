@@ -64,6 +64,11 @@ export function PageHeader({
       >
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
+            <img
+              src="/header_logo.png"
+              alt="Header logo"
+              className="h-12 w-auto object-cover shrink-0"
+            />
             {showBack && (
               <button
                 onClick={handleBack}

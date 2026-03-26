@@ -54,17 +54,22 @@ export function StatCard({
         !onClick && "cursor-default"
       )}
     >
-      <div>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-5">{label}</p>
-            <p className="text-1">{value}</p>
-          </div>
-          <div className="p-2 rounded-lg bg-muted">
-            <Icon className="w-5 h-5 text-muted-foreground" />
-          </div>
+
+        <div className="flex flex-col gap-4">
+
+            <div className="flex">
+              <div className="p-2 rounded-full bg-[hsl(var(--secondary))]">
+              <Icon className="w-5 h-5 text-[hsl(var(--secondary-foreground))]" />
+              </div>
+            </div>
+
+            <div className="gap-2">
+              <p className="text-4xl font-bold">{value}</p>
+              <p className="text-5">{label}</p>
+            </div>
+          
         </div>
-      </div>
+
 
     </button>
 

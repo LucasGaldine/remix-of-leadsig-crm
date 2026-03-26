@@ -1,8 +1,15 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsPricing from "@/pages/SettingsPricing";
+
+type MockAccount = {
+  id: string;
+  company_name: string;
+  pricing_plan: "free" | "basic" | "premium";
+  pricing_tier: "solo" | "team" | "growth" | null;
+};
 
 const { invokeMock, fromMock, toastErrorMock, toastSuccessMock, refreshProfileMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -11,6 +18,8 @@ const { invokeMock, fromMock, toastErrorMock, toastSuccessMock, refreshProfileMo
   toastSuccessMock: vi.fn(),
   refreshProfileMock: vi.fn(),
 }));
+
+let mockCurrentAccount: MockAccount;
 
 vi.mock("@/components/layout/PageHeader", () => ({
   PageHeader: ({ title }: { title: string }) => <header>{title}</header>,
@@ -37,12 +46,7 @@ vi.mock("@/components/ui/alert-dialog", () => ({
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    currentAccount: {
-      id: "acct_1",
-      company_name: "LeadSig Landscaping",
-      pricing_plan: "free",
-      pricing_tier: null,
-    },
+    currentAccount: mockCurrentAccount,
     refreshProfile: refreshProfileMock,
   }),
 }));
@@ -65,6 +69,13 @@ vi.mock("sonner", () => ({
 
 describe("SettingsPricing", () => {
   beforeEach(() => {
+    mockCurrentAccount = {
+      id: "acct_1",
+      company_name: "LeadSig Landscaping",
+      pricing_plan: "free",
+      pricing_tier: null,
+    };
+
     invokeMock.mockReset();
     fromMock.mockReset();
     toastErrorMock.mockReset();
@@ -74,6 +85,56 @@ describe("SettingsPricing", () => {
     invokeMock.mockResolvedValue({ data: { success: true }, error: null });
     fromMock.mockReturnValue({
       update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+    });
+  });
+
+  it("shows correct monthly prices for basic tiers and premium", () => {
+    render(
+      <MemoryRouter>
+        <SettingsPricing />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("$29")).toBeInTheDocument();
+    expect(screen.getByText("$497")).toBeInTheDocument();
+    expect(screen.getByText(/\+ \$3,000 one-time setup fee/i)).toBeInTheDocument();
+
+    const basicTierSelect = screen.getByLabelText(/basic tier/i);
+    fireEvent.change(basicTierSelect, { target: { value: "growth" } });
+
+    expect(screen.getByText("$197")).toBeInTheDocument();
+  });
+
+  it("allows switching basic tier when current plan is basic", async () => {
+    mockCurrentAccount = {
+      id: "acct_1",
+      company_name: "LeadSig Landscaping",
+      pricing_plan: "basic",
+      pricing_tier: "solo",
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsPricing />
+      </MemoryRouter>,
+    );
+
+    const basicCard = screen.getByText("Basic").closest("div[class*='rounded-xl']");
+    expect(basicCard).not.toBeNull();
+
+    const basicTierSelect = within(basicCard as HTMLElement).getByLabelText(/basic tier/i);
+    fireEvent.change(basicTierSelect, { target: { value: "team" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Switch to Team/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("stripe-manage-subscription", {
+        body: expect.objectContaining({
+          targetPlan: "basic",
+          targetTier: "team",
+        }),
+      });
     });
   });
 

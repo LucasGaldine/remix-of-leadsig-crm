@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Phone, MessageSquare, ChevronRight, ArchiveRestore, Trash2, Navigation } from "lucide-react";
+import { Phone, MessageSquare, Briefcase, ArchiveRestore, Trash2, Navigation, DollarSign, SquareArrowRight, UserPlus} from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+
 
 export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid" | "completed" | "lost" | "archived";
 
@@ -96,104 +98,132 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
     >
       <div
         onClick={onClick}
-        className="w-full p-4 cursor-pointer hover:bg-accent/50 transition-colors"
+        className="w-full cursor-pointer hover:bg-accent/50 transition-colors"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <StatusBadge status={getStatusBadgeStatus(lead.status)}>
-                {statusLabels[lead.status]}
-              </StatusBadge>
-              <span className="text-2xs text-muted-foreground uppercase tracking-wide">
-                via {lead.source}
-              </span>
+          <div className="flex flex-col">
+
+            <div className="flex justify-between items-center px-8 pt-4">
+                  
+                  
+                  <Badge
+                  variant="outline"
+                  className="gap-2"
+                  >
+                  <DollarSign className="w-3 h-3"></DollarSign>
+                  <span>{lead.estimatedBudget.toLocaleString()}</span>
+                  </Badge>
+                  
+
+                  
+
+                <div className="flex gap-4 items-center">
+                <StatusBadge status={getStatusBadgeStatus(lead.status)}>
+                    {statusLabels[lead.status]}
+                  </StatusBadge>
+
+
+                  </div>
 
             </div>
 
+            <div className="flex flex-col gap-2 px-8 pb-4 pt-2">
               <p className="text-2">
                 {lead.name}
               </p>
 
-            <p className="text-5 font-medium mt-0.5">
-              {lead.serviceType && lead.serviceType !== "Unknown" ? lead.serviceType : "No service type"}
-            </p>
 
-          </div>
+              <div
+              className="text-sm text-muted-foreground transition-colors"
+              >
+                <div
+                    className="flex gap-2 items-center text-sm text-muted-foreground transition-colors"
+                >
+                  <Briefcase className="w-4 h-4"></Briefcase>
+                  <p> {lead.serviceType && lead.serviceType !== "Unknown" ? lead.serviceType : "No service type"}</p>
+                </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-2">
-              ${lead.estimatedBudget.toLocaleString()}
-            </span>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </div>
+                <div
+                    className="flex gap-2 items-center text-sm text-muted-foreground transition-colors"
+                >
+                  <SquareArrowRight className="w-4 h-4"></SquareArrowRight>
+                  <p> Via {lead.source} </p>
+                </div>
+              </div>
+              
+            </div>
+
+            <div className="flex border-t border-border">
+              {archiveMode ? (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUnarchive?.();
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
+                  >
+                    <ArchiveRestore className="h-4 w-4" />
+                    Unarchive
+                  </button>
+                  <div className="w-px bg-border" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 active:bg-destructive/20 transition-colors min-h-touch"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCall?.();
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
+                  >
+                    <Phone className="h-4 w-4" />
+
+                  </button>
+                  <div className="w-px bg-border" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMessage?.();
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+
+                  </button>
+                  <div className="w-px bg-border" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const address = lead.location || "";
+                      if (address) {
+                        window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
+                      }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
+                  >
+                    <Navigation className="h-4 w-4" />
+
+                  </button>
+                </>
+              )}
+            </div>
+
+  
+
         </div>
       </div>
 
-      <div className="flex border-t border-border">
-        {archiveMode ? (
-          <>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onUnarchive?.();
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-            >
-              <ArchiveRestore className="h-4 w-4" />
-              Unarchive
-            </button>
-            <div className="w-px bg-border" />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowDeleteConfirm(true);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 active:bg-destructive/20 transition-colors min-h-touch"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onCall?.();
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-            >
-              <Phone className="h-4 w-4" />
-              Call
-            </button>
-            <div className="w-px bg-border" />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onMessage?.();
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-            >
-              <MessageSquare className="h-4 w-4" />
-              Text
-            </button>
-            <div className="w-px bg-border" />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const address = lead.location || "";
-                if (address) {
-                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, "_blank");
-                }
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
-            >
-              <Navigation className="h-4 w-4" />
-              Navigate
-            </button>
-          </>
-        )}
-      </div>
+      
 
 
 

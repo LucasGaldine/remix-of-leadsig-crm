@@ -100,13 +100,19 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
-        title={`${getGreeting()}${firstName ? `, ${firstName}` : ""}`}
-        subtitle={format(new Date(), "EEEE, MMMM d")}
+
       />
 
-      <main className="px-4 py-4 space-y-6 max-w-[var(--content-max-width)] m-auto">
+
+
+      <main className="flex flex-col gap-8 px-4 py-4 space-y-6 max-w-[1200px] m-auto">
         {/* Email Verification Banner */}
         {user?.email && <EmailVerificationBanner email={user.email} isEmailConfirmed={isEmailConfirmed} />}
+
+        <div className="flex flex-col pt-8 gap-2">
+          <h1 className="text-4xl font-semibold tracking-tight">{getGreeting()}{firstName ? `, ${firstName}` : ""}</h1>
+          <p className=" text-muted-foreground">{format(new Date(), "EEEE, MMMM d")}</p>
+        </div>
 
         {/* Quick Stats */}
         <DashboardStatCards />
@@ -159,8 +165,10 @@ export default function Index() {
         )}
 
 
+        <div className="flex flex-wrap gap-8">
+
         {sections.includes("todays_jobs") && (
-          <section>
+          <section className="flex-1">
             <SectionHeader
               title="Today's Jobs"
               count={activeJobsData.length}
@@ -201,7 +209,7 @@ export default function Index() {
         )}
 
         {sections.includes("qualified_leads") && (
-          <section >
+          <section className="flex-1">
             <SectionHeader
               title="Qualified Leads"
               count={qualifiedLeads.length}
@@ -244,6 +252,8 @@ export default function Index() {
             )}
           </section>
         )}
+
+        </div>
 
         {sections.includes("customers") && (
           <section>

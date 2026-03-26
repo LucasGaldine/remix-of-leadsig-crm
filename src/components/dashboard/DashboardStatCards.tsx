@@ -45,7 +45,7 @@ export function DashboardStatCards() {
 
   return (
     <div>
-      <div className="flex gap-3 overflow-x-scroll">
+      <div className="flex gap-4 overflow-x-scroll">
         {cards.map(({ cardId, config, value }) => (
           <StatCard
             key={cardId}
