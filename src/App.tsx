@@ -2,9 +2,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { createBrowserRouter, RouterProvider, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { shouldAnimateMainPageTransition } from "@/lib/pageTransition";
 import Index from "./pages/Index";
 import Schedule from "./pages/Schedule";
 import Leads from "./pages/Leads";
@@ -68,7 +70,63 @@ function RootLayout() {
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
-  return <ProtectedRoute>{children}</ProtectedRoute>;
+  return (
+    <ProtectedRoute>
+      <MainPageTransition>{children}</MainPageTransition>
+    </ProtectedRoute>
+  );
+}
+
+function MainPageTransition({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const previousPathRef = useRef<string | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const [routeNeedsTransition, setRouteNeedsTransition] = useState(false);
+  const [playTransition, setPlayTransition] = useState(false);
+  const [transitionNonce, setTransitionNonce] = useState(0);
+
+  const shouldAnimate = shouldAnimateMainPageTransition(location.pathname, previousPathRef.current);
+
+  const clearFrame = () => {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+  };
+
+  const playRouteTransition = () => {
+    clearFrame();
+    requestAnimationFrame(() => {
+      setTransitionNonce((value) => value + 1);
+      setPlayTransition(true);
+    });
+  };
+
+  useEffect(() => {
+    clearFrame();
+
+    if (shouldAnimate) {
+      setRouteNeedsTransition(true);
+      setPlayTransition(false);
+      frameRef.current = window.requestAnimationFrame(() => {
+        playRouteTransition();
+      });
+    } else {
+      setRouteNeedsTransition(false);
+      setPlayTransition(false);
+    }
+
+    previousPathRef.current = location.pathname;
+    return () => {
+      clearFrame();
+    };
+  }, [location.pathname]);
+
+  const shouldRenderAnimation = playTransition && routeNeedsTransition;
+
+  if (!shouldRenderAnimation) return <>{children}</>;
+
+  return <div key={`${location.key}-${transitionNonce}`} className="main-page-transition">{children}</div>;
 }
 
 const router = createBrowserRouter([

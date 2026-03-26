@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, MessageSquare, Briefcase, ArchiveRestore, Trash2, Navigation, DollarSign, SquareArrowRight, UserPlus} from "lucide-react";
+import { Phone, MessageSquare, Briefcase, ArchiveRestore, Trash2, Navigation, DollarSign, SquareArrowRight, Goal} from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -100,6 +100,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
         onClick={onClick}
         className="w-full cursor-pointer hover:bg-accent/50 transition-colors"
       >
+
           <div className="flex flex-col">
 
             <div className="flex justify-between items-center px-8 pt-4">
@@ -126,7 +127,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
 
             </div>
 
-            <div className="flex flex-col gap-2 px-8 pb-4 pt-2">
+            <div className="flex flex-col gap-1 px-8 pb-4 pt-1">
               <p className="text-2">
                 {lead.name}
               </p>
@@ -220,7 +221,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
 
   
 
-        </div>
+          </div>
       </div>
 
       

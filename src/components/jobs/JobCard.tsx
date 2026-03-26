@@ -122,7 +122,7 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
             className="gap-2 shrink-0"
             variant="outline"
             > 
-                <Calendar className="h-4 w-4 flex-shrink-0" />
+                <Calendar className="h-3 w-3 flex-shrink-0" />
               <span className="whitespace-nowrap">{scheduledDateTime}</span>
             </Badge>
 
@@ -159,7 +159,7 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
         </div>
         
         {/*Content Div*/}
-        <div className="px-8 pb-4 pt-2 flex flex-col gap-2">
+        <div className="px-8 pb-4 pt-1 flex flex-col gap-1">
                 <h3 className="flex-1 text-2 truncate">
                     {job.name || "Unnamed Job"}
                 </h3>
