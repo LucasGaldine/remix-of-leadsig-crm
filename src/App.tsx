@@ -126,7 +126,12 @@ function MainPageTransition({ children }: { children: React.ReactNode }) {
 
   if (!shouldRenderAnimation) return <>{children}</>;
 
-  return <div key={`${location.key}-${transitionNonce}`} className="main-page-transition">{children}</div>;
+  return (
+    <>
+      {children}
+      <div key={`${location.key}-${transitionNonce}`} className="main-page-transition-overlay" aria-hidden />
+    </>
+  );
 }
 
 const router = createBrowserRouter([

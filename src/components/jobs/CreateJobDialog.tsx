@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { ClientSelector } from "@/components/clients/ClientSelector";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { resolveCreateJobAddress } from "@/lib/createJobAddress";
+import { buildDefaultJobName } from "@/lib/defaultJobName";
 import { JobCSVImportModal } from "@/components/jobs/JobCSVImportModal";
 
 interface CreateJobDialogProps {
@@ -125,7 +126,10 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       });
 
       await createJob.mutateAsync({
-        name: jobName || customer.name,
+        name: jobName.trim() || buildDefaultJobName({
+          customerName: customer.name,
+          serviceType,
+        }),
         customer_id: customer.id,
         phone: customer.phone,
         email: customer.email,

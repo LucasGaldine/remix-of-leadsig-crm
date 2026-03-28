@@ -191,6 +191,15 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 describe("LeadDetail status guidance", () => {
+  it("shows a three-dot lead actions menu near the lead name", async () => {
+    renderLeadDetail({
+      status: "qualified",
+    });
+
+    await screen.findByText("Taylor Smith");
+    expect(screen.getByRole("button", { name: /open lead actions menu/i })).toBeInTheDocument();
+  });
+
   it("opens a lead-only status guidance dialog from the header badge", async () => {
     renderLeadDetail();
 

@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { type EstimateLineItemInit } from "./LineItemsEstimateDialog";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { buildDefaultJobName } from "@/lib/defaultJobName";
 
 interface CreateDraftEstimateDialogProps {
   open: boolean;
@@ -80,7 +81,11 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
             estimated_value: estimateTotal,
             status: "job",
             is_estimate_visit: true,
-            name: `${lead.name}, Estimate`,
+            name: buildDefaultJobName({
+              customerName: lead.name,
+              serviceType: lead.service_type,
+              isEstimateVisit: true,
+            }),
             approval_status: "approved",
           })
           .eq("id", lead.id);

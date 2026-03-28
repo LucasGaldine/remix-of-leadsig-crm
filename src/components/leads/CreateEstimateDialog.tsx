@@ -19,6 +19,7 @@ import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { cn } from "@/lib/utils";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { buildDefaultJobName } from "@/lib/defaultJobName";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 
@@ -198,7 +199,11 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
           customer_id: customerId,
           status: "job",
           is_estimate_visit: !createAsRegularJob,
-          name: createAsRegularJob ? lead.name : `${lead.name}, Estimate`,
+          name: buildDefaultJobName({
+            customerName: lead.name,
+            serviceType: lead.service_type,
+            isEstimateVisit: !createAsRegularJob,
+          }),
           approval_status: "approved",
         })
         .eq("id", lead.id)

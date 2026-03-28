@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, MoveVertical as MoreVertical, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
+import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -35,7 +35,7 @@ import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
-import { parseMentionsToHTML } from "@/lib/mentionParser";
+import { parseMentionsForDisplay, parseMentionsToHTML } from "@/lib/mentionParser";
 import { formatCurrency } from "@/lib/formatter";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
@@ -91,6 +91,7 @@ const PIPELINE_STAGES: { value: string; label: string; color: string, bg_color: 
   { value: "new", label: "New", color: "text-status-progress", bg_color: "status-progress-bg"},
   { value: "contacted", label: "Contacted", color: "text-status-progress",  bg_color: "status-progress-bg"},
   { value: "qualified", label: "Qualified", color: "text-status-progress",  bg_color: "status-progress-bg" },
+  { value: "job", label: "Job", color: "text-status-progress",  bg_color: "status-progress-bg" },
 ];
 
 const LEAD_STATUS_GUIDANCE = [
@@ -160,7 +161,6 @@ export default function LeadDetail() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [statusGuidanceOpen, setStatusGuidanceOpen] = useState(false);
-  const [pipelineInfo, setPipelineInfo] = useState(false);
   const [hasEstimate, setHasEstimate] = useState(false);
   const [estimate, setEstimate] = useState<any>(null);
 
@@ -803,6 +803,19 @@ export default function LeadDetail() {
   const showConvertButton = lead.status === "qualified";
   const isEstimateApproved = estimate?.status === "accepted";
   const scheduleVisitDisabledReason = !hasAddress ? "Add an address and city to schedule a visit." : null;
+  const contentTabs: { id: typeof activeTab; label: string }[] = [
+    { id: "details", label: "Details" },
+    { id: "notes", label: "Notes" },
+  ];
+  const statusSteps = PIPELINE_STAGES.map((stage) => ({ key: stage.value, label: stage.label }));
+  const currentStepKey = (() => {
+    if (["job", "paid", "completed"].includes(lead.status)) return "job";
+    if (lead.status === "qualified") return "qualified";
+    if (lead.status === "contacted") return "contacted";
+    return "new";
+  })();
+  const currentStepIndex = Math.max(statusSteps.findIndex((step) => step.key === currentStepKey), 0);
+  const recentActivity = interactions.slice(0, 3);
 
   const handleCall = (phone) => {
     if (!phone) return;
@@ -812,212 +825,172 @@ export default function LeadDetail() {
   };
 
   return (
-    <div className="min-h-screen  bg-surface-sunken pb-24 ">
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader title="" showBack backTo="/leads" />
 
-        <PageHeader title="" showBack backTo="/leads" />
+      <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-4 space-y-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-1.5">
+            <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Lead Profile</p>
+            <div className="flex items-center gap-2">
+              {customer?.id ? (
+                <button
+                  onClick={() => navigate(`/customers/${customer.id}`)}
+                  className="text-1 text-left hover:text-primary hover:underline transition-colors"
+                >
+                  {lead.name}
+                </button>
+              ) : (
+                <p className="text-1">{lead.name}</p>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Open lead actions menu"
+                  >
+                    <EllipsisVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={openEditDialog}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Lead
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStatusGuidanceOpen(true)}>
+                    <Info className="h-4 w-4 mr-2" />
+                    Status Guide
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setMarkLostDialogOpen(true)}>
+                    <Archive className="h-4 w-4 mr-2" />
+                    Mark as Lost
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setDeleteDialogOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    {deleteLeadConfig.menuLabel}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <p className="text-5">{lead.service_type || "No service type"}</p>
+          </div>
 
-        {/* Main Info */}
-        <div className=" max-w-[var(--content-max-width)] m-auto p-4 pb-0">
-          <div className="bg-card rounded-lg border border-border">
-          <div className="flex p-4 pt-8 pb-8">
-              {/*Left Column*/}
-              <div className="flex flex-col w-full justify-between gap-4">
-                {/*Customer Info*/}
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2 items-center">
-                    {customer?.id ? (
-                      <button
-                        onClick={() => navigate(`/customers/${customer.id}`)}
-                        className="text-1 hover:text-primary hover:underline transition-colors text-left"
-                      >
-                        {lead.name}
-                      </button>
-                    ) : (
-                      <p className="text-1">{lead.name}</p>
-                    )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <EllipsisVertical className="h-5 w-5" />
+          <div className="flex w-full items-center justify-start gap-2 md:w-auto md:flex-nowrap md:justify-end">
+            <Button variant="secondary" size="icon" onClick={() => handleCall(lead.phone)}>
+              <Phone className="h-4 w-4" />
+            </Button>
+            <Button variant="secondary" size="icon" onClick={logText}>
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => lead.email && (window.location.href = `mailto:${lead.email}`)}
+              disabled={!lead.email}
+            >
+              <Mail className="h-4 w-4" />
+            </Button>
+            {showConvertButton && (
+              scheduleVisitDisabledReason ? (
+                <Tooltip>
+                  <Popover>
+                    <TooltipTrigger asChild>
+                      <PopoverTrigger asChild>
+                        <span tabIndex={0} aria-label={`Schedule visit unavailable: ${scheduleVisitDisabledReason}`} className="inline-flex">
+                          <Button disabled size="lg" className="pointer-events-none">
+                            <FileTextIcon className="h-4 w-4 shrink-0" />
+                            Schedule Visit
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuItem onClick={openEditDialog}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit Lead
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setMarkLostDialogOpen(true)}>
-                            <Archive className="h-4 w-4 mr-2" />
-                            Mark as Lost
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setDeleteDialogOpen(true)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            {deleteLeadConfig.menuLabel}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                  </DropdownMenu>
-                  </div>
-                  
+                        </span>
+                      </PopoverTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {scheduleVisitDisabledReason}
+                    </TooltipContent>
+                    <PopoverContent className="w-64 p-3 text-sm">
+                      {scheduleVisitDisabledReason}
+                    </PopoverContent>
+                  </Popover>
+                </Tooltip>
+              ) : (
+                <Button onClick={() => setCreateEstimateDialogOpen(true)}>
+                  <FileTextIcon className="h-4 w-4 shrink-0" />
+                  Schedule Visit
+                </Button>
+              )
+            )}
+          </div>
+        </div>
 
-                  <div className="text-5 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="flex items-start gap-2">
-                      <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      <span className="break-words min-w-0">{formatPhone(lead.phone)}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      <span className="break-words min-w-0">{lead.email || "No email"}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      <span className="break-words min-w-0">{[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}</span>
-                    </div>
-                  </div>
-                </div>
+        <div
+          className="bg-card rounded-lg border border-border p-5 cursor-pointer hover:shadow-md transition-all"
+          onClick={() => setStatusGuidanceOpen(true)}
+        >
+          <div className="flex items-center justify-between gap-4 mb-6">
 
-                {/*Contact Buttons*/}
-                <div className="flex gap-4">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleCall(lead.phone)}
-                  >
-                    <Phone className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={logText}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      const address = [lead.address, lead.city].filter(Boolean).join(", ");
-                      if (address) openMapsWithAddress(address);
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+              Step {currentStepIndex + 1} of {statusSteps.length}
+            </p>
+            <button
+              type="button"
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              onClick={() => setStatusGuidanceOpen(true)}
+              aria-label={`Open lead status guide for ${lead.status.replace("_", " ")}`}
+            >
+              <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
+                {lead.status.replace("_", " ")}
+              </StatusBadge>
+            </button>
+          </div>
+          <div className="relative px-2 max-w-5xl mx-auto ">
+            <div className="absolute left-[12.5%] right-[12.5%] top-[10px] h-px bg-border" />
+            <div className="relative grid grid-cols-4 gap-2">
+            {statusSteps.map((step, index) => {
+              const isActive = index === currentStepIndex;
+              const isComplete = index < currentStepIndex;
+              const canClick = index < 3;
+              return (
+                <div key={step.key} className="flex flex-col items-center gap-2 ">
+                  <button
+                    type="button"
+                    disabled={!canClick}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (canClick) updateLeadStatus(step.key);
                     }}
+                    className={cn(
+                      "flex flex-col items-center gap-2",
+                      canClick ? "cursor-pointer" : "cursor-default"
+                    )}
                   >
-                    <Navigation className="h-4 w-4" />
-                  </Button>
+                    <span
+                      className={cn(
+                        "flex justify-center items-center h-5 w-5 rounded-full border",
+                        isActive ? "bg-muted border-primary ring-4 ring-[hsl(var(--primary))]" : isComplete ? "bg-primary border-primary/40" : "bg-muted border-border"
+                      )}
+                    > 
+                    {isActive && <Check className="w-0 h-0 text-muted"></Check>}
+                    
+                    
+                    </span>
+                   
+
+                    <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground text-center">
+                      {step.label}
+                    </span>
+                  </button>
                 </div>
-              
-              </div>
-
-
-              {/*Right Column*/}
-              <div className="flex flex-col w-full justify-between ">
-                {/*Job Info*/}
-                <div className="flex flex-col gap-2">
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      onClick={() => setStatusGuidanceOpen(true)}
-                      aria-label={`Open lead status guide for ${lead.status.replace("_", " ")}`}
-                    >
-                      <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
-                        {lead.status.replace("_", " ")}
-                      </StatusBadge>
-                    </button>
-                  </div>
-
-                  <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
-                    <p className="text-2">{formatCurrency(lead.estimated_value || 0)}</p>
-                    <p>{lead.service_type || "No service type"}</p>
-                  </div>
-                </div>
-
-                {/*CTA*/}
-                <div className="flex flex-col sm:flex-row justify-end gap-2">
-                  {showConvertButton && (
-                  scheduleVisitDisabledReason ? (
-                    <Tooltip>
-                      <Popover>
-                        <TooltipTrigger asChild>
-                          <PopoverTrigger asChild>
-                            <span
-                              tabIndex={0}
-                              aria-label={`Schedule visit unavailable: ${scheduleVisitDisabledReason}`}
-                              className="inline-flex"
-                            >
-                              <Button
-                                size="lg"
-                                disabled
-                                className="pointer-events-none"
-                              >
-                                <FileTextIcon className="h-4 w-4 shrink-0" />
-                                Schedule Visit
-                              </Button>
-                            </span>
-                          </PopoverTrigger>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {scheduleVisitDisabledReason}
-                        </TooltipContent>
-                        <PopoverContent className="w-64 p-3 text-sm">
-                          {scheduleVisitDisabledReason}
-                        </PopoverContent>
-                      </Popover>
-                    </Tooltip>
-                  ) : (
-                    <Button
-                      size="lg"
-                      onClick={() => setCreateEstimateDialogOpen(true)}
-                    >
-                      <FileTextIcon className="h-4 w-4 shrink-0" />
-                      Schedule Visit
-                    </Button>
-                  )
-                )}
-                {showConvertButton && hasEstimate && isEstimateApproved && (
-                  <Button
-                    size="sm"
-                    className="gap-1.5 text-xs whitespace-nowrap"
-                    disabled={!hasAddress}
-                    title={!hasAddress ? "Add an address and city to convert the lead" : undefined}
-                    onClick={() => setConvertJobDialogOpen(true)}
-                  >
-                    <Briefcase className="h-4 w-4 shrink-0" />
-                    Convert
-                  </Button>
-                )}
-                </div>
-              
-              </div>
-
-          
+              );
+            })}
+            </div>
           </div>
-
-          {/* Tabs */}
-          <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4 ">
-            {[
-              { id: "details", label: "Details" },
-              { id: "notes", label: "Notes" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                className={cn(
-                  "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
-                  activeTab === tab.id
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          </div>
+        </div>
       </div>
-      
-
-      
 
 
 
@@ -1285,268 +1258,265 @@ export default function LeadDetail() {
 
       
 
-      {activeTab === "details" && (
-        <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
-          
-
-          {/* Estimate */}
-          {hasEstimate && estimate && (
-              <button
-                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-                className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <div className={cn("p-2 rounded-lg", estimate.status === "accepted" ? "bg-emerald-100" : "bg-secondary")}>
-                    <DollarSign className={cn("h-5 w-5", estimate.status === "accepted" ? "text-emerald-700" : "text-secondary-foreground")} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-foreground">Estimate</p>
-                      <span className={cn(
-                        "text-xs font-medium px-2 py-0.5 rounded-full",
-                        estimate.status === "accepted"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-amber-100 text-amber-700"
-                      )}>
-                        {estimate.status === "accepted" ? "Approved" : "Not Approved"}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      ${Number(estimate.total).toLocaleString()} · {estimate.line_items?.length || 0} line items
-                    </p>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </button>
-            
-          )}
-
-          {/* Client Share Link */}
-          {hasEstimate && id && (lead as any).customer?.id && (
-            <div className="px-4 pb-4">
-              <ClientShareLink customerId={(lead as any).customer.id} />
-            </div>
-          )}
-
-          {/* Create Estimate Card */}
-          {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
-            <button
-              onClick={() => setLineItemsDialogOpen(true)}
-              className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-            >
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <DollarSign className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">Create Estimate</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Add line items with quick pricing calculator
-                  </p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </div>
-            </button>
-          )}
-
-          {/* Qualification Panel */}
-          {!["job", "paid", "completed"].includes(lead.status) && (
-            
-              <div className="flex flex-col gap-4 card-elevated rounded-lg p-4">
-              
-              {/* Next Step Guidance */}
-              <div className="flex gap-2 items-center pb-4 border-b border-border">
-
-              {!["job", "paid", "completed"].includes(lead.status) && (
-
-                <div className="flex gap-2 justify-center items-center ">
-                  
-                  {PIPELINE_STAGES.map((stage) => (
-                        <div key={stage.value} className="flex justify-center items-center">
-                        <Button
-                          variant={lead.status === stage.value ? "default" : "ghost"}
-                          onClick={() => updateLeadStatus(stage.value)}
-                          className="rounded-full"
-                        >
-
-                          <ChevronRight className="w-4 h-4"></ChevronRight>
-
-                          {stage.label}
-                        </Button>
-                        
-                        </div>
-                      ))}
-                  </div>
+      <div className="px-4 pb-4 max-w-[var(--content-max-width)] m-auto">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="flex items-center border-b border-border px-4">
+              {contentTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                    activeTab === tab.id
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
-
-                  <Button
-                  variant = "ghost"
-                  className="flex items-center justify-center gap-2 h-auto text-muted-foreground  whitespace-normal text-left"
-                  onClick = {()=>{setPipelineInfo(prev => !prev)}}
                 >
-                  <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                  { pipelineInfo ? (
-                  <p className="whitespace-normal break-words animate-in fade-in slide-in-from-left-5 duration-500">
-                    {lead.status === "new" && "Contact this lead to move them to the next stage."}
-                    {lead.status === "contacted" && "Qualify this lead by confirming their budget, service area, and timeline below."}
-                    {lead.status === "qualified" && !hasEstimate && "Scheduling an estimate moves this lead into your active job pipeline."}
-                    {lead.status === "qualified" && hasEstimate && !isEstimateApproved && "The estimate needs to be approved before this lead can become a job."}
-                    {lead.status === "qualified" && hasEstimate && isEstimateApproved && "The estimate is approved. Convert this lead to a job to get started."}
-                  </p>
-                  ) : null}
-                </Button>
-
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-4">
-                    <Switch
-                      id="budget-confirmed"
-                      checked={qualification?.budget_confirmed ?? false}
-                      onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
-                    />
-                    <Label htmlFor="budget-confirmed" className="cursor-pointer">Budget Confirmed</Label>
-                    
+            {activeTab === "details" && (
+              <div className="p-5 md:p-6 space-y-6">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:gap-x-8">
+                  <div className="py-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
+                    <div className="mt-1 flex items-start gap-2">
+                      <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <p className="text-sm leading-5 text-foreground break-words">{lead.email || "No email"}</p>
+                    </div>
                   </div>
-
-                  <div className="flex items-center gap-4">
-                    <Switch
-                      id="service-area"
-                      checked={qualification?.service_area_fit ?? false}
-                      onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
-                    />
-                    <Label htmlFor="service-area" className="cursor-pointer">In Service Area</Label>
+                  <div className="py-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Phone</p>
+                    <div className="mt-1 flex items-start gap-2">
+                      <Phone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <p className="text-sm leading-5 text-foreground">{formatPhone(lead.phone)}</p>
+                    </div>
                   </div>
-
-                  <div className="flex items-center gap-4">
-
-
-                    <Switch
-                      id="decision-maker"
-                      checked={qualification?.decision_maker_confirmed ?? false}
-                      onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
-                    />
-                    <Label htmlFor="decision-maker" className="cursor-pointer">Decision Maker</Label>
+                  <div className="py-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Lead Source</p>
+                    <div className="mt-1 flex items-start gap-2">
+                      <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <p className="text-sm leading-5 text-foreground">{lead.source || "Unknown"}</p>
+                    </div>
                   </div>
-
-
-
-
-                    <Select
-                      value={qualification?.timeline || "none"}
-                      onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
-                    >
-                      <SelectTrigger>
-                        <div className="flex items-center gap-4">
-                          <Calendar className="w-4 h-4 text-muted-foreground" />
-                          <SelectValue placeholder="Unsure of timeline" />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Timeline not confirmed</SelectItem>
-                        {TIMELINE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-
-                  <div>
-                    <Label>Notes</Label>
-                    <SpeechToTextTextarea
-                      value={qualNotes}
-                      onValueChange={setQualNotes}
-                      onBlur={() => updateQualification({ notes: qualNotes })}
-                      placeholder="Add qualification notes..."
-                      className="mt-1"
-                      rows={2}
-                    />
+                  <div className="py-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Address</p>
+                    <div className="mt-1 flex items-start gap-2">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <p className="text-sm leading-5 text-foreground break-words">
+                        {[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="py-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Budget</p>
+                    <div className="mt-1 flex items-start gap-2">
+                      <DollarSign className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <p className="text-sm leading-5 text-foreground">
+                        {lead.estimated_value != null ? formatCurrency(lead.estimated_value) : "Not set"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="py-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Service Type</p>
+                    <div className="mt-1 flex items-start gap-2">
+                      <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <p className="text-sm leading-5 text-foreground">{lead.service_type || "Not set"}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setDisqualifyOpen(true)}
-                    >
-                      <X className="h-4 w-4 mr-1" /> Disqualify
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="flex-1"
-                      onClick={markQualified}
-                      disabled={lead.status === "qualified"}
-                    >
-                      <Check className="h-4 w-4 mr-1" /> Mark Qualified
-                    </Button>
-                  </div>
-              </div>
+                {!["job", "paid", "completed"].includes(lead.status) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Qualification Checklist</p>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <Label htmlFor="budget-confirmed" className="cursor-pointer text-sm text-foreground">Budget Confirmed</Label>
+                          <Switch
+                            id="budget-confirmed"
+                            checked={qualification?.budget_confirmed ?? false}
+                            onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
+                          />
+                        </div>
 
-          )}
+                        <div className="flex items-center justify-between gap-4">
+                          <Label htmlFor="service-area" className="cursor-pointer text-sm text-foreground">In Service Area</Label>
+                          <Switch
+                            id="service-area"
+                            checked={qualification?.service_area_fit ?? false}
+                            onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
+                          />
+                        </div>
 
-          {/* Interaction Timeline */}
-            <div className="card-elevated rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-medium">Activity Timeline</h3>
-                {interactions.length > 5 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAllActivity(!showAllActivity)}
-                    className="text-xs"
-                  >
-                    {showAllActivity ? (
-                      <>
-                        <ChevronDown className="h-3 w-3 mr-1" />
-                        Show Less
-                      </>
-                    ) : (
-                      <>
-                        <ChevronRight className="h-3 w-3 mr-1" />
-                        Show All ({interactions.length})
-                      </>
-                    )}
-                  </Button>
+                        <div className="flex items-center justify-between gap-4">
+                          <Label htmlFor="decision-maker" className="cursor-pointer text-sm text-foreground">Decision Maker</Label>
+                          <Switch
+                            id="decision-maker"
+                            checked={qualification?.decision_maker_confirmed ?? false}
+                            onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
+                          />
+                        </div>
+
+                        <Select
+                          value={qualification?.timeline || "none"}
+                          onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
+                        >
+                          <SelectTrigger>
+                            <div className="flex items-center gap-4 text-sm">
+                              <Calendar className="w-4 h-4 text-muted-foreground" />
+                              <SelectValue placeholder="Unsure of timeline" />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Timeline not confirmed</SelectItem>
+                            {TIMELINE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <div>
+                          <Label className="text-sm text-foreground">Qualification Notes</Label>
+                          <SpeechToTextTextarea
+                            value={qualNotes}
+                            onValueChange={setQualNotes}
+                            onBlur={() => updateQualification({ notes: qualNotes })}
+                            placeholder="Add qualification notes..."
+                            className="mt-1.5 text-sm"
+                            rows={2}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => setDisqualifyOpen(true)}
+                        >
+                          <X className="h-4 w-4 mr-1" /> Disqualify
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="flex-1"
+                          onClick={markQualified}
+                          disabled={lead.status === "qualified"}
+                        >
+                          <Check className="h-4 w-4 mr-1" /> Mark Qualified
+                        </Button>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
+            )}
 
+            {activeTab === "notes" && (
+              <div className="p-6 space-y-4">
+
+                  <MentionInput
+                    value={newNote}
+                    onChange={setNewNote}
+                    placeholder="Add a note... (use @ to mention team members)"
+                    rows={2}
+                    teamMembers={teamMembers}
+                  />
+                  <Button
+                    size="sm"
+                    className="mt-2"
+                    onClick={addNote}
+                    disabled={!newNote.trim() || addingNote}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Add Note
+                  </Button>
+
+
+                {interactions.filter((i) => i.type === "note").map((interaction) => (
+                  <div key={interaction.id} className="rounded-lg border border-border p-4">
+                    <p className="text-3">
+                      {parseMentionsForDisplay(interaction.body || interaction.summary || "").map((part, idx) =>
+                        part.type === "mention" ? (
+                          <span key={idx} className="font-bold text-primary">@{part.content}</span>
+                        ) : (
+                          <span key={idx}>{part.content}</span>
+                        )
+                      )}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {format(new Date(interaction.created_at), "MMM d, yyyy 'at' h:mm a")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className={cn("space-y-4", hasEstimate ? "bg-card border border-border rounded-lg cursor-pointer hover:shadow-md transition-all" : "")}>
+              {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
+
+                <Button size="lg" variant="outline" className="w-full" onClick={() => setLineItemsDialogOpen(true)}>
+
+                      <DollarSign className="h-4 w-4"/>
+
+                      Build Estimate
+
+                </Button>
+
+             
+              )}
+
+              {hasEstimate && estimate && (
+                <button
+                  onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                  className="text-left p-4"
+                >
+                  <div className="flex items-start gap-2">
+                    <div className={cn("p-2 rounded-lg", estimate.status === "accepted" ? "bg-emerald-100" : "bg-secondary")}>
+                      <DollarSign className={cn("h-4 w-4", estimate.status === "accepted" ? "text-emerald-700" : "text-secondary-foreground")} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-foreground">Estimate</p>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        ${Number(estimate.total).toLocaleString()} · <span className="whitespace-nowrap">{estimate.line_items?.length || 0}  line items</span>
+                      </p>
+                      
+                    </div>
+
+                  </div>
+                </button>
+              )}
+
+          
+            </div>
+
+        
+
+            <div className="bg-card border border-border rounded-lg p-5">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-3">Recent Activity</p>
               <div className="space-y-3">
-                {interactions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No activity yet
-                  </p>
+                {recentActivity.length === 0 ? (
+                  <p className="text-5">No activity yet.</p>
                 ) : (
-                  (showAllActivity ? interactions : interactions.slice(0, 5)).map((interaction) => (
+                  recentActivity.map((interaction) => (
                     <div key={interaction.id} className="flex gap-3 pb-3 border-b border-border last:border-0">
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                         {getInteractionIcon(interaction.type)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-sm font-medium capitalize">
-                            {interaction.type.replace("_", " ")}
-                          </span>
-                          {interaction.direction !== "na" && (
-                            <span className="text-xs text-muted-foreground capitalize">
-                              ({interaction.direction})
-                            </span>
-                          )}
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {formatDate(interaction.created_at)}
-                          </span>
-                        </div>
-                        {interaction.summary && (
-                          <p className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: parseMentionsToHTML(interaction.summary) }} />
-                        )}
-                        {interaction.body && interaction.body !== interaction.summary && (
-                          <p className="text-sm mt-1" dangerouslySetInnerHTML={{ __html: parseMentionsToHTML(interaction.body) }} />
-                        )}
+                        <p className="text-sm font-medium capitalize">
+                          {interaction.summary || interaction.type.replace("_", " ")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{formatDate(interaction.created_at)}</p>
                       </div>
                     </div>
                   ))
@@ -1554,65 +1524,8 @@ export default function LeadDetail() {
               </div>
             </div>
           </div>
-      )}
-
-      {activeTab === "notes" && (
-        <div className="px-4 py-4 max-w-[var(--content-max-width)] m-auto flex flex-col gap-4">
-          <div className="card-elevated rounded-lg p-4">
-
-              <MentionInput
-                value={newNote}
-                onChange={setNewNote}
-                placeholder="Add a note... (use @ to mention team members)"
-                rows={2}
-                teamMembers={teamMembers}
-              />
-              <Button
-                size="sm"
-                className="mt-2"
-                onClick={addNote}
-                disabled={!newNote.trim() || addingNote}
-              >
-                <Plus className="h-4 w-4 mr-1" /> Add Note
-              </Button>
-            
-            </div>
-
-            <div className="space-y-3 flex flex-col gap-4">
-              {interactions.filter((i) => i.type === "note").length === 0 ? (
-                null
-              ) : (
-                interactions
-                  .filter((i) => i.type === "note")
-                  .map((interaction) => (
-                    <div key={interaction.id} className="card-elevated flex gap-4 rounded-lg p-4">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                        <FileText className="h-4 w-4" />
-                      </div>
-
-
-                        <div className="flex-1 items-center justify-between gap-2 mb-0.5">
-                          <p className="text-3">
-                          {parseMentionsForDisplay(interaction.body || interaction.summary || "").map((part, idx) =>
-                            part.type === 'mention' ? (
-                              <span key={idx} className="font-bold text-primary">@{part.content}</span>
-                            ) : (
-                              <span key={idx}>{part.content}</span>
-                            )
-                          )}
-                          </p>
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {format(new Date(interaction.created_at), "MMM d, yyyy 'at' h:mm a")}
-                          </span>
-                        </div>
-
-                    </div>
-                  ))
-              )}
-            </div>
-          
         </div>
-      )}
+      </div>
 
       {/* Disqualify Dialog */}
       <Dialog open={disqualifyOpen} onOpenChange={setDisqualifyOpen}>
