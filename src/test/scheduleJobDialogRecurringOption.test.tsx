@@ -76,4 +76,24 @@ describe("ScheduleJobDialog recurring shortcut", () => {
     expect(onMakeRecurring).toHaveBeenCalledTimes(1);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("places recurring near time controls and keeps spacing between footer actions", () => {
+    render(
+      <ScheduleJobDialog
+        open
+        onOpenChange={vi.fn()}
+        jobId="job_1"
+        hasSchedules
+        onMakeRecurring={vi.fn()}
+      />
+    );
+
+    const recurringButton = screen.getByRole("button", { name: "Make Recurring Instead" });
+    const recurringContainer = recurringButton.parentElement;
+    expect(recurringContainer?.className).toContain("justify-start");
+
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    const footerContainer = cancelButton.parentElement;
+    expect(footerContainer?.className).toContain("gap-3");
+  });
 });

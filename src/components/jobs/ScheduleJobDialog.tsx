@@ -287,6 +287,15 @@ export function ScheduleJobDialog({
                 />
               </div>
             </div>
+
+            {onMakeRecurring && (
+              <div className="flex justify-start pt-1">
+                <Button variant="outline" onClick={handleMakeRecurring} className="gap-1.5">
+                  <Repeat className="h-4 w-4" />
+                  Make Recurring Instead
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Assign Crew */}
@@ -335,13 +344,7 @@ export function ScheduleJobDialog({
 
         </div>
 
-        <DialogFooter>
-          {onMakeRecurring && (
-            <Button variant="outline" onClick={handleMakeRecurring} className="mr-auto gap-1.5">
-              <Repeat className="h-4 w-4" />
-              Make Recurring Instead
-            </Button>
-          )}
+        <DialogFooter className="gap-3">
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>

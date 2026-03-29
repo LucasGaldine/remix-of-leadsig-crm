@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Send, ExternalLink, Loader as Loader2, DollarSign } from "lucide-react";
+import { Send, ChevronsUp, ExternalLink, Loader as Loader2, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const [amount, setAmount] = useState("");
   const [estimateStatus, setEstimateStatus] = useState<string | null>(null);
   const [showLogPaymentModal, setShowLogPaymentModal] = useState(false);
+  const [showAllInvoicesModal, setShowAllInvoicesModal] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
 
   const taxRate = (currentAccount?.default_tax_rate || 0) / 100;
@@ -93,6 +94,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const remainingAmount = estimateTotal !== null && estimateTotal !== undefined
     ? roundCurrencyAmount(estimateTotal - totalInvoiced)
     : null;
+  const sentInvoicesCount = invoices.filter((invoice) => invoice.status !== "draft").length;
 
   const handleOpenDialog = () => {
     setTitle("");
@@ -380,94 +382,159 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   return (
     <>
       <div className="space-y-3">
-        {invoices.length > 0 && (
-          <div className="space-y-2">
-            {invoices.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between p-3 bg-card rounded-lg border border-border cursor-pointer hover:bg-accent transition-colors"
-                onClick={() => navigate(`/payments/invoices/${inv.id}`)}
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    ${Number(inv.total).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(inv.created_at), "MMM d, yyyy")}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-medium capitalize ${statusColors[inv.status] || "text-muted-foreground"}`}>
-                    {inv.status}
-                  </span>
-                  {inv.stripe_invoice_url && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(inv.stripe_invoice_url!, "_blank");
-                      }}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+        <div
+          role="button"
+          tabIndex={0}
+          className="rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+          onClick={() => setShowAllInvoicesModal(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setShowAllInvoicesModal(true);
+            }
+          }}
+          aria-label="View all invoices"
+        >
+          <div className="flex items-center justify-between gap-2">
+           <div className="flex gap-2 items-center">
+            <ChevronsUp className="w-3 h-3"/>
+            <p className="text-xs uppercase text-muted-foreground tracking-wide">Invoices</p>
           </div>
-        )}
+            <span className=" inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              View 
+            </span>
+          </div>
 
-        {estimateTotal && remainingAmount !== null && remainingAmount <= 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-2">
-            Estimate fully invoiced
-          </p>
-        ) : estimateStatus && estimateStatus !== "accepted" ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                disabled
-              >
-                <Send className="h-4 w-4 mr-2" />
-                Send Invoice
-              </Button>
-              <Button
-                className="flex-1"
-                variant="outline"
-                disabled
-              >
-                <DollarSign className="h-4 w-4 mr-2" />
-                Log Payment
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground text-center">
-              The estimate must be approved before sending an invoice
+          <div className="mt-2 mb-6">
+            <p className="text-xl font-semibold leading-tight text-foreground">
+              +{totalInvoiced.toLocaleString("en-US", {
+                style: "currency",
+                currency: "USD",
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+            <p className="mt-2 text-muted-foreground text-xs">
+              {sentInvoicesCount} {sentInvoicesCount === 1 ? "invoice" : "invoices"} sent
             </p>
           </div>
-        ) : (
-          <div className="flex gap-2">
-            <Button
-              className="flex-1"
-              onClick={handleOpenDialog}
-              disabled={loading}
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Send Invoice
-            </Button>
-            <Button
-              className="flex-1"
-              variant="outline"
-              onClick={() => setShowLogPaymentModal(true)}
-              disabled={loading}
-            >
-              <DollarSign className="h-4 w-4 mr-2" />
-              Log Payment
-            </Button>
+
+          <div className="mt-4">
+            {estimateTotal && remainingAmount !== null && remainingAmount <= 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                Estimate fully invoiced
+              </p>
+            ) : estimateStatus && estimateStatus !== "accepted" ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    className="flex-1 basis-[220px]"
+                    disabled
+
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Invoice
+                  </Button>
+                  <Button
+                    className="flex-1 basis-[220px]"
+                    variant="outline"
+                    disabled
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Log Payment
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  The estimate must be approved before sending an invoice
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="flex-1 basis-[220px]"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleOpenDialog();
+                  }}
+                  
+                  disabled={loading}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Invoice
+                </Button>
+                <Button
+                  className="flex-1 basis-[220px]"
+                  variant="outline"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setShowLogPaymentModal(true);
+                  }}
+                  disabled={loading}
+                >
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Log Payment
+                </Button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
+
+      <Dialog open={showAllInvoicesModal} onOpenChange={setShowAllInvoicesModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>All Invoices</DialogTitle>
+            <DialogDescription>
+              {invoices.length} {invoices.length === 1 ? "invoice" : "invoices"} for this job
+            </DialogDescription>
+          </DialogHeader>
+          {invoices.length > 0 ? (
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+              {invoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center justify-between p-3 bg-card rounded-lg border border-border cursor-pointer hover:bg-accent transition-colors"
+                  onClick={() => {
+                    setShowAllInvoicesModal(false);
+                    navigate(`/payments/invoices/${inv.id}`);
+                  }}
+                >
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      ${Number(inv.total).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(inv.created_at), "MMM d, yyyy")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium capitalize ${statusColors[inv.status] || "text-muted-foreground"}`}>
+                      {inv.status}
+                    </span>
+                    {inv.stripe_invoice_url && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(inv.stripe_invoice_url!, "_blank");
+                        }}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-2">No invoices yet for this job.</p>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">

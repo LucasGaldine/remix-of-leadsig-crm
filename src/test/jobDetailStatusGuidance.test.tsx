@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -126,12 +126,20 @@ vi.mock("@/hooks/useJobs", () => ({
   }),
 }));
 
-const { testState, supabaseFromMock } = vi.hoisted(() => ({
+const { testState, supabaseFromMock, deleteScheduleMutateAsyncMock } = vi.hoisted(() => ({
   testState: {
-    schedules: [{ id: "sched_1", scheduled_date: "2026-03-25" }],
+    schedules: [
+      {
+        id: "sched_1",
+        scheduled_date: "2026-03-25",
+        scheduled_time_start: "08:00",
+        scheduled_time_end: "12:00",
+      },
+    ],
     assignments: [{ id: "assign_1", user_id: "crew_1" }],
   },
   supabaseFromMock: vi.fn(),
+  deleteScheduleMutateAsyncMock: vi.fn(),
 }));
 
 vi.mock("@/hooks/useJobSchedules", () => ({
@@ -157,7 +165,7 @@ vi.mock("@/hooks/useScheduleJob", () => ({
   useScheduleJob: () => ({
     scheduleJob: vi.fn(),
     deleteSchedule: {
-      mutateAsync: vi.fn(),
+      mutateAsync: deleteScheduleMutateAsyncMock,
     },
     isScheduling: false,
   }),
@@ -200,8 +208,17 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 describe("JobDetail status guidance", () => {
   beforeEach(() => {
-    testState.schedules = [{ id: "sched_1", scheduled_date: "2026-03-25" }];
+    testState.schedules = [
+      {
+        id: "sched_1",
+        scheduled_date: "2026-03-25",
+        scheduled_time_start: "08:00",
+        scheduled_time_end: "12:00",
+      },
+    ];
     testState.assignments = [{ id: "assign_1", user_id: "crew_1" }];
+    deleteScheduleMutateAsyncMock.mockReset();
+    deleteScheduleMutateAsyncMock.mockResolvedValue(undefined);
   });
 
   it("opens a job-only status guidance dialog from the header badge", async () => {
@@ -412,15 +429,78 @@ describe("JobDetail status guidance", () => {
 
     expect(within(leftCard).getByText("Schedule")).toBeInTheDocument();
     expect(within(leftCard).queryByText("Wednesday, Mar 25, 2026")).not.toBeInTheDocument();
-    expect(within(leftCard).getByText("Wed, Mar 25, 2026")).toBeInTheDocument();
+    expect(within(leftCard).getByText("MAR")).toBeInTheDocument();
+    expect(within(leftCard).getByText("25")).toBeInTheDocument();
+    expect(within(leftCard).getByText("Wed, Mar 25")).toBeInTheDocument();
+    expect(within(leftCard).getByText("8:00 AM - 12:00 PM")).toBeInTheDocument();
     expect(within(leftCard).getByRole("button", { name: "Add Date" })).toBeInTheDocument();
     expect(within(leftCard).queryByRole("button", { name: "Recurring" })).not.toBeInTheDocument();
     expect(within(leftCard).getByText("No crew assigned")).toBeInTheDocument();
-    expect(within(leftCard).getByRole("button", { name: "Edit Crew" })).toBeInTheDocument();
+    expect(within(leftCard).getByRole("button", { name: /edit crew/i })).toBeInTheDocument();
 
     expect(within(rightColumn).getByText("job costs")).toBeInTheDocument();
     expect(within(rightColumn).getByText("Invoices")).toBeInTheDocument();
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
+  });
+
+  it("renders quick actions on the same row as the more info toggle", async () => {
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+    const infoToggle = screen.getByRole("button", { name: /more info/i });
+    const callButton = screen.getByRole("button", { name: /call/i });
+    const actionsRow = screen.getByTestId("job-header-actions-row");
+
+    expect(actionsRow).toContainElement(infoToggle);
+    expect(actionsRow).toContainElement(callButton);
+    expect(actionsRow).toHaveClass("flex");
+    expect(actionsRow).toHaveClass("items-center");
   });
 
   it("keeps the right column stable when switching tabs", async () => {
@@ -483,6 +563,155 @@ describe("JobDetail status guidance", () => {
     expect(within(rightColumn).getByText("job costs")).toBeInTheDocument();
     expect(within(rightColumn).getByText("Invoices")).toBeInTheDocument();
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
+  });
+
+  it("updates only the selected scheduled instance when editing date and time", async () => {
+    const updateEqMock = vi.fn().mockResolvedValue({ error: null });
+    const updateMock = vi.fn(() => ({
+      eq: updateEqMock,
+    }));
+
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "job_schedules") {
+        return {
+          update: updateMock,
+        };
+      }
+
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    const modal = within(dialog);
+
+    fireEvent.change(modal.getByLabelText("Date"), { target: { value: "2026-03-26" } });
+    fireEvent.change(modal.getByLabelText("Start Time"), { target: { value: "09:00" } });
+    fireEvent.change(modal.getByLabelText("End Time"), { target: { value: "11:30" } });
+    fireEvent.click(modal.getByRole("button", { name: "Save Crew" }));
+
+    await waitFor(() => {
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scheduled_date: "2026-03-26",
+          scheduled_time_start: "09:00",
+          scheduled_time_end: "11:30",
+        }),
+      );
+    });
+    expect(updateEqMock).toHaveBeenCalledWith("id", "sched_1");
+  });
+
+  it("deletes a single scheduled date from the edit modal with confirmation", async () => {
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+
+    const editDialog = await screen.findByRole("dialog");
+    fireEvent.click(within(editDialog).getByRole("button", { name: /delete scheduled date/i }));
+
+    const confirmationDialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirmationDialog).getByRole("button", { name: /remove date/i }));
+
+    await waitFor(() => {
+      expect(deleteScheduleMutateAsyncMock).toHaveBeenCalledWith({
+        id: "sched_1",
+        lead_id: "job_1",
+      });
+    });
   });
 
   it("opens line items estimate modal when clicking Build Estimate", async () => {

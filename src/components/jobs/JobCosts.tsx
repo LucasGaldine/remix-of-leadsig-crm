@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Receipt, ChevronRight } from "lucide-react";
 import { useJobLineItems } from "@/hooks/useJobLineItems";
 import { JobCostsModal } from "./JobCostsModal";
+import { ChevronsDown } from "lucide-react";
 
 interface JobCostsProps {
   jobId: string;
@@ -10,17 +10,21 @@ interface JobCostsProps {
 export const JobCosts = ({ jobId }: JobCostsProps) => {
   const { lineItems, isLoading, totalCost } = useJobLineItems(jobId);
   const [modalOpen, setModalOpen] = useState(false);
+  const shellClassName = "rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm";
 
   if (isLoading) {
     return (
-      <div className="card-elevated rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-secondary">
-            <Receipt className="h-5 w-5 text-secondary-foreground" />
-          </div>
+      <div className={shellClassName}>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs uppercase text-muted-foreground tracking-wide">Costs</p>
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Summary
+          </span>
+        </div>
+        <div className="mt-2 flex items-start gap-3">
           <div className="flex-1">
-            <p className="font-medium text-foreground">Job Costs</p>
-            <div className="flex justify-center py-2">
+            <p className="text-sm text-muted-foreground">Loading costs</p>
+            <div className="flex py-2">
               <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
             </div>
           </div>
@@ -31,17 +35,22 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
 
   if (!lineItems || lineItems.length === 0) {
     return (
-      <div className="card-elevated rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-secondary">
-            <Receipt className="h-5 w-5 text-secondary-foreground" />
+      <div className={shellClassName}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex gap-2 items-center">
+            <ChevronsDown className="w-3 h-3"/>
+          <p className="text-xs uppercase text-muted-foreground tracking-wide">Costs</p>
           </div>
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Summary
+          </span>
+        </div>
+        <div className="mt-2 flex items-start gap-3">
           <div className="flex-1">
-            <p className="font-medium text-foreground">Job Costs</p>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-sm text-muted-foreground">
               No cost items yet
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-2">
               Costs will be copied from estimate when approved
             </p>
           </div>
@@ -54,22 +63,27 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
     <>
       <button
         onClick={() => setModalOpen(true)}
-        className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
+        className={`w-full text-left cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))] ${shellClassName}`}
       >
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-secondary">
-            <Receipt className="h-5 w-5 text-secondary-foreground" />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex gap-2 items-center">
+            <ChevronsDown className="w-3 h-3"/>
+          <p className="text-xs uppercase text-muted-foreground tracking-wide">Costs</p>
+          
           </div>
+          <span className=" inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              View 
+            </span>
+        </div>
+        <div className="mt-2 mb-2 flex items-start gap-3">
           <div className="flex-1">
-            <p className="font-medium text-foreground">Job Costs</p>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <p className="text-xl font-semibold leading-tight text-foreground">
+              -${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="mt-2 text-xs text-muted-foreground">
               {lineItems.length} line {lineItems.length === 1 ? 'item' : 'items'}
             </p>
           </div>
-          <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </button>
 

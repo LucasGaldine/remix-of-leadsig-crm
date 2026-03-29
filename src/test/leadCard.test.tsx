@@ -46,4 +46,22 @@ describe("LeadCard actions", () => {
     expect(windowOpenSpy).not.toHaveBeenCalled();
     windowOpenSpy.mockRestore();
   });
+
+  it("uses the same compact badge layout as the jobs card for estimate value", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <LeadCard lead={lead as any} />
+      </MemoryRouter>,
+    );
+
+    const valueLabel = screen.getByText("1,200");
+    expect(valueLabel.className).toContain("whitespace-nowrap");
+
+    const badge = valueLabel.closest("div.inline-flex");
+    expect(badge).not.toBeNull();
+    expect(badge?.className).toContain("shrink-0");
+
+    const icon = container.querySelector("svg.lucide-dollar-sign");
+    expect(icon?.className.baseVal || "").toContain("flex-shrink-0");
+  });
 });

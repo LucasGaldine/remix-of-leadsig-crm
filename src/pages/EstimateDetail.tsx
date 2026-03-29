@@ -57,6 +57,7 @@ export default function EstimateDetail() {
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(() => new Set());
 
   const handleDownloadPDF = async () => {
     if (!estimate) return;
@@ -725,9 +726,43 @@ export default function EstimateDetail() {
                           </Badge>
                         )}
                       </div>
-                      {item.description && (
-                        <p className="text-sm text-muted-foreground mt-0.5">{item.description}</p>
-                      )}
+                      {item.description && (() => {
+                        const descriptionId = item.id || `line-item-${index}`;
+                        const hasLongDescription = item.description.trim().length > 180;
+                        const isDescriptionExpanded = expandedDescriptions.has(descriptionId);
+                        const toggleDescription = () => {
+                          setExpandedDescriptions((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(descriptionId)) {
+                              next.delete(descriptionId);
+                            } else {
+                              next.add(descriptionId);
+                            }
+                            return next;
+                          });
+                        };
+
+                        return (
+                          <div className="mt-0.5">
+                            <p
+                              className={`text-sm text-muted-foreground break-words ${
+                                isDescriptionExpanded ? "" : "line-clamp-3"
+                              }`}
+                            >
+                              {item.description}
+                            </p>
+                            {hasLongDescription && (
+                              <button
+                                type="button"
+                                className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                                onClick={toggleDescription}
+                              >
+                                {isDescriptionExpanded ? "View less" : "View more"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <p className="text-sm text-muted-foreground mt-1">
                         {item.quantity} {item.unit} × ${Number(item.unit_price).toFixed(2)}
                       </p>

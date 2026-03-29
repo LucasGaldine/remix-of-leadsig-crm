@@ -3,6 +3,7 @@ import { useState } from "react";
 import { MapPin, Clock, Phone, Navigation, MessageSquare, Calendar, User, ChevronRight, Repeat, PersonStanding, Briefcase, AlertTriangle } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { ListCardBadge } from "@/components/ui/list-card-badge";
 import { cn } from "@/lib/utils";
 import { Database } from "@/types/database";
 import { format } from "date-fns";
@@ -125,13 +126,10 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
         {/*Badge Div*/}
         <div className="flex justify-between items-end px-4 sm:px-8 py-4 pb-0 gap-2">
 
-            <Badge 
-            className="gap-2 shrink-0"
-            variant="outline"
-            > 
-                <Calendar className="h-3 w-3 flex-shrink-0" />
-              <span className="whitespace-nowrap">{scheduledDateTime}</span>
-            </Badge>
+            <ListCardBadge
+              icon={<Calendar className="h-3 w-3 flex-shrink-0" />}
+              value={scheduledDateTime}
+            />
 
             
 

@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useJobLineItems, LineItemCategory } from "@/hooks/useJobLineItems";
-import { Receipt, RefreshCw, Plus, Pencil, Trash2, Check, X, ScanLine } from "lucide-react";
+import { RefreshCw, Plus, Pencil, Trash2, Check, X, ScanLine } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,9 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   });
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isScanningReceipt, setIsScanningReceipt] = useState(false);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
   const receiptInputRef = useRef<HTMLInputElement>(null);
+  const MAX_COLLAPSED_DESCRIPTION_LENGTH = 140;
 
   const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -197,6 +199,18 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   const formatCurrency = (value: number) =>
     `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  const hasCollapsibleDescription = (description: string | null | undefined) =>
+    (description?.trim().length ?? 0) > MAX_COLLAPSED_DESCRIPTION_LENGTH;
+
+  const isDescriptionExpanded = (lineItemId: string) => !!expandedDescriptions[lineItemId];
+
+  const toggleDescription = (lineItemId: string) => {
+    setExpandedDescriptions((prev) => ({
+      ...prev,
+      [lineItemId]: !prev[lineItemId],
+    }));
+  };
+
   const renderMobileEditForm = (
     data: typeof newItem | EditingLineItem,
     setData: (d: any) => void,
@@ -306,7 +320,20 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           <div className="min-w-0 flex-1">
             <p className="font-medium text-sm">{item.name}</p>
             {item.description && (
-              <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+              <div className="mt-0.5">
+                <p className={`text-xs text-muted-foreground whitespace-pre-wrap ${!isDescriptionExpanded(item.id) ? "line-clamp-3" : ""}`}>
+                  {item.description}
+                </p>
+                {hasCollapsibleDescription(item.description) && (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs font-medium text-primary hover:underline"
+                    onClick={() => toggleDescription(item.id)}
+                  >
+                    {isDescriptionExpanded(item.id) ? "View less" : "View more"}
+                  </button>
+                )}
+              </div>
             )}
             <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
               <span className="capitalize">{item.category}</span>
@@ -345,10 +372,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5" />
-              Job Costs
-            </DialogTitle>
+            <DialogTitle>Job Costs</DialogTitle>
 
             <div className="flex gap-2 pr-4 flex-wrap">
             <Button
@@ -513,7 +537,22 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.name}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {item.description || "\u2014"}
+                            {item.description ? (
+                              <div>
+                                <p className={`whitespace-pre-wrap break-words ${!isDescriptionExpanded(item.id) ? "line-clamp-3" : ""}`}>
+                                  {item.description}
+                                </p>
+                                {hasCollapsibleDescription(item.description) && (
+                                  <button
+                                    type="button"
+                                    className="mt-1 text-xs font-medium text-primary hover:underline"
+                                    onClick={() => toggleDescription(item.id)}
+                                  >
+                                    {isDescriptionExpanded(item.id) ? "View less" : "View more"}
+                                  </button>
+                                )}
+                              </div>
+                            ) : "\u2014"}
                           </TableCell>
                           <TableCell className="capitalize text-sm">
                             {item.category}
@@ -644,9 +683,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-muted-foreground mb-1">Total Cost</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(totalCost)}
-                  </p>
+                  <p className="text-2xl font-bold">-{formatCurrency(totalCost)}</p>
                 </div>
               </div>
             </div>

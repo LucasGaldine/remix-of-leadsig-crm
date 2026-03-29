@@ -37,6 +37,7 @@ import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { parseMentionsForDisplay, parseMentionsToHTML } from "@/lib/mentionParser";
 import { formatCurrency } from "@/lib/formatter";
+import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -1510,7 +1511,7 @@ export default function LeadDetail() {
           </div>
 
           <div className="space-y-4">
-            <div className={cn("space-y-4", hasEstimate ? "bg-card border border-border rounded-lg cursor-pointer hover:shadow-md transition-all" : "")}>
+            <div className="space-y-4">
               {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
 
                 <Button size="lg" variant="outline" className="w-full" onClick={() => setLineItemsDialogOpen(true)}>
@@ -1525,24 +1526,13 @@ export default function LeadDetail() {
               )}
 
               {hasEstimate && estimate && (
-                <button
+                <DetailEstimateCard
+                  label="Estimate"
+                  status={String(estimate.status || "draft")}
+                  total={Number(estimate.total)}
+                  lineItemCount={estimate.line_items?.length || 0}
                   onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-                  className="text-left p-4"
-                >
-                  <div className="flex items-start gap-2">
-                    <div className={cn("p-2 rounded-lg", estimate.status === "accepted" ? "bg-emerald-100" : "bg-secondary")}>
-                      <DollarSign className={cn("h-4 w-4", estimate.status === "accepted" ? "text-emerald-700" : "text-secondary-foreground")} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Estimate</p>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        ${Number(estimate.total).toLocaleString()} · <span className="whitespace-nowrap">{estimate.line_items?.length || 0}  line items</span>
-                      </p>
-                      
-                    </div>
-
-                  </div>
-                </button>
+                />
               )}
 
           

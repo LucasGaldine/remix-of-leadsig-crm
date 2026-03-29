@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Phone, MessageSquare, Briefcase, ArchiveRestore, Trash2, Navigation, DollarSign, SquareArrowRight, Goal} from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Badge } from "@/components/ui/badge";
+import { ListCardBadge } from "@/components/ui/list-card-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,13 +110,10 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
             <div className="flex justify-between items-center px-8 pt-4">
                   
                   
-                  <Badge
-                  variant="outline"
-                  className="gap-2"
-                  >
-                  <DollarSign className="w-3 h-3"></DollarSign>
-                  <span>{lead.estimatedBudget.toLocaleString()}</span>
-                  </Badge>
+                  <ListCardBadge
+                    icon={<DollarSign className="h-3 w-3 flex-shrink-0" />}
+                    value={lead.estimatedBudget.toLocaleString()}
+                  />
                   
 
                   
