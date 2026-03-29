@@ -8,6 +8,16 @@ vi.mock("@/components/jobs/RecurringJobDetailModal", () => ({
   RecurringJobDetailModal: () => null,
 }));
 
+const { toastErrorMock } = vi.hoisted(() => ({
+  toastErrorMock: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: toastErrorMock,
+  },
+}));
+
 describe("JobCard actions", () => {
   const job = {
     id: "job_1",
@@ -38,7 +48,14 @@ describe("JobCard actions", () => {
     render(
       <MemoryRouter>
         <JobCard
-          job={job}
+          job={{
+            ...job,
+            phone: "5551234567",
+            customer: {
+              ...job.customer,
+              phone: "5551234567",
+            },
+          }}
           onClick={onClick}
           onCall={onCall}
           onMessage={onMessage}
@@ -130,5 +147,62 @@ describe("JobCard actions", () => {
     );
 
     expect(screen.getByText("Unassigned")).toBeInTheDocument();
+  });
+
+  it("uses built-in tel/sms fallback when custom handlers are not provided", () => {
+    const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const onClick = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...job,
+            phone: "(555) 987-6543",
+            customer: {
+              ...job.customer,
+              phone: "(555) 987-6543",
+            },
+          }}
+          onClick={onClick}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /call/i }));
+    fireEvent.click(screen.getByRole("button", { name: /message/i }));
+
+    expect(windowOpenSpy).toHaveBeenCalledWith("tel:5559876543");
+    expect(windowOpenSpy).toHaveBeenCalledWith("sms:5559876543");
+    expect(onClick).not.toHaveBeenCalled();
+    windowOpenSpy.mockRestore();
+  });
+
+  it("shows a popup message when call or text is tapped with no phone number", () => {
+    const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    toastErrorMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...job,
+            phone: "",
+            customer: {
+              ...job.customer,
+              phone: "",
+            },
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /call/i }));
+    fireEvent.click(screen.getByRole("button", { name: /message/i }));
+
+    expect(toastErrorMock).toHaveBeenCalledTimes(2);
+    expect(toastErrorMock).toHaveBeenCalledWith("No phone number available for this job.");
+    expect(windowOpenSpy).not.toHaveBeenCalled();
+    windowOpenSpy.mockRestore();
   });
 });

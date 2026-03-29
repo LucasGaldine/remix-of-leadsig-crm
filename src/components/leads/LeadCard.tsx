@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 
 export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid" | "completed" | "lost" | "archived";
@@ -51,6 +52,9 @@ interface LeadCardProps {
 export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEstimate, archiveMode, onUnarchive, onDelete, className }: LeadCardProps) {
   const navigate = useNavigate();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const normalizedPhone = lead.phone?.startsWith("+")
+    ? `+${lead.phone.slice(1).replace(/\D/g, "")}`
+    : (lead.phone || "").replace(/\D/g, "");
 
   const handleCustomerClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -183,7 +187,15 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onCall?.();
+                      if (!normalizedPhone) {
+                        toast.error("No phone number available for this lead.");
+                        return;
+                      }
+                      if (onCall) {
+                        onCall();
+                        return;
+                      }
+                      window.open(`tel:${normalizedPhone}`);
                     }}
                     className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
                   >
@@ -194,7 +206,15 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onMessage?.();
+                      if (!normalizedPhone) {
+                        toast.error("No phone number available for this lead.");
+                        return;
+                      }
+                      if (onMessage) {
+                        onMessage();
+                        return;
+                      }
+                      window.open(`sms:${normalizedPhone}`);
                     }}
                     className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
                   >

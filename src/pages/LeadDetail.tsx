@@ -390,10 +390,6 @@ export default function LeadDetail() {
     });
 
     fetchInteractions();
-    
-    if (direction === "outbound" && lead.phone) {
-      window.open(`tel:${lead.phone}`);
-    }
   };
 
   const logText = async () => {
@@ -410,10 +406,6 @@ export default function LeadDetail() {
     });
 
     fetchInteractions();
-    
-    if (lead.phone) {
-      window.open(`sms:${lead.phone}`);
-    }
   };
 
   const calculateFitScore = (qual: Qualification | null): number => {
@@ -734,6 +726,18 @@ export default function LeadDetail() {
     }
   };
 
+  const getLeadStatusLabel = (status: LeadStatus) => {
+    const override = LEAD_STATUS_GUIDANCE.find((stage) => stage.value === status);
+    if (override) return override.label;
+
+    return status
+      .split(/[\s_-]+/)
+      .map((word) =>
+        word ? `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}` : ""
+      )
+      .join(" ");
+  };
+
   const formatPhone = (phone: string | null) => {
     if (!phone) return "No phone";
 
@@ -818,12 +822,22 @@ export default function LeadDetail() {
   const recentActivity = interactions.slice(0, 3);
   const clientAddress = [lead.address, lead.city].filter(Boolean).join(", ");
 
-  const handleCall = (phone) => {
-    if (!phone) return;
-    logCall("outbound");
-    const formattedPhone = phone.replace(/[^\d+]/g, "");
-    window.location.href = `tel:${formattedPhone}`;
+  const getPhoneUriValue = (phone: string | null): string => {
+    if (!phone) return "";
+
+    const trimmed = phone.trim();
+    if (!trimmed) return "";
+
+    const normalized = trimmed.startsWith("+")
+      ? `+${trimmed.slice(1).replace(/\D/g, "")}`
+      : trimmed.replace(/\D/g, "");
+
+    return normalized;
   };
+
+  const normalizedPhone = getPhoneUriValue(lead.phone);
+  const callHref = normalizedPhone ? `tel:${normalizedPhone}` : "";
+  const textHref = normalizedPhone ? `sms:${normalizedPhone}` : "";
 
   const handleNavigate = () => {
     if (clientAddress) {
@@ -888,12 +902,38 @@ export default function LeadDetail() {
           </div>
 
           <div className="flex w-full items-center justify-start gap-2 md:w-auto md:flex-nowrap md:justify-end">
-            <Button variant="secondary" size="icon" onClick={() => handleCall(lead.phone)}>
-              <Phone className="h-4 w-4" />
-            </Button>
-            <Button variant="secondary" size="icon" onClick={logText}>
-              <MessageSquare className="h-4 w-4" />
-            </Button>
+            {callHref ? (
+              <Button variant="secondary" size="icon" asChild>
+                <a href={callHref} aria-label="Call lead" onClick={() => void logCall("outbound")}>
+                  <Phone className="h-4 w-4" />
+                </a>
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="icon"
+                disabled
+                aria-label="Call lead unavailable: no phone number"
+              >
+                <Phone className="h-4 w-4" />
+              </Button>
+            )}
+            {textHref ? (
+              <Button variant="secondary" size="icon" asChild>
+                <a href={textHref} aria-label="Text lead" onClick={() => void logText()}>
+                  <MessageSquare className="h-4 w-4" />
+                </a>
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="icon"
+                disabled
+                aria-label="Text lead unavailable: no phone number"
+              >
+                <MessageSquare className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="icon"
@@ -948,10 +988,10 @@ export default function LeadDetail() {
               type="button"
               className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => setStatusGuidanceOpen(true)}
-              aria-label={`Open lead status guide for ${lead.status.replace("_", " ")}`}
+              aria-label={`Open lead status guide for ${getLeadStatusLabel(lead.status)}`}
             >
               <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
-                {lead.status.replace("_", " ")}
+                {getLeadStatusLabel(lead.status)}
               </StatusBadge>
               
             </button>

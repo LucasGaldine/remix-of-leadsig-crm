@@ -48,7 +48,7 @@ const renderLeadDetail = (leadOverrides: Partial<typeof leadRecord> = {}) => {
             order: vi.fn().mockResolvedValue({ data: [], error: null }),
           })),
         })),
-        insert: vi.fn().mockResolvedValue({ error: null }),
+        insert: interactionsInsertMock,
       };
     }
 
@@ -184,6 +184,10 @@ const { supabaseFromMock } = vi.hoisted(() => ({
   supabaseFromMock: vi.fn(),
 }));
 
+const { interactionsInsertMock } = vi.hoisted(() => ({
+  interactionsInsertMock: vi.fn().mockResolvedValue({ error: null }),
+}));
+
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: supabaseFromMock,
@@ -199,6 +203,25 @@ vi.mock("@/lib/openMaps", () => ({
 }));
 
 describe("LeadDetail status guidance", () => {
+  it("renders call and text quick actions as tel/sms links and logs interactions", async () => {
+    interactionsInsertMock.mockClear();
+    renderLeadDetail({
+      phone: "(555) 123-4567",
+    });
+
+    await screen.findByText("Taylor Smith");
+
+    const callLink = screen.getByRole("link", { name: /call lead/i });
+    const textLink = screen.getByRole("link", { name: /text lead/i });
+
+    expect(callLink).toHaveAttribute("href", "tel:5551234567");
+    expect(textLink).toHaveAttribute("href", "sms:5551234567");
+
+    fireEvent.click(callLink);
+    fireEvent.click(textLink);
+    expect(interactionsInsertMock).toHaveBeenCalledTimes(2);
+  });
+
   it("uses a navigate quick action that opens maps for the lead address", async () => {
     renderLeadDetail();
 

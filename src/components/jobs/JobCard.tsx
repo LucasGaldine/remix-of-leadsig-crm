@@ -8,6 +8,7 @@ import { Database } from "@/types/database";
 import { format } from "date-fns";
 import { RecurringJobDetailModal } from "./RecurringJobDetailModal";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 type DbJob = Database["public"]["Tables"]["leads"]["Row"];
@@ -80,6 +81,10 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
   const scheduledDateTime = formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date);
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
   const value = Number(job.estimate_total) || 0;
+  const rawPhone = job.customer?.phone || job.phone || "";
+  const normalizedPhone = rawPhone.startsWith("+")
+    ? `+${rawPhone.slice(1).replace(/\D/g, "")}`
+    : rawPhone.replace(/\D/g, "");
 
   const handleRecurringBadgeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -206,7 +211,15 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
                     aria-label="Call"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onCall?.();
+                      if (!normalizedPhone) {
+                        toast.error("No phone number available for this job.");
+                        return;
+                      }
+                      if (onCall) {
+                        onCall();
+                        return;
+                      }
+                      window.open(`tel:${normalizedPhone}`);
                     }}
                     className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
                   >
@@ -219,7 +232,15 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
                     aria-label="Message"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onMessage?.();
+                      if (!normalizedPhone) {
+                        toast.error("No phone number available for this job.");
+                        return;
+                      }
+                      if (onMessage) {
+                        onMessage();
+                        return;
+                      }
+                      window.open(`sms:${normalizedPhone}`);
                     }}
                     className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary hover:bg-accent active:bg-accent/80 transition-colors min-h-touch"
                   >
