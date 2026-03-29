@@ -187,7 +187,7 @@ export function JobChecklist({
   }
 
   return (
-    <div className="space-y-4">
+    <div >
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">
@@ -384,9 +384,9 @@ export function JobChecklist({
           <div className="!border-t-0 border-border ">
             <Button
               type="button"
-              variant="secondary"
+              variant="outline"
               
-              className="h-auto justify-start gap-3 rounded-full p-3 w-full mt-2 [&_svg]:size-5 hover:text-green-600 hover:bg-card"
+              className="h-auto justify-start gap-3 rounded-full p-3 w-full my-4 [&_svg]:size-5 hover:text-green-600 hover:border-green-600 hover:bg-card"
               onClick={handleCompleteClick}
               disabled={isJobCompleted}
             >
