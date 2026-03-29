@@ -219,7 +219,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
     <div className={embedded ? "py-1" : "card-elevated rounded-lg p-4"}>
       {/* Active session */}
       {activeEntry && (
-        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-3 mb-3">
+        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-3 ">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
@@ -265,7 +265,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
 
       {/* GPS info for manual toggle */}
       {!activeEntry && geo.error && (
-        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
           <span>No GPS - use manual clock in/out.</span>
         </div>

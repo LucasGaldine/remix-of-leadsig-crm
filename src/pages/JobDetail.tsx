@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { MapPin, User, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, Calendar, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation, ChevronDown, Mail, Share2, AlertTriangle, Copy, Check } from "lucide-react";
+import { MapPin, User, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, Calendar, Clock, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation, ChevronDown, Mail, Share2, AlertTriangle, Copy, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -45,6 +45,7 @@ import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
+import { Separator } from "@/components/ui/separator";
 
 const JOB_STATUS_GUIDANCE = [
   {
@@ -1408,12 +1409,29 @@ export default function JobDetail() {
 
             {activeTab === "checklist" && id && (
               <>
+                <div className="flex gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    log your hours
+                  </p>
+                </div>
                 <JobTimeTracker
                   jobId={id}
                   jobAddress={clientAddress || null}
                   accountId={currentAccount?.id}
                   embedded
                 />
+                
+                <div className="py-4">
+                  <Separator />
+                </div>
+
+                <div className="flex gap-2">
+                  <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    checklist items
+                  </p>
+                </div>
                 <JobChecklist
                   jobId={id}
                   jobStatus={job?.status}
@@ -1487,6 +1505,12 @@ export default function JobDetail() {
 
             {activeTab === "notes" && (
               <>
+                <div className="flex gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    notes
+                  </p>
+                </div>
                 <div>
                   <MentionInput
                     value={newNote}

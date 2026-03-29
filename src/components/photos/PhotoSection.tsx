@@ -52,7 +52,12 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobCo
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <h3 className="font-semibold text-foreground">{title}</h3>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Camera className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
+          </div>
+        </div>
         <div className="flex items-center justify-center py-8 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
           Loading...
@@ -64,8 +69,11 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobCo
   return (
     <>
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground">{title}</h3>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Camera className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
+          </div>
           {photos.length > 0 && (
             <span className="text-xs text-muted-foreground">{photos.length}/4</span>
           )}

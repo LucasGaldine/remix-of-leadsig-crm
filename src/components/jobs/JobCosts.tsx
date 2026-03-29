@@ -18,7 +18,7 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs uppercase text-muted-foreground tracking-wide">Costs</p>
           <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Summary
+            Pending
           </span>
         </div>
         <div className="mt-2 flex items-start gap-3">
@@ -42,7 +42,7 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
           <p className="text-xs uppercase text-muted-foreground tracking-wide">Costs</p>
           </div>
           <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Summary
+            Pending
           </span>
         </div>
         <div className="mt-2 flex items-start gap-3">
