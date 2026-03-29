@@ -23,9 +23,10 @@ interface PhotoSectionProps {
   title: string;
   onPhotosChange?: (count: number) => void;
   onJobConverted?: () => void;
+  embedded?: boolean;
 }
 
-export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobConverted }: PhotoSectionProps) {
+export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobConverted, embedded = false }: PhotoSectionProps) {
   const { photos, isLoading, uploadPhotos, deletePhoto, remaining } =
     useLeadPhotos(leadId, photoType);
   const { currentAccount, role } = useAuth();
@@ -71,7 +72,7 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobCo
         </div>
 
         {photos.length === 0 ? (
-          <div className="text-center py-10 card-elevated rounded-lg">
+          <div className={embedded ? "text-center py-10" : "text-center py-10 card-elevated rounded-lg"}>
             <Camera className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground text-sm mb-4">No {title.toLowerCase()} yet</p>
             {canUpload ? (

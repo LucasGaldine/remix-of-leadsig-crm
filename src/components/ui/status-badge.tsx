@@ -1,25 +1,29 @@
 import { cva, type VariantProps } from "class-variance-authority";
+import { AlertTriangle, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const statusBadgeVariants = cva(
-  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide",
+  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
   {
     variants: {
       status: {
-        confirmed: "status-confirmed",
-        pending: "status-pending",
-        attention: "status-attention",
-        unscheduled: "status-attention",
-        scheduled: "status-confirmed",
-        "in-progress": "status-progress",
-        in_progress: "status-progress",
-        completed: "status-paid",
-        job: "status-confirmed",
+        confirmed: "status-confirmed border-[hsl(var(--status-confirmed))]/40",
+        pending: "status-pending border-[hsl(var(--status-pending))]/40",
+        attention: "status-attention border-[hsl(var(--status-attention))]/40",
+        unscheduled: "status-attention border-[hsl(var(--status-attention))]/40",
+        scheduled: "status-confirmed border-[hsl(var(--status-confirmed))]/40",
+        "in-progress": "status-progress border-[hsl(var(--status-progress))]/40",
+        in_progress: "status-progress border-[hsl(var(--status-progress))]/40",
+        completed: "status-paid border-[hsl(var(--status-paid))]/40",
+        job: "status-confirmed border-[hsl(var(--status-confirmed))]/40",
+        overdue: "status-attention border-[hsl(var(--status-attention))]/40",
+        unassigned: "status-attention border-[hsl(var(--status-attention))]/40",
+        needs_invoice: "status-attention border-[hsl(var(--status-attention))]/40",
       },
       size: {
         sm: "text-2xs px-2 py-0.5",
-        default: "text-xs px-3 py-1",
-        lg: "text-sm px-4 py-1.5",
+        default: "text-xs px-2.5 py-0.5",
+        lg: "text-sm px-3 py-1",
       },
     },
     defaultVariants: {
@@ -43,6 +47,9 @@ export function StatusBadge({
   children,
   ...props
 }: StatusBadgeProps) {
+  const isWarningStatus =
+    status === "overdue" || status === "unassigned" || status === "needs_invoice";
+
   return (
     <span
       className={cn(
@@ -52,20 +59,11 @@ export function StatusBadge({
       )}
       {...props}
     >
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          status === "confirmed" && "bg-status-confirmed",
-          status === "scheduled" && "bg-status-confirmed",
-          status === "pending" && "bg-status-pending",
-          status === "in-progress" && "bg-status-progress",
-          status === "in_progress" && "bg-status-progress",
-          status === "attention" && "bg-status-attention",
-          status === "unscheduled" && "bg-status-attention",
-          status === "completed" && "bg-status-paid",
-          status === "job" && "bg-status-confirmed"
-        )}
-      />
+      {isWarningStatus ? (
+        <AlertTriangle className="h-3 w-3" />
+      ) : (
+        <Circle className="h-3 w-3 fill-current" />
+      )}
       {children}
     </span>
   );

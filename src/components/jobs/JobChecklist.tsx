@@ -34,6 +34,7 @@ interface JobChecklistProps {
   isManager?: boolean;
   onMarkComplete?: () => Promise<void> | void;
   hasBeforePhotos?: boolean;
+  embedded?: boolean;
 }
 
 export function JobChecklist({
@@ -44,6 +45,7 @@ export function JobChecklist({
   isManager = false,
   onMarkComplete,
   hasBeforePhotos = false,
+  embedded = false,
 }: JobChecklistProps) {
   const { items, isLoading, toggleItem, addItem, updateItem, deleteItem } =
     useJobChecklist(jobId);
@@ -230,7 +232,10 @@ export function JobChecklist({
         )}
       </div>
 
-      <div className="rounded-lg border border-border bg-card overflow-hidden divide-y divide-border">
+      <div className={cn(
+        "overflow-hidden divide-y divide-border",
+        embedded ? "" : "rounded-lg border border-border bg-card"
+      )}>
         {items.map((item) => {
           const isPortalItem =
             item.label.toLowerCase() === "send client portal";

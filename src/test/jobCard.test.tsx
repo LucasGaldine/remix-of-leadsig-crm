@@ -113,4 +113,22 @@ describe("JobCard actions", () => {
     const notScheduled = screen.getByText("Not scheduled");
     expect(notScheduled.className).toContain("whitespace-nowrap");
   });
+
+  it("shows unassigned badge when at least one scheduled day has no crew assignment", () => {
+    render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...job,
+            status: "scheduled",
+            display_status: "scheduled",
+            crew_count: 1,
+            has_unassigned_schedule: true,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+  });
 });

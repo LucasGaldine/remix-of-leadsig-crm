@@ -190,7 +190,36 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
+const { openMapsWithAddressMock } = vi.hoisted(() => ({
+  openMapsWithAddressMock: vi.fn(),
+}));
+
+vi.mock("@/lib/openMaps", () => ({
+  openMapsWithAddress: openMapsWithAddressMock,
+}));
+
 describe("LeadDetail status guidance", () => {
+  it("uses a navigate quick action that opens maps for the lead address", async () => {
+    renderLeadDetail();
+
+    await screen.findByText("Taylor Smith");
+
+    fireEvent.click(screen.getByRole("button", { name: /navigate to lead address/i }));
+
+    expect(openMapsWithAddressMock).toHaveBeenCalledWith("1 Main St, Miami");
+  });
+
+  it("applies wrap-safe classes to long email values in details view", async () => {
+    const longEmail = "lucas_galdine@thelongemailaddressproviderexample.com";
+    renderLeadDetail({
+      email: longEmail,
+    });
+
+    const emailValue = await screen.findByText(longEmail);
+    expect(emailValue.className).toContain("break-all");
+    expect(emailValue.className).toContain("min-w-0");
+  });
+
   it("shows a three-dot lead actions menu near the lead name", async () => {
     renderLeadDetail({
       status: "qualified",

@@ -118,7 +118,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
                   
 
                 <div className="flex gap-4 items-center">
-                <StatusBadge status={getStatusBadgeStatus(lead.status)}>
+                  <StatusBadge status={getStatusBadgeStatus(lead.status)}>
                     {statusLabels[lead.status]}
                   </StatusBadge>
 

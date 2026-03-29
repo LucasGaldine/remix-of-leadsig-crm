@@ -253,40 +253,6 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         createdScheduleIds.push(scheduleRow.id);
       }
 
-      if (!createAsRegularJob) {
-        const { data: existingEstimate, error: estimateCheckError } = await supabase
-          .from("estimates")
-          .select("id")
-          .eq("job_id", lead.id)
-          .maybeSingle();
-
-        if (estimateCheckError) {
-          console.error("Error checking for existing estimate:", estimateCheckError);
-        }
-
-        if (!existingEstimate) {
-          const { error: estimateError } = await supabase
-            .from("estimates")
-            .insert({
-              customer_id: customerId,
-              job_id: lead.id,
-              subtotal: 0,
-              profit_margin: currentAccount?.default_profit_margin ?? 0,
-              tax_rate: (currentAccount?.default_tax_rate ?? 0) / 100,
-              tax: 0,
-              discount: 0,
-              total: 0,
-              status: "draft",
-              created_by: user.id,
-              account_id: currentAccount.id,
-            });
-
-          if (estimateError && !estimateError.message.includes("duplicate key")) {
-            console.error("Error creating estimate:", estimateError);
-          }
-        }
-      }
-
       await supabase.from("interactions").insert({
         lead_id: lead.id,
         type: "note",

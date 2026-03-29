@@ -1,13 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Clock,
-  MapPin,
   Play,
   Square,
-  Loader2,
   Wifi,
   WifiOff,
-  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +24,7 @@ interface JobTimeTrackerProps {
   jobId: string;
   jobAddress: string | null;
   accountId?: string;
+  embedded?: boolean;
 }
 
 function formatDuration(ms: number): string {
@@ -40,7 +37,7 @@ function formatDuration(ms: number): string {
   return `${s}s`;
 }
 
-export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerProps) {
+export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false }: JobTimeTrackerProps) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -202,71 +199,24 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
     }
   };
 
-  // Calculate total time
-  const totalMs = entries.reduce((sum, e) => {
-    const start = new Date(e.clock_in).getTime();
-    const end = e.clock_out ? new Date(e.clock_out).getTime() : Date.now();
-    return sum + (end - start);
-  }, 0);
-
   const completedEntries = entries.filter((e) => e.clock_out);
 
   if (!tableExists) {
     return (
-      <div className="card-elevated rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-secondary">
-            <Clock className="h-5 w-5 text-secondary-foreground" />
-          </div>
-          <div className="flex-1">
-            <p className="font-medium text-foreground">Log Your Hours</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Time tracking requires the <code className="text-xs bg-muted px-1 py-0.5 rounded">job_time_entries</code> table. Please run the setup SQL on your database.
-            </p>
-          </div>
+      <div className={embedded ? "py-1" : "card-elevated rounded-lg p-4"}>
+        <p className="text-sm text-muted-foreground">
+          Time tracking requires the <code className="text-xs bg-muted px-1 py-0.5 rounded">job_time_entries</code> table. Please run the setup SQL on your database.
+        </p>
+        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
+          <span>No GPS - use manual clock in/out.</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="card-elevated rounded-lg p-4">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="p-2 rounded-lg bg-secondary">
-          <Clock className="h-5 w-5 text-secondary-foreground" />
-        </div>
-        <div className="flex-1">
-          <p className="font-medium text-foreground">Log Your Hours</p>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {loading ? "Loading..." : `Total: ${formatDuration(totalMs)}`}
-          </p>
-        </div>
-
-        {/* GPS status indicator */}
-        <div className="flex items-center gap-1">
-          {geocoding ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : geo.error ? (
-            <div className="flex items-center gap-1 text-destructive" title={geo.error}>
-              <WifiOff className="h-4 w-4" />
-            </div>
-          ) : geo.watching ? (
-            <div
-              className={`flex items-center gap-1 text-xs ${
-                geo.isNearSite ? "text-emerald-600" : "text-amber-600"
-              }`}
-            >
-              <MapPin className="h-3.5 w-3.5" />
-              <span>{geo.isNearSite ? "On site" : "Away"}</span>
-            </div>
-          ) : siteLat === null && !geocoding ? (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground" title="No address to geocode">
-              <AlertTriangle className="h-3.5 w-3.5" />
-            </div>
-          ) : null}
-        </div>
-      </div>
-
+    <div className={embedded ? "py-1" : "card-elevated rounded-lg p-4"}>
       {/* Active session */}
       {activeEntry && (
         <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-3 mb-3">
@@ -315,9 +265,10 @@ export function JobTimeTracker({ jobId, jobAddress, accountId }: JobTimeTrackerP
 
       {/* GPS info for manual toggle */}
       {!activeEntry && geo.error && (
-        <p className="text-xs text-muted-foreground mb-3">
-          GPS unavailable — use manual clock in/out.
-        </p>
+        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
+          <span>No GPS - use manual clock in/out.</span>
+        </div>
       )}
 
       {/* Past entries */}

@@ -43,7 +43,7 @@ export default function Jobs() {
     if (selectedStatus === "unassigned") {
       return allJobs.filter((job: any) => {
         const ds = job.display_status || job.status;
-        return (job.crew_count || 0) === 0 &&
+        return Boolean(job.has_unassigned_schedule) &&
           (ds === "unscheduled" || ds === "scheduled" || ds === "in_progress");
       });
     }
@@ -82,7 +82,7 @@ export default function Jobs() {
       if (counts[displayStatus] !== undefined) {
         counts[displayStatus]++;
       }
-      if ((job.crew_count || 0) === 0 && (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress")) {
+      if (job.has_unassigned_schedule && (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress")) {
         counts.unassigned++;
       }
       if (job.status === "completed" && !job.has_invoice && !job.is_estimate_visit) {
@@ -145,14 +145,13 @@ export default function Jobs() {
             {statusCounts.unassigned > 0 && (
               <button
                 onClick={() => setSelectedStatus(selectedStatus === "unassigned" ? "all" : "unassigned")}
-                className="flex items-center gap-2
-                 px-3 py-2
-                rounded-lg
-                text-sm font-medium
+                className="flex items-center gap-2 px-3 py-2 rounded-lg 
                 border border-[hsl(var(--status-attention))]
-                bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]
-                hover:opacity-80 transition-opacity
-                levitate"
+                bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))] 
+                text-sm font-medium 
+                shadow-sm hover:shadow-md
+                hover:text-[hsl(var(--status-attention-bg))] hover:bg-[hsl(var(--status-attention))] 
+                transition-all"
               >
                 <Users className="h-4 w-4" />
                 {statusCounts.unassigned} Unassigned
@@ -177,7 +176,13 @@ export default function Jobs() {
             {statusCounts.overdue > 0 && (
               <button
                 onClick={() => setSelectedStatus(selectedStatus === "overdue" ? "all" : "overdue")}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))] text-sm font-medium hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg 
+                border border-[hsl(var(--status-attention))]
+                bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))] 
+                text-sm font-medium 
+                shadow-sm hover:shadow-md
+                hover:text-[hsl(var(--status-attention-bg))] hover:bg-[hsl(var(--status-attention))] 
+                transition-all"
               >
                 <AlertTriangle className="h-4 w-4" />
                 {statusCounts.overdue} Overdue

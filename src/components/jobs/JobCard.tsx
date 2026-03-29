@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState } from "react";
-import { MapPin, Clock, Phone, Navigation, MessageSquare, Calendar, User, ChevronRight, Users, Repeat, DollarSign, PersonStanding, Briefcase } from "lucide-react";
+import { MapPin, Clock, Phone, Navigation, MessageSquare, Calendar, User, ChevronRight, Repeat, PersonStanding, Briefcase, AlertTriangle } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ export interface Job extends DbJob {
   last_scheduled_date?: string;
   display_status?: string;
   crew_count?: number;
+  has_unassigned_schedule?: boolean;
   recurring_job_id?: string | null;
   recurring_instance_number?: number | null;
   has_invoice?: boolean;
@@ -75,7 +76,7 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
   };
 
   const badgeStatus = (job.display_status || job.status) as string;
-  const isUnassigned = (job.crew_count || 0) === 0 && (badgeStatus === "unscheduled" || badgeStatus === "scheduled" || badgeStatus === "in_progress");
+  const isUnassigned = Boolean(job.has_unassigned_schedule) && (badgeStatus === "unscheduled" || badgeStatus === "scheduled" || badgeStatus === "in_progress");
   const scheduledDateTime = formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date);
   const address = [job.address, job.city].filter(Boolean).join(", ") || job.customer?.address || "No address";
   const value = Number(job.estimate_total) || 0;
@@ -111,6 +112,7 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
           "w-full text-left card-elevated rounded-lg transition-all",
           "active:scale-[0.98] hover:shadow-md",
           "focus:outline-none focus:ring-2 focus:ring-primary/20",
+          "hover:bg-accent/50",
           className
         )}
       >
@@ -129,9 +131,6 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
             
 
           <div className="flex items-end justify-end gap-2 flex-wrap ml-auto">
-            <StatusBadge status={badgeStatus as JobStatus}>
-              {statusLabels[badgeStatus] || badgeStatus}
-            </StatusBadge>
             {job.recurring_job_id && (
               <Badge
                 variant="outline"
@@ -143,17 +142,26 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, className
               </Badge>
             )}
             {isUnassigned && (
-              <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
-                <Users className="h-3 w-3 mr-1" />
+              <Badge
+                variant="outline"
+                className="text-xs border-[hsl(var(--status-attention))]/40 bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]"
+              >
+                <AlertTriangle className="h-3 w-3 mr-1" />
                 Unassigned
               </Badge>
             )}
             {job.status === "completed" && !job.has_invoice && !job.is_estimate_visit && (
-              <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
-                <DollarSign className="h-3 w-3 mr-1" />
+              <Badge
+                variant="outline"
+                className="text-xs border-[hsl(var(--status-attention))]/40 bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]"
+              >
+                <AlertTriangle className="h-3 w-3 mr-1" />
                 Needs Invoice: ${value > 0 ? value.toLocaleString() : "0"}
               </Badge>
             )}
+            <StatusBadge status={badgeStatus as JobStatus}>
+              {statusLabels[badgeStatus] || badgeStatus}
+            </StatusBadge>
           </div>
   
         </div>

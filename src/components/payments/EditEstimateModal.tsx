@@ -573,7 +573,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100dvw-1rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Estimate</DialogTitle>
           <DialogDescription>

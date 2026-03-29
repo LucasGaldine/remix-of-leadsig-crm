@@ -816,12 +816,19 @@ export default function LeadDetail() {
   })();
   const currentStepIndex = Math.max(statusSteps.findIndex((step) => step.key === currentStepKey), 0);
   const recentActivity = interactions.slice(0, 3);
+  const clientAddress = [lead.address, lead.city].filter(Boolean).join(", ");
 
   const handleCall = (phone) => {
     if (!phone) return;
     logCall("outbound");
     const formattedPhone = phone.replace(/[^\d+]/g, "");
     window.location.href = `tel:${formattedPhone}`;
+  };
+
+  const handleNavigate = () => {
+    if (clientAddress) {
+      openMapsWithAddress(clientAddress);
+    }
   };
 
   return (
@@ -890,10 +897,11 @@ export default function LeadDetail() {
             <Button
               variant="secondary"
               size="icon"
-              onClick={() => lead.email && (window.location.href = `mailto:${lead.email}`)}
-              disabled={!lead.email}
+              onClick={handleNavigate}
+              disabled={!clientAddress}
+              aria-label="Navigate to lead address"
             >
-              <Mail className="h-4 w-4" />
+              <Navigation className="h-4 w-4" />
             </Button>
             {showConvertButton && (
               scheduleVisitDisabledReason ? (
@@ -945,9 +953,10 @@ export default function LeadDetail() {
               <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
                 {lead.status.replace("_", " ")}
               </StatusBadge>
+              
             </button>
           </div>
-          <div className="relative px-2 max-w-5xl mx-auto ">
+          <div className="relative max-w-5xl mx-auto ">
             <div className="absolute left-[12.5%] right-[12.5%] top-[10px] h-px bg-border" />
             <div className="relative grid grid-cols-4 gap-2">
             {statusSteps.map((step, index) => {
@@ -980,7 +989,7 @@ export default function LeadDetail() {
                     </span>
                    
 
-                    <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground text-center">
+                    <span className={cn("text-[11px] uppercase tracking-[0.16em] text-muted-foreground text-center", (isActive || isComplete) ? "text-primary font-semibold": "")}>
                       {step.label}
                     </span>
                   </button>
@@ -1281,50 +1290,50 @@ export default function LeadDetail() {
             {activeTab === "details" && (
               <div className="p-5 md:p-6 space-y-6">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:gap-x-8">
-                  <div className="py-1">
+                  <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
-                    <div className="mt-1 flex items-start gap-2">
+                    <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="text-sm leading-5 text-foreground break-words">{lead.email || "No email"}</p>
+                      <p className="min-w-0 break-all text-sm leading-5 text-foreground">{lead.email || "No email"}</p>
                     </div>
                   </div>
-                  <div className="py-1">
+                  <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Phone</p>
-                    <div className="mt-1 flex items-start gap-2">
+                    <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Phone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="text-sm leading-5 text-foreground">{formatPhone(lead.phone)}</p>
+                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">{formatPhone(lead.phone)}</p>
                     </div>
                   </div>
-                  <div className="py-1">
+                  <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Lead Source</p>
-                    <div className="mt-1 flex items-start gap-2">
+                    <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="text-sm leading-5 text-foreground">{lead.source || "Unknown"}</p>
+                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">{lead.source || "Unknown"}</p>
                     </div>
                   </div>
-                  <div className="py-1">
+                  <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Address</p>
-                    <div className="mt-1 flex items-start gap-2">
+                    <div className="mt-1 flex min-w-0 items-start gap-2">
                       <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="text-sm leading-5 text-foreground break-words">
+                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">
                         {[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}
                       </p>
                     </div>
                   </div>
-                  <div className="py-1">
+                  <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Budget</p>
-                    <div className="mt-1 flex items-start gap-2">
+                    <div className="mt-1 flex min-w-0 items-start gap-2">
                       <DollarSign className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="text-sm leading-5 text-foreground">
+                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">
                         {lead.estimated_value != null ? formatCurrency(lead.estimated_value) : "Not set"}
                       </p>
                     </div>
                   </div>
-                  <div className="py-1">
+                  <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Service Type</p>
-                    <div className="mt-1 flex items-start gap-2">
+                    <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="text-sm leading-5 text-foreground">{lead.service_type || "Not set"}</p>
+                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">{lead.service_type || "Not set"}</p>
                     </div>
                   </div>
                 </div>
