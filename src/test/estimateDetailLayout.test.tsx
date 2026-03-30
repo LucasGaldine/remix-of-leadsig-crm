@@ -96,6 +96,21 @@ vi.mock("@/hooks/useEstimates", () => ({
           change_order_approved: null,
           changed_at: null,
         },
+        {
+          id: "line_4",
+          name: "Jointing sand",
+          description: "Polymeric sand for joints.",
+          category: "materials",
+          quantity: 1,
+          unit: "bag",
+          unit_price: 80,
+          total: 80,
+          sort_order: 3,
+          is_change_order: false,
+          change_order_type: null,
+          change_order_approved: null,
+          changed_at: null,
+        },
       ],
       original_total: null,
       original_line_items: null,
@@ -158,6 +173,7 @@ describe("EstimateDetail layout", () => {
     expect(within(leftColumn).getByRole("heading", { name: /notes/i })).toBeInTheDocument();
     expect(within(leftColumn).getByText("Compactor rental")).toBeInTheDocument();
     expect(within(leftColumn).getByText("Paver materials")).toBeInTheDocument();
+    expect(within(leftColumn).getByText("Jointing sand")).toBeInTheDocument();
     expect(within(leftColumn).getByText("Paver installation")).toBeInTheDocument();
 
     const categoryHeadings = within(leftColumn).getAllByTestId("line-item-category-heading");
@@ -167,6 +183,13 @@ describe("EstimateDetail layout", () => {
       expect(heading).toHaveClass("uppercase");
       expect(heading).toHaveClass("tracking-wide");
     });
+
+    const materialsRow = within(leftColumn)
+      .getByText("Paver materials")
+      .closest("div.flex-1")
+      ?.parentElement
+      ?.parentElement as HTMLElement;
+    expect(materialsRow).not.toHaveClass("border-b");
 
     expect(within(headerActions).getByRole("button", { name: /^Approve$/i })).toBeInTheDocument();
     expect(within(headerActions).getByRole("button", { name: /^Client Portal$/i })).toBeInTheDocument();

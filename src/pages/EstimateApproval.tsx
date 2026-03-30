@@ -287,7 +287,7 @@ export default function EstimateApproval() {
             <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">
               Line Items
             </h2>
-            <div className="space-y-0 divide-y divide-slate-100">
+            <div className="space-y-0">
               {estimate.line_items.map((item) => (
                 <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex justify-between items-start">

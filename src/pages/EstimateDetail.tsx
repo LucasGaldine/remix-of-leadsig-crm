@@ -794,13 +794,10 @@ export default function EstimateDetail() {
                         {CATEGORY_LABELS[group.category]}
                       </p>
                     </div>
-                    {group.items.map((item, itemIndex) => (
+                    {group.items.map((item) => (
                       <div
                         key={item.id}
-                        className={cn(
-                          "p-4",
-                          itemIndex < group.items.length - 1 && "border-b border-border",
-                        )}
+                        className="px-4 py-2"
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
@@ -817,7 +814,7 @@ export default function EstimateDetail() {
                                     item.change_order_type === 'edited' ? 'secondary' :
                                     'outline'
                                   }
-                                  className="text-2xs"
+
                                 >
                                   {item.change_order_type === 'added' && 'New'}
                                   {item.change_order_type === 'edited' && 'Modified'}
