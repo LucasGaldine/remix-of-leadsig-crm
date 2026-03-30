@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -41,7 +41,7 @@ vi.mock("@/hooks/useEstimates", () => ({
       discount: 0,
       total: 1284,
       notes: "Customer requested premium materials.",
-      has_pending_changes: false,
+      has_pending_changes: true,
       expires_at: "2026-04-10T00:00:00.000Z",
       accepted_at: null,
       approved_via: null,
@@ -112,8 +112,24 @@ vi.mock("@/hooks/useEstimates", () => ({
           changed_at: null,
         },
       ],
-      original_total: null,
-      original_line_items: null,
+      original_total: 1200,
+      original_line_items: [
+        {
+          id: "orig_line_1",
+          name: "Original labor",
+          description: "Original scope",
+          category: "labor",
+          quantity: 1,
+          unit: "job",
+          unit_price: 1200,
+          total: 1200,
+          sort_order: 0,
+          is_change_order: false,
+          change_order_type: null,
+          change_order_approved: null,
+          changed_at: null,
+        },
+      ],
     },
   }),
 }));
@@ -179,6 +195,10 @@ describe("EstimateDetail layout", () => {
     expect(within(leftColumn).getByText("Paver materials")).toBeInTheDocument();
     expect(within(leftColumn).getByText("Jointing sand")).toBeInTheDocument();
     expect(within(leftColumn).getByText("Paver installation")).toBeInTheDocument();
+    expect(within(leftColumn).getByTestId("pending-changes-alert")).toBeInTheDocument();
+    expect(
+      within(leftColumn).queryByText(/changes have been sent to the customer for review/i),
+    ).not.toBeInTheDocument();
 
     const categoryHeadings = within(leftColumn).getAllByTestId("line-item-category-heading");
     expect(categoryHeadings.map((heading) => heading.textContent)).toEqual(["Equipment", "Materials", "Labor"]);
@@ -194,6 +214,25 @@ describe("EstimateDetail layout", () => {
       ?.parentElement
       ?.parentElement as HTMLElement;
     expect(materialsRow).not.toHaveClass("border-b");
+    expect(within(leftColumn).getByTestId("line-items-header-row")).not.toHaveClass("border-t");
+
+    const compareTabs = within(leftColumn).getByRole("tablist");
+    const pendingAlert = within(leftColumn).getByTestId("pending-changes-alert");
+    expect(
+      compareTabs.compareDocumentPosition(pendingAlert) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(compareTabs).getByRole("tab", { name: /^Modified$/i })).toBeInTheDocument();
+    expect(within(compareTabs).getByRole("tab", { name: /^Original$/i })).toBeInTheDocument();
+
+    const originalTab = within(compareTabs).getByRole("tab", { name: /^Original$/i });
+    fireEvent.mouseDown(originalTab);
+    fireEvent.click(originalTab);
+    expect(within(leftColumn).queryByTestId("pending-changes-alert")).not.toBeInTheDocument();
+    const approvedHeading = within(leftColumn).getByText("Approved");
+    expect(approvedHeading).toBeInTheDocument();
+    expect(
+      compareTabs.compareDocumentPosition(approvedHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     expect(headerActions).toHaveClass("flex-nowrap");
     expect(within(headerActions).getByRole("button", { name: /^Approve$/i })).toBeInTheDocument();

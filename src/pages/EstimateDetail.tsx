@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check } from "lucide-react";
+import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check, FileText } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
@@ -191,6 +192,10 @@ export default function EstimateDetail() {
     : `${estimate.customer?.name || "Unknown"}, Estimate`;
 
   const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
+  const showPendingChangesCard = estimate.has_pending_changes && !showingOriginal;
+  const showApprovedCard =
+    (estimate.status === "accepted" && !showPendingChangesCard) ||
+    (estimate.has_pending_changes && showingOriginal);
 
   const displayLineItems = showingOriginal && hasOriginalEstimate
     ? estimate.original_line_items!
@@ -729,17 +734,47 @@ export default function EstimateDetail() {
           <div className="space-y-4" data-testid="estimate-details-left-column">
             <div className="card-elevated rounded-lg overflow-hidden">
               <div className="p-4">
-                <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Estimates</h3>
-                {estimate.has_pending_changes && !showingOriginal ? (
-                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
-                      <p className="text-sm text-amber-900">
-                        This estimate has pending changes awaiting customer approval. Changes have been sent to the customer for review.
-                      </p>
+                {hasOriginalEstimate && (
+                  <>
+                    <div className="mb-2 flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Versions</h3>
+                    </div>
+                    <Tabs
+                      value={showingOriginal ? "original" : "modified"}
+                      onValueChange={(value) => setShowingOriginal(value === "original")}
+                      className="mt-0"
+                    >
+                      <TabsList className="w-full justify-start rounded-none bg-transparent p-0">
+                        <TabsTrigger
+                          value="modified"
+                          className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                        >
+                          Modified
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="original"
+                          className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                        >
+                          Original
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  </>
+                )}
+                {showPendingChangesCard && (
+                  <div className="mt-3">
+                    <div data-testid="pending-changes-alert" className="rounded-md bg-amber-50 p-3">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+                        <p className="text-sm text-amber-900">
+                          This estimate has pending changes awaiting customer approval.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                ) : estimate.status === "accepted" && (
+                )}
+                {showApprovedCard && (
                   <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
                     <div className="flex items-center gap-2 mb-1">
                       <Check className="h-4 w-4 text-emerald-600" />
@@ -757,27 +792,7 @@ export default function EstimateDetail() {
                     </p>
                   </div>
                 )}
-                {hasOriginalEstimate && (
-                  <div className="flex gap-2 mt-3">
-                    <Button
-                      variant={!showingOriginal ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setShowingOriginal(false)}
-                    >
-                      Modified
-                    </Button>
-                    <Button
-                      variant={showingOriginal ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setShowingOriginal(true)}
-                    >
-                      Original
-                    </Button>
-                  </div>
-                )}
-                <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
+                <div data-testid="line-items-header-row" className="mt-3 flex items-center justify-between">
                   <h4 className="text-lg font-semibold text-foreground">Line Items</h4>
                   <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
                     <Edit2 className="h-4 w-4 mr-2" />
