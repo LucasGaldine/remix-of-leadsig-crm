@@ -3,25 +3,21 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, FileText, Users, Plus, X, Search, Trash2 } from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
+import { FileText, Users, X, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
-import { useScheduledJobs } from "@/hooks/useScheduledJobs";
-import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
-import { cn } from "@/lib/utils";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 import { buildDefaultJobName } from "@/lib/defaultJobName";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { ScheduleDateBuilder, type ScheduleEntry } from "@/components/scheduling/ScheduleDateBuilder";
 
 
 const roleLabels: Record<string, string> = {
@@ -62,42 +58,14 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [scheduling, setScheduling] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
-  const [scheduledTimeStart, setScheduledTimeStart] = useState("");
-  const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [lineItemsOpen, setLineItemsOpen] = useState(false);
   const [confirmNoCrewOpen, setConfirmNoCrewOpen] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(new Date());
-
-  const [addedSchedules, setAddedSchedules] = useState<Array<{date: string; timeStart: string; timeEnd: string}>>([]);
+  const [addedSchedules, setAddedSchedules] = useState<ScheduleEntry[]>([]);
   const [showCrewAssignment, setShowCrewAssignment] = useState(false);
   const [selectedCrewMember, setSelectedCrewMember] = useState<string>("");
   const [selectedSchedulesForCrew, setSelectedSchedulesForCrew] = useState<number[]>([]);
   const [crewSearchQuery, setCrewSearchQuery] = useState("");
   const [createAsRegularJob, setCreateAsRegularJob] = useState(false);
-
-  const monthStart = startOfMonth(calendarMonth);
-  const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
-
-  const { data: busyDatesSet } = useQuery({
-    queryKey: ["busy-dates", format(monthStart, "yyyy-MM-dd"), format(monthEnd, "yyyy-MM-dd")],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("job_schedules")
-        .select("scheduled_date")
-        .gte("scheduled_date", format(monthStart, "yyyy-MM-dd"))
-        .lte("scheduled_date", format(monthEnd, "yyyy-MM-dd"));
-
-      if (error) throw error;
-      const dates = new Set<string>();
-      data?.forEach((s) => { if (s.scheduled_date) dates.add(s.scheduled_date); });
-      return dates;
-    },
-    enabled: !!user,
-  });
-
-  const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
   const { data: crewMembers = [] } = useTeamMembers();
 
@@ -109,30 +77,6 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
       member.email?.toLowerCase().includes(query)
     );
   });
-
-  const handleAddSchedule = () => {
-    if (!selectedDate) {
-      toast.error("Please select a date");
-      return;
-    }
-
-    const newSchedule = {
-      date: format(selectedDate, "yyyy-MM-dd"),
-      timeStart: scheduledTimeStart,
-      timeEnd: scheduledTimeEnd,
-    };
-
-    setAddedSchedules([...addedSchedules, newSchedule]);
-    setSelectedDate(undefined);
-    setScheduledTimeStart("");
-    setScheduledTimeEnd("");
-    toast.success("Schedule date added");
-  };
-
-  const handleRemoveSchedule = (index: number) => {
-    setAddedSchedules(addedSchedules.filter((_, i) => i !== index));
-    setSelectedSchedulesForCrew(selectedSchedulesForCrew.filter(i => i !== index).map(i => i > index ? i - 1 : i));
-  };
 
   const toggleScheduleForCrew = (index: number) => {
     setSelectedSchedulesForCrew(prev =>
@@ -314,121 +258,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
           </DialogHeader>
 
           <div className="space-y-6 py-4">
-            <div className="space-y-4">
-              <Label className="text-base font-semibold flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4" />
-                Add Schedule Dates
-              </Label>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <div className="flex justify-center">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={setSelectedDate}
-                      onMonthChange={setCalendarMonth}
-                      disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
-                      className={cn("rounded-md border pointer-events-auto")}
-                      modifiers={{
-                        busy: (date) => {
-                          const dateStr = format(date, "yyyy-MM-dd");
-                          return busyDatesSet?.has(dateStr) || false;
-                        },
-                      }}
-                      modifiersClassNames={{
-                        busy: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
-                      }}
-                    />
-                  </div>
-
-                  {selectedDate && selectedDateJobs.length > 0 && (
-                    <div className="rounded-lg border border-border p-3 space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {selectedDateJobs.length} job{selectedDateJobs.length !== 1 ? "s" : ""} on {format(selectedDate, "MMM d")}:
-                      </p>
-                      <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                        {selectedDateJobs.map((job: any) => (
-                          <div key={job.schedule_id} className="flex items-center justify-between text-sm">
-                            <span className="truncate flex-1">{job.name || "Unnamed job"}</span>
-                            {job.scheduled_time_start && (
-                              <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">
-                                {job.scheduled_time_start}{job.scheduled_time_end ? ` - ${job.scheduled_time_end}` : ""}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="schedule-start">Start Time</Label>
-                      <Input
-                        id="schedule-start"
-                        type="time"
-                        value={scheduledTimeStart}
-                        onChange={(e) => setScheduledTimeStart(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="schedule-end">End Time</Label>
-                      <Input
-                        id="schedule-end"
-                        type="time"
-                        value={scheduledTimeEnd}
-                        onChange={(e) => setScheduledTimeEnd(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleAddSchedule}
-                    disabled={!selectedDate}
-                    className="w-full"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Schedule Date
-                  </Button>
-
-                  {addedSchedules.length > 0 && (
-                    <div className="border rounded-lg p-3 space-y-2">
-                      <p className="text-sm font-medium">Added Schedules ({addedSchedules.length})</p>
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {addedSchedules.map((schedule, index) => {
-                          const [year, month, day] = schedule.date.split('-').map(Number);
-                          const localDate = new Date(year, month - 1, day);
-                          return (
-                            <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
-                              <div className="text-sm">
-                                <div className="font-medium">
-                                  {format(localDate, "EEEE, MMM d, yyyy")}
-                                </div>
-                                {schedule.timeStart && schedule.timeEnd && (
-                                  <div className="text-xs text-muted-foreground">
-                                    {schedule.timeStart} - {schedule.timeEnd}
-                                  </div>
-                                )}
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveSchedule(index)}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            <ScheduleDateBuilder
+              schedules={addedSchedules}
+              onSchedulesChange={setAddedSchedules}
+            />
 
             {!hasEstimate && (
               <div className="pt-2 border-t border-border">

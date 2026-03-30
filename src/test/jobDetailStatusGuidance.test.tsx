@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import JobDetail from "@/pages/JobDetail";
 
@@ -207,6 +207,10 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 describe("JobDetail status guidance", () => {
+  afterEach(() => {
+    supabaseFromMock.mockReset();
+  });
+
   beforeEach(() => {
     testState.schedules = [
       {
@@ -287,6 +291,67 @@ describe("JobDetail status guidance", () => {
 
     expect(dialogContent.queryByText("Qualified")).not.toBeInTheDocument();
     expect(dialogContent.queryByText("Contacted")).not.toBeInTheDocument();
+  });
+
+  it("fetches the latest estimate using created_at ordering", async () => {
+    const estimateOrderMock = vi.fn();
+    const estimateLimitMock = vi.fn();
+
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        const maybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null });
+        estimateLimitMock.mockReturnValue({ maybeSingle: maybeSingleMock });
+        estimateOrderMock.mockReturnValue({ limit: estimateLimitMock });
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              order: estimateOrderMock,
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+
+    await waitFor(() => {
+      expect(estimateOrderMock).toHaveBeenCalledWith("created_at", { ascending: false });
+      expect(estimateLimitMock).toHaveBeenCalledWith(1);
+    });
   });
 
   it("shows unassigned badge when at least one scheduled day has no crew assignment", async () => {

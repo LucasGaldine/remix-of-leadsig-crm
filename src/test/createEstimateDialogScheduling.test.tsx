@@ -53,10 +53,7 @@ vi.mock("@/hooks/useScheduledJobs", () => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: ({ queryFn }: { queryFn: () => Promise<unknown> }) => {
-    void queryFn();
-    return { data: new Set<string>() };
-  },
+  useQuery: () => ({ data: new Set<string>() }),
   useQueryClient: () => ({
     invalidateQueries: invalidateQueriesMock,
   }),

@@ -309,6 +309,18 @@ export default function JobDetail() {
 
     setEstimateLoading(true);
     try {
+      const latestOnly = <T,>(query: T): T => {
+        const candidate = query as T & { order?: (column: string, opts: { ascending: boolean }) => any; limit?: (count: number) => any };
+        if (typeof candidate.order === "function") {
+          const ordered = candidate.order("created_at", { ascending: false });
+          if (ordered && typeof ordered.limit === "function") {
+            return ordered.limit(1) as T;
+          }
+          return ordered as T;
+        }
+        return query;
+      };
+
       const { data: currentJob } = await supabase
         .from("leads")
         .select("recurring_job_id")
@@ -316,10 +328,12 @@ export default function JobDetail() {
         .maybeSingle();
 
       if (currentJob?.recurring_job_id) {
-        const { data: masterQuote, error: quoteError } = await supabase
+        const recurringEstimateQuery = supabase
           .from("estimates")
           .select("id, total, status, notes, line_items:estimate_line_items(id)")
-          .eq("recurring_job_id", currentJob.recurring_job_id)
+          .eq("recurring_job_id", currentJob.recurring_job_id);
+
+        const { data: masterQuote, error: quoteError } = await latestOnly(recurringEstimateQuery)
           .maybeSingle();
 
         if (quoteError) throw quoteError;
@@ -328,10 +342,12 @@ export default function JobDetail() {
         return;
       }
 
-      let { data, error } = await supabase
+      const estimateQuery = supabase
         .from("estimates")
         .select("id, total, status, notes, line_items:estimate_line_items(id)")
-        .eq("job_id", id)
+        .eq("job_id", id);
+
+      let { data, error } = await latestOnly(estimateQuery)
         .maybeSingle();
 
       if (error) throw error;
@@ -344,10 +360,12 @@ export default function JobDetail() {
           .maybeSingle();
 
         if (parentLead) {
-          const { data: parentEstimate, error: parentError } = await supabase
+          const parentEstimateQuery = supabase
             .from("estimates")
             .select("id, total, status, notes, line_items:estimate_line_items(id)")
-            .eq("job_id", parentLead.id)
+            .eq("job_id", parentLead.id);
+
+          const { data: parentEstimate, error: parentError } = await latestOnly(parentEstimateQuery)
             .maybeSingle();
 
           if (parentError) throw parentError;

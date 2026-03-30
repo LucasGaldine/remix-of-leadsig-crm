@@ -133,7 +133,7 @@ export function ClientSelector({
           </div>
 
           {showResults && (
-            <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-56 overflow-y-auto">
+            <div className="relative z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-56 overflow-y-auto">
               {isLoading ? (
                 <div className="p-3 text-center text-sm text-muted-foreground">Searching...</div>
               ) : customers.length > 0 ? (
