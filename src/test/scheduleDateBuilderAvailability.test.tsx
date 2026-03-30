@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ScheduleDateBuilder } from "@/components/scheduling/ScheduleDateBuilder";
@@ -55,6 +56,8 @@ vi.mock("@/components/ui/calendar", () => ({
     onDayMouseEnter?: (date: Date) => void;
   }) => {
     const target = new Date(2030, 0, 10);
+    const altTarget = new Date(2030, 0, 11);
+    const thirdTarget = new Date(2030, 0, 12);
     const isDisabled = disabled?.(target);
 
     return (
@@ -62,6 +65,12 @@ vi.mock("@/components/ui/calendar", () => ({
         <div>{isDisabled ? "target-disabled" : "target-enabled"}</div>
         <button type="button" onClick={() => onSelect?.(target)}>
           Pick date
+        </button>
+        <button type="button" onClick={() => onSelect?.(altTarget)}>
+          Pick alt date
+        </button>
+        <button type="button" onClick={() => onSelect?.(thirdTarget)}>
+          Pick third date
         </button>
         <button type="button" onMouseEnter={() => onDayMouseEnter?.(target)}>
           Hover date
@@ -88,5 +97,29 @@ describe("ScheduleDateBuilder availability guards", () => {
 
     expect(onSchedulesChangeMock).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledWith("Daily job limit has been reached for this date.");
+  });
+
+  it("changes the active schedule date on click and adds a new one only after Add Schedule Date", () => {
+    const SchedulingHarness = () => {
+      const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
+      return <ScheduleDateBuilder schedules={schedules} onSchedulesChange={setSchedules} />;
+    };
+
+    render(<SchedulingHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
+    expect(screen.getByText(/Added Schedules \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Jan 11, 2030/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /pick third date/i }));
+    expect(screen.getByText(/Added Schedules \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Jan 12, 2030/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Jan 11, 2030/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
+    fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
+    expect(screen.getByText(/Added Schedules \(2\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Jan 12, 2030/i)).toBeInTheDocument();
+    expect(screen.getByText(/Jan 11, 2030/i)).toBeInTheDocument();
   });
 });

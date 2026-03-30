@@ -1,16 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, DollarSign, FileText, CreditCard, ClipboardCheck, Download, History } from "lucide-react";
+import { Search, DollarSign, FileText, CreditCard, ClipboardCheck, Download } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { EstimateCard } from "@/components/payments/EstimateCard";
 import { InvoiceCard } from "@/components/payments/InvoiceCard";
 import { PaymentCard } from "@/components/payments/PaymentCard";
 import { ExportInvoicesModal } from "@/components/payments/ExportInvoicesModal";
-import { ExportHistoryModal } from "@/components/payments/ExportHistoryModal";
 import { cn } from "@/lib/utils";
 import { useEstimates, EstimateWithDetails } from "@/hooks/useEstimates";
 import { useInvoices } from "@/hooks/useInvoices";
@@ -27,7 +25,6 @@ export default function Payments() {
   const [agingFilter, setAgingFilter] = useState<AgingFilter>("all");
   const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   const { data: allEstimates = [], isLoading: estimatesLoading } = useEstimates({ limit: 100 });
   const { data: allInvoices = [], isLoading: invoicesLoading } = useInvoices({ limit: 100 });
@@ -144,39 +141,6 @@ export default function Payments() {
 
   <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
 <div className="rounded-lg bg-card border border-border">
-
-
-
-
-        <div className="border-b border-border p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-1">Accounting Export</h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            Export financial data as CSV for QuickBooks or other accounting software.
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setExportModalOpen(true)}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export Data
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setHistoryModalOpen(true)}
-            >
-              <History className="mr-2 h-4 w-4" />
-              Past Exports
-            </Button>
-          </div>
-        </div>
-
-
-  
 
       <div className="px-4 overflow-x-auto scrollbar-hide border-b border-borde ">
         <div className="flex">
@@ -359,11 +323,20 @@ export default function Payments() {
         )}
       </main>
 
+      <FloatingActionButton
+        actions={[
+          {
+            icon: <Download className="h-5 w-5" />,
+            label: "Export Data",
+            onClick: () => setExportModalOpen(true),
+            primary: true,
+          },
+        ]}
+      />
 
       <MobileNav />
 
       <ExportInvoicesModal open={exportModalOpen} onOpenChange={setExportModalOpen} />
-      <ExportHistoryModal open={historyModalOpen} onOpenChange={setHistoryModalOpen} />
     </div>
   );
 }

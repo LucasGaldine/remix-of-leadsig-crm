@@ -35,6 +35,7 @@ export interface EstimateWithDetails extends Estimate {
     id: string;
     name: string;
     description?: string;
+    category?: "equipment" | "materials" | "labor" | "other";
     quantity: number;
     unit: string;
     unit_price: number;
@@ -49,6 +50,7 @@ export interface EstimateWithDetails extends Estimate {
     id: string;
     name: string;
     description?: string;
+    category?: "equipment" | "materials" | "labor" | "other";
     quantity: number;
     unit: string;
     unit_price: number;
@@ -101,6 +103,7 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
             id,
             name,
             description,
+            category,
             quantity,
             unit,
             unit_price,
@@ -186,6 +189,7 @@ export function useEstimate(id: string | undefined) {
             id,
             name,
             description,
+            category,
             quantity,
             unit,
             unit_price,

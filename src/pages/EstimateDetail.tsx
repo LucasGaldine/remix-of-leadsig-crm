@@ -1,13 +1,13 @@
 // @ts-nocheck
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, FileCheck, Download, Check } from "lucide-react";
+import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { useEstimate } from "@/hooks/useEstimates";
-import { useInvoices } from "@/hooks/useInvoices";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -26,16 +26,29 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
-import { CreateInvoiceModal } from "@/components/payments/CreateInvoiceModal";
+import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 
-const statusConfig: Record<string, { label: string; className: string }> = {
-  draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
-  sent: { label: "Sent", className: "status-pending" },
-  viewed: { label: "Viewed", className: "status-paid" },
-  accepted: { label: "Approved", className: "status-confirmed" },
-  expired: { label: "Expired", className: "status-attention" },
-  declined: { label: "Declined", className: "bg-red-100 text-red-800" },
+const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
+  draft: { label: "Draft", icon: Edit2, className: "bg-secondary text-secondary-foreground" },
+  sent: { label: "Sent", icon: Send, className: "status-pending" },
+  viewed: { label: "Viewed", icon: CheckCheck, className: "status-paid" },
+  accepted: { label: "Approved", icon: Check, className: "status-confirmed" },
+  expired: { label: "Expired", icon: AlertCircle, className: "status-attention" },
+  declined: { label: "Declined", icon: AlertCircle, className: "bg-red-100 text-red-800" },
 };
+
+const CATEGORY_ORDER = ["equipment", "materials", "labor", "other"] as const;
+const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
+  equipment: "Equipment",
+  materials: "Materials",
+  labor: "Labor",
+  other: "Other",
+};
+
+const normalizeCategory = (category?: string) =>
+  CATEGORY_ORDER.includes(category as (typeof CATEGORY_ORDER)[number])
+    ? (category as (typeof CATEGORY_ORDER)[number])
+    : "other";
 
 
 export default function EstimateDetail() {
@@ -43,11 +56,6 @@ export default function EstimateDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: estimate, isLoading } = useEstimate(id);
-  const { data: allInvoices } = useInvoices();
-
-  const relatedInvoices = allInvoices?.filter(inv => inv.estimate_id === id) || [];
-  const totalInvoiced = relatedInvoices.reduce((sum, inv) => sum + Number(inv.total), 0);
-  const isFullyInvoiced = estimate ? totalInvoiced >= Number(estimate.total) : false;
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
@@ -56,7 +64,6 @@ export default function EstimateDetail() {
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
-  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(() => new Set());
 
   const handleDownloadPDF = async () => {
@@ -98,7 +105,7 @@ export default function EstimateDetail() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-32">
-        <PageHeader title="Estimate" showBack backTo="/payments" />
+        <PageHeader title="" showBack backTo="/payments" />
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
         </div>
@@ -110,7 +117,7 @@ export default function EstimateDetail() {
   if (!estimate) {
     return (
       <div className="min-h-screen bg-surface-sunken pb-32">
-        <PageHeader title="Estimate" showBack backTo="/payments" />
+        <PageHeader title="" showBack backTo="/payments" />
         <div className="px-4 py-12 text-center">
           <p className="text-muted-foreground">Estimate not found</p>
         </div>
@@ -119,9 +126,66 @@ export default function EstimateDetail() {
     );
   }
 
-  const config = statusConfig[estimate.status] || { label: estimate.status, className: "bg-secondary text-secondary-foreground" };
+  const config = statusConfig[estimate.status] || { label: estimate.status, icon: AlertCircle };
+  const StatusIcon = config.icon;
   const hasChangeOrders = estimate.line_items.some((item: any) => item.is_change_order);
   const isRecurringQuote = !!estimate.recurring_job_id && !estimate.job_id;
+  const jobStatusLabelMap: Record<string, string> = {
+    new: "New",
+    contacted: "Contacted",
+    qualified: "Qualified",
+    job: "Job",
+    unscheduled: "Unscheduled",
+    scheduled: "Scheduled",
+    in_progress: "In Progress",
+    "in-progress": "In Progress",
+    completed: "Completed",
+    paid: "Paid",
+  };
+  const getJobStatusBadgeStatus = (status: string) => {
+    switch (status) {
+      case "unscheduled":
+        return "unscheduled";
+      case "unassigned":
+      case "needs_invoice":
+        return "attention";
+      case "scheduled":
+        return "scheduled";
+      case "in_progress":
+      case "in-progress":
+        return "in_progress";
+      case "completed":
+      case "paid":
+        return "completed";
+      case "job":
+        return "job";
+      default:
+        return "pending";
+    }
+  };
+  const deriveJobStatus = () => {
+    const directStatus =
+      estimate.job?.display_status ||
+      estimate.job?.status ||
+      (estimate.recurring_job as any)?.display_status ||
+      (estimate.recurring_job as any)?.status;
+
+    if (directStatus !== "job") {
+      return directStatus || "unscheduled";
+    }
+
+    // Raw "job" is ambiguous on lead records; infer a meaningful stage.
+    const scheduledDate = estimate.job?.scheduled_date;
+    if (!scheduledDate) return "unscheduled";
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const scheduled = new Date(`${scheduledDate}T00:00:00`);
+
+    return scheduled > today ? "scheduled" : "in_progress";
+  };
+  const rawJobStatus = deriveJobStatus();
+  const jobStatusLabel = jobStatusLabelMap[rawJobStatus] || rawJobStatus;
   const displayTitle = isRecurringQuote
     ? `${estimate.customer?.name || "Unknown"} Quote`
     : `${estimate.customer?.name || "Unknown"}, Estimate`;
@@ -135,6 +199,32 @@ export default function EstimateDetail() {
   const displayTotal = showingOriginal && hasOriginalEstimate
     ? estimate.original_total!
     : estimate.total;
+
+  const groupedLineItems = [...displayLineItems]
+    .sort((a, b) => {
+      const categoryDiff =
+        CATEGORY_ORDER.indexOf(normalizeCategory(a.category)) -
+        CATEGORY_ORDER.indexOf(normalizeCategory(b.category));
+
+      if (categoryDiff !== 0) return categoryDiff;
+
+      return (a.sort_order || 0) - (b.sort_order || 0);
+    })
+    .reduce(
+      (groups, item) => {
+        const category = normalizeCategory(item.category);
+        const existingGroup = groups.find((group) => group.category === category);
+
+        if (existingGroup) {
+          existingGroup.items.push(item);
+        } else {
+          groups.push({ category, items: [item] });
+        }
+
+        return groups;
+      },
+      [] as Array<{ category: (typeof CATEGORY_ORDER)[number]; items: typeof displayLineItems }>,
+    );
 
   const handleManualApprove = async () => {
     setManualApproving(true);
@@ -212,10 +302,6 @@ export default function EstimateDetail() {
     } catch {
       toast.error("Failed to copy link");
     }
-  };
-
-  const handleCreateInvoice = () => {
-    setInvoiceModalOpen(true);
   };
 
   const handleQuickEstimateSave = async (breakdown: QuickEstimateBreakdown) => {
@@ -529,26 +615,34 @@ export default function EstimateDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-48">
-      <PageHeader title={displayTitle} showBack backTo="/payments" />
+    <div className="min-h-screen bg-surface-sunken pb-24">
+      <PageHeader title="" showBack backTo="/payments" />
 
 
-      <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
-        <div className="flex items-start justify-between mb-3">
+      <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-0">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={cn("text-2xs px-2 py-1 rounded-full inline-flex items-center gap-1", config.className)}>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                  estimate.status === "accepted"
+                    ? "status-confirmed border-[hsl(var(--status-confirmed))]/40"
+                    : "border-border bg-muted/60 text-muted-foreground"
+                )}
+              >
+                <StatusIcon className="h-3 w-3" />
                 {config.label}
               </span>
               {estimate.has_pending_changes && (
-                <span className="text-2xs px-2 py-1 rounded-full inline-flex items-center gap-1 bg-amber-100 text-amber-800">
-                  <AlertCircle className="h-3 w-3" />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+                  <AlertCircle className="h-3 w-3 text-amber-700" />
                   Changes Pending Approval
                 </span>
               )}
             </div>
             <h2 className="text-xl font-bold text-foreground mt-2">
-              {estimate.customer?.name || "Unknown Customer"}
+              {isRecurringQuote ? "Quote" : "Estimate"}
             </h2>
             <p className="text-muted-foreground">
               {isRecurringQuote
@@ -556,7 +650,7 @@ export default function EstimateDetail() {
                 : (estimate.job?.name || "Unknown Job")}
             </p>
           </div>
-          <div className="text-right">
+          <div className="w-full md:w-auto text-right">
             <p className="text-2xl font-bold text-foreground">
               ${Number(displayTotal).toLocaleString()}
             </p>
@@ -565,407 +659,394 @@ export default function EstimateDetail() {
                 Expires {format(new Date(estimate.expires_at), "MMM d, yyyy")}
               </p>
             )}
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full gap-2"
-          onClick={handleDownloadPDF}
-        >
-          <Download className="h-4 w-4" />
-          Download PDF
-        </Button>
-      </div>
-
-      <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
-          <button
-            className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-            onClick={() => estimate.customer && navigate(`/customers/${estimate.customer.id}`)}
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-secondary">
-                <User className="h-5 w-5 text-secondary-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-foreground">Customer</p>
-                <p className="text-sm text-muted-foreground">{estimate.customer?.name || "Unknown"}</p>
-              </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </div>
-          </button>
-
-          {isRecurringQuote ? (
-            <div className="card-elevated rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <Calendar className="h-5 w-5 text-secondary-foreground" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">Job Schedule</p>
-                  <p className="text-sm text-muted-foreground">{estimate.recurring_job?.name || "Unknown"}</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <button
-              className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-              onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
+            <div
+              className="mt-3 flex flex-wrap items-center justify-start gap-2 md:justify-end"
+              data-testid="estimate-header-quick-actions"
             >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <Calendar className="h-5 w-5 text-secondary-foreground" />
+              {portalLink && (
+                <div className="hidden md:flex items-center gap-2 bg-card border border-border rounded-full px-3 py-2 shadow-sm">
+                  <input
+                    type="text"
+                    readOnly
+                    value={portalLink}
+                    className="flex-1 bg-transparent text-sm text-foreground outline-none truncate"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCopyLink}
+                    className="shrink-0"
+                  >
+                    {copied ? (
+                      <CheckCheck className="h-4 w-4 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">Job</p>
-                  <p className="text-sm text-muted-foreground">{estimate.job?.name || "Unknown"}</p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </div>
-            </button>
-          )}
-      </div>
-
-      <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
-        {estimate.status === "accepted" && (
-          <div className="card-elevated rounded-lg p-4 border-l-4 border-l-emerald-500">
-            <div className="flex items-center gap-2 mb-1">
-              <Check className="h-4 w-4 text-emerald-600" />
-              <h3 className="font-semibold text-foreground">Approved</h3>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {(estimate as any).approved_via === "customer_link"
-                ? "Approved by customer via approval link"
-                : (estimate as any).approved_via === "manual"
-                  ? "Manually marked as approved"
-                  : "This estimate has been approved"}
-              {estimate.accepted_at && (
-                <> on {format(new Date(estimate.accepted_at), "MMM d, yyyy 'at' h:mm a")}</>
               )}
-            </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-2"
+                onClick={() => setShowApproveDialog(true)}
+                disabled={estimate.status === "accepted" || manualApproving}
+              >
+                <Check className="h-4 w-4" />
+                {estimate.status === "accepted" ? "Approved" : manualApproving ? "Approving..." : "Approve"}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-2"
+                onClick={handleGeneratePortalLink}
+                disabled={generatingLink}
+              >
+                <Link2 className="h-4 w-4" />
+                {generatingLink ? "Generating..." : "Client Portal"}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-2"
+                onClick={handleDownloadPDF}
+              >
+                <Download className="h-4 w-4" />
+                Download PDF
+              </Button>
+            </div>
           </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground">Line Items</h3>
-          <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
-            <Edit2 className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
         </div>
+      </div>
 
-        {hasOriginalEstimate && (
-          <div className="flex gap-2">
-            <Button
-              variant={!showingOriginal ? "default" : "outline"}
-              size="sm"
-              className="flex-1"
-              onClick={() => setShowingOriginal(false)}
-            >
-              Modified
-            </Button>
-            <Button
-              variant={showingOriginal ? "default" : "outline"}
-              size="sm"
-              className="flex-1"
-              onClick={() => setShowingOriginal(true)}
-            >
-              Original
-            </Button>
-          </div>
-        )}
-
-        <div className="card-elevated rounded-lg overflow-hidden">
-          {displayLineItems.length > 0 ? (
-            displayLineItems
-              .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-              .map((item, index, arr) => (
-                <div
-                  key={item.id}
-                  className={cn(
-                    "p-4",
-                    index < arr.length - 1 && "border-b border-border"
-                  )}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <p className="font-medium text-foreground">{item.name}</p>
-                        {item.is_change_order && item.changed_at && (() => {
-                          const changedDate = new Date(item.changed_at);
-                          const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
-                          return hoursSinceChange < 24;
-                        })() && (
-                          <Badge
-                            variant={
-                              item.change_order_type === 'added' ? 'default' :
-                              item.change_order_type === 'edited' ? 'secondary' :
-                              'outline'
-                            }
-                            className="text-2xs"
-                          >
-                            {item.change_order_type === 'added' && 'New'}
-                            {item.change_order_type === 'edited' && 'Modified'}
-                          </Badge>
-                        )}
-                        {item.is_change_order && item.change_order_approved === false && (
-                          <Badge
-                            variant="outline"
-                            className="text-2xs bg-amber-50 text-amber-700 border-amber-200"
-                          >
-                            Pending Approval
-                          </Badge>
-                        )}
-                        {item.is_change_order && item.change_order_approved === true && (
-                          <Badge
-                            variant="outline"
-                            className="text-2xs bg-emerald-50 text-emerald-700 border-emerald-200"
-                          >
-                            <CheckCheck className="h-3 w-3 mr-1" />
-                            Approved
-                          </Badge>
-                        )}
-                      </div>
-                      {item.description && (() => {
-                        const descriptionId = item.id || `line-item-${index}`;
-                        const hasLongDescription = item.description.trim().length > 180;
-                        const isDescriptionExpanded = expandedDescriptions.has(descriptionId);
-                        const toggleDescription = () => {
-                          setExpandedDescriptions((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(descriptionId)) {
-                              next.delete(descriptionId);
-                            } else {
-                              next.add(descriptionId);
-                            }
-                            return next;
-                          });
-                        };
-
-                        return (
-                          <div className="mt-0.5">
-                            <p
-                              className={`text-sm text-muted-foreground break-words ${
-                                isDescriptionExpanded ? "" : "line-clamp-3"
-                              }`}
-                            >
-                              {item.description}
-                            </p>
-                            {hasLongDescription && (
-                              <button
-                                type="button"
-                                className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
-                                onClick={toggleDescription}
-                              >
-                                {isDescriptionExpanded ? "View less" : "View more"}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {item.quantity} {item.unit} × ${Number(item.unit_price).toFixed(2)}
+      <div className="p-4 max-w-[var(--content-max-width)] m-auto">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
+          <div className="space-y-4" data-testid="estimate-details-left-column">
+            <div className="card-elevated rounded-lg overflow-hidden">
+              <div className="p-4">
+                <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Estimates</h3>
+                {estimate.has_pending_changes && !showingOriginal ? (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+                      <p className="text-sm text-amber-900">
+                        This estimate has pending changes awaiting customer approval. Changes have been sent to the customer for review.
                       </p>
                     </div>
-                    <p className="font-semibold text-foreground ml-4">
-                      ${Number(item.total).toLocaleString()}
+                  </div>
+                ) : estimate.status === "accepted" && (
+                  <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Check className="h-4 w-4 text-emerald-600" />
+                      <h4 className="font-semibold text-foreground">Approved</h4>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {(estimate as any).approved_via === "customer_link"
+                        ? "Approved by customer via approval link"
+                        : (estimate as any).approved_via === "manual"
+                          ? "Manually marked as approved"
+                          : "This estimate has been approved"}
+                      {estimate.accepted_at && (
+                        <> on {format(new Date(estimate.accepted_at), "MMM d, yyyy 'at' h:mm a")}</>
+                      )}
                     </p>
                   </div>
-                </div>
-              ))
-          ) : (
-            <div className="p-4 text-center text-muted-foreground">
-              No line items found
-            </div>
-          )}
-        </div>
-
-        <div className="card-elevated rounded-lg p-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span className="text-foreground">${Number(estimate.subtotal).toLocaleString()}</span>
-          </div>
-          {Number(estimate.profit_margin) > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Profit Margin ({Number(estimate.profit_margin).toFixed(0)}%)</span>
-              <span className="text-foreground">${(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString()}</span>
-            </div>
-          )}
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Tax ({(Number(estimate.tax_rate) * 100).toFixed(0)}%)</span>
-            <span className="text-foreground">${Number(estimate.tax).toLocaleString()}</span>
-          </div>
-          {Number(estimate.discount) > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Discount</span>
-              <span className="text-[hsl(var(--status-confirmed))]">-${Number(estimate.discount).toLocaleString()}</span>
-            </div>
-          )}
-          <div className="flex justify-between pt-2 border-t border-border">
-            <span className="font-semibold text-foreground">Total</span>
-            <span className="font-bold text-lg text-foreground">${Number(estimate.total).toLocaleString()}</span>
-          </div>
-        </div>
-
-        {estimate.has_pending_changes && (
-          <Alert className="bg-amber-50 border-amber-200">
-            <AlertCircle className="h-4 w-4 text-amber-600" />
-            <AlertDescription className="text-amber-900">
-              This estimate has pending changes awaiting customer approval. Changes have been sent to the customer for review.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {hasChangeOrders && !estimate.has_pending_changes && (() => {
-          const recentChanges = estimate.line_items.some((item: any) => {
-            if (!item.is_change_order || !item.changed_at) return false;
-            const changedDate = new Date(item.changed_at);
-            const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
-            return hoursSinceChange < 24;
-          });
-
-          if (!recentChanges) return null;
-
-          return (
-            <Alert>
-              <History className="h-4 w-4" />
-              <AlertDescription>
-                This estimate has been modified. Recent changes are marked with badges on the line items above.
-              </AlertDescription>
-            </Alert>
-          );
-        })()}
-
-        {estimate.notes && (
-          <>
-            <h3 className="font-semibold text-foreground">Notes</h3>
-            <div className="card-elevated rounded-lg p-4">
-              <p className="text-sm text-muted-foreground">{estimate.notes}</p>
-            </div>
-          </>
-        )}
-
-        {relatedInvoices.length > 0 && (
-          <>
-            <h3 className="font-semibold text-foreground">Invoices</h3>
-            <div className="space-y-2">
-              {relatedInvoices.map((invoice) => (
-                <button
-                  key={invoice.id}
-                  onClick={() => navigate(`/payments/invoices/${invoice.id}`)}
-                  className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-medium text-foreground">
-                          Invoice {invoice.invoice_number ? `#${invoice.invoice_number}` : ''}
-                        </p>
-                        <span className={cn(
-                          "text-2xs px-2 py-1 rounded-full",
-                          invoice.status === "paid" && "bg-emerald-100 text-emerald-800",
-                          invoice.status === "sent" && "bg-blue-100 text-blue-800",
-                          invoice.status === "draft" && "bg-secondary text-secondary-foreground",
-                          invoice.status === "overdue" && "bg-red-100 text-red-800"
-                        )}>
-                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                        </span>
-                      </div>
-                      {invoice.due_date && (
-                        <p className="text-sm text-muted-foreground">
-                          Due {format(new Date(invoice.due_date), "MMM d, yyyy")}
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-right ml-4">
-                      <p className="font-bold text-foreground">${Number(invoice.total).toLocaleString()}</p>
-                      {Number(invoice.balance_due) > 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          ${Number(invoice.balance_due).toLocaleString()} due
-                        </p>
-                      )}
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground ml-2" />
+                )}
+                {hasOriginalEstimate && (
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      variant={!showingOriginal ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setShowingOriginal(false)}
+                    >
+                      Modified
+                    </Button>
+                    <Button
+                      variant={showingOriginal ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setShowingOriginal(true)}
+                    >
+                      Original
+                    </Button>
                   </div>
-                </button>
-              ))}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Total Invoiced: ${relatedInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toLocaleString()} of ${Number(estimate.total).toLocaleString()}
-            </div>
-          </>
-        )}
-      </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
+                  <h4 className="text-lg font-semibold text-foreground">Line Items</h4>
+                  <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
+                    <Edit2 className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                </div>
+              </div>
 
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent pt-8">
-            {portalLink && (
-              <div className="flex items-center gap-2 bg-card border border-border rounded-xl p-3 mb-3 shadow-sm">
-                <input
-                  type="text"
-                  readOnly
-                  value={portalLink}
-                  className="flex-1 bg-transparent text-sm text-foreground outline-none truncate"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCopyLink}
-                  className="shrink-0"
-                >
-                  {copied ? (
-                    <CheckCheck className="h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
+              {groupedLineItems.length > 0 ? (
+                groupedLineItems.map((group, groupIndex) => (
+                  <div key={group.category}>
+                    <div
+                      className="px-4 py-2 text-muted-foreground"
+                    >
+                      <p
+                        className="text-xs uppercase tracking-wide"
+                        data-testid="line-item-category-heading"
+                      >
+                        {CATEGORY_LABELS[group.category]}
+                      </p>
+                    </div>
+                    {group.items.map((item, itemIndex) => (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "p-4",
+                          itemIndex < group.items.length - 1 && "border-b border-border",
+                        )}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <p className="font-medium text-foreground">{item.name}</p>
+                              {item.is_change_order && item.changed_at && (() => {
+                                const changedDate = new Date(item.changed_at);
+                                const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
+                                return hoursSinceChange < 24;
+                              })() && (
+                                <Badge
+                                  variant={
+                                    item.change_order_type === 'added' ? 'default' :
+                                    item.change_order_type === 'edited' ? 'secondary' :
+                                    'outline'
+                                  }
+                                  className="text-2xs"
+                                >
+                                  {item.change_order_type === 'added' && 'New'}
+                                  {item.change_order_type === 'edited' && 'Modified'}
+                                </Badge>
+                              )}
+                              {item.is_change_order && item.change_order_approved === false && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border-amber-200"
+                                >
+                                  Pending Approval
+                                </Badge>
+                              )}
+                              {item.is_change_order && item.change_order_approved === true && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border-emerald-200"
+                                >
+                                  <CheckCheck className="h-3 w-3 mr-1" />
+                                  Approved
+                                </Badge>
+                              )}
+                            </div>
+                            {item.description && (() => {
+                              const descriptionId = item.id || `line-item-${groupIndex}-${itemIndex}`;
+                              const hasLongDescription = item.description.trim().length > 180;
+                              const isDescriptionExpanded = expandedDescriptions.has(descriptionId);
+                              const toggleDescription = () => {
+                                setExpandedDescriptions((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(descriptionId)) {
+                                    next.delete(descriptionId);
+                                  } else {
+                                    next.add(descriptionId);
+                                  }
+                                  return next;
+                                });
+                              };
+
+                              return (
+                                <div className="mt-0.5">
+                                  <p
+                                    className={`text-sm text-muted-foreground break-words ${
+                                      isDescriptionExpanded ? "" : "line-clamp-3"
+                                    }`}
+                                  >
+                                    {item.description}
+                                  </p>
+                                  {hasLongDescription && (
+                                    <button
+                                      type="button"
+                                      className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                                      onClick={toggleDescription}
+                                    >
+                                      {isDescriptionExpanded ? "View less" : "View more"}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                          <div className="ml-4 text-right">
+                            <p className="font-semibold text-foreground">
+                              ${Number(item.total).toLocaleString()}
+                            </p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {item.quantity} {item.unit} × ${Number(item.unit_price).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center text-muted-foreground">
+                  No line items found
+                </div>
+              )}
+
+              <div className="mx-4 my-4 rounded-lg bg-secondary p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-foreground">${Number(estimate.subtotal).toLocaleString()}</span>
+                </div>
+                {Number(estimate.profit_margin) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Profit Margin ({Number(estimate.profit_margin).toFixed(0)}%)</span>
+                    <span className="text-foreground">${(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Tax ({(Number(estimate.tax_rate) * 100).toFixed(0)}%)</span>
+                  <span className="text-foreground">${Number(estimate.tax).toLocaleString()}</span>
+                </div>
+                {Number(estimate.discount) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Discount</span>
+                    <span className="text-[hsl(var(--status-confirmed))]">-${Number(estimate.discount).toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-2 border-t border-border">
+                  <span className="font-semibold text-foreground">Total</span>
+                  <span className="font-bold text-lg text-foreground">${Number(estimate.total).toLocaleString()}</span>
+                </div>
+              </div>
+
+              {estimate.notes && (
+                <div className="p-4 border-t border-border">
+                  <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Notes</h3>
+                  <p className="text-sm text-muted-foreground mt-2">{estimate.notes}</p>
+                </div>
+              )}
+            </div>
+
+            {hasChangeOrders && !estimate.has_pending_changes && (() => {
+              const recentChanges = estimate.line_items.some((item: any) => {
+                if (!item.is_change_order || !item.changed_at) return false;
+                const changedDate = new Date(item.changed_at);
+                const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
+                return hoursSinceChange < 24;
+              });
+
+              if (!recentChanges) return null;
+
+              return (
+                <Alert>
+                  <History className="h-4 w-4" />
+                  <AlertDescription>
+                    This estimate has been modified. Recent changes are marked with badges on the line items above.
+                  </AlertDescription>
+                </Alert>
+              );
+            })()}
+
+          </div>
+
+          <div className="space-y-4" data-testid="estimate-details-right-column">
+            <button
+              className="w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+              onClick={() => estimate.customer && navigate(`/customers/${estimate.customer.id}`)}
+            >
+              <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
+                <div className="flex gap-2 items-center">
+                  <User className="w-3 h-3" />
+                  <p className="text-xs uppercase tracking-wide">Client</p>
+                </div>
+                <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  View
+                </span>
+              </div>
+              <div className="mt-2">
+                <p className="text-xl font-semibold leading-tight text-foreground">
+                  {estimate.customer?.name || "Unknown"}
+                </p>
+              </div>
+            </button>
+
+            {isRecurringQuote ? (
+              <div className="w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm">
+                <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
+                <div className="flex gap-2 items-center">
+                    <Briefcase className="w-3 h-3" />
+                  </div>
+                  <StatusBadge status={getJobStatusBadgeStatus(rawJobStatus) as any}>
+                    {jobStatusLabel}
+                  </StatusBadge>
+                </div>
+                <div className="mt-2">
+                  <p className="text-xl font-semibold leading-tight text-foreground">
+                    {estimate.recurring_job?.service_type || estimate.job?.service_type || (estimate as any).service_type || "No service type"}
+                  </p>
+                  <p className="mt-2 text-muted-foreground text-xs text-pretty">
+                    {estimate.recurring_job?.name || "Unknown"}
+                  </p>
+                </div>
+                <div className="mt-6">
+                  <div className="w-full rounded-full bg-muted px-5 py-3 text-center font-semibold whitespace-nowrap text-foreground text-sm">
+                    View Details
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+                onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
+              >
+                <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
+                  <div className="flex gap-2 items-center">
+                    <Briefcase className="w-3 h-3" />
+                  </div>
+                  <StatusBadge status={getJobStatusBadgeStatus(rawJobStatus) as any}>
+                    {jobStatusLabel}
+                  </StatusBadge>
+                </div>
+                <div className="mt-2">
+                  <p className="text-xl font-semibold leading-tight text-foreground">
+                    {estimate.job?.service_type || (estimate as any).service_type || "No service type"}
+                  </p>
+                  <p className="mt-2 text-muted-foreground text-xs text-pretty">
+                    {estimate.job?.name || "Unknown"}
+                  </p>
+                </div>
+                <div className="mt-6">
+                  <div className="w-full rounded-full bg-muted px-5 py-3 text-center font-semibold whitespace-nowrap text-foreground text-sm">
+                    View Details
+                  </div>
+                </div>
+              </button>
+            )}
+
+            {estimate.job_id ? (
+              <JobInvoiceCard
+                jobId={estimate.job_id}
+                customerEmail={estimate.customer?.email}
+                customerName={estimate.customer?.name}
+                estimateTotal={Number(estimate.total)}
+              />
+            ) : (
+              <div className="card-elevated rounded-lg p-4">
+                <h3 className="font-semibold text-foreground">Invoices</h3>
+                <p className="text-sm text-muted-foreground mt-3">
+                  Invoices are available on job-based estimates.
+                </p>
               </div>
             )}
-            <div className="flex gap-3">
-              {estimate.status !== "accepted" && (
-                <>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-14 gap-2"
-                    onClick={() => setShowApproveDialog(true)}
-                    disabled={manualApproving}
-                  >
-                    <Check className="h-4 w-4" />
-                    {manualApproving ? "Approving..." : "Approve"}
-                  </Button>
-                  <Button
-                    className="flex-1 h-14 gap-2"
-                    onClick={handleGeneratePortalLink}
-                    disabled={generatingLink}
-                  >
-                    <Link2 className="h-4 w-4" />
-                    {generatingLink ? "Generating..." : "Client Portal"}
-                  </Button>
-                </>
-              )}
-              {estimate.status === "accepted" && (
-                <>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-14 gap-2"
-                    onClick={handleGeneratePortalLink}
-                    disabled={generatingLink}
-                  >
-                    <Link2 className="h-4 w-4" />
-                    {generatingLink ? "Generating..." : "Client Portal"}
-                  </Button>
-                  {!isFullyInvoiced && (
-                    <Button
-                      className="flex-1 h-14 gap-2"
-                      onClick={handleCreateInvoice}
-                    >
-                      <FileCheck className="h-4 w-4" />
-                      Create Invoice
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
           </div>
+        </div>
+      </div>
 
       <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <AlertDialogContent>
@@ -991,12 +1072,6 @@ export default function EstimateDetail() {
         onOpenChange={setEditModalOpen}
         estimate={estimate}
         onSuccess={handleEstimateSuccess}
-      />
-
-      <CreateInvoiceModal
-        open={invoiceModalOpen}
-        onOpenChange={setInvoiceModalOpen}
-        estimate={estimate}
       />
 
       <MobileNav />

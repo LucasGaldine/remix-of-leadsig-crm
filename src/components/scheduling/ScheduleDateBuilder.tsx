@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { Calendar as CalendarIcon, Plus, Trash2 } from "lucide-react";
@@ -36,11 +36,16 @@ interface ScheduleDateBuilderProps {
 export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDateBuilderProps) {
   const { currentAccount } = useAuth();
   const [calendarMonth, setCalendarMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [activeScheduleIndex, setActiveScheduleIndex] = useState<number | null>(null);
+  const [isAddingNextDate, setIsAddingNextDate] = useState(false);
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [hoveredUnavailableReason, setHoveredUnavailableReason] = useState<string | null>(null);
 
+  const activeSchedule = activeScheduleIndex !== null ? schedules[activeScheduleIndex] : undefined;
+  const selectedDate = activeSchedule?.date && !isAddingNextDate
+    ? new Date(`${activeSchedule.date}T00:00:00`)
+    : undefined;
   const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
@@ -208,21 +213,66 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
     return null;
   };
 
-  const addSchedule = () => {
-    if (!selectedDate) {
-      toast.error("Please select a date");
+  useEffect(() => {
+    if (schedules.length === 0) {
+      setActiveScheduleIndex(null);
+      if (!isAddingNextDate) {
+        setScheduledTimeStart("");
+        setScheduledTimeEnd("");
+      }
       return;
     }
 
-    const selectedDateString = format(selectedDate, "yyyy-MM-dd");
+    if (activeScheduleIndex === null && !isAddingNextDate) {
+      setActiveScheduleIndex(schedules.length - 1);
+      return;
+    }
 
-    if (dayOffDatesSet.has(selectedDateString)) {
+    if (activeScheduleIndex !== null && activeScheduleIndex >= schedules.length) {
+      setActiveScheduleIndex(schedules.length - 1);
+    }
+  }, [activeScheduleIndex, isAddingNextDate, schedules.length]);
+
+  useEffect(() => {
+    if (isAddingNextDate || activeScheduleIndex === null) return;
+
+    const schedule = schedules[activeScheduleIndex];
+    if (!schedule) return;
+
+    setScheduledTimeStart(schedule.timeStart || "");
+    setScheduledTimeEnd(schedule.timeEnd || "");
+  }, [activeScheduleIndex, isAddingNextDate, schedules]);
+
+  const canUseDate = (dateStr: string) => {
+    if (dayOffDatesSet.has(dateStr)) {
       toast.error("This date is marked as a day off.");
+      return false;
+    }
+
+    if (effectiveFullyBookedDatesSet.has(dateStr)) {
+      toast.error("Daily job limit has been reached for this date.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (!date) return;
+    const selectedDateString = format(date, "yyyy-MM-dd");
+
+    if (!canUseDate(selectedDateString)) {
       return;
     }
 
-    if (effectiveFullyBookedDatesSet.has(selectedDateString)) {
-      toast.error("Daily job limit has been reached for this date.");
+    if (activeScheduleIndex !== null && !isAddingNextDate) {
+      onSchedulesChange(
+        schedules.map((schedule, index) =>
+          index === activeScheduleIndex
+            ? { ...schedule, date: selectedDateString }
+            : schedule,
+        ),
+      );
       return;
     }
 
@@ -234,14 +284,44 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
         timeEnd: scheduledTimeEnd,
       },
     ]);
-    setSelectedDate(undefined);
+    setActiveScheduleIndex(schedules.length);
+    setIsAddingNextDate(false);
+  };
+
+  const addSchedule = () => {
+    setIsAddingNextDate(true);
+    setActiveScheduleIndex(null);
     setScheduledTimeStart("");
     setScheduledTimeEnd("");
-    toast.success("Schedule date added");
   };
 
   const removeSchedule = (index: number) => {
     onSchedulesChange(schedules.filter((_, scheduleIndex) => scheduleIndex !== index));
+    if (schedules.length <= 1) {
+      setActiveScheduleIndex(null);
+      setIsAddingNextDate(false);
+      return;
+    }
+
+    if (activeScheduleIndex === null) return;
+    if (activeScheduleIndex === index) {
+      setActiveScheduleIndex(Math.max(0, index - 1));
+      return;
+    }
+    if (activeScheduleIndex > index) {
+      setActiveScheduleIndex(activeScheduleIndex - 1);
+    }
+  };
+
+  const updateActiveScheduleTime = (field: "timeStart" | "timeEnd", value: string) => {
+    if (activeScheduleIndex === null || isAddingNextDate) return;
+    onSchedulesChange(
+      schedules.map((schedule, index) =>
+        index === activeScheduleIndex
+          ? { ...schedule, [field]: value }
+          : schedule,
+      ),
+    );
   };
 
   return (
@@ -257,7 +337,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
             <Calendar
               mode="single"
               selected={selectedDate}
-              onSelect={setSelectedDate}
+              onSelect={handleDateSelect}
               onMonthChange={setCalendarMonth}
               onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
               onDayMouseLeave={() => setHoveredUnavailableReason(null)}
@@ -331,7 +411,11 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
                 id="schedule-start"
                 type="time"
                 value={scheduledTimeStart}
-                onChange={(event) => setScheduledTimeStart(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setScheduledTimeStart(value);
+                  updateActiveScheduleTime("timeStart", value);
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -340,12 +424,16 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
                 id="schedule-end"
                 type="time"
                 value={scheduledTimeEnd}
-                onChange={(event) => setScheduledTimeEnd(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setScheduledTimeEnd(value);
+                  updateActiveScheduleTime("timeEnd", value);
+                }}
               />
             </div>
           </div>
 
-          <Button onClick={addSchedule} disabled={!selectedDate} className="w-full">
+          <Button onClick={addSchedule} className="w-full">
             <Plus className="h-4 w-4 mr-2" />
             Add Schedule Date
           </Button>
@@ -358,7 +446,17 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
                   const [year, month, day] = schedule.date.split("-").map(Number);
                   const localDate = new Date(year, month - 1, day);
                   return (
-                    <div key={`${schedule.date}-${index}`} className="flex items-center justify-between p-2 bg-muted rounded">
+                    <div
+                      key={`${schedule.date}-${index}`}
+                      className={cn(
+                        "flex items-center justify-between p-2 bg-muted rounded cursor-pointer border border-transparent",
+                        activeScheduleIndex === index && !isAddingNextDate && "border-primary/40",
+                      )}
+                      onClick={() => {
+                        setIsAddingNextDate(false);
+                        setActiveScheduleIndex(index);
+                      }}
+                    >
                       <div className="text-sm">
                         <div className="font-medium">{format(localDate, "EEEE, MMM d, yyyy")}</div>
                         {schedule.timeStart && schedule.timeEnd && (

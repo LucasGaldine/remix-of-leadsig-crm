@@ -104,6 +104,13 @@ export const searchPages: SearchPage[] = [
     keywords: ["preferences", "configuration", "setup"],
   },
   {
+    name: "Report a Bug",
+    path: "/settings?reportBug=1",
+    icon: "settings",
+    description: "Send bug details to support",
+    keywords: ["bug", "report", "issue", "broken", "problem", "support"],
+  },
+  {
     name: "Company Profile",
     path: "/settings/company",
     icon: "settings",
