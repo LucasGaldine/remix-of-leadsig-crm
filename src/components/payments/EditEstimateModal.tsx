@@ -168,10 +168,14 @@ function ExpandedLineItem({
             leadId={jobId}
             onApply={(name, quantity, unit, unitPrice, description) => {
               onUpdate("name", name);
-              onUpdate("quantity", quantity);
+              if (quantity.trim().length > 0) {
+                onUpdate("quantity", quantity);
+              }
               onUpdate("unit", unit);
               onUpdate("unit_price", unitPrice);
-              onUpdate("description", description);
+              if (description.trim().length > 0) {
+                onUpdate("description", description);
+              }
             }}
           />
           <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
@@ -363,9 +367,11 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   };
 
   const updateLineItem = (index: number, field: keyof LineItemForm, value: string) => {
-    const updated = [...lineItems];
-    updated[index] = { ...updated[index], [field]: value };
-    setLineItems(updated);
+    setLineItems((previous) => {
+      const updated = [...previous];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
   };
 
   const markForDelete = (index: number) => {

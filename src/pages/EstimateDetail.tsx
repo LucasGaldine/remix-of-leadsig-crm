@@ -620,28 +620,32 @@ export default function EstimateDetail() {
 
 
       <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-0">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-3">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                  estimate.status === "accepted"
-                    ? "status-confirmed border-[hsl(var(--status-confirmed))]/40"
-                    : "border-border bg-muted/60 text-muted-foreground"
-                )}
-              >
-                <StatusIcon className="h-3 w-3" />
-                {config.label}
-              </span>
-              {estimate.has_pending_changes && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
-                  <AlertCircle className="h-3 w-3 text-amber-700" />
-                  Changes Pending Approval
-                </span>
+        <div className="mb-3 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                estimate.status === "accepted"
+                  ? "status-confirmed border-[hsl(var(--status-confirmed))]/40"
+                  : "border-border bg-muted/60 text-muted-foreground"
               )}
-            </div>
-            <h2 className="text-xl font-bold text-foreground mt-2">
+            >
+              <StatusIcon className="h-3 w-3" />
+              {config.label}
+            </span>
+            {estimate.has_pending_changes && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+                <AlertCircle className="h-3 w-3 text-amber-700" />
+                Changes Pending Approval
+              </span>
+            )}
+          </div>
+          <div
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3"
+            data-testid="estimate-header-summary-row"
+          >
+            <div className="min-w-0">
+            <h2 className="text-xl font-bold text-foreground">
               {isRecurringQuote ? "Quote" : "Estimate"}
             </h2>
             <p className="text-muted-foreground">
@@ -649,20 +653,22 @@ export default function EstimateDetail() {
                 ? (estimate.recurring_job?.name || "Job Schedule")
                 : (estimate.job?.name || "Unknown Job")}
             </p>
-          </div>
-          <div className="w-full md:w-auto text-right">
-            <p className="text-2xl font-bold text-foreground">
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-foreground">
               ${Number(displayTotal).toLocaleString()}
-            </p>
-            {estimate.expires_at && (
-              <p className="text-sm text-muted-foreground">
-                Expires {format(new Date(estimate.expires_at), "MMM d, yyyy")}
               </p>
-            )}
-            <div
-              className="mt-3 flex flex-wrap items-center justify-start gap-2 md:justify-end"
-              data-testid="estimate-header-quick-actions"
-            >
+              {estimate.expires_at && (
+                <p className="text-sm text-muted-foreground">
+                  Expires {format(new Date(estimate.expires_at), "MMM d, yyyy")}
+                </p>
+              )}
+            </div>
+          </div>
+          <div
+            className="flex flex-nowrap items-center justify-start gap-2"
+            data-testid="estimate-header-quick-actions"
+          >
               {portalLink && (
                 <div className="hidden md:flex items-center gap-2 bg-card border border-border rounded-full px-3 py-2 shadow-sm">
                   <input
@@ -688,7 +694,7 @@ export default function EstimateDetail() {
               <Button
                 variant="secondary"
                 size="sm"
-                className="gap-2"
+                className="gap-2 flex-1 sm:flex-none"
                 onClick={() => setShowApproveDialog(true)}
                 disabled={estimate.status === "accepted" || manualApproving}
               >
@@ -698,7 +704,7 @@ export default function EstimateDetail() {
               <Button
                 variant="secondary"
                 size="sm"
-                className="gap-2"
+                className="gap-2 flex-1 sm:flex-none"
                 onClick={handleGeneratePortalLink}
                 disabled={generatingLink}
               >
@@ -708,13 +714,12 @@ export default function EstimateDetail() {
               <Button
                 variant="secondary"
                 size="sm"
-                className="gap-2"
+                className="gap-2 flex-1 sm:flex-none"
                 onClick={handleDownloadPDF}
               >
                 <Download className="h-4 w-4" />
-                Download PDF
+                Download
               </Button>
-            </div>
           </div>
         </div>
       </div>
@@ -1020,7 +1025,7 @@ export default function EstimateDetail() {
                 </div>
                 <div className="mt-6">
                   <div className="w-full rounded-full bg-muted px-5 py-3 text-center font-semibold whitespace-nowrap text-foreground text-sm">
-                    View Details
+                    View Job
                   </div>
                 </div>
               </button>

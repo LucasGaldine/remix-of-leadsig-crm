@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
@@ -38,6 +38,28 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("@/components/leads/QuickEstimateLineItem", () => ({
+  QuickEstimateLineItem: ({
+    onApply,
+  }: {
+    leadId: string;
+    onApply: (
+      name: string,
+      quantity: string,
+      unit: string,
+      unitPrice: string,
+      description: string,
+    ) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => onApply("Concrete Service", "", "sq ft", "125.50", "")}
+    >
+      Quick Estimate
+    </button>
+  ),
+}));
+
 describe("EditEstimateModal responsive width", () => {
   it("applies a mobile-safe max width with desktop override", () => {
     render(
@@ -72,5 +94,47 @@ describe("EditEstimateModal responsive width", () => {
     const content = screen.getByTestId("edit-estimate-dialog-content");
     expect(content).toHaveClass("max-w-[calc(100dvw-1rem)]");
     expect(content).toHaveClass("sm:max-w-2xl");
+  });
+
+  it("applies quick estimate values without wiping an existing description", () => {
+    render(
+      <EditEstimateModal
+        open
+        onOpenChange={() => {}}
+        onSuccess={() => {}}
+        estimate={{
+          id: "est_1",
+          account_id: "acct_1",
+          job_id: "job_1",
+          tax_rate: 0.08,
+          discount: 0,
+          status: "draft",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Labor",
+              description: "Demo",
+              quantity: 1,
+              unit: "each",
+              unit_price: 100,
+              category: "labor",
+              is_change_order: false,
+              change_order_type: null,
+            },
+          ],
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /add item/i }));
+
+    fireEvent.change(screen.getByLabelText(/description/i), {
+      target: { value: "Keep this description" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /quick estimate/i }));
+
+    expect(screen.getByLabelText(/title/i)).toHaveValue("Concrete Service");
+    expect(screen.getByLabelText(/description/i)).toHaveValue("Keep this description");
   });
 });

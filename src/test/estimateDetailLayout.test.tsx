@@ -166,8 +166,12 @@ describe("EstimateDetail layout", () => {
     );
 
     const headerActions = await screen.findByTestId("estimate-header-quick-actions");
+    const summaryRow = screen.getByTestId("estimate-header-summary-row");
     const leftColumn = await screen.findByTestId("estimate-details-left-column");
     const rightColumn = screen.getByTestId("estimate-details-right-column");
+
+    expect(within(summaryRow).getByRole("heading", { name: /^Estimate$/i })).toBeInTheDocument();
+    expect(within(summaryRow).getByText("$1,284")).toBeInTheDocument();
 
     expect(within(leftColumn).getByRole("heading", { name: /line items/i })).toBeInTheDocument();
     expect(within(leftColumn).getByRole("heading", { name: /notes/i })).toBeInTheDocument();
@@ -191,9 +195,10 @@ describe("EstimateDetail layout", () => {
       ?.parentElement as HTMLElement;
     expect(materialsRow).not.toHaveClass("border-b");
 
+    expect(headerActions).toHaveClass("flex-nowrap");
     expect(within(headerActions).getByRole("button", { name: /^Approve$/i })).toBeInTheDocument();
     expect(within(headerActions).getByRole("button", { name: /^Client Portal$/i })).toBeInTheDocument();
-    expect(within(headerActions).getByRole("button", { name: /^Download PDF$/i })).toBeInTheDocument();
+    expect(within(headerActions).getByRole("button", { name: /^Download$/i })).toBeInTheDocument();
 
     expect(within(rightColumn).getByText("Client")).toBeInTheDocument();
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
