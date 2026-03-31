@@ -357,14 +357,28 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
     const approvedEditedOriginalIds = new Set(
       nonDeletedItems
-        .filter((item: any) => item.is_change_order && item.change_order_type === 'edited' && item.change_order_approved === true && item.original_line_item_id)
+        .filter(
+          (item: any) =>
+            item.is_change_order &&
+            item.change_order_type === 'edited' &&
+            item.change_order_approved === true &&
+            item.original_line_item_id
+        )
         .map((item: any) => item.original_line_item_id)
+    );
+
+    const hasApprovalMetadata = nonDeletedItems.some(
+      (item: any) => item.change_order_approved !== undefined
     );
 
     return nonDeletedItems
       .filter((item: any) => {
         if (!item.is_change_order) {
           return !approvedEditedOriginalIds.has(item.id);
+        }
+
+        if (!hasApprovalMetadata) {
+          return true;
         }
 
         return item.change_order_approved === true || item.change_order_approved === false;
