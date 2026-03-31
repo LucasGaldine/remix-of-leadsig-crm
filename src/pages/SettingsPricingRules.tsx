@@ -9,7 +9,7 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -42,7 +42,8 @@ export default function SettingsPricingRules() {
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
   const [rules, setRules] = useState<Record<ServiceType, PricingRule>>({} as Record<ServiceType, PricingRule>);
-  const [activeTab, setActiveTab] = useState<ServiceType>("pavers");
+  const pricingServiceTypes = Object.keys(DEFAULT_PRICING_RULES) as ServiceType[];
+  const [activeTab, setActiveTab] = useState<ServiceType>(pricingServiceTypes[0] || "pavers");
   const [taxRate, setTaxRate] = useState<string>("");
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
@@ -78,7 +79,7 @@ export default function SettingsPricingRules() {
     // Initialize with defaults and merge with saved rules
     const initialRules: Record<ServiceType, PricingRule> = {} as Record<ServiceType, PricingRule>;
     
-    (Object.keys(DEFAULT_PRICING_RULES) as ServiceType[]).forEach((serviceType) => {
+    pricingServiceTypes.forEach((serviceType) => {
       const savedRule = data?.find((r) => r.service_type === serviceType);
       if (savedRule) {
         initialRules[serviceType] = savedRule as PricingRule;
@@ -125,7 +126,7 @@ export default function SettingsPricingRules() {
 
       if (taxError) throw taxError;
 
-      for (const serviceType of Object.keys(rules) as ServiceType[]) {
+      for (const serviceType of pricingServiceTypes) {
         const rule = rules[serviceType];
 
         if (rule.id) {
@@ -192,7 +193,7 @@ export default function SettingsPricingRules() {
   };
 
   const currentRule = rules[activeTab];
-  const isFencing = activeTab === "fencing";
+  const isLinearFeet = currentRule?.unit_type === "linear_ft";
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -301,168 +302,167 @@ export default function SettingsPricingRules() {
               </div>
             </div>
 
-            {/* Service Tabs */}
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ServiceType)}>
-              <TabsList className="w-full grid grid-cols-5 h-auto">
-                {(Object.keys(SERVICE_LABELS) as ServiceType[]).map((service) => (
-                  <TabsTrigger 
-                    key={service} 
-                    value={service}
-                    className="text-xs px-2 py-2"
-                  >
-                    {service === "pavers" ? "Pavers" :
-                     service === "concrete" ? "Concrete" :
-                     service === "sod" ? "Sod" :
-                     service === "deck" ? "Deck" : "Fence"}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+            {/* Service Type Picker */}
+            <div className="card-elevated rounded-lg p-4 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="pricing-service-type">Service Type</Label>
+                <Select value={activeTab} onValueChange={(value) => setActiveTab(value as ServiceType)}>
+                  <SelectTrigger id="pricing-service-type" className="mt-1.5">
+                    <SelectValue placeholder="Select service type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pricingServiceTypes.map((service) => (
+                      <SelectItem key={service} value={service}>
+                        {SERVICE_LABELS[service]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               {currentRule && (
-                <TabsContent value={activeTab} className="mt-4">
-                  <div className="card-elevated rounded-lg p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-medium">{SERVICE_LABELS[activeTab]}</h3>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => resetToDefaults(activeTab)}
-                      >
-                        <RotateCcw className="h-4 w-4 mr-1" />
-                        Reset
-                      </Button>
-                    </div>
+                <>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium">{SERVICE_LABELS[activeTab]}</h3>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => resetToDefaults(activeTab)}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Reset
+                    </Button>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="labor-rate">
-                          Labor Rate (per {isFencing ? "linear ft" : "sq ft"})
-                        </Label>
-                        <div className="relative mt-1.5">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                          <Input
-                            id="labor-rate"
-                            type="number"
-                            step="0.01"
-                            value={currentRule.base_labor_rate}
-                            onChange={(e) => updateRule(activeTab, "base_labor_rate", parseFloat(e.target.value) || 0)}
-                            className="pl-7"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="material-rate">
-                          Material Rate (per {isFencing ? "linear ft" : "sq ft"})
-                        </Label>
-                        <div className="relative mt-1.5">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                          <Input
-                            id="material-rate"
-                            type="number"
-                            step="0.01"
-                            value={currentRule.material_rate}
-                            onChange={(e) => updateRule(activeTab, "material_rate", parseFloat(e.target.value) || 0)}
-                            className="pl-7"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="waste-factor">Waste Factor (%)</Label>
-                        <div className="relative mt-1.5">
-                          <Input
-                            id="waste-factor"
-                            type="number"
-                            step="1"
-                            value={currentRule.waste_factor}
-                            onChange={(e) => updateRule(activeTab, "waste_factor", parseFloat(e.target.value) || 0)}
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="overhead">Overhead Multiplier</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="labor-rate">
+                        Labor Rate (per {isLinearFeet ? "linear ft" : "sq ft"})
+                      </Label>
+                      <div className="relative mt-1.5">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                         <Input
-                          id="overhead"
+                          id="labor-rate"
                           type="number"
                           step="0.01"
-                          value={currentRule.overhead_multiplier}
-                          onChange={(e) => updateRule(activeTab, "overhead_multiplier", parseFloat(e.target.value) || 1)}
-                          className="mt-1.5"
+                          value={currentRule.base_labor_rate}
+                          onChange={(e) => updateRule(activeTab, "base_labor_rate", parseFloat(e.target.value) || 0)}
+                          className="pl-7"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          1.15 = 15% overhead
-                        </p>
-                      </div>
-
-                      <div className="col-span-2">
-                        <Label htmlFor="profit-margin">Profit Margin (%)</Label>
-                        <div className="relative mt-1.5">
-                          <Input
-                            id="profit-margin"
-                            type="number"
-                            step="1"
-                            value={currentRule.profit_margin}
-                            onChange={(e) => updateRule(activeTab, "profit_margin", parseFloat(e.target.value) || 0)}
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                        </div>
                       </div>
                     </div>
 
-                    {/* Example Calculation */}
-                    <div className="border-t border-border pt-4">
-                      <p className="text-sm font-medium mb-2">Example: 100 {isFencing ? "linear ft" : "sq ft"}</p>
-                      <div className="bg-secondary/50 rounded-lg p-3 space-y-1 text-sm">
-                        {(() => {
-                          const qty = 100;
-                          const labor = qty * currentRule.base_labor_rate;
-                          const material = qty * currentRule.material_rate * (1 + currentRule.waste_factor / 100);
-                          const subtotal = (labor + material) * currentRule.overhead_multiplier;
-                          const total = subtotal * (1 + currentRule.profit_margin / 100);
-                          const low = total * 0.9;
-                          const high = total * 1.15;
-                          
-                          return (
-                            <>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Labor</span>
-                                <span>${labor.toFixed(0)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Materials (+ {currentRule.waste_factor}% waste)</span>
-                                <span>${material.toFixed(0)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">+ Overhead ({((currentRule.overhead_multiplier - 1) * 100).toFixed(0)}%)</span>
-                                <span>${((labor + material) * (currentRule.overhead_multiplier - 1)).toFixed(0)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">+ Profit ({currentRule.profit_margin}%)</span>
-                                <span>${(subtotal * currentRule.profit_margin / 100).toFixed(0)}</span>
-                              </div>
-                              <div className="border-t border-border pt-2 mt-2 flex justify-between font-medium">
-                                <span>Estimate Range</span>
-                                <span className="text-primary">${low.toFixed(0)} – ${high.toFixed(0)}</span>
-                              </div>
-                            </>
-                          );
-                        })()}
+                    <div>
+                      <Label htmlFor="material-rate">
+                        Material Rate (per {isLinearFeet ? "linear ft" : "sq ft"})
+                      </Label>
+                      <div className="relative mt-1.5">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                        <Input
+                          id="material-rate"
+                          type="number"
+                          step="0.01"
+                          value={currentRule.material_rate}
+                          onChange={(e) => updateRule(activeTab, "material_rate", parseFloat(e.target.value) || 0)}
+                          className="pl-7"
+                        />
                       </div>
                     </div>
 
-                    {/* Notes */}
-                    {currentRule.notes && (
-                      <p className="text-xs text-muted-foreground italic">
-                        {currentRule.notes}
+                    <div>
+                      <Label htmlFor="waste-factor">Waste Factor (%)</Label>
+                      <div className="relative mt-1.5">
+                        <Input
+                          id="waste-factor"
+                          type="number"
+                          step="1"
+                          value={currentRule.waste_factor}
+                          onChange={(e) => updateRule(activeTab, "waste_factor", parseFloat(e.target.value) || 0)}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="overhead">Overhead Multiplier</Label>
+                      <Input
+                        id="overhead"
+                        type="number"
+                        step="0.01"
+                        value={currentRule.overhead_multiplier}
+                        onChange={(e) => updateRule(activeTab, "overhead_multiplier", parseFloat(e.target.value) || 1)}
+                        className="mt-1.5"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        1.15 = 15% overhead
                       </p>
-                    )}
+                    </div>
+
+                    <div className="col-span-2">
+                      <Label htmlFor="profit-margin">Profit Margin (%)</Label>
+                      <div className="relative mt-1.5">
+                        <Input
+                          id="profit-margin"
+                          type="number"
+                          step="1"
+                          value={currentRule.profit_margin}
+                          onChange={(e) => updateRule(activeTab, "profit_margin", parseFloat(e.target.value) || 0)}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                      </div>
+                    </div>
                   </div>
-                </TabsContent>
+
+                  {/* Example Calculation */}
+                  <div className="border-t border-border pt-4">
+                    <p className="text-sm font-medium mb-2">Example: 100 {isLinearFeet ? "linear ft" : "sq ft"}</p>
+                    <div className="bg-secondary/50 rounded-lg p-3 space-y-1 text-sm">
+                      {(() => {
+                        const qty = 100;
+                        const labor = qty * currentRule.base_labor_rate;
+                        const material = qty * currentRule.material_rate * (1 + currentRule.waste_factor / 100);
+                        const subtotal = (labor + material) * currentRule.overhead_multiplier;
+                        const total = subtotal * (1 + currentRule.profit_margin / 100);
+                        const low = total * 0.9;
+                        const high = total * 1.15;
+                        
+                        return (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Labor</span>
+                              <span>${labor.toFixed(0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Materials (+ {currentRule.waste_factor}% waste)</span>
+                              <span>${material.toFixed(0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">+ Overhead ({((currentRule.overhead_multiplier - 1) * 100).toFixed(0)}%)</span>
+                              <span>${((labor + material) * (currentRule.overhead_multiplier - 1)).toFixed(0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">+ Profit ({currentRule.profit_margin}%)</span>
+                              <span>${(subtotal * currentRule.profit_margin / 100).toFixed(0)}</span>
+                            </div>
+                            <div className="border-t border-border pt-2 mt-2 flex justify-between font-medium">
+                              <span>Estimate Range</span>
+                              <span className="text-primary">${low.toFixed(0)} – ${high.toFixed(0)}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  {currentRule.notes && (
+                    <p className="text-xs text-muted-foreground italic">
+                      {currentRule.notes}
+                    </p>
+                  )}
+                </>
               )}
-            </Tabs>
+            </div>
           </div>
         )}
 

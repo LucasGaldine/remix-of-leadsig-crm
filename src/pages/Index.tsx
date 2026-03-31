@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -11,13 +12,17 @@ import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader as Loader2, ChevronRight } from "lucide-react";
+import { Loader as Loader2, ChevronRight, Briefcase, PlusCircle } from "lucide-react";
 import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomersNeedingAttention } from "@/hooks/useCustomersNeedingAttention";
 import { CustomerCard } from "@/components/customers/CustomerCard";
+import { Button } from "@/components/ui/button";
+import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
+import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
+
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -35,11 +40,17 @@ export default function Index() {
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
   const { data: customersData = [], isLoading: customersLoading } = useCustomersNeedingAttention();
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [addJobOpen, setAddJobOpen] = useState(false);
 
   const SECTION_LIMIT = 3;
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
   const firstName = profile?.full_name?.split(" ")[0] || "";
+
+  useEffect(() => {
+    console.log("Henry is connected");
+  }, []);
 
   const handleLeadClick = (leadId: string) => {
     navigate(`/leads/${leadId}`);
@@ -109,14 +120,25 @@ export default function Index() {
         {/* Email Verification Banner */}
         {user?.email && <EmailVerificationBanner email={user.email} isEmailConfirmed={isEmailConfirmed} />}
 
-        <div className="flex flex-col pt-8 gap-2">
-          <h1 className="text-4xl font-semibold tracking-tight">{getGreeting()}{firstName ? `, ${firstName}` : ""}</h1>
-          <p className=" text-muted-foreground">{format(new Date(), "EEEE, MMMM d")}</p>
+        <div className="flex items-start justify-between gap-3 pt-8">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-4xl font-semibold tracking-tight">{getGreeting()}{firstName ? `, ${firstName}` : ""}</h1>
+            <p className=" text-muted-foreground">{format(new Date(), "EEEE, MMMM d")}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button onClick={() => setAddLeadOpen(true)} size="sm" className="gap-2">
+              <PlusCircle className="h-4 w-4" />
+              Add Lead
+            </Button>
+            <Button onClick={() => setAddJobOpen(true)} size="sm" variant="outline" className="gap-2">
+              <Briefcase className="h-4 w-4" />
+              Add Job
+            </Button>
+          </div>
         </div>
 
         {/* Quick Stats */}
         <DashboardStatCards />
-
 
         <div className="flex flex-col gap-8">
         {sections.includes("awaiting_approval") && !approvalsLoading && pendingApprovals.length > 0 && (
@@ -300,6 +322,16 @@ export default function Index() {
         {/* Analytics Visuals */}
         <DashboardVisuals />
       </main>
+
+      <AddLeadDialog
+        open={addLeadOpen}
+        onOpenChange={setAddLeadOpen}
+        onLeadCreated={(leadId) => {
+          if (leadId) navigate(`/leads/${leadId}`);
+        }}
+      />
+
+      <CreateJobDialog open={addJobOpen} onOpenChange={setAddJobOpen} />
 
       <MobileNav />
     </div>

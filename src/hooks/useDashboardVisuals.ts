@@ -300,7 +300,7 @@ export function useCostVsQuoted(timeframe: Timeframe) {
 
       const { data, error } = await supabase
         .from("leads")
-        .select("name, estimated_value, actual_value, updated_at")
+        .select("id, customer_id, name, estimated_value, actual_value, updated_at")
         .eq("account_id", currentAccount.id)
         .not("estimated_value", "is", null)
         .gte("updated_at", from.toISOString())
@@ -311,6 +311,8 @@ export function useCostVsQuoted(timeframe: Timeframe) {
       if (error) throw error;
 
       return (data || []).map((lead: any) => ({
+        id: lead.id,
+        customerId: lead.customer_id,
         name: lead.name || "Untitled",
         quoted: Number(lead.estimated_value) || 0,
         actual: Number(lead.actual_value) || 0,

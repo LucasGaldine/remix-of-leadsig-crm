@@ -5,6 +5,7 @@ export const SERVICE_TYPES = [
   "Deck",
   "Fencing",
   "Retaining Wall",
+  "Grading",
   "Landscaping",
   "Hardscaping",
   "Other",

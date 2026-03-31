@@ -9,6 +9,7 @@ export interface JobSchedule {
   scheduled_time_start?: string | null;
   scheduled_time_end?: string | null;
   notes?: string | null;
+  suppress_unassigned: boolean;
   is_completed: boolean;
   completed_at?: string | null;
   created_at: string;

@@ -234,6 +234,24 @@ export default function EstimateDetail() {
   const handleManualApprove = async () => {
     setManualApproving(true);
     try {
+      if (estimate.status === "accepted" && estimate.has_pending_changes) {
+        const { error } = await supabase
+          .from("estimate_line_items")
+          .update({ change_order_approved: true })
+          .eq("estimate_id", id)
+          .eq("is_change_order", true)
+          .eq("change_order_approved", false);
+
+        if (error) throw error;
+
+        await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+        await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+        await queryClient.invalidateQueries({ queryKey: ["leads"] });
+        await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+        toast.success("Change order approved");
+        return;
+      }
+
       const { error } = await supabase
         .from("estimates")
         .update({
@@ -701,10 +719,18 @@ export default function EstimateDetail() {
                 size="sm"
                 className="gap-2 flex-1 sm:flex-none"
                 onClick={() => setShowApproveDialog(true)}
-                disabled={estimate.status === "accepted" || manualApproving}
+                disabled={(estimate.status === "accepted" && !estimate.has_pending_changes) || manualApproving}
               >
                 <Check className="h-4 w-4" />
-                {estimate.status === "accepted" ? "Approved" : manualApproving ? "Approving..." : "Approve"}
+                {estimate.status === "accepted"
+                  ? estimate.has_pending_changes
+                    ? manualApproving
+                      ? "Approving..."
+                      : "Approve"
+                    : "Approved"
+                  : manualApproving
+                    ? "Approving..."
+                    : "Approve"}
               </Button>
               <Button
                 variant="secondary"
@@ -950,26 +976,6 @@ export default function EstimateDetail() {
               )}
             </div>
 
-            {hasChangeOrders && !estimate.has_pending_changes && (() => {
-              const recentChanges = estimate.line_items.some((item: any) => {
-                if (!item.is_change_order || !item.changed_at) return false;
-                const changedDate = new Date(item.changed_at);
-                const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
-                return hoursSinceChange < 24;
-              });
-
-              if (!recentChanges) return null;
-
-              return (
-                <Alert>
-                  <History className="h-4 w-4" />
-                  <AlertDescription>
-                    This estimate has been modified. Recent changes are marked with badges on the line items above.
-                  </AlertDescription>
-                </Alert>
-              );
-            })()}
-
           </div>
 
           <div className="space-y-4" data-testid="estimate-details-right-column">
@@ -1068,11 +1074,19 @@ export default function EstimateDetail() {
       <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{isRecurringQuote ? "Approve Quote" : "Approve Estimate"}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {estimate.status === "accepted" && estimate.has_pending_changes
+                ? "Approve Change Order"
+                : isRecurringQuote
+                  ? "Approve Quote"
+                  : "Approve Estimate"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {isRecurringQuote
-                ? "Mark this quote as approved by the customer?"
-                : "Mark this estimate as approved by the customer?"}
+              {estimate.status === "accepted" && estimate.has_pending_changes
+                ? "Approve the pending change order for this estimate?"
+                : isRecurringQuote
+                  ? "Mark this quote as approved by the customer?"
+                  : "Mark this estimate as approved by the customer?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

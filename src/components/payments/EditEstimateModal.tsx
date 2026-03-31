@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import type { DragEvent } from "react";
+import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,24 @@ interface EditEstimateModalProps {
   onOpenChange: (open: boolean) => void;
   estimate: any;
   onSuccess: () => void;
+}
+
+function normalizeTextValue(value: string | null | undefined) {
+  return value === null || value === undefined || value === "" ? null : value;
+}
+
+function normalizeLineItemForComparison(item: Partial<LineItemForm> & { sort_order?: number | null }) {
+  return {
+    id: item.id ?? null,
+    name: item.name ?? "",
+    description: normalizeTextValue(item.description),
+    quantity: parseFloat(item.quantity?.toString() ?? "0") || 0,
+    unit: item.unit ?? "",
+    unit_price: parseFloat(item.unit_price?.toString() ?? "0") || 0,
+    category: item.category ?? "other",
+    sort_order: Number(item.sort_order ?? 0),
+    isNew: Boolean(item.isNew),
+  };
 }
 
 function CompactLineItem({
@@ -85,8 +104,14 @@ function CompactLineItem({
   return (
     <div className="p-3 border border-border rounded-lg space-y-2 bg-card">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div
+            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
+            aria-label={`Drag item ${index + 1}`}
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
+          <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-medium truncate">
               {item.name || `Item ${index + 1}`}
             </span>
@@ -135,7 +160,6 @@ function ExpandedLineItem({
   onCollapse,
   onRevert,
   onRemove,
-  canRemove,
 }: {
   item: LineItemForm;
   index: number;
@@ -161,8 +185,16 @@ function ExpandedLineItem({
 
   return (
     <div className="p-4 border border-border rounded-lg space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div
+            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
+            aria-label={`Drag item ${index + 1}`}
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
+          <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+        </div>
         <div className="flex items-center gap-1">
           <QuickEstimateLineItem
             leadId={jobId}
@@ -308,6 +340,7 @@ function ExpandedLineItem({
 
 export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: EditEstimateModalProps) {
   const [saving, setSaving] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
@@ -317,11 +350,44 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   const [surcharge, setSurcharge] = useState<string>(() => {
     return (estimate.surcharge || 0).toString();
   });
-  const [lineItems, setLineItems] = useState<LineItemForm[]>(() => {
-    const activeItems = estimate.line_items.filter(
-      (item: any) => !item.is_change_order || item.change_order_type !== 'deleted'
+  const effectiveEstimateLineItems = useMemo(() => {
+    const nonDeletedItems = estimate.line_items.filter(
+      (item: any) => item.change_order_type !== 'deleted'
     );
-    return activeItems.map((item: any) => ({
+
+    const approvedEditedOriginalIds = new Set(
+      nonDeletedItems
+        .filter(
+          (item: any) =>
+            item.is_change_order &&
+            item.change_order_type === 'edited' &&
+            item.change_order_approved === true &&
+            item.original_line_item_id
+        )
+        .map((item: any) => item.original_line_item_id)
+    );
+
+    const hasApprovalMetadata = nonDeletedItems.some(
+      (item: any) => item.change_order_approved !== undefined
+    );
+
+    return nonDeletedItems
+      .filter((item: any) => {
+        if (!item.is_change_order) {
+          return !approvedEditedOriginalIds.has(item.id);
+        }
+
+        if (!hasApprovalMetadata) {
+          return true;
+        }
+
+        return item.change_order_approved === true || item.change_order_approved === false;
+      })
+      .sort((a: any, b: any) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+  }, [estimate.line_items]);
+
+  const buildLineItemsFromEstimate = () => {
+    return effectiveEstimateLineItems.map((item: any) => ({
       id: item.id,
       name: item.name,
       description: item.description || '',
@@ -330,7 +396,21 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       unit_price: item.unit_price.toString(),
       category: item.category || 'other',
     }));
-  });
+  };
+
+  const [lineItems, setLineItems] = useState<LineItemForm[]>(buildLineItemsFromEstimate);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setLineItems(buildLineItemsFromEstimate());
+    setPendingDeleteIndices(new Set());
+    setSnapshots({});
+    setExpandedIndex(null);
+    setDragIndex(null);
+    setProfitMargin((estimate.profit_margin || 0).toString());
+    setSurcharge((estimate.surcharge || 0).toString());
+  }, [open, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge]);
 
   const addLineItem = () => {
     const newItems = [
@@ -374,6 +454,76 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     });
   };
 
+  const reorderLineItems = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= lineItems.length || toIndex >= lineItems.length) {
+      return;
+    }
+
+    setLineItems((previous) => {
+      const updated = [...previous];
+      const [movedItem] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, movedItem);
+      return updated;
+    });
+
+    setPendingDeleteIndices((previous) => {
+      const next = new Set<number>();
+      previous.forEach((pendingIndex) => {
+        if (pendingIndex === fromIndex) {
+          next.add(toIndex);
+        } else if (fromIndex < toIndex && pendingIndex > fromIndex && pendingIndex <= toIndex) {
+          next.add(pendingIndex - 1);
+        } else if (fromIndex > toIndex && pendingIndex >= toIndex && pendingIndex < fromIndex) {
+          next.add(pendingIndex + 1);
+        } else {
+          next.add(pendingIndex);
+        }
+      });
+      return next;
+    });
+
+    setSnapshots((previous) => {
+      const remapped: Record<number, LineItemForm> = {};
+      Object.entries(previous).forEach(([key, value]) => {
+        const snapshotIndex = Number(key);
+        if (snapshotIndex === fromIndex) {
+          remapped[toIndex] = value;
+        } else if (fromIndex < toIndex && snapshotIndex > fromIndex && snapshotIndex <= toIndex) {
+          remapped[snapshotIndex - 1] = value;
+        } else if (fromIndex > toIndex && snapshotIndex >= toIndex && snapshotIndex < fromIndex) {
+          remapped[snapshotIndex + 1] = value;
+        } else {
+          remapped[snapshotIndex] = value;
+        }
+      });
+      return remapped;
+    });
+
+    setExpandedIndex((previous) => {
+      if (previous === null) return previous;
+      if (previous === fromIndex) return toIndex;
+      if (fromIndex < toIndex && previous > fromIndex && previous <= toIndex) return previous - 1;
+      if (fromIndex > toIndex && previous >= toIndex && previous < fromIndex) return previous + 1;
+      return previous;
+    });
+  };
+
+
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, index: number) => {
+    event.preventDefault();
+    if (dragIndex === null || dragIndex === index) return;
+    reorderLineItems(dragIndex, index);
+    setDragIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+  };
+
   const markForDelete = (index: number) => {
     setPendingDeleteIndices(prev => new Set(prev).add(index));
     if (expandedIndex === index) setExpandedIndex(null);
@@ -394,6 +544,86 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   };
 
   const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
+
+  const changeSummary = useMemo(() => {
+    const existingItems = effectiveEstimateLineItems;
+
+    const currentItemsById = new Map(
+      activeLineItems
+        .filter((item) => item.id)
+        .map((item) => [item.id as string, item])
+    );
+
+    let hasAnyChanges = false;
+    let hasSubstantiveChanges = false;
+    let hasSortOnlyChanges = false;
+
+    for (const originalItem of existingItems) {
+      const currentItem = currentItemsById.get(originalItem.id);
+
+      if (!currentItem) {
+        hasAnyChanges = true;
+        hasSubstantiveChanges = true;
+        continue;
+      }
+
+      const normalizedOriginal = normalizeLineItemForComparison({
+        id: originalItem.id,
+        name: originalItem.name,
+        description: originalItem.description,
+        quantity: originalItem.quantity?.toString(),
+        unit: originalItem.unit,
+        unit_price: originalItem.unit_price?.toString(),
+        category: originalItem.category || 'other',
+        sort_order: originalItem.sort_order,
+      });
+      const normalizedCurrent = normalizeLineItemForComparison({
+        ...currentItem,
+        sort_order: activeLineItems.findIndex((item) => item === currentItem),
+      });
+
+      const hasSubstantiveItemChanges =
+        normalizedOriginal.name !== normalizedCurrent.name ||
+        normalizedOriginal.description !== normalizedCurrent.description ||
+        normalizedOriginal.quantity !== normalizedCurrent.quantity ||
+        normalizedOriginal.unit !== normalizedCurrent.unit ||
+        normalizedOriginal.unit_price !== normalizedCurrent.unit_price ||
+        normalizedOriginal.category !== normalizedCurrent.category;
+
+      const hasSortOrderChange = normalizedOriginal.sort_order !== normalizedCurrent.sort_order;
+
+      if (hasSubstantiveItemChanges || hasSortOrderChange) {
+        hasAnyChanges = true;
+      }
+
+      if (hasSubstantiveItemChanges) {
+        hasSubstantiveChanges = true;
+      } else if (hasSortOrderChange) {
+        hasSortOnlyChanges = true;
+      }
+    }
+
+    if (activeLineItems.some((item) => item.isNew)) {
+      hasAnyChanges = true;
+      hasSubstantiveChanges = true;
+    }
+
+    const originalProfitMargin = parseFloat(estimate.profit_margin?.toString() || '0');
+    const currentProfitMargin = parseFloat(profitMargin || '0');
+    const originalSurcharge = parseFloat(estimate.surcharge?.toString() || '0');
+    const currentSurcharge = parseFloat(surcharge || '0');
+
+    if (originalProfitMargin !== currentProfitMargin || originalSurcharge !== currentSurcharge) {
+      hasAnyChanges = true;
+      hasSubstantiveChanges = true;
+    }
+
+    return {
+      hasAnyChanges,
+      hasSubstantiveChanges,
+      hasSortOnlyChanges: hasSortOnlyChanges && !hasSubstantiveChanges,
+    };
+  }, [activeLineItems, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge, profitMargin, surcharge]);
 
   const calculateTotals = () => {
     const subtotal = activeLineItems.reduce((sum, item) => {
@@ -423,9 +653,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       const shouldTrackChanges = estimate.status === 'accepted';
 
       const existingIds = new Set(
-        estimate.line_items
-          .filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted')
-          .map((item: any) => item.id)
+        effectiveEstimateLineItems.map((item: any) => item.id)
       );
 
       const currentIds = new Set(activeLineItems.filter((item) => item.id).map((item) => item.id));
@@ -460,6 +688,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         const quantity = parseFloat(item.quantity) || 1;
         const unitPrice = parseFloat(item.unit_price) || 0;
         const total = quantity * unitPrice;
+        const sortOrder = lineItems.findIndex((lineItem) => lineItem === item);
 
         if (item.isNew) {
           if (shouldTrackChanges) {
@@ -472,7 +701,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               unit: item.unit,
               unit_price: unitPrice,
               total,
-              sort_order: lineItems.indexOf(item),
+              sort_order: sortOrder,
               category: item.category,
               is_change_order: true,
               change_order_type: 'added',
@@ -491,7 +720,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               unit: item.unit,
               unit_price: unitPrice,
               total,
-              sort_order: lineItems.indexOf(item),
+              sort_order: sortOrder,
               category: item.category,
               is_change_order: false,
             });
@@ -499,20 +728,21 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
             if (error) throw error;
           }
         } else if (item.id) {
-          const original = estimate.line_items.find((li: any) => li.id === item.id);
+          const original = effectiveEstimateLineItems.find((li: any) => li.id === item.id);
 
-          const normalizeValue = (val: any) => (val === null || val === undefined || val === '') ? null : val;
-
-          const hasChanged =
+          const hasSubstantiveChanges =
             original &&
             (original.name !== item.name ||
-              normalizeValue(original.description) !== normalizeValue(item.description) ||
+              normalizeTextValue(original.description) !== normalizeTextValue(item.description) ||
               parseFloat(original.quantity) !== quantity ||
               original.unit !== item.unit ||
               parseFloat(original.unit_price) !== unitPrice ||
               (original.category || 'other') !== item.category);
 
-          if (hasChanged) {
+          const hasSortOrderChange =
+            original && Number(original.sort_order ?? 0) !== sortOrder;
+
+          if (hasSubstantiveChanges) {
             if (shouldTrackChanges) {
               const { error } = await supabase.from('estimate_line_items').update({
                 is_change_order: true,
@@ -526,6 +756,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                 unit_price: unitPrice,
                 total,
                 category: item.category,
+                sort_order: sortOrder,
               }).eq('id', item.id);
 
               if (error) throw error;
@@ -538,10 +769,17 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                 unit_price: unitPrice,
                 total,
                 category: item.category,
+                sort_order: sortOrder,
               }).eq('id', item.id);
 
               if (error) throw error;
             }
+          } else if (hasSortOrderChange) {
+            const { error } = await supabase.from('estimate_line_items').update({
+              sort_order: sortOrder,
+            }).eq('id', item.id);
+
+            if (error) throw error;
           }
         }
       }
@@ -578,7 +816,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
           .eq('id', estimate.id);
       }
 
-      if (shouldTrackChanges) {
+      if (shouldTrackChanges && changeSummary.hasSubstantiveChanges) {
         toast.success('Changes saved and tracked as change orders');
       } else {
         toast.success('Changes saved successfully');
@@ -612,8 +850,15 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
             {lineItems.map((item, index) =>
               expandedIndex === index && !pendingDeleteIndices.has(index) ? (
-                <ExpandedLineItem
+                <div
                   key={index}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(event) => handleDragOver(event, index)}
+                  onDragEnd={handleDragEnd}
+                  className={dragIndex === index ? "opacity-50" : undefined}
+                >
+                <ExpandedLineItem
                   item={item}
                   index={index}
                   jobId={estimate.job_id}
@@ -622,9 +867,17 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                   onRevert={() => revertLineItem(index)}
                   onRemove={() => markForDelete(index)}
                 />
+                </div>
               ) : (
-                <CompactLineItem
+                <div
                   key={index}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(event) => handleDragOver(event, index)}
+                  onDragEnd={handleDragEnd}
+                  className={dragIndex === index ? "opacity-50" : undefined}
+                >
+                <CompactLineItem
                   item={item}
                   index={index}
                   pendingDelete={pendingDeleteIndices.has(index)}
@@ -632,6 +885,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                   onRemove={() => markForDelete(index)}
                   onUndoRemove={() => undoDelete(index)}
                 />
+                </div>
               )
             )}
 
@@ -730,9 +984,15 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
           </Button>
           <Button
             onClick={saveChanges}
-            disabled={saving}
+            disabled={saving || !changeSummary.hasAnyChanges}
           >
-            {saving ? "Saving..." : (estimate.status === 'accepted' ? 'Send Change Order' : 'Save Changes')}
+            {saving
+              ? "Saving..."
+              : estimate.status === 'accepted'
+                ? changeSummary.hasSubstantiveChanges
+                  ? 'Send Change Order'
+                  : 'Save Changes'
+                : 'Save Changes'}
           </Button>
         </DialogFooter>
       </DialogContent>

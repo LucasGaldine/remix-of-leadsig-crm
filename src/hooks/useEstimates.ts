@@ -45,6 +45,7 @@ export interface EstimateWithDetails extends Estimate {
     change_order_type?: 'added' | 'edited' | 'deleted';
     original_line_item_id?: string;
     changed_at?: string;
+    change_order_approved?: boolean | null;
   }[];
   original_line_items?: {
     id: string;
@@ -112,7 +113,8 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
             is_change_order,
             change_order_type,
             original_line_item_id,
-            changed_at
+            changed_at,
+            change_order_approved
           )
         `)
         .eq("account_id", currentAccount.id)
@@ -198,7 +200,8 @@ export function useEstimate(id: string | undefined) {
             is_change_order,
             change_order_type,
             original_line_item_id,
-            changed_at
+            changed_at,
+            change_order_approved
           )
         `)
         .eq("id", id)

@@ -19,6 +19,7 @@ import { useJob, useUpdateJob, useDeleteJob, useMakeJobUnique } from "@/hooks/us
 import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useAuth } from "@/hooks/useAuth";
 import { useJobAssignments } from "@/hooks/useJobAssignments";
+import { useJobChecklist } from "@/hooks/useJobChecklist";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -43,9 +44,11 @@ import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
+import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallback";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { Separator } from "@/components/ui/separator";
+import { SERVICE_TYPES } from "@/constants/serviceTypes";
 
 const JOB_STATUS_GUIDANCE = [
   {
@@ -111,6 +114,7 @@ export default function JobDetail() {
   const { businessHours } = useBusinessHours();
   const { scheduleJob, deleteSchedule, isScheduling } = useScheduleJob();
   const { assignments: jobAssignments = [] } = useJobAssignments(id);
+  const { items: checklistItems = [] } = useJobChecklist(id);
   const updateJobMutation = useUpdateJob();
   const deleteJobMutation = useDeleteJob();
   const { data: recurringJobData } = useRecurringJob((job as any)?.recurring_job_id ?? undefined);
@@ -125,6 +129,7 @@ export default function JobDetail() {
   const [editingScheduleDate, setEditingScheduleDate] = useState("");
   const [editingScheduleTimeStart, setEditingScheduleTimeStart] = useState("");
   const [editingScheduleTimeEnd, setEditingScheduleTimeEnd] = useState("");
+  const [editingSuppressUnassigned, setEditingSuppressUnassigned] = useState(false);
   const [editScheduleDeleteConfirmOpen, setEditScheduleDeleteConfirmOpen] = useState(false);
   const [savingCrewAssignments, setSavingCrewAssignments] = useState(false);
   const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
@@ -558,13 +563,23 @@ export default function JobDetail() {
     setEditingScheduleDate(schedule?.scheduled_date || "");
     setEditingScheduleTimeStart(schedule?.scheduled_time_start || "");
     setEditingScheduleTimeEnd(schedule?.scheduled_time_end || "");
+    setEditingSuppressUnassigned(Boolean(schedule?.suppress_unassigned));
     setEditCrewDialogOpen(true);
   };
 
   const toggleEditingCrewUser = (userId: string) => {
+    if (editingSuppressUnassigned) return;
     setEditingCrewUserIds((current) =>
       current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
     );
+  };
+
+  const toggleEditingSuppressUnassigned = (checked: boolean) => {
+    if (editingCrewUserIds.length > 0) return;
+    setEditingSuppressUnassigned(checked);
+    if (checked) {
+      setEditingCrewUserIds([]);
+    }
   };
 
   const handleSaveCrewAssignments = async () => {
@@ -603,10 +618,12 @@ export default function JobDetail() {
     const crewChanged = usersToAdd.length > 0 || assignmentIdsToRemove.length > 0;
     const currentTimeStart = currentSchedule.scheduled_time_start || "";
     const currentTimeEnd = currentSchedule.scheduled_time_end || "";
+    const currentSuppressUnassigned = Boolean(currentSchedule.suppress_unassigned);
     const scheduleChanged =
       editingScheduleDate !== currentSchedule.scheduled_date ||
       editingScheduleTimeStart !== currentTimeStart ||
-      editingScheduleTimeEnd !== currentTimeEnd;
+      editingScheduleTimeEnd !== currentTimeEnd ||
+      editingSuppressUnassigned !== currentSuppressUnassigned;
 
     if (!crewChanged && !scheduleChanged) {
       setEditCrewDialogOpen(false);
@@ -616,15 +633,33 @@ export default function JobDetail() {
     setSavingCrewAssignments(true);
     try {
       if (scheduleChanged) {
-        const { error: scheduleError } = await supabase
+        const baseScheduleUpdate = {
+          scheduled_date: editingScheduleDate,
+          scheduled_time_start: editingScheduleTimeStart || null,
+          scheduled_time_end: editingScheduleTimeEnd || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        let { error: scheduleError } = await supabase
           .from("job_schedules")
           .update({
-            scheduled_date: editingScheduleDate,
-            scheduled_time_start: editingScheduleTimeStart || null,
-            scheduled_time_end: editingScheduleTimeEnd || null,
-            updated_at: new Date().toISOString(),
+            ...baseScheduleUpdate,
+            suppress_unassigned: editingSuppressUnassigned,
           })
           .eq("id", editingCrewScheduleId);
+
+        if (isMissingSuppressUnassignedColumn(scheduleError)) {
+          const fallback = await supabase
+            .from("job_schedules")
+            .update(baseScheduleUpdate)
+            .eq("id", editingCrewScheduleId);
+          scheduleError = fallback.error;
+
+          if (!scheduleError && editingSuppressUnassigned) {
+            toast.error("Mark as assigned is not available until the latest database migration is applied.");
+            return;
+          }
+        }
 
         if (scheduleError) throw scheduleError;
       }
@@ -691,7 +726,8 @@ export default function JobDetail() {
       setEditCrewDialogOpen(false);
     } catch (error) {
       console.error("Error updating crew assignments:", error);
-      toast.error("Failed to update crew assignments");
+      const message = error instanceof Error ? error.message : "Failed to update crew assignments";
+      toast.error(message || "Failed to update crew assignments");
     } finally {
       setSavingCrewAssignments(false);
     }
@@ -967,12 +1003,13 @@ export default function JobDetail() {
       .map((assignment) => assignment.job_schedule_id)
       .filter((scheduleId): scheduleId is string => Boolean(scheduleId)),
   );
+  const remainingChecklistCount = checklistItems.filter((item) => !item.is_completed).length;
   const hasScheduleScopedAssignments = jobAssignments.some((assignment) => Boolean(assignment.job_schedule_id));
   const isUnassigned = schedules.length === 0
     ? jobAssignments.length === 0
     : hasScheduleScopedAssignments
-      ? schedules.some((schedule) => !assignedScheduleIds.has(schedule.id))
-      : jobAssignments.length === 0;
+      ? schedules.some((schedule) => !schedule.suppress_unassigned && !assignedScheduleIds.has(schedule.id))
+      : schedules.some((schedule) => !schedule.suppress_unassigned) && jobAssignments.length === 0;
   const deleteJobConfig = getDetailDeleteConfig({
     entity: "job",
     name: job.name || "this job",
@@ -987,7 +1024,7 @@ export default function JobDetail() {
       <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-0">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-3 min-w-0 w-full">
-            <div className="flex flex-wrap items-center gap-2">
+            <div data-testid="job-detail-badges-row" className="flex flex-wrap items-center gap-2">
               {isUnassigned && (
                 <Badge
                   variant="outline"
@@ -1022,6 +1059,11 @@ export default function JobDetail() {
                   {statusLabel}
                 </StatusBadge>
               </button>
+              {remainingChecklistCount > 0 && (
+                <p className="text-xs text-muted-foreground whitespace-nowrap">
+                  {remainingChecklistCount} tasks left
+                </p>
+              )}
             </div>
 
             <div className="flex items-end justify-between gap-3">
@@ -1294,7 +1336,18 @@ export default function JobDetail() {
                                       ))}
                                     </div>
                                   ) : (
-                                    <p className="mt-2 text-xs text-muted-foreground">No crew assigned</p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                      {isManager() && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => openEditCrewDialog(schedule.id)}
+                                          className="h-7 px-2 text-xs text-muted-foreground"
+                                        >
+                                          Assign crew member
+                                        </Button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -1782,15 +1835,9 @@ export default function JobDetail() {
                   <SelectValue placeholder="Select service type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Pavers / Patio">Pavers / Patio</SelectItem>
-                  <SelectItem value="Concrete">Concrete</SelectItem>
-                  <SelectItem value="Sod / Lawn">Sod / Lawn</SelectItem>
-                  <SelectItem value="Deck">Deck</SelectItem>
-                  <SelectItem value="Fencing">Fencing</SelectItem>
-                  <SelectItem value="Retaining Wall">Retaining Wall</SelectItem>
-                  <SelectItem value="Landscaping">Landscaping</SelectItem>
-                  <SelectItem value="Hardscaping">Hardscaping</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {SERVICE_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1899,15 +1946,16 @@ export default function JobDetail() {
             setEditingScheduleDate("");
             setEditingScheduleTimeStart("");
             setEditingScheduleTimeEnd("");
+            setEditingSuppressUnassigned(false);
             setEditScheduleDeleteConfirmOpen(false);
           }
         }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Assigned Crew</DialogTitle>
+            <DialogTitle>Edit Crew</DialogTitle>
             <DialogDescription>
-              Update this scheduled date and crew assignment.
+              Update this scheduled date, crew assignment, or assigned-state override.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1942,20 +1990,55 @@ export default function JobDetail() {
               </div>
             </div>
 
+            <div className="rounded-md border bg-muted p-3">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="edit-mark-assigned"
+                  checked={editingSuppressUnassigned}
+                  disabled={editingCrewUserIds.length > 0}
+                  onCheckedChange={(value) => toggleEditingSuppressUnassigned(value === true)}
+                />
+                <div>
+                  <Label
+                    htmlFor="edit-mark-assigned"
+                    className={cn(
+                      "text-sm font-semibold",
+                      editingCrewUserIds.length > 0 ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+                    )}
+                  >
+                    Mark as assigned
+                  </Label>
+                </div>
+              </div>
+            </div>
+
             {teamMembers.length > 0 ? (
               <div className="max-h-72 overflow-y-auto border rounded-md">
                 {teamMembers.map((member) => {
                   const memberId = `edit-crew-${member.user_id}`;
                   const isSelected = editingCrewUserIds.includes(member.user_id);
                   return (
-                    <div key={member.user_id} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0">
+                    <div
+                      key={member.user_id}
+                      className={cn(
+                        "flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0",
+                        editingSuppressUnassigned && "opacity-60",
+                      )}
+                    >
                       <div className="flex items-center gap-3">
                         <Checkbox
                           id={memberId}
                           checked={isSelected}
+                          disabled={editingSuppressUnassigned}
                           onCheckedChange={() => toggleEditingCrewUser(member.user_id)}
                         />
-                        <Label htmlFor={memberId} className="font-normal cursor-pointer">
+                        <Label
+                          htmlFor={memberId}
+                          className={cn(
+                            "text-sm font-normal leading-none",
+                            editingSuppressUnassigned ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+                          )}
+                        >
                           {member.full_name || "Unnamed"}
                         </Label>
                       </div>
