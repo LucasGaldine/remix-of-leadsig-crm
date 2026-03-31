@@ -19,6 +19,7 @@ import { useJob, useUpdateJob, useDeleteJob, useMakeJobUnique } from "@/hooks/us
 import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useAuth } from "@/hooks/useAuth";
 import { useJobAssignments } from "@/hooks/useJobAssignments";
+import { useJobChecklist } from "@/hooks/useJobChecklist";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -46,6 +47,7 @@ import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { Separator } from "@/components/ui/separator";
+import { SERVICE_TYPES } from "@/constants/serviceTypes";
 
 const JOB_STATUS_GUIDANCE = [
   {
@@ -111,6 +113,7 @@ export default function JobDetail() {
   const { businessHours } = useBusinessHours();
   const { scheduleJob, deleteSchedule, isScheduling } = useScheduleJob();
   const { assignments: jobAssignments = [] } = useJobAssignments(id);
+  const { items: checklistItems = [] } = useJobChecklist(id);
   const updateJobMutation = useUpdateJob();
   const deleteJobMutation = useDeleteJob();
   const { data: recurringJobData } = useRecurringJob((job as any)?.recurring_job_id ?? undefined);
@@ -967,6 +970,7 @@ export default function JobDetail() {
       .map((assignment) => assignment.job_schedule_id)
       .filter((scheduleId): scheduleId is string => Boolean(scheduleId)),
   );
+  const remainingChecklistCount = checklistItems.filter((item) => !item.is_completed).length;
   const hasScheduleScopedAssignments = jobAssignments.some((assignment) => Boolean(assignment.job_schedule_id));
   const isUnassigned = schedules.length === 0
     ? jobAssignments.length === 0
@@ -1012,16 +1016,23 @@ export default function JobDetail() {
                   Visit #{jobAny.recurring_instance_number || ""}
                 </Badge>
               )}
-              <button
-                type="button"
-                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                onClick={() => setStatusGuidanceOpen(true)}
-                aria-label={`Open job status guide for ${statusLabel.toLowerCase()}`}
-              >
-                <StatusBadge status={getJobStatusBadgeStatus(displayStatus) as any} >
-                  {statusLabel}
-                </StatusBadge>
-              </button>
+              <div className="flex flex-col items-start gap-1">
+                <button
+                  type="button"
+                  className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  onClick={() => setStatusGuidanceOpen(true)}
+                  aria-label={`Open job status guide for ${statusLabel.toLowerCase()}`}
+                >
+                  <StatusBadge status={getJobStatusBadgeStatus(displayStatus) as any} >
+                    {statusLabel}
+                  </StatusBadge>
+                </button>
+                {remainingChecklistCount > 0 && (
+                  <p className="pl-1 text-xs text-muted-foreground">
+                    {remainingChecklistCount} checklist {remainingChecklistCount === 1 ? "task" : "tasks"} left
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="flex items-end justify-between gap-3">
@@ -1294,7 +1305,19 @@ export default function JobDetail() {
                                       ))}
                                     </div>
                                   ) : (
-                                    <p className="mt-2 text-xs text-muted-foreground">No crew assigned</p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                      <p className="text-xs text-muted-foreground">No crew assigned</p>
+                                      {isManager() && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => openEditCrewDialog(schedule.id)}
+                                          className="h-7 px-2 text-xs"
+                                        >
+                                          Mark as assigned
+                                        </Button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -1782,15 +1805,9 @@ export default function JobDetail() {
                   <SelectValue placeholder="Select service type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Pavers / Patio">Pavers / Patio</SelectItem>
-                  <SelectItem value="Concrete">Concrete</SelectItem>
-                  <SelectItem value="Sod / Lawn">Sod / Lawn</SelectItem>
-                  <SelectItem value="Deck">Deck</SelectItem>
-                  <SelectItem value="Fencing">Fencing</SelectItem>
-                  <SelectItem value="Retaining Wall">Retaining Wall</SelectItem>
-                  <SelectItem value="Landscaping">Landscaping</SelectItem>
-                  <SelectItem value="Hardscaping">Hardscaping</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {SERVICE_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

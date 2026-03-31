@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid,
@@ -225,6 +226,7 @@ function PlannedVsActual({ timeframe }: { timeframe: Timeframe }) {
 }
 
 function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
+  const navigate = useNavigate();
   const { data = [], isLoading } = useCostVsQuoted(timeframe);
 
   return (
@@ -235,8 +237,18 @@ function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
         <div className="space-y-2 max-h-[220px] overflow-y-auto">
           {data.map((job: any) => {
             const profitable = job.actual <= job.quoted;
+            const canNavigate = Boolean(job.customerId);
             return (
-              <div key={job.name} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+              <button
+                key={job.id || job.name}
+                type="button"
+                onClick={() => job.customerId && navigate(`/customers/${job.customerId}`)}
+                disabled={!canNavigate}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md bg-muted/50 p-2 text-left transition-colors",
+                  canNavigate ? "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" : "cursor-default opacity-100"
+                )}
+              >
                 <div>
                   <div className="text-sm font-medium text-foreground">{job.name}</div>
                 </div>
@@ -249,7 +261,7 @@ function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
                   </div>
                   <span className="text-lg">{profitable ? "✓" : "✗"}</span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -308,8 +320,7 @@ export function DashboardVisuals() {
         <RevenueExpenses timeframe={timeframe} />
         <LeadFunnel timeframe={timeframe} />
         <CompletionDonut timeframe={timeframe} />
-        
-        
+        <CostVsQuoted timeframe={timeframe} />
         <CrewHours timeframe={timeframe} />
       </div>
     </section>

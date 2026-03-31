@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -12,13 +12,17 @@ import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader as Loader2, ChevronRight } from "lucide-react";
+import { Loader as Loader2, ChevronRight, Briefcase, PlusCircle, FileText, DollarSign } from "lucide-react";
 import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomersNeedingAttention } from "@/hooks/useCustomersNeedingAttention";
 import { CustomerCard } from "@/components/customers/CustomerCard";
+import { Button } from "@/components/ui/button";
+import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
+import { AddJobDialog } from "@/components/jobs/AddJobDialog";
+
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -36,6 +40,8 @@ export default function Index() {
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
   const { data: customersData = [], isLoading: customersLoading } = useCustomersNeedingAttention();
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [addJobOpen, setAddJobOpen] = useState(false);
 
   const SECTION_LIMIT = 3;
 
@@ -122,6 +128,27 @@ export default function Index() {
         {/* Quick Stats */}
         <DashboardStatCards />
 
+        <section className="space-y-3">
+          <SectionHeader title="Quick Actions" className="mb-0" />
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={() => setAddLeadOpen(true)} size="sm" className="gap-2">
+              <PlusCircle className="h-4 w-4" />
+              Add Lead
+            </Button>
+            <Button onClick={() => setAddJobOpen(true)} size="sm" variant="outline" className="gap-2">
+              <Briefcase className="h-4 w-4" />
+              Add Job
+            </Button>
+            <Button onClick={() => navigate("/payments/estimates/new")} size="sm" variant="outline" className="gap-2">
+              <FileText className="h-4 w-4" />
+              New Estimate
+            </Button>
+            <Button onClick={() => navigate("/payments/invoices/new")} size="sm" variant="outline" className="gap-2">
+              <DollarSign className="h-4 w-4" />
+              New Invoice
+            </Button>
+          </div>
+        </section>
 
         <div className="flex flex-col gap-8">
         {sections.includes("awaiting_approval") && !approvalsLoading && pendingApprovals.length > 0 && (
@@ -305,6 +332,20 @@ export default function Index() {
         {/* Analytics Visuals */}
         <DashboardVisuals />
       </main>
+
+      <AddLeadDialog
+        open={addLeadOpen}
+        onOpenChange={setAddLeadOpen}
+        onLeadCreated={(leadId) => {
+          if (leadId) navigate(`/leads/${leadId}`);
+        }}
+      />
+
+      <AddJobDialog
+        open={addJobOpen}
+        onOpenChange={setAddJobOpen}
+        onJobCreated={(jobId) => navigate(`/jobs/${jobId}`)}
+      />
 
       <MobileNav />
     </div>
