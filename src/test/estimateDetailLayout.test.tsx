@@ -33,8 +33,9 @@ vi.mock("@/hooks/useEstimates", () => ({
     isLoading: false,
     data: {
       id: "est_1",
-      status: "sent",
+      status: "accepted",
       subtotal: 1200,
+      customer: { id: "cust_1", name: "Taylor Smith", email: "taylor@example.com" },
       profit_margin: 0,
       tax_rate: 0.07,
       tax: 84,
@@ -47,7 +48,6 @@ vi.mock("@/hooks/useEstimates", () => ({
       approved_via: null,
       job_id: "job_1",
       recurring_job_id: null,
-      customer: { id: "cust_1", name: "Taylor Smith" },
       job: { id: "job_1", name: "Front Yard Renovation" },
       recurring_job: null,
       line_items: [
@@ -65,6 +65,22 @@ vi.mock("@/hooks/useEstimates", () => ({
           change_order_type: null,
           change_order_approved: null,
           changed_at: null,
+        },
+        {
+          id: "line_1_edit",
+          name: "Paver installation plus edging",
+          description: "Install pavers and compact base.",
+          category: "labor",
+          quantity: 1,
+          unit: "job",
+          unit_price: 1200,
+          total: 1200,
+          sort_order: 0,
+          is_change_order: true,
+          change_order_type: "edited",
+          change_order_approved: false,
+          original_line_item_id: "line_1",
+          changed_at: "2026-03-31T09:00:00.000Z",
         },
         {
           id: "line_2",
@@ -158,16 +174,31 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: vi.fn(() => ({
-      update: vi.fn(() => ({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      })),
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    from: vi.fn((table: string) => {
+      if (table === "customers") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { client_portal_token: "portal_123" }, error: null }),
+            })),
+          })),
+          update: vi.fn(() => ({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          })),
+        };
+      }
+
+      return {
+        update: vi.fn(() => ({
+          eq: vi.fn().mockResolvedValue({ error: null }),
         })),
-      })),
-    })),
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          })),
+        })),
+      };
+    }),
   },
 }));
 
@@ -235,8 +266,8 @@ describe("EstimateDetail layout", () => {
     ).toBeTruthy();
 
     expect(headerActions).toHaveClass("flex-nowrap");
-    expect(within(headerActions).getByRole("button", { name: /^Approve$/i })).toBeInTheDocument();
-    expect(within(headerActions).getByRole("button", { name: /^Client Portal$/i })).toBeInTheDocument();
+    expect(within(headerActions).queryByRole("button", { name: /^Approve$/i })).not.toBeInTheDocument();
+    expect(within(headerActions).getByRole("button", { name: /^Client Portal$/i })).toBeDisabled();
     expect(within(headerActions).getByRole("button", { name: /^Download$/i })).toBeInTheDocument();
 
     expect(within(rightColumn).getByText("Client")).toBeInTheDocument();

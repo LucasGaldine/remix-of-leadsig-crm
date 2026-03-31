@@ -192,10 +192,39 @@ export default function EstimateDetail() {
     : `${estimate.customer?.name || "Unknown"}, Estimate`;
 
   const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
-  const showPendingChangesCard = estimate.has_pending_changes && !showingOriginal;
+  const pendingChangeOrders = estimate.line_items.filter(
+    (item: any) => item.is_change_order && item.change_order_approved === false
+  );
+  const hasSubstantivePendingChangeOrders = pendingChangeOrders.some((item: any) => {
+    if (item.change_order_type === 'added' || item.change_order_type === 'deleted') {
+      return true;
+    }
+
+    if (item.change_order_type !== 'edited' || !item.original_line_item_id) {
+      return true;
+    }
+
+    const original = estimate.line_items.find((candidate: any) => candidate.id === item.original_line_item_id);
+    if (!original) {
+      return true;
+    }
+
+    const normalizeValue = (value: any) =>
+      value === null || value === undefined || value === '' ? null : value;
+
+    return (
+      original.name !== item.name ||
+      normalizeValue(original.description) !== normalizeValue(item.description) ||
+      Number(original.quantity) !== Number(item.quantity) ||
+      original.unit !== item.unit ||
+      Number(original.unit_price) !== Number(item.unit_price) ||
+      (original.category || 'other') !== (item.category || 'other')
+    );
+  });
+  const showPendingChangesCard = hasSubstantivePendingChangeOrders && !showingOriginal;
   const showApprovedCard =
     (estimate.status === "accepted" && !showPendingChangesCard) ||
-    (estimate.has_pending_changes && showingOriginal);
+    (hasSubstantivePendingChangeOrders && showingOriginal);
 
   const displayLineItems = showingOriginal && hasOriginalEstimate
     ? estimate.original_line_items!
@@ -711,10 +740,10 @@ export default function EstimateDetail() {
                 size="sm"
                 className="gap-2 flex-1 sm:flex-none"
                 onClick={handleGeneratePortalLink}
-                disabled={generatingLink}
+                disabled={generatingLink || (estimate.status === "accepted" && !showPendingChangesCard)}
               >
                 <Link2 className="h-4 w-4" />
-                {generatingLink ? "Generating..." : "Client Portal"}
+                {generatingLink ? "Generating..." : showPendingChangesCard ? "Send Change Order" : "Client Portal"}
               </Button>
               <Button
                 variant="secondary"

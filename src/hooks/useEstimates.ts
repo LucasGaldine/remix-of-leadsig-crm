@@ -43,6 +43,7 @@ export interface EstimateWithDetails extends Estimate {
     sort_order?: number;
     is_change_order?: boolean;
     change_order_type?: 'added' | 'edited' | 'deleted';
+    change_order_approved?: boolean | null;
     original_line_item_id?: string;
     changed_at?: string;
   }[];
@@ -111,6 +112,7 @@ export function useEstimates(filter?: { status?: EstimateStatus; limit?: number 
             sort_order,
             is_change_order,
             change_order_type,
+            change_order_approved,
             original_line_item_id,
             changed_at
           )
@@ -197,6 +199,7 @@ export function useEstimate(id: string | undefined) {
             sort_order,
             is_change_order,
             change_order_type,
+            change_order_approved,
             original_line_item_id,
             changed_at
           )
