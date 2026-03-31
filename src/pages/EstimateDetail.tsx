@@ -263,6 +263,58 @@ export default function EstimateDetail() {
   const handleManualApprove = async () => {
     setManualApproving(true);
     try {
+      const { data: currentLineItems, error: lineItemsError } = await supabase
+        .from("estimate_line_items")
+        .select("id, name, description, quantity, unit, unit_price, category, is_change_order, change_order_type, change_order_approved, original_line_item_id")
+        .eq("estimate_id", id);
+
+      if (lineItemsError) throw lineItemsError;
+
+      const normalizeValue = (value: any) =>
+        value === null || value === undefined || value === "" ? null : value;
+
+      const pendingChangeOrders = (currentLineItems || []).filter(
+        (item: any) => item.is_change_order && item.change_order_approved === false,
+      );
+
+      const substantivePendingChanges = pendingChangeOrders.filter((item: any) => {
+        if (item.change_order_type === "added" || item.change_order_type === "deleted") {
+          return true;
+        }
+
+        if (item.change_order_type !== "edited" || !item.original_line_item_id) {
+          return true;
+        }
+
+        const original = (currentLineItems || []).find(
+          (candidate: any) => candidate.id === item.original_line_item_id,
+        );
+
+        if (!original) {
+          return true;
+        }
+
+        return (
+          original.name !== item.name ||
+          normalizeValue(original.description) !== normalizeValue(item.description) ||
+          Number(original.quantity) !== Number(item.quantity) ||
+          original.unit !== item.unit ||
+          Number(original.unit_price) !== Number(item.unit_price) ||
+          (original.category || "other") !== (item.category || "other")
+        );
+      });
+
+      if (substantivePendingChanges.length > 0) {
+        const { error: approveChangesError } = await supabase
+          .from("estimate_line_items")
+          .update({ change_order_approved: true })
+          .eq("estimate_id", id)
+          .eq("is_change_order", true)
+          .eq("change_order_approved", false);
+
+        if (approveChangesError) throw approveChangesError;
+      }
+
       const { error } = await supabase
         .from("estimates")
         .update({

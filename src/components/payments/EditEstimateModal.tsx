@@ -506,6 +506,8 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       setSaving(true);
 
       const shouldTrackChanges = estimate.status === 'accepted';
+      const normalizeValue = (val: any) =>
+        val === null || val === undefined || val === '' ? null : val;
 
       const existingIds = new Set(
         estimate.line_items
@@ -587,8 +589,6 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         } else if (item.id) {
           const original = estimate.line_items.find((li: any) => li.id === item.id);
 
-          const normalizeValue = (val: any) => (val === null || val === undefined || val === '') ? null : val;
-
           const hasSubstantiveChanges =
             original &&
             (original.name !== item.name ||
@@ -643,13 +643,46 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         }
       }
 
-      const { data: activeItems } = await supabase
+      const { data: allLineItems } = await supabase
         .from('estimate_line_items')
         .select('*')
-        .eq('estimate_id', estimate.id)
-        .or('is_change_order.is.null,and(is_change_order.eq.false),and(is_change_order.eq.true,change_order_type.neq.deleted)');
+        .eq('estimate_id', estimate.id);
 
-      if (activeItems && activeItems.length > 0) {
+      const activeItems = (allLineItems || []).filter((item: any) => {
+        if (item.change_order_type === 'deleted') {
+          return false;
+        }
+
+        if (item.is_change_order && item.change_order_approved === false) {
+          if (item.change_order_type === 'added') {
+            return true;
+          }
+
+          if (item.change_order_type === 'edited' && item.original_line_item_id) {
+            const original = (allLineItems || []).find(
+              (candidate: any) => candidate.id === item.original_line_item_id,
+            );
+
+            if (!original) {
+              return true;
+            }
+
+            const hasSubstantiveChanges =
+              original.name !== item.name ||
+              normalizeValue(original.description) !== normalizeValue(item.description) ||
+              Number(original.quantity) !== Number(item.quantity) ||
+              original.unit !== item.unit ||
+              Number(original.unit_price) !== Number(item.unit_price) ||
+              (original.category || 'other') !== (item.category || 'other');
+
+            return hasSubstantiveChanges;
+          }
+        }
+
+        return !item.is_change_order || item.change_order_type !== 'deleted';
+      });
+
+      if (activeItems.length > 0) {
         const newSubtotal = activeItems.reduce(
           (sum, item) => sum + parseFloat(item.total.toString()),
           0
