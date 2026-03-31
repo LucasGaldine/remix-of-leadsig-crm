@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { DragEvent } from "react";
 import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,24 @@ interface EditEstimateModalProps {
   onOpenChange: (open: boolean) => void;
   estimate: any;
   onSuccess: () => void;
+}
+
+function normalizeTextValue(value: string | null | undefined) {
+  return value === null || value === undefined || value === "" ? null : value;
+}
+
+function normalizeLineItemForComparison(item: Partial<LineItemForm> & { sort_order?: number | null }) {
+  return {
+    id: item.id ?? null,
+    name: item.name ?? "",
+    description: normalizeTextValue(item.description),
+    quantity: parseFloat(item.quantity?.toString() ?? "0") || 0,
+    unit: item.unit ?? "",
+    unit_price: parseFloat(item.unit_price?.toString() ?? "0") || 0,
+    category: item.category ?? "other",
+    sort_order: Number(item.sort_order ?? 0),
+    isNew: Boolean(item.isNew),
+  };
 }
 
 function CompactLineItem({
@@ -480,6 +498,88 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
   const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
 
+  const changeSummary = useMemo(() => {
+    const existingItems = estimate.line_items.filter(
+      (item: any) => !item.is_change_order || item.change_order_type !== 'deleted'
+    );
+
+    const currentItemsById = new Map(
+      activeLineItems
+        .filter((item) => item.id)
+        .map((item) => [item.id as string, item])
+    );
+
+    let hasAnyChanges = false;
+    let hasSubstantiveChanges = false;
+    let hasSortOnlyChanges = false;
+
+    for (const originalItem of existingItems) {
+      const currentItem = currentItemsById.get(originalItem.id);
+
+      if (!currentItem) {
+        hasAnyChanges = true;
+        hasSubstantiveChanges = true;
+        continue;
+      }
+
+      const normalizedOriginal = normalizeLineItemForComparison({
+        id: originalItem.id,
+        name: originalItem.name,
+        description: originalItem.description,
+        quantity: originalItem.quantity?.toString(),
+        unit: originalItem.unit,
+        unit_price: originalItem.unit_price?.toString(),
+        category: originalItem.category || 'other',
+        sort_order: originalItem.sort_order,
+      });
+      const normalizedCurrent = normalizeLineItemForComparison({
+        ...currentItem,
+        sort_order: activeLineItems.findIndex((item) => item === currentItem),
+      });
+
+      const hasSubstantiveItemChanges =
+        normalizedOriginal.name !== normalizedCurrent.name ||
+        normalizedOriginal.description !== normalizedCurrent.description ||
+        normalizedOriginal.quantity !== normalizedCurrent.quantity ||
+        normalizedOriginal.unit !== normalizedCurrent.unit ||
+        normalizedOriginal.unit_price !== normalizedCurrent.unit_price ||
+        normalizedOriginal.category !== normalizedCurrent.category;
+
+      const hasSortOrderChange = normalizedOriginal.sort_order !== normalizedCurrent.sort_order;
+
+      if (hasSubstantiveItemChanges || hasSortOrderChange) {
+        hasAnyChanges = true;
+      }
+
+      if (hasSubstantiveItemChanges) {
+        hasSubstantiveChanges = true;
+      } else if (hasSortOrderChange) {
+        hasSortOnlyChanges = true;
+      }
+    }
+
+    if (activeLineItems.some((item) => item.isNew)) {
+      hasAnyChanges = true;
+      hasSubstantiveChanges = true;
+    }
+
+    const originalProfitMargin = parseFloat(estimate.profit_margin?.toString() || '0');
+    const currentProfitMargin = parseFloat(profitMargin || '0');
+    const originalSurcharge = parseFloat(estimate.surcharge?.toString() || '0');
+    const currentSurcharge = parseFloat(surcharge || '0');
+
+    if (originalProfitMargin !== currentProfitMargin || originalSurcharge !== currentSurcharge) {
+      hasAnyChanges = true;
+      hasSubstantiveChanges = true;
+    }
+
+    return {
+      hasAnyChanges,
+      hasSubstantiveChanges,
+      hasSortOnlyChanges: hasSortOnlyChanges && !hasSubstantiveChanges,
+    };
+  }, [activeLineItems, estimate.line_items, estimate.profit_margin, estimate.surcharge, profitMargin, surcharge]);
+
   const calculateTotals = () => {
     const subtotal = activeLineItems.reduce((sum, item) => {
       return sum + calculateLineItemTotal(item.quantity, item.unit_price);
@@ -587,12 +687,10 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         } else if (item.id) {
           const original = estimate.line_items.find((li: any) => li.id === item.id);
 
-          const normalizeValue = (val: any) => (val === null || val === undefined || val === '') ? null : val;
-
           const hasSubstantiveChanges =
             original &&
             (original.name !== item.name ||
-              normalizeValue(original.description) !== normalizeValue(item.description) ||
+              normalizeTextValue(original.description) !== normalizeTextValue(item.description) ||
               parseFloat(original.quantity) !== quantity ||
               original.unit !== item.unit ||
               parseFloat(original.unit_price) !== unitPrice ||
@@ -675,7 +773,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
           .eq('id', estimate.id);
       }
 
-      if (shouldTrackChanges) {
+      if (shouldTrackChanges && changeSummary.hasSubstantiveChanges) {
         toast.success('Changes saved and tracked as change orders');
       } else {
         toast.success('Changes saved successfully');
@@ -843,9 +941,15 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
           </Button>
           <Button
             onClick={saveChanges}
-            disabled={saving}
+            disabled={saving || !changeSummary.hasAnyChanges}
           >
-            {saving ? "Saving..." : (estimate.status === 'accepted' ? 'Send Change Order' : 'Save Changes')}
+            {saving
+              ? "Saving..."
+              : estimate.status === 'accepted'
+                ? changeSummary.hasSubstantiveChanges
+                  ? 'Send Change Order'
+                  : 'Save Changes'
+                : 'Save Changes'}
           </Button>
         </DialogFooter>
       </DialogContent>

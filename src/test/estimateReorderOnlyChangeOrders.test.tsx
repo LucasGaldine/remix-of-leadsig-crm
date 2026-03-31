@@ -78,56 +78,71 @@ vi.mock("@/components/leads/QuickEstimateLineItem", () => ({
   QuickEstimateLineItem: () => null,
 }));
 
-describe("EditEstimateModal reorder-only changes", () => {
+const baseEstimate = {
+  id: "est_1",
+  account_id: "acct_1",
+  job_id: "job_1",
+  tax_rate: 0,
+  discount: 0,
+  profit_margin: 0,
+  surcharge: 0,
+  status: "accepted",
+  line_items: [
+    {
+      id: "item_1",
+      name: "Item One",
+      description: "First",
+      quantity: 1,
+      unit: "each",
+      unit_price: 100,
+      total: 100,
+      sort_order: 0,
+      category: "labor",
+      is_change_order: false,
+      change_order_type: null,
+    },
+    {
+      id: "item_2",
+      name: "Item Two",
+      description: "Second",
+      quantity: 1,
+      unit: "each",
+      unit_price: 50,
+      total: 50,
+      sort_order: 1,
+      category: "materials",
+      is_change_order: false,
+      change_order_type: null,
+    },
+  ],
+};
+
+describe("EditEstimateModal change detection", () => {
   beforeEach(() => {
     updateCalls.length = 0;
     insertCalls.length = 0;
   });
 
-  it("updates sort order without turning reordered items into change orders", async () => {
+  it("disables the action button when nothing changed", () => {
     render(
       <EditEstimateModal
         open
         onOpenChange={() => {}}
         onSuccess={() => {}}
-        estimate={{
-          id: "est_1",
-          account_id: "acct_1",
-          job_id: "job_1",
-          tax_rate: 0,
-          discount: 0,
-          profit_margin: 0,
-          surcharge: 0,
-          status: "accepted",
-          line_items: [
-            {
-              id: "item_1",
-              name: "Item One",
-              description: "First",
-              quantity: 1,
-              unit: "each",
-              unit_price: 100,
-              total: 100,
-              sort_order: 0,
-              category: "labor",
-              is_change_order: false,
-              change_order_type: null,
-            },
-            {
-              id: "item_2",
-              name: "Item Two",
-              description: "Second",
-              quantity: 1,
-              unit: "each",
-              unit_price: 50,
-              total: 50,
-              sort_order: 1,
-              category: "materials",
-              is_change_order: false,
-              change_order_type: null,
-            },
-          ],
-        }}
+        estimate={baseEstimate}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+  });
+
+  it("saves reorder-only changes without turning reordered items into change orders", async () => {
+    render(
+      <EditEstimateModal
+        open
+        onOpenChange={() => {}}
+        onSuccess={() => {}}
+        estimate={baseEstimate}
       />,
     );
 
@@ -135,7 +150,10 @@ describe("EditEstimateModal reorder-only changes", () => {
     fireEvent.dragOver(screen.getByLabelText(/drag item 2/i));
     fireEvent.dragEnd(screen.getByLabelText(/drag item 1/i));
 
-    fireEvent.click(screen.getByRole("button", { name: /send change order/i }));
+    const saveButton = screen.getByRole("button", { name: /save changes/i });
+    expect(saveButton).not.toBeDisabled();
+
+    fireEvent.click(saveButton);
 
     const changeOrderUpdates = updateCalls.filter(
       (call) => call.table === "estimate_line_items" && call.values.change_order_type === "edited",
@@ -147,5 +165,28 @@ describe("EditEstimateModal reorder-only changes", () => {
     );
     expect(sortUpdates.length).toBeGreaterThanOrEqual(1);
     expect(insertCalls).toHaveLength(0);
+  });
+
+  it("keeps substantive edits behind the send change order action", async () => {
+    render(
+      <EditEstimateModal
+        open
+        onOpenChange={() => {}}
+        onSuccess={() => {}}
+        estimate={baseEstimate}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "" })[0]);
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: "Item One Updated" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send change order/i }));
+
+    const substantiveUpdates = updateCalls.filter(
+      (call) => call.table === "estimate_line_items" && call.values.change_order_type === "edited",
+    );
+    expect(substantiveUpdates).toHaveLength(1);
+    expect(substantiveUpdates[0].values.name).toBe("Item One Updated");
   });
 });
