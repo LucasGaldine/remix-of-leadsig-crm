@@ -164,7 +164,6 @@ export function BugReportModal({ open, onOpenChange }: BugReportModalProps) {
           </div>
 
           <div className="space-y-2">
-            <Label>Screenshot (optional)</Label>
             {imageFile ? (
               <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
                 <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -188,7 +187,7 @@ export function BugReportModal({ open, onOpenChange }: BugReportModalProps) {
                 className="gap-2"
               >
                 <Paperclip className="h-4 w-4" />
-                Attach screenshot
+                Attach screenshot (optional)
               </Button>
             )}
             <input

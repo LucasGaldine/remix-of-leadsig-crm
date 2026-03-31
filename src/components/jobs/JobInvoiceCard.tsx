@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Send, ExternalLink, Loader as Loader2, DollarSign } from "lucide-react";
+import { Send, ChevronsUp, ExternalLink, Loader as Loader2, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -12,12 +12,23 @@ import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { OtherPaymentOptionsModal, type PaymentOption } from "@/components/payments/OtherPaymentOptionsModal";
+import { roundCurrencyAmount } from "@/lib/formatter";
+import {
+  ensureInvoiceForLoggedPayment,
+  recordLoggedPaymentAgainstInvoice,
+  selectInvoiceForLoggedPayment,
+} from "@/lib/logPayment";
 
 interface ExistingInvoice {
   id: string;
   total: number;
   status: string;
   created_at: string;
+  balance_due: number | null;
+  customer_id: string | null;
+  lead_id: string | null;
+  account_id: string | null;
+  stripe_invoice_id: string | null;
   stripe_invoice_url: string | null;
 }
 
@@ -41,6 +52,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const [amount, setAmount] = useState("");
   const [estimateStatus, setEstimateStatus] = useState<string | null>(null);
   const [showLogPaymentModal, setShowLogPaymentModal] = useState(false);
+  const [showAllInvoicesModal, setShowAllInvoicesModal] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
 
   const taxRate = (currentAccount?.default_tax_rate || 0) / 100;
@@ -51,7 +63,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   const fetchInvoices = async () => {
     const { data } = await supabase
       .from("invoices")
-      .select("id, total, status, created_at, stripe_invoice_url")
+      .select("id, total, status, created_at, balance_due, customer_id, lead_id, account_id, stripe_invoice_id, stripe_invoice_url")
       .eq("lead_id", jobId)
       .order("created_at", { ascending: false });
     setInvoices(data || []);
@@ -71,20 +83,25 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   }, [jobId]);
 
   useEffect(() => {
-    if (dialogOpen && estimateTotal) {
-      const totalInvoiced = invoices.reduce((sum, inv) => sum + Number(inv.total), 0);
-      const remaining = estimateTotal - totalInvoiced;
-      setAmount(remaining > 0 ? remaining.toString() : "");
+    if (dialogOpen && estimateTotal !== null && estimateTotal !== undefined) {
+      const totalInvoiced = roundCurrencyAmount(invoices.reduce((sum, inv) => sum + Number(inv.total), 0));
+      const remaining = roundCurrencyAmount(estimateTotal - totalInvoiced);
+      setAmount(remaining > 0 ? remaining.toFixed(2) : "");
     }
   }, [dialogOpen, estimateTotal, invoices]);
 
-  const totalInvoiced = invoices.reduce((sum, inv) => sum + Number(inv.total), 0);
-  const remainingAmount = estimateTotal ? estimateTotal - totalInvoiced : null;
+  const totalInvoiced = roundCurrencyAmount(invoices.reduce((sum, inv) => sum + Number(inv.total), 0));
+  const remainingAmount = estimateTotal !== null && estimateTotal !== undefined
+    ? roundCurrencyAmount(estimateTotal - totalInvoiced)
+    : null;
+  const sentInvoicesCount = invoices.filter((invoice) => invoice.status !== "draft").length;
 
   const handleOpenDialog = () => {
     setTitle("");
     setDescription("");
-    setAmount(estimateTotal ? estimateTotal.toString() : "");
+    setAmount(estimateTotal !== null && estimateTotal !== undefined
+      ? roundCurrencyAmount(estimateTotal).toFixed(2)
+      : "");
     setDialogOpen(true);
   };
 
@@ -106,7 +123,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       return;
     }
 
-    if (estimateTotal && (totalInvoiced + invoiceAmount) > estimateTotal) {
+    if (
+      estimateTotal !== null &&
+      estimateTotal !== undefined &&
+      roundCurrencyAmount(totalInvoiced + invoiceAmount) > roundCurrencyAmount(estimateTotal)
+    ) {
       toast.error(`Invoice amount exceeds estimate. Maximum remaining: $${remainingAmount?.toLocaleString()}`);
       return;
     }
@@ -245,92 +266,54 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         return;
       }
 
-      let invoiceId: string;
-
-      const { data: existingInvoice } = await supabase
+      const { data: existingInvoices } = await supabase
         .from("invoices")
-        .select("id")
+        .select("id, balance_due, status, created_at")
         .eq("lead_id", jobId)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
 
-      if (existingInvoice) {
-        invoiceId = existingInvoice.id;
-      } else {
-        const { data: estimate } = await supabase
-          .from("estimates")
-          .select("id")
-          .eq("job_id", jobId)
-          .maybeSingle();
+      const existingInvoice = selectInvoiceForLoggedPayment(existingInvoices || []);
 
-        const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
-          p_account_id: currentAccount.id,
-        });
+      const methodLabel = method === "ach"
+        ? "ACH"
+        : method.charAt(0).toUpperCase() + method.slice(1);
 
-        const dueDate = new Date().toISOString().split("T")[0];
-
-        const { data: newInvoice, error: invoiceError } = await supabase
-          .from("invoices")
-          .insert({
-            customer_id: job.customer_id,
-            lead_id: jobId,
-            estimate_id: estimate?.id || null,
-            invoice_number: invoiceNumber.data || 1,
-            subtotal: paymentAmount,
-            tax_rate: 0,
-            tax: 0,
-            discount: 0,
-            total: paymentAmount,
-            balance_due: 0,
-            notes: `Payment received via ${method}`,
-            status: "paid",
-            due_date: dueDate,
-            created_by: user.id,
-            account_id: currentAccount.id,
-          })
-          .select("id")
-          .single();
-
-        if (invoiceError) {
-          console.error("Invoice creation error:", invoiceError);
-          toast.error("Failed to create invoice");
-          setRecordingPayment(false);
-          return;
-        }
-
-        await supabase.from("invoice_line_items").insert({
-          invoice_id: newInvoice.id,
-          name: `Payment - ${method.charAt(0).toUpperCase() + method.slice(1)}`,
-          description: `Payment received via ${method}`,
-          quantity: 1,
-          unit: "item",
-          unit_price: paymentAmount,
-          total: paymentAmount,
-          sort_order: 0,
-          account_id: currentAccount.id,
-        });
-
-        invoiceId = newInvoice.id;
-      }
-
-      const { error: paymentError } = await supabase.from("payments").insert({
-        invoice_id: invoiceId,
-        lead_id: jobId,
-        customer_id: job.customer_id,
+      const invoiceId = await ensureInvoiceForLoggedPayment({
+        supabase,
+        existingInvoiceId: existingInvoice?.id ?? null,
+        customerId: job.customer_id,
+        jobId,
+        accountId: currentAccount.id,
+        userId: user.id,
         amount: paymentAmount,
-        method,
-        status: "completed",
-        processed_by: user.id,
-        account_id: currentAccount.id,
+        methodLabel,
       });
 
-      if (paymentError) {
-        console.error("Payment insert error:", paymentError);
-        toast.error("Failed to record payment");
-        setRecordingPayment(false);
-        return;
-      }
+      await recordLoggedPaymentAgainstInvoice({
+        supabase,
+        invoice: existingInvoice?.id
+          ? {
+              id: existingInvoice.id,
+              customer_id: existingInvoice.customer_id ?? job.customer_id,
+              lead_id: existingInvoice.lead_id ?? jobId,
+              account_id: existingInvoice.account_id ?? currentAccount.id,
+              balance_due: existingInvoice.balance_due,
+              stripe_invoice_id: existingInvoice.stripe_invoice_id ?? null,
+            }
+          : {
+              id: invoiceId,
+              customer_id: job.customer_id,
+              lead_id: jobId,
+              account_id: currentAccount.id,
+              balance_due: paymentAmount,
+              stripe_invoice_id: null,
+            },
+        paymentAmount,
+        method,
+        methodLabel,
+        userId: user.id,
+      });
 
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -341,10 +324,51 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       fetchInvoices();
     } catch (error) {
       console.error("Payment recording error:", error);
-      toast.error("Failed to record payment");
+      toast.error(error instanceof Error ? error.message : "Failed to record payment");
     } finally {
       setRecordingPayment(false);
     }
+  };
+
+  const handleOpenTapToPay = (paymentAmount: number) => {
+    const openTapToPay = async () => {
+      if (!user || !currentAccount) {
+        toast.error("Authentication required");
+        return;
+      }
+
+      try {
+        const { data: job } = await supabase
+          .from("leads")
+          .select("customer_id, name")
+          .eq("id", jobId)
+          .single();
+
+        if (!job?.customer_id) {
+          toast.error("Customer not found");
+          return;
+        }
+
+        navigate("/payments/charge", {
+          state: {
+            invoice: {
+              customerId: job.customer_id,
+              customerName: customerName || "Unknown",
+              balanceDue: paymentAmount,
+              jobId,
+              jobName: job.name || "Job Payment",
+              email: customerEmail || "",
+            },
+            selectedMethod: "tap-to-pay",
+          },
+        });
+      } catch (error) {
+        console.error("Tap to Pay invoice preparation error:", error);
+        toast.error("Failed to prepare Tap to Pay");
+      }
+    };
+
+    void openTapToPay();
   };
 
   const statusColors: Record<string, string> = {
@@ -358,94 +382,159 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   return (
     <>
       <div className="space-y-3">
-        {invoices.length > 0 && (
-          <div className="space-y-2">
-            {invoices.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between p-3 bg-card rounded-lg border border-border cursor-pointer hover:bg-accent transition-colors"
-                onClick={() => navigate(`/payments/invoices/${inv.id}`)}
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    ${Number(inv.total).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(inv.created_at), "MMM d, yyyy")}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-medium capitalize ${statusColors[inv.status] || "text-muted-foreground"}`}>
-                    {inv.status}
-                  </span>
-                  {inv.stripe_invoice_url && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(inv.stripe_invoice_url!, "_blank");
-                      }}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+        <div
+          role="button"
+          tabIndex={0}
+          className="rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+          onClick={() => setShowAllInvoicesModal(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setShowAllInvoicesModal(true);
+            }
+          }}
+          aria-label="View all invoices"
+        >
+          <div className="flex items-center justify-between gap-2">
+           <div className="flex gap-2 items-center">
+            <ChevronsUp className="w-3 h-3"/>
+            <p className="text-xs uppercase text-muted-foreground tracking-wide">Invoices</p>
           </div>
-        )}
+            <span className=" inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              View 
+            </span>
+          </div>
 
-        {estimateTotal && remainingAmount !== null && remainingAmount <= 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-2">
-            Estimate fully invoiced
-          </p>
-        ) : estimateStatus && estimateStatus !== "accepted" ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                disabled
-              >
-                <Send className="h-4 w-4 mr-2" />
-                Send Invoice
-              </Button>
-              <Button
-                className="flex-1"
-                variant="outline"
-                disabled
-              >
-                <DollarSign className="h-4 w-4 mr-2" />
-                Log Payment
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground text-center">
-              The estimate must be approved before sending an invoice
+          <div className="mt-2 mb-6">
+            <p className="text-xl font-semibold leading-tight text-foreground">
+              +{totalInvoiced.toLocaleString("en-US", {
+                style: "currency",
+                currency: "USD",
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+            <p className="mt-2 text-muted-foreground text-xs">
+              {sentInvoicesCount} {sentInvoicesCount === 1 ? "invoice" : "invoices"} sent
             </p>
           </div>
-        ) : (
-          <div className="flex gap-2">
-            <Button
-              className="flex-1"
-              onClick={handleOpenDialog}
-              disabled={loading}
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Send Invoice
-            </Button>
-            <Button
-              className="flex-1"
-              variant="outline"
-              onClick={() => setShowLogPaymentModal(true)}
-              disabled={loading}
-            >
-              <DollarSign className="h-4 w-4 mr-2" />
-              Log Payment
-            </Button>
+
+          <div className="mt-4">
+            {estimateTotal && remainingAmount !== null && remainingAmount <= 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                Estimate fully invoiced
+              </p>
+            ) : estimateStatus && estimateStatus !== "accepted" ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    className="flex-1 basis-[220px]"
+                    disabled
+
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Invoice
+                  </Button>
+                  <Button
+                    className="flex-1 basis-[220px]"
+                    variant="outline"
+                    disabled
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Log Payment
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  The estimate must be approved before sending an invoice
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="flex-1 basis-[220px]"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleOpenDialog();
+                  }}
+                  
+                  disabled={loading}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Invoice
+                </Button>
+                <Button
+                  className="flex-1 basis-[220px]"
+                  variant="outline"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setShowLogPaymentModal(true);
+                  }}
+                  disabled={loading}
+                >
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Log Payment
+                </Button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
+
+      <Dialog open={showAllInvoicesModal} onOpenChange={setShowAllInvoicesModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>All Invoices</DialogTitle>
+            <DialogDescription>
+              {invoices.length} {invoices.length === 1 ? "invoice" : "invoices"} for this job
+            </DialogDescription>
+          </DialogHeader>
+          {invoices.length > 0 ? (
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+              {invoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center justify-between p-3 bg-card rounded-lg border border-border cursor-pointer hover:bg-accent transition-colors"
+                  onClick={() => {
+                    setShowAllInvoicesModal(false);
+                    navigate(`/payments/invoices/${inv.id}`);
+                  }}
+                >
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      ${Number(inv.total).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(inv.created_at), "MMM d, yyyy")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium capitalize ${statusColors[inv.status] || "text-muted-foreground"}`}>
+                      {inv.status}
+                    </span>
+                    {inv.stripe_invoice_url && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(inv.stripe_invoice_url!, "_blank");
+                        }}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-2">No invoices yet for this job.</p>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -523,6 +612,7 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         onOpenChange={setShowLogPaymentModal}
         totalAmount={estimateTotal || 0}
         onRecordPayment={handleRecordPayment}
+        onOpenTapToPay={handleOpenTapToPay}
         recordingPayment={recordingPayment}
       />
     </>

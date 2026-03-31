@@ -45,6 +45,7 @@ interface ClientPortalEstimateProps {
   jobName?: string;
   address?: string;
   companyName?: string;
+  companyLogoUrl?: string;
   companyEmail?: string;
   companyPhone?: string;
   createdAt?: string;
@@ -62,6 +63,7 @@ export function ClientPortalEstimate({
   jobName = "",
   address = "",
   companyName = "",
+  companyLogoUrl = "",
   companyEmail = "",
   companyPhone = "",
   createdAt,
@@ -78,12 +80,13 @@ export function ClientPortalEstimate({
     !item.is_change_order || item.change_order_type !== 'deleted'
   );
 
-  const handleDownloadPDF = () => {
-    generateEstimatePDF({
+  const handleDownloadPDF = async () => {
+    await generateEstimatePDF({
       customerName,
       jobName,
       address,
       companyName,
+      companyLogoUrl,
       companyEmail,
       companyPhone,
       lineItems: currentLineItems,
@@ -178,7 +181,7 @@ export function ClientPortalEstimate({
 
       {lineItems.length > 0 && (
         <div className="px-4 py-4">
-          <div className="space-y-0 divide-y divide-slate-100">
+          <div className="space-y-0">
             {lineItems.map((item) => (
               <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex justify-between items-start">
@@ -401,7 +404,7 @@ export function ClientPortalEstimate({
         <>
           {currentLineItems.length > 0 && (
             <div className="px-6 sm:px-8 py-5">
-              <div className="space-y-0 divide-y divide-slate-100">
+              <div className="space-y-0">
                 {currentLineItems.map((item) => (
                   <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex justify-between items-start">

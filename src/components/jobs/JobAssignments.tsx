@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
 import { useJobSchedules } from '@/hooks/useJobSchedules';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -56,18 +55,10 @@ const roleBadgeColors: Record<string, string> = {
 interface JobAssignmentsProps {
   leadId: string;
   onCrewChanged?: () => void;
+  embedded?: boolean;
 }
 
-interface CrewMember {
-  user_id: string;
-  role: string;
-  profiles: {
-    full_name: string | null;
-    email: string | null;
-  };
-}
-
-export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
+export function JobAssignments({ leadId, onCrewChanged, embedded = false }: JobAssignmentsProps) {
   const { currentAccount, isManager } = useAuth();
   const { assignments, isLoading, assignCrew, unassignCrew, isAssigning, isUnassigning } =
     useJobAssignments(leadId);
@@ -77,41 +68,15 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assignmentToRemove, setAssignmentToRemove] = useState<string | null>(null);
 
-  const { data: availableMembers } = useQuery({
-    queryKey: ['crew-members', currentAccount?.id],
-    queryFn: async () => {
-      if (!currentAccount) return [];
-
-      const { data, error } = await supabase
-        .from('account_members_with_profiles')
-        .select('user_id, role, full_name, email')
-        .eq('account_id', currentAccount.id)
-        .eq('is_active', true)
-        .order('full_name', { ascending: true });
-
-      if (error) throw error;
-
-      return data.map(member => ({
-        user_id: member.user_id,
-        role: member.role,
-        profiles: {
-          full_name: member.full_name,
-          email: member.email
-        }
-      })) as CrewMember[];
-    },
-    enabled: !!currentAccount && isManager(),
-  });
+  const { data: teamMembers } = useTeamMembers();
 
   const getScheduleAssignments = (scheduleId: string) => {
-    return assignments?.filter(a => a.job_schedule_id === scheduleId) || [];
+    return assignments?.filter((a) => a.job_schedule_id === scheduleId) || [];
   };
 
   const toggleSchedule = (scheduleId: string) => {
-    setSelectedSchedules(prev =>
-      prev.includes(scheduleId)
-        ? prev.filter(id => id !== scheduleId)
-        : [...prev, scheduleId]
+    setSelectedSchedules((prev) =>
+      prev.includes(scheduleId) ? prev.filter((id) => id !== scheduleId) : [...prev, scheduleId]
     );
   };
 
@@ -120,7 +85,7 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
     if (selectedSchedules.length === schedules.length) {
       setSelectedSchedules([]);
     } else {
-      setSelectedSchedules(schedules.map(s => s.id));
+      setSelectedSchedules(schedules.map((s) => s.id));
     }
   };
 
@@ -147,15 +112,36 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
     }
   };
 
+  const assignmentHeader = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <div className="p-2 rounded-lg bg-secondary">
+          <Users className="h-5 w-5 text-secondary-foreground" />
+        </div>
+        <p className="font-medium text-foreground">Assigned Crew</p>
+      </div>
+      {isManager() && schedules && schedules.length > 0 && (
+        <Button onClick={openAssignDialog} size="sm" className="shrink-0">
+          <UserPlus className="h-4 w-4 mr-2" />
+          Assign Crew
+        </Button>
+      )}
+    </div>
+  );
+
   if (schedulesLoading || isLoading) {
-    return (
+    return embedded ? (
+      <div className="space-y-3">
+        {assignmentHeader}
+        <div className="space-y-2">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-md" />
+          ))}
+        </div>
+      </div>
+    ) : (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Assigned Crew
-          </CardTitle>
-        </CardHeader>
+        <CardHeader>{assignmentHeader}</CardHeader>
         <CardContent>
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
@@ -168,14 +154,20 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
   }
 
   if (!schedules || schedules.length === 0) {
-    return (
+    return embedded ? (
+      <div className="space-y-3">
+        {assignmentHeader}
+        <div className="rounded-md bg-secondary/50 p-4 text-center">
+          <Calendar className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">No schedules created yet</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Create job schedules first to assign crew members
+          </p>
+        </div>
+      </div>
+    ) : (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Assigned Crew
-          </CardTitle>
-        </CardHeader>
+        <CardHeader>{assignmentHeader}</CardHeader>
         <CardContent>
           <div className="text-center py-8">
             <Calendar className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
@@ -189,22 +181,79 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
     );
   }
 
-  return (
+  const embeddedContent = (
+    <div className="space-y-3">
+      {assignmentHeader}
+      <div className="space-y-3">
+        {schedules.map((schedule) => {
+          const scheduleAssignments = getScheduleAssignments(schedule.id);
+          return (
+            <div key={schedule.id} className="space-y-2">
+              <div className="flex items-start justify-between gap-2 p-2 bg-secondary/50 rounded-md">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-foreground" />
+                    <p className="text-sm font-medium text-foreground">
+                      {format(new Date(schedule.scheduled_date + 'T00:00:00'), 'EEEE, MMMM d, yyyy')}
+                    </p>
+                  </div>
+                  {schedule.scheduled_time_start && schedule.scheduled_time_end && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                      <Clock className="h-3 w-3" />
+                      {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
+                    </div>
+                  )}
+                </div>
+                <Badge variant="outline">{scheduleAssignments.length} assigned</Badge>
+              </div>
+
+              {scheduleAssignments.length > 0 ? (
+                <div className="space-y-2">
+                  {scheduleAssignments.map((assignment) => (
+                    <div
+                      key={assignment.id}
+                      className="flex items-center justify-between px-2 py-1.5 border rounded-md bg-background"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium">
+                          {assignment.profiles?.full_name || 'Unknown'}
+                        </div>
+                        {assignment.profiles?.email && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Mail className="h-3 w-3" />
+                            {assignment.profiles.email}
+                          </div>
+                        )}
+                      </div>
+                      {isManager() && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAssignmentToRemove(assignment.id)}
+                          disabled={isUnassigning}
+                          className="h-7 w-7 p-0"
+                        >
+                          <X className="h-3 w-3 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-2">
+                  No crew assigned to this schedule
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const cardContent = (
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Assigned Crew
-          </CardTitle>
-          {isManager() && (
-            <Button onClick={openAssignDialog} size="sm">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Assign Crew
-            </Button>
-          )}
-        </div>
-      </CardHeader>
+      <CardHeader>{assignmentHeader}</CardHeader>
       <CardContent className="space-y-4">
         {schedules.map((schedule) => {
           const scheduleAssignments = getScheduleAssignments(schedule.id);
@@ -223,9 +272,7 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
                     </div>
                   )}
                 </div>
-                <Badge variant="outline">
-                  {scheduleAssignments.length} assigned
-                </Badge>
+                <Badge variant="outline">{scheduleAssignments.length} assigned</Badge>
               </div>
 
               {scheduleAssignments.length > 0 ? (
@@ -268,6 +315,12 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
           );
         })}
       </CardContent>
+    </Card>
+  );
+
+  return (
+    <>
+      {embedded ? embeddedContent : cardContent}
 
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
         <DialogContent className="max-w-md">
@@ -286,16 +339,19 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
                   <SelectValue placeholder="Select crew member" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableMembers?.length === 0 ? (
+                  {teamMembers?.length === 0 ? (
                     <div className="p-2 text-sm text-muted-foreground text-center">
                       No crew members available
                     </div>
                   ) : (
-                    availableMembers?.map((member) => (
+                    teamMembers?.map((member) => (
                       <SelectItem key={member.user_id} value={member.user_id}>
                         <span className="flex items-center gap-2">
-                          {member.profiles?.full_name || 'Unknown'}
-                          <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
+                          {member.full_name || 'Unknown'}
+                          <Badge
+                            variant="outline"
+                            className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}
+                          >
                             {roleLabels[member.role] || member.role}
                           </Badge>
                         </span>
@@ -309,12 +365,7 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium">Schedules</label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleAllSchedules}
-                  type="button"
-                >
+                <Button variant="ghost" size="sm" onClick={toggleAllSchedules} type="button">
                   {selectedSchedules.length === schedules?.length ? 'Deselect All' : 'Select All'}
                 </Button>
               </div>
@@ -326,10 +377,7 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
                       checked={selectedSchedules.includes(schedule.id)}
                       onCheckedChange={() => toggleSchedule(schedule.id)}
                     />
-                    <label
-                      htmlFor={schedule.id}
-                      className="text-sm flex-1 cursor-pointer"
-                    >
+                    <label htmlFor={schedule.id} className="text-sm flex-1 cursor-pointer">
                       <div className="font-medium">
                         {format(new Date(schedule.scheduled_date + 'T00:00:00'), 'EEEE, MMM d')}
                       </div>
@@ -388,6 +436,6 @@ export function JobAssignments({ leadId, onCrewChanged }: JobAssignmentsProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </>
   );
 }

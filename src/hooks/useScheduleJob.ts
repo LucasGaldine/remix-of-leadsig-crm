@@ -7,6 +7,8 @@ type ScheduleInput = {
   startTime?: string;
   endTime?: string;
   notes?: string;
+  suppressSuccessToast?: boolean;
+  suppressErrorToast?: boolean;
 };
 
 /**
@@ -20,11 +22,11 @@ export function useScheduleJob() {
 
   const scheduleJob = async (input: ScheduleInput) => {
     if (!input.leadId) {
-      toast.error("Missing job id");
+      if (!input.suppressErrorToast) toast.error("Missing job id");
       return { ok: false, scheduleId: undefined };
     }
     if (!input.scheduledDate) {
-      toast.error("Please select a date");
+      if (!input.suppressErrorToast) toast.error("Please select a date");
       return { ok: false, scheduleId: undefined };
     }
 
@@ -37,12 +39,12 @@ export function useScheduleJob() {
         notes: input.notes,
       });
 
-      toast.success("Schedule added successfully!");
+      if (!input.suppressSuccessToast) toast.success("Schedule added successfully!");
       return { ok: true, scheduleId: schedule.id };
     } catch (error) {
       console.error("Error adding schedule:", error);
       const message = error instanceof Error ? error.message : "Failed to add schedule";
-      toast.error(message);
+      if (!input.suppressErrorToast) toast.error(message);
       return { ok: false, scheduleId: undefined, error: error as Error };
     }
   };

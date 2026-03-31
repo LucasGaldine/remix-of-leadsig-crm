@@ -23,15 +23,25 @@ import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { toast } from "sonner";
 
 // Demo customers with open invoices
-const customersWithBalance = [
+interface ChargeCustomer {
+  id: string;
+  name: string;
+  invoiceId?: string;
+  balance: number;
+  jobId?: string;
+  jobName: string;
+  email: string;
+}
+
+const customersWithBalance: ChargeCustomer[] = [
   { id: "cust-1", name: "Martinez Backyard", invoiceId: "inv-1", balance: 4536, jobName: "Walkway Installation", email: "martinez@example.com" },
   { id: "cust-2", name: "Chen Residence", invoiceId: "inv-3", balance: 2764.80, jobName: "Retaining Wall", email: "chen@example.com" },
   { id: "cust-3", name: "Wilson Property", invoiceId: "inv-4", balance: 9180, jobName: "Driveway Extension", email: "wilson@example.com" },
 ];
 
-const paymentMethods: { id: PaymentMethod; label: string; icon: React.ReactNode; description: string; requiresStripe?: boolean }[] = [
+const paymentMethods: { id: PaymentMethod; label: string; icon: React.ReactNode; description: string; requiresStripe?: boolean; comingSoon?: boolean }[] = [
   { id: "card", label: "Credit/Debit Card", icon: <CreditCard className="h-5 w-5" />, description: "Visa, Mastercard, Amex", requiresStripe: true },
-  { id: "tap-to-pay", label: "Tap to Pay", icon: <Smartphone className="h-5 w-5" />, description: "Contactless payment", requiresStripe: true },
+  { id: "tap-to-pay", label: "Tap to Pay", icon: <Smartphone className="h-5 w-5" />, description: "Contactless payment", requiresStripe: true, comingSoon: true },
   { id: "cash", label: "Cash", icon: <Banknote className="h-5 w-5" />, description: "Record cash payment" },
   { id: "check", label: "Check", icon: <FileText className="h-5 w-5" />, description: "Record check payment" },
   { id: "ach", label: "ACH Transfer", icon: <Building2 className="h-5 w-5" />, description: "Bank transfer", requiresStripe: true },
@@ -41,46 +51,75 @@ export default function ChargePayment() {
   const navigate = useNavigate();
   const location = useLocation();
   const preselectedInvoice = location.state?.invoice;
-  const { status: stripeStatus, isReady: stripeReady, createPaymentSession, startOnboarding } = useStripeConnect();
+  const preselectedMethod = location.state?.selectedMethod as PaymentMethod | undefined;
+  const {
+    status: stripeStatus,
+    isReady: stripeReady,
+    createPaymentSession,
+    startOnboarding,
+  } = useStripeConnect();
+
+  const customPreselectedCustomer =
+    preselectedInvoice &&
+    !customersWithBalance.find((c) => c.name === preselectedInvoice.customerName)
+      ? {
+          id: preselectedInvoice.customerId || `prefilled-${preselectedInvoice.id || preselectedInvoice.invoiceId || "invoice"}`,
+          name: preselectedInvoice.customerName,
+          invoiceId: preselectedInvoice.invoiceId || preselectedInvoice.id,
+          balance: Number(preselectedInvoice.balanceDue || 0),
+          jobId: preselectedInvoice.jobId,
+          jobName: preselectedInvoice.jobName || "Invoice Payment",
+          email: preselectedInvoice.email || "",
+        }
+      : null;
+  const availableCustomers = customPreselectedCustomer
+    ? [customPreselectedCustomer, ...customersWithBalance]
+    : customersWithBalance;
 
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(
-    preselectedInvoice ? customersWithBalance.find(c => c.name === preselectedInvoice.customerName)?.id || null : null
+    preselectedInvoice
+      ? availableCustomers.find(c => c.name === preselectedInvoice.customerName)?.id || customPreselectedCustomer?.id || null
+      : null
   );
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(preselectedMethod || null);
   const [amount, setAmount] = useState<string>(
     preselectedInvoice ? preselectedInvoice.balanceDue.toString() : ""
   );
-  const [step, setStep] = useState<"select" | "method" | "details" | "confirm">("select");
+  const [step, setStep] = useState<"select" | "method" | "details" | "confirm">(
+    preselectedInvoice && preselectedMethod ? "details" : preselectedInvoice ? "method" : "select"
+  );
   const [processingCard, setProcessingCard] = useState(false);
 
-  const selectedCustomerData = customersWithBalance.find(c => c.id === selectedCustomer);
+  const selectedCustomerData = availableCustomers.find(c => c.id === selectedCustomer);
+  const parsedAmount = Number(amount);
+  const hasValidAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
 
   const handleCustomerSelect = (customerId: string) => {
     setSelectedCustomer(customerId);
-    const customer = customersWithBalance.find(c => c.id === customerId);
+      const customer = availableCustomers.find(c => c.id === customerId);
     if (customer) {
       setAmount(customer.balance.toString());
     }
     setStep("method");
   };
 
-  const handleTapToPay = (customerId: string) => {
-    setSelectedCustomer(customerId);
-    const customer = customersWithBalance.find(c => c.id === customerId);
-    if (customer) {
-      setAmount(customer.balance.toString());
-    }
-    setSelectedMethod("tap-to-pay");
-    setStep("details");
-  };
-
   const handleMethodSelect = (method: PaymentMethod) => {
+    if (method === "tap-to-pay") {
+      toast.error("Tap to Pay is coming soon.");
+      return;
+    }
+
     setSelectedMethod(method);
     setStep("details");
   };
 
   const handleCardPayment = async () => {
     if (!selectedCustomerData || !amount) return;
+
+    if (!selectedCustomerData.invoiceId) {
+      toast.error("Create an invoice before charging this payment method.");
+      return;
+    }
     
     setProcessingCard(true);
     try {
@@ -124,7 +163,7 @@ export default function ChargePayment() {
             </div>
 
             <div className="space-y-3">
-              {customersWithBalance.map((customer) => (
+              {availableCustomers.map((customer) => (
                 <div
                   key={customer.id}
                   className={cn(
@@ -158,10 +197,10 @@ export default function ChargePayment() {
                     variant="default"
                     size="sm"
                     className="w-full mt-3 gap-2"
-                    onClick={() => handleTapToPay(customer.id)}
+                    disabled
                   >
                     <Smartphone className="h-4 w-4" />
-                    Tap to Pay
+                    Tap to Pay Coming Soon
                   </Button>
                 </div>
               ))}
@@ -184,19 +223,26 @@ export default function ChargePayment() {
                 <button
                   key={method.id}
                   onClick={() => handleMethodSelect(method.id)}
+                  disabled={method.comingSoon}
                   className={cn(
                     "w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all",
-                    selectedMethod === method.id && "ring-2 ring-primary"
+                    selectedMethod === method.id && "ring-2 ring-primary",
+                    method.comingSoon && "opacity-60 cursor-not-allowed hover:shadow-none active:scale-100"
                   )}
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-secondary">
                       {method.icon}
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-semibold text-foreground">{method.label}</h3>
                       <p className="text-sm text-muted-foreground">{method.description}</p>
                     </div>
+                    {method.comingSoon && (
+                      <span className="rounded-full bg-secondary px-2 py-1 text-xs font-medium text-muted-foreground">
+                        Coming soon
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}
@@ -227,7 +273,9 @@ export default function ChargePayment() {
                   id="amount"
                   type="number"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(e) => {
+                    setAmount(e.target.value);
+                  }}
                   className="pl-10 text-lg font-semibold"
                   placeholder="0.00"
                 />
@@ -238,7 +286,7 @@ export default function ChargePayment() {
             </div>
 
             {/* Card Payment via Stripe */}
-            {(selectedMethod === "card" || selectedMethod === "tap-to-pay") && (
+            {selectedMethod === "card" && (
               <div className="card-elevated rounded-lg p-4">
                 {stripeReady ? (
                   <>

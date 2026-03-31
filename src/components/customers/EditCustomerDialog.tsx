@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { getCustomerWriteErrorMessage } from "@/lib/customerErrors";
 import { toast } from "sonner";
 import { Loader as Loader2 } from "lucide-react";
 
@@ -82,9 +83,9 @@ export function EditCustomerDialog({ open, onOpenChange, customer, onCustomerUpd
       toast.success("Customer updated successfully");
       onCustomerUpdated?.();
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating customer:", error);
-      toast.error(error.message || "Failed to update customer");
+      toast.error(getCustomerWriteErrorMessage(error, "Failed to update customer"));
     } finally {
       setSaving(false);
     }

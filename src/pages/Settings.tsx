@@ -1,13 +1,14 @@
 // @ts-nocheck
-import { useState } from "react";
-import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2, Search, Bug } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
+import { BugReportModal } from "@/components/layout/BugReportModal";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { type PricingPlan, hasPlanAccess } from "@/lib/planGating";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -32,9 +33,22 @@ interface SettingSection {
 
 export default function Settings() {
   const [show2FASetup, setShow2FASetup] = useState(false);
+  const [bugReportOpen, setBugReportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { signOut, profile, role, currentAccount } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("reportBug") !== "1") {
+      return;
+    }
+
+    setBugReportOpen(true);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("reportBug");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
   
 
   const handleSignOut = async () => {
@@ -202,6 +216,13 @@ export default function Settings() {
           searchTerms: ["help", "support", "contact", "assistance", "questions"],
         },
         {
+          icon: <Bug className="h-5 w-5" />,
+          label: "Report a Bug",
+          description: "Send bug details to support",
+          onClick: () => setBugReportOpen(true),
+          searchTerms: ["bug", "report", "issue", "broken", "problem", "support ticket"],
+        },
+        {
           icon: <FileText className="h-5 w-5" />,
           label: "Privacy Policy",
           description: "Review data usage",
@@ -362,6 +383,7 @@ export default function Settings() {
       <MobileNav />
 
       <TwoFactorSetup open={show2FASetup} onOpenChange={setShow2FASetup} />
+      <BugReportModal open={bugReportOpen} onOpenChange={setBugReportOpen} />
     </div>
   );
 }

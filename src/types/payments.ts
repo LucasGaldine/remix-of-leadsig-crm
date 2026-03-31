@@ -1,5 +1,23 @@
 // Payment System Types
 
+export const tapToPayPaymentMethods = ["tap-to-pay"] as const;
+export const tapToPayStatuses = [
+  "terminal_pending",
+  "terminal_processing",
+  "completed",
+  "failed",
+  "canceled",
+] as const;
+export const stripeTerminalPaymentIntentStatuses = [
+  "requires_payment_method",
+  "requires_confirmation",
+  "requires_action",
+  "processing",
+  "requires_capture",
+  "canceled",
+  "succeeded",
+] as const;
+
 export interface LineItem {
   id: string;
   name: string;
@@ -14,6 +32,10 @@ export type EstimateStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'expired
 export type InvoiceStatus = 'draft' | 'sent' | 'viewed' | 'partial' | 'paid' | 'overdue';
 export type PaymentMethod = 'card' | 'cash' | 'check' | 'ach' | 'tap-to-pay';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
+export type PaymentChannel = 'online' | 'terminal';
+export type TapToPayTerminalStatus = typeof tapToPayStatuses[number];
+export type StripeTerminalPaymentIntentStatus = typeof stripeTerminalPaymentIntentStatuses[number];
+export type TerminalStatusValue = TapToPayTerminalStatus | StripeTerminalPaymentIntentStatus;
 
 export interface Estimate {
   id: string;
@@ -67,6 +89,11 @@ export interface Payment {
   amount: number;
   method: PaymentMethod;
   status: PaymentStatus;
+  paymentChannel?: PaymentChannel;
+  terminalStatus?: TerminalStatusValue;
+  stripeTerminalReaderId?: string;
+  stripeTerminalLocationId?: string;
+  stripeTerminalPaymentIntentId?: string;
   transactionRef?: string;
   createdAt: string;
   receiptUrl?: string;

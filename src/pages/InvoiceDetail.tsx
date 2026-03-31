@@ -9,6 +9,7 @@ import {
   Calendar,
   ChevronRight,
   ExternalLink,
+  Download,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -21,6 +22,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/useAuth";
+import { generateInvoicePDF } from "@/lib/pdfGenerator";
+import { recordLoggedPaymentAgainstInvoice } from "@/lib/logPayment";
+import { resyncInvoicePaymentsWithStripe } from "@/lib/stripeInvoiceResync";
 
 const statusConfig: Record<InvoiceStatus, { label: string; className: string }> = {
   draft: { label: "Draft", className: "bg-secondary text-secondary-foreground" },
@@ -36,8 +41,10 @@ export default function InvoiceDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: invoice, isLoading } = useInvoice(id);
+  const { currentAccount } = useAuth();
   const [showChargeOptions, setShowChargeOptions] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [resyncingStripe, setResyncingStripe] = useState(false);
 
   if (isLoading) {
     return (
@@ -85,41 +92,108 @@ export default function InvoiceDetail() {
     navigate("/payments/invoices/new", { state: { duplicate: invoice } });
   };
 
+  const handleDownloadPdf = async () => {
+    try {
+      await generateInvoicePDF({
+        customerName: invoice.customer?.name || "Unknown Customer",
+        jobName: invoice.job?.name || "",
+        address: invoice.customer?.address || "",
+        companyName: currentAccount?.company_name || "",
+        companyLogoUrl: currentAccount?.logo_url || "",
+        companyEmail: currentAccount?.company_email || "",
+        companyPhone: currentAccount?.company_phone || "",
+        invoiceNumber: (invoice as any).invoice_number,
+        dueDate: invoice.due_date || undefined,
+        lineItems: lineItems.map((item: any) => ({
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total: item.total,
+        })),
+        subtotal,
+        taxRate,
+        tax,
+        discount,
+        total,
+        balanceDue: balanceDue,
+        notes: (invoice as any).notes || "",
+        createdAt: invoice.created_at || undefined,
+      });
+      toast.success("Invoice PDF downloaded");
+    } catch {
+      toast.error("Failed to download invoice PDF");
+    }
+  };
+
   const handleRecordPayment = async (method: PaymentOption, amount: number) => {
     setRecordingPayment(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
+      const methodLabel = method === "ach"
+        ? "ACH"
+        : method.charAt(0).toUpperCase() + method.slice(1);
 
-      await supabase.from("payments").insert({
-        invoice_id: invoice.id,
-        customer_id: invoice.customer_id,
-        lead_id: invoice.lead_id,
-        amount,
+      await recordLoggedPaymentAgainstInvoice({
+        supabase,
+        invoice: {
+          id: invoice.id,
+          customer_id: invoice.customer_id,
+          lead_id: invoice.lead_id,
+          account_id: invoice.account_id,
+          balance_due: invoice.balance_due,
+          stripe_invoice_id: (invoice as any).stripe_invoice_id || null,
+        },
+        paymentAmount: amount,
         method,
-        status: "completed",
-        processed_by: user?.id,
-        account_id: invoice.account_id,
+        methodLabel,
+        userId: user?.id || "",
       });
-
-      const newBalance = Math.max(0, balanceDue - amount);
-      await supabase
-        .from("invoices")
-        .update({
-          balance_due: newBalance,
-          status: newBalance <= 0 ? "paid" : "partial",
-          ...(newBalance <= 0 ? { paid_at: new Date().toISOString() } : {}),
-        })
-        .eq("id", invoice.id);
 
       await queryClient.invalidateQueries({ queryKey: ["invoice", id] });
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
       await queryClient.invalidateQueries({ queryKey: ["payments"] });
       setShowChargeOptions(false);
       toast.success(`${method.charAt(0).toUpperCase() + method.slice(1)} payment of $${amount.toLocaleString()} recorded`);
-    } catch {
-      toast.error("Failed to record payment");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to record payment";
+      toast.error(message);
     } finally {
       setRecordingPayment(false);
+    }
+  };
+
+  const handleOpenTapToPay = (amount: number) => {
+    navigate("/payments/charge", {
+      state: {
+        invoice: {
+          id: invoice.id,
+          invoiceId: invoice.id,
+          customerId: invoice.customer_id,
+          customerName: invoice.customer?.name || "Unknown",
+          balanceDue: amount,
+          jobName: invoice.job?.name || "No job",
+          email: invoice.customer?.email || "",
+        },
+        selectedMethod: "tap-to-pay",
+      },
+    });
+  };
+
+  const handleResyncWithStripe = async () => {
+    setResyncingStripe(true);
+    try {
+      await resyncInvoicePaymentsWithStripe(invoice.id);
+      await queryClient.invalidateQueries({ queryKey: ["invoice", id] });
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      await queryClient.invalidateQueries({ queryKey: ["payments"] });
+      toast.success("Invoice payments resent to Stripe");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to resync with Stripe";
+      toast.error(message);
+    } finally {
+      setResyncingStripe(false);
     }
   };
 
@@ -127,7 +201,7 @@ export default function InvoiceDetail() {
     <div className="min-h-screen bg-surface-sunken pb-32">
       <PageHeader title="Invoice" showBack backTo="/payments" />
 
-      <div className="bg-card border-b border-border px-4 py-4">
+      <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
         <div className="flex items-start justify-between mb-3">
           <div>
             <span className={cn("text-2xs px-2 py-1 rounded-full inline-flex items-center gap-1", config.className)}>
@@ -149,9 +223,30 @@ export default function InvoiceDetail() {
             )}
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-2"
+          onClick={handleDownloadPdf}
+        >
+          <Download className="h-4 w-4" />
+          Download PDF
+        </Button>
+        {(invoice as any).stripe_invoice_id && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2 mt-2"
+            onClick={handleResyncWithStripe}
+            disabled={resyncingStripe}
+          >
+            <Link2 className="h-4 w-4" />
+            {resyncingStripe ? "Resyncing..." : "Resync with Stripe"}
+          </Button>
+        )}
       </div>
 
-      <div className="px-4 py-4 space-y-3">
+      <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-3">
         <button className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-secondary">
@@ -201,7 +296,7 @@ export default function InvoiceDetail() {
         )}
       </div>
 
-      <div className="px-4">
+      <div className="px-4 max-w-[var(--content-max-width)] m-auto">
         <h3 className="font-semibold text-foreground mb-3">Line Items</h3>
         <div className="card-elevated rounded-lg overflow-hidden">
           {lineItems.length > 0 ? lineItems.map((item: any, index: number) => (
@@ -233,7 +328,7 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
-      <div className="px-4 mt-4">
+      <div className="px-4 mt-4 max-w-[var(--content-max-width)] m-auto">
         <div className="card-elevated rounded-lg p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
@@ -272,7 +367,7 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
-      <div className="px-4 mt-4 mb-4">
+      <div className="px-4 mt-4 mb-4 max-w-[var(--content-max-width)] m-auto">
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={handleCopyPayLink}>
             <Link2 className="h-4 w-4" />
@@ -300,6 +395,7 @@ export default function InvoiceDetail() {
         onOpenChange={setShowChargeOptions}
         totalAmount={balanceDue}
         onRecordPayment={handleRecordPayment}
+        onOpenTapToPay={handleOpenTapToPay}
         recordingPayment={recordingPayment}
       />
 

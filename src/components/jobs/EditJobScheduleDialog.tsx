@@ -16,6 +16,7 @@ import { RecurrenceFrequency, RecurringJob } from "@/hooks/useRecurringJobs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { toast } from "sonner";
 import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -72,21 +73,7 @@ export function EditJobScheduleDialog({ open, onOpenChange, recurringJobId, recu
     }
   }, [recurringJobData, open]);
 
-  const { data: crewMembers = [] } = useQuery({
-    queryKey: ["crew-members", currentAccount?.id],
-    queryFn: async () => {
-      if (!currentAccount) return [];
-      const { data, error } = await supabase
-        .from("account_members_with_profiles")
-        .select("user_id, role, full_name, email")
-        .eq("account_id", currentAccount.id)
-        .eq("is_active", true)
-        .order("full_name", { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!currentAccount && open,
-  });
+  const { data: crewMembers = [] } = useTeamMembers();
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {

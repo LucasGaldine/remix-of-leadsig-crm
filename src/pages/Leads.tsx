@@ -174,8 +174,8 @@ export default function Leads() {
                  bg-[hsl(var(--status-pending-bg))] 
                  text-[hsl(var(--status-pending))] text-sm font-medium
                  border border-[hsl(var(--status-pending))]
-                hover:opacity-80 transition-opacity
-                levitate"
+                transition-all
+                shadow-sm hover:shadow-md hover:bg-[hsl(var(--status-pending))] hover:text-[hsl(var(--status-pending-bg))]  "
               >
                 <Clock className="h-4 w-4" />
                 {pendingCount} Pending Approval
@@ -195,6 +195,8 @@ export default function Leads() {
       )}
 
       <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
+
+  
       <ListPageFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -210,6 +212,7 @@ export default function Leads() {
         activeTab={activeFilter}
         onTabChange={(v) => setActiveFilter(v as FilterStatus)}
       />
+
 
       </div>
 

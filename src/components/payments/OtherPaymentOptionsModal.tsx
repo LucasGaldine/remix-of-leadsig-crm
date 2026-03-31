@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileCheck, Banknote, Landmark, ArrowRightLeft, Loader2 } from "lucide-react";
+import { FileCheck, Banknote, Landmark, ArrowRightLeft, Loader2, Smartphone } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,7 @@ interface OtherPaymentOptionsModalProps {
   totalAmount: number;
   onMarkAsSent?: () => Promise<void>;
   onRecordPayment: (method: PaymentOption, amount: number) => Promise<void>;
+  onOpenTapToPay?: (amount: number) => void;
   markingAsSent?: boolean;
   recordingPayment: boolean;
 }
@@ -35,6 +36,7 @@ export function OtherPaymentOptionsModal({
   totalAmount,
   onMarkAsSent,
   onRecordPayment,
+  onOpenTapToPay,
   markingAsSent = false,
   recordingPayment,
 }: OtherPaymentOptionsModalProps) {
@@ -167,6 +169,25 @@ export function OtherPaymentOptionsModal({
               </div>
             </button>
           ))}
+
+          {onOpenTapToPay && (
+            <button
+              type="button"
+              disabled
+              className={cn(
+                "w-full flex items-center gap-3 p-4 rounded-lg border border-border text-left",
+                "opacity-60 cursor-not-allowed"
+              )}
+            >
+              <div className="p-2 rounded-lg bg-secondary">
+                <Smartphone className="h-5 w-5 text-secondary-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-foreground">Tap to Pay</p>
+                <p className="text-sm text-muted-foreground">Coming soon</p>
+              </div>
+            </button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

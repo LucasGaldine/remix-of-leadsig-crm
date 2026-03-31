@@ -34,6 +34,7 @@ interface JobChecklistProps {
   isManager?: boolean;
   onMarkComplete?: () => Promise<void> | void;
   hasBeforePhotos?: boolean;
+  embedded?: boolean;
 }
 
 export function JobChecklist({
@@ -44,6 +45,7 @@ export function JobChecklist({
   isManager = false,
   onMarkComplete,
   hasBeforePhotos = false,
+  embedded = false,
 }: JobChecklistProps) {
   const { items, isLoading, toggleItem, addItem, updateItem, deleteItem } =
     useJobChecklist(jobId);
@@ -53,32 +55,15 @@ export function JobChecklist({
   const [editingLabel, setEditingLabel] = useState("");
   const [copiedPortal, setCopiedPortal] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
-  const [pendingToggleItem, setPendingToggleItem] = useState<ChecklistItem | null>(null);
   const [markingComplete, setMarkingComplete] = useState(false);
 
-  const isJobCompleted = jobStatus === "completed";
+  const isJobCompleted = jobStatus === "completed" || jobStatus === "paid";
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
   const allComplete = totalCount > 0 && completedCount === totalCount;
 
   const handleToggle = async (item: ChecklistItem) => {
     if (editMode || isJobCompleted) return;
-
-    // If checking the last unchecked item (would complete all items)
-    if (!item.is_completed) {
-      const uncheckedCount = items.filter((i) => !i.is_completed).length;
-      if (uncheckedCount === 1) {
-        // This is the last item — check requirements first
-        if (isEstimateVisit && !hasBeforePhotos) {
-          toast.error("Before photos must be uploaded before marking this job as complete");
-          return;
-        }
-        // Show confirmation modal
-        setPendingToggleItem(item);
-        setCompleteDialogOpen(true);
-        return;
-      }
-    }
 
     try {
       await toggleItem.mutateAsync({
@@ -90,14 +75,25 @@ export function JobChecklist({
     }
   };
 
+  const handleCompleteClick = () => {
+    if (editMode || isJobCompleted) return;
+    if (isEstimateVisit && !hasBeforePhotos) {
+      toast.error("Before photos must be uploaded before marking this job as complete");
+      return;
+    }
+    setCompleteDialogOpen(true);
+  };
+
   const handleConfirmComplete = async () => {
-    if (!pendingToggleItem) return;
     setMarkingComplete(true);
     try {
-      await toggleItem.mutateAsync({
-        id: pendingToggleItem.id,
-        is_completed: true,
-      });
+      const uncheckedItems = items.filter((item) => !item.is_completed);
+      for (const item of uncheckedItems) {
+        await toggleItem.mutateAsync({
+          id: item.id,
+          is_completed: true,
+        });
+      }
       if (onMarkComplete) {
         await onMarkComplete();
       }
@@ -106,13 +102,11 @@ export function JobChecklist({
       toast.error("Failed to complete job");
     } finally {
       setMarkingComplete(false);
-      setPendingToggleItem(null);
       setCompleteDialogOpen(false);
     }
   };
 
   const handleCancelComplete = () => {
-    setPendingToggleItem(null);
     setCompleteDialogOpen(false);
   };
 
@@ -193,8 +187,8 @@ export function JobChecklist({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div >
+      <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">
             {completedCount}/{totalCount} complete
@@ -204,6 +198,19 @@ export function JobChecklist({
               All done
             </span>
           )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-500",
+                allComplete ? "bg-green-600" : "bg-primary"
+              )}
+              style={{
+                width: totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : "0%",
+              }}
+            />
+          </div>
         </div>
         {isManager && !isJobCompleted && (
           <Button
@@ -221,16 +228,19 @@ export function JobChecklist({
                 Done
               </>
             ) : (
-              <>
+              <div className="text-muted-foreground flex gap-1 justify-center items-center">
                 <Pencil className="h-4 w-4 mr-1" />
                 Edit
-              </>
+              </div>
             )}
           </Button>
         )}
       </div>
 
-      <div className="rounded-lg border border-border bg-card overflow-hidden divide-y divide-border">
+      <div className={cn(
+        "overflow-hidden divide-y divide-border",
+        embedded ? "" : "rounded-lg border border-border bg-card"
+      )}>
         {items.map((item) => {
           const isPortalItem =
             item.label.toLowerCase() === "send client portal";
@@ -369,18 +379,32 @@ export function JobChecklist({
             </Button>
           </div>
         )}
-      </div>
 
-      <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
-        <div
-          className={cn(
-            "h-full rounded-full transition-all duration-500",
-            allComplete ? "bg-green-600" : "bg-primary"
-          )}
-          style={{
-            width: totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : "0%",
-          }}
-        />
+        {!editMode && (
+          <div className="!border-t-0 border-border ">
+            <Button
+              type="button"
+              variant="outline"
+              
+              className="h-auto justify-start gap-3 rounded-full p-3 w-full my-4 [&_svg]:size-5 hover:text-green-600 hover:border-green-600 hover:bg-card"
+              onClick={handleCompleteClick}
+              disabled={isJobCompleted}
+            >
+              {isJobCompleted ? (
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5 " />
+              )}
+              <span
+                className={cn(
+                  isJobCompleted && "line-through text-muted-foreground"
+                )}
+              >
+                Complete
+              </span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Completion confirmation dialog */}

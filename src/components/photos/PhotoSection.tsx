@@ -23,9 +23,10 @@ interface PhotoSectionProps {
   title: string;
   onPhotosChange?: (count: number) => void;
   onJobConverted?: () => void;
+  embedded?: boolean;
 }
 
-export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobConverted }: PhotoSectionProps) {
+export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobConverted, embedded = false }: PhotoSectionProps) {
   const { photos, isLoading, uploadPhotos, deletePhoto, remaining } =
     useLeadPhotos(leadId, photoType);
   const { currentAccount, role } = useAuth();
@@ -51,7 +52,12 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobCo
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <h3 className="font-semibold text-foreground">{title}</h3>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Camera className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
+          </div>
+        </div>
         <div className="flex items-center justify-center py-8 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
           Loading...
@@ -63,15 +69,18 @@ export function PhotoSection({ leadId, photoType, title, onPhotosChange, onJobCo
   return (
     <>
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground">{title}</h3>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Camera className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
+          </div>
           {photos.length > 0 && (
             <span className="text-xs text-muted-foreground">{photos.length}/4</span>
           )}
         </div>
 
         {photos.length === 0 ? (
-          <div className="text-center py-10 card-elevated rounded-lg">
+          <div className={embedded ? "text-center py-10" : "text-center py-10 card-elevated rounded-lg"}>
             <Camera className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground text-sm mb-4">No {title.toLowerCase()} yet</p>
             {canUpload ? (

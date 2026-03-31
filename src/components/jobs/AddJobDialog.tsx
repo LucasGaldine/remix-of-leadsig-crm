@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
+import { buildDefaultJobName } from "@/lib/defaultJobName";
 import { useAddressVerification } from "@/hooks/useAddressVerification";
 import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 
@@ -71,7 +72,10 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
       const { data: job, error: jobError } = await supabase
         .from("leads")
         .insert([{
-          name: formData.name.trim() || null,
+          name: formData.name.trim() || buildDefaultJobName({
+            customerName: formData.customerName,
+            serviceType: formData.serviceType,
+          }),
           customer_id: customerId,
           service_type: formData.serviceType || null,
           address: formData.address.trim() || null,
@@ -133,7 +137,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
               className="mt-1.5"
               autoFocus
             />
-            <p className="text-xs text-muted-foreground mt-1">If left empty, the customer name will be used</p>
+            <p className="text-xs text-muted-foreground mt-1">If left empty, we use: Customer Name, Service Type Job</p>
           </div>
 
           <div className="border-t border-border pt-4">

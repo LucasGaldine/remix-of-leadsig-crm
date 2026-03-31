@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Clock, User, Users, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, ChevronRight, Calendar, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation } from "lucide-react";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import { MapPin, User, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, Calendar, Clock, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation, ChevronDown, Mail, Share2, AlertTriangle, Copy, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -11,13 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { openMapsWithAddress } from "@/lib/openMaps";
 import { useJob, useUpdateJob, useDeleteJob, useMakeJobUnique } from "@/hooks/useJobs";
 import { useJobSchedules } from "@/hooks/useJobSchedules";
 import { useAuth } from "@/hooks/useAuth";
-import { JobAssignments } from "@/components/jobs/JobAssignments";
 import { useJobAssignments } from "@/hooks/useJobAssignments";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -28,7 +28,6 @@ import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { PhotoSection } from "@/components/photos/PhotoSection";
-import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
 import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, useRecurringJobEstimate } from "@/hooks/useRecurringJobs";
 import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
@@ -39,9 +38,53 @@ import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { JobTimeTracker } from "@/components/jobs/JobTimeTracker";
 import { Repeat } from "lucide-react";
 import { JobCosts } from "@/components/jobs/JobCosts";
+import { LineItemsEstimateDialog } from "@/components/leads/LineItemsEstimateDialog";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
+import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
+import { Separator } from "@/components/ui/separator";
+
+const JOB_STATUS_GUIDANCE = [
+  {
+    value: "unscheduled",
+    label: "Unscheduled",
+    description: "The job exists, but no visit date has been added yet.",
+    requirement: "Create the job and leave it without any scheduled dates.",
+  },
+  {
+    value: "unassigned",
+    label: "Unassigned",
+    description: "The job has a scheduled visit, but nobody has been assigned to work it yet.",
+    requirement: "Add a date to the job schedule, then leave the crew assignment empty.",
+  },
+  {
+    value: "scheduled",
+    label: "Scheduled",
+    description: "The job is on the calendar and has crew assigned for the visit.",
+    requirement: "Schedule the job and assign the right crew members to it.",
+  },
+  {
+    value: "completed",
+    label: "Completed",
+    description: "The field work is finished and the job is ready for billing or closeout.",
+    requirement: "Mark the job complete after the work has been done.",
+  },
+  {
+    value: "needs_invoice",
+    label: "Needs Invoice",
+    description: "The job is completed, but there is not an invoice created for it yet.",
+    requirement: "Complete the job without creating or sending an invoice yet.",
+  },
+  {
+    value: "paid",
+    label: "Paid",
+    description: "The invoice has been paid and the job is fully closed out.",
+    requirement: "Create the invoice for the completed job and record the payment.",
+  },
+] as const;
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -76,10 +119,19 @@ export default function JobDetail() {
   const updateRecurringCrew = useUpdateRecurringJobCrew();
   const [crewSavePromptOpen, setCrewSavePromptOpen] = useState(false);
   const [pendingCrewUserIds, setPendingCrewUserIds] = useState<string[]>([]);
+  const [editCrewDialogOpen, setEditCrewDialogOpen] = useState(false);
+  const [editingCrewScheduleId, setEditingCrewScheduleId] = useState<string | null>(null);
+  const [editingCrewUserIds, setEditingCrewUserIds] = useState<string[]>([]);
+  const [editingScheduleDate, setEditingScheduleDate] = useState("");
+  const [editingScheduleTimeStart, setEditingScheduleTimeStart] = useState("");
+  const [editingScheduleTimeEnd, setEditingScheduleTimeEnd] = useState("");
+  const [editScheduleDeleteConfirmOpen, setEditScheduleDeleteConfirmOpen] = useState(false);
+  const [savingCrewAssignments, setSavingCrewAssignments] = useState(false);
   const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
   const [editScheduleOpen, setEditScheduleOpen] = useState(false);
   const [recurringDetailModalOpen, setRecurringDetailModalOpen] = useState(false);
   const [makeUniqueDialogOpen, setMakeUniqueDialogOpen] = useState(false);
+  const [statusGuidanceOpen, setStatusGuidanceOpen] = useState(false);
 
   const [estimate, setEstimate] = useState<any>(null);
   const makeUnique = useMakeJobUnique();
@@ -93,6 +145,43 @@ export default function JobDetail() {
   const [addingNote, setAddingNote] = useState(false);
   const { data: teamMembers = [] } = useTeamMembers();
   const [hasInvoice, setHasInvoice] = useState(false);
+  const [lineItemsEstimateDialogOpen, setLineItemsEstimateDialogOpen] = useState(false);
+  const [portalDialogOpen, setPortalDialogOpen] = useState(false);
+  const [portalLink, setPortalLink] = useState("");
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalCopied, setPortalCopied] = useState(false);
+  const [headerInfoOpen, setHeaderInfoOpen] = useState(false);
+
+  const isAutoGeneratedPlaceholderEstimate = (value: any) =>
+    !!value &&
+    value.status === "draft" &&
+    Number(value.total || 0) === 0 &&
+    (value.line_items?.length || 0) === 0 &&
+    typeof value.notes === "string" &&
+    value.notes.startsWith("Auto-generated estimate for ");
+
+  const displayEstimate = isAutoGeneratedPlaceholderEstimate(estimate) ? null : estimate;
+
+  const formatScheduleTimeLabel = (time?: string | null) => {
+    if (!time) return null;
+    const normalizedTime = time.length === 5 ? `${time}:00` : time;
+    const parsedTime = new Date(`2000-01-01T${normalizedTime}`);
+    if (Number.isNaN(parsedTime.getTime())) {
+      return time;
+    }
+    return format(parsedTime, "h:mm a");
+  };
+
+  const formatScheduleTimeRange = (startTime?: string | null, endTime?: string | null) => {
+    const formattedStart = formatScheduleTimeLabel(startTime);
+    const formattedEnd = formatScheduleTimeLabel(endTime);
+
+    if (formattedStart && formattedEnd) {
+      return `${formattedStart} - ${formattedEnd}`;
+    }
+
+    return formattedStart || formattedEnd;
+  };
 
   useEffect(() => {
     if (id) {
@@ -220,6 +309,18 @@ export default function JobDetail() {
 
     setEstimateLoading(true);
     try {
+      const latestOnly = <T,>(query: T): T => {
+        const candidate = query as T & { order?: (column: string, opts: { ascending: boolean }) => any; limit?: (count: number) => any };
+        if (typeof candidate.order === "function") {
+          const ordered = candidate.order("created_at", { ascending: false });
+          if (ordered && typeof ordered.limit === "function") {
+            return ordered.limit(1) as T;
+          }
+          return ordered as T;
+        }
+        return query;
+      };
+
       const { data: currentJob } = await supabase
         .from("leads")
         .select("recurring_job_id")
@@ -227,10 +328,12 @@ export default function JobDetail() {
         .maybeSingle();
 
       if (currentJob?.recurring_job_id) {
-        const { data: masterQuote, error: quoteError } = await supabase
+        const recurringEstimateQuery = supabase
           .from("estimates")
-          .select("id, total, status, line_items:estimate_line_items(id)")
-          .eq("recurring_job_id", currentJob.recurring_job_id)
+          .select("id, total, status, notes, line_items:estimate_line_items(id)")
+          .eq("recurring_job_id", currentJob.recurring_job_id);
+
+        const { data: masterQuote, error: quoteError } = await latestOnly(recurringEstimateQuery)
           .maybeSingle();
 
         if (quoteError) throw quoteError;
@@ -239,10 +342,12 @@ export default function JobDetail() {
         return;
       }
 
-      let { data, error } = await supabase
+      const estimateQuery = supabase
         .from("estimates")
-        .select("id, total, status, line_items:estimate_line_items(id)")
-        .eq("job_id", id)
+        .select("id, total, status, notes, line_items:estimate_line_items(id)")
+        .eq("job_id", id);
+
+      let { data, error } = await latestOnly(estimateQuery)
         .maybeSingle();
 
       if (error) throw error;
@@ -255,10 +360,12 @@ export default function JobDetail() {
           .maybeSingle();
 
         if (parentLead) {
-          const { data: parentEstimate, error: parentError } = await supabase
+          const parentEstimateQuery = supabase
             .from("estimates")
-            .select("id, total, status, line_items:estimate_line_items(id)")
-            .eq("job_id", parentLead.id)
+            .select("id, total, status, notes, line_items:estimate_line_items(id)")
+            .eq("job_id", parentLead.id);
+
+          const { data: parentEstimate, error: parentError } = await latestOnly(parentEstimateQuery)
             .maybeSingle();
 
           if (parentError) throw parentError;
@@ -297,12 +404,8 @@ export default function JobDetail() {
   const jobAny = job as any;
   const clientPhone = job.customer?.phone || "";
   const clientAddress = [job.address, job.city].filter(Boolean).join(", ");
+  const jobDescription = (job.description || job.notes || "").trim();
   const hasSchedules = schedules && schedules.length > 0;
-  const scheduledDatesText = hasSchedules
-    ? schedules.length === 1
-      ? format(new Date(schedules[0].scheduled_date + "T00:00:00"), "EEEE, MMM d, yyyy")
-      : `${schedules.length} scheduled dates`
-    : "Not scheduled";
 
   const handleCall = () => {
     if (clientPhone) window.open(`tel:${clientPhone}`);
@@ -311,10 +414,94 @@ export default function JobDetail() {
   const handleText = () => {
     if (clientPhone) window.open(`sms:${clientPhone}`);
   };
-
   const handleNavigate = () => {
     if (clientAddress) {
       openMapsWithAddress(clientAddress);
+    }
+  };
+
+  const handleEstimateSuccess = async () => {
+    await fetchEstimate();
+    queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    queryClient.invalidateQueries({ queryKey: ["estimates"] });
+  };
+
+  const openBuildEstimateModal = async () => {
+    if (!isAutoGeneratedPlaceholderEstimate(estimate)) {
+      setLineItemsEstimateDialogOpen(true);
+      return;
+    }
+
+    if (!estimate?.id) {
+      setLineItemsEstimateDialogOpen(true);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("estimates")
+      .delete()
+      .eq("id", estimate.id);
+
+    if (error) {
+      toast.error("Failed to prepare estimate builder. Please try again.");
+      return;
+    }
+
+    setEstimate(null);
+    setLineItemsEstimateDialogOpen(true);
+  };
+
+  const resolveCustomerPortalLink = async () => {
+    const customerId = job?.customer?.id;
+    if (!customerId) {
+      throw new Error("No customer linked to this job");
+    }
+
+    const { data: customer, error: fetchError } = await supabase
+      .from("customers")
+      .select("client_portal_token")
+      .eq("id", customerId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    let token = customer?.client_portal_token || null;
+    if (!token) {
+      token = crypto.randomUUID();
+      const { error: updateError } = await supabase
+        .from("customers")
+        .update({ client_portal_token: token })
+        .eq("id", customerId);
+
+      if (updateError) throw updateError;
+    }
+
+    return `${window.location.origin}/client/job?token=${token}`;
+  };
+
+  const handleOpenClientPortal = async () => {
+    if (portalLoading) return;
+    setPortalLoading(true);
+    try {
+      const link = await resolveCustomerPortalLink();
+      setPortalLink(link);
+      setPortalDialogOpen(true);
+    } catch (err) {
+      toast.error("Failed to generate portal link");
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const handleCopyPortalLink = async () => {
+    if (!portalLink) return;
+    try {
+      await navigator.clipboard.writeText(portalLink);
+      setPortalCopied(true);
+      toast.success("Portal link copied to clipboard");
+      setTimeout(() => setPortalCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy link");
     }
   };
 
@@ -359,9 +546,160 @@ export default function JobDetail() {
     setScheduleDialogOpen(true);
   };
 
+  const getScheduleAssignments = (scheduleId: string) => {
+    return jobAssignments.filter((assignment) => assignment.job_schedule_id === scheduleId);
+  };
+
+  const openEditCrewDialog = (scheduleId: string) => {
+    const schedule = schedules.find((item) => item.id === scheduleId);
+    const assignedUserIds = getScheduleAssignments(scheduleId).map((assignment) => assignment.user_id);
+    setEditingCrewScheduleId(scheduleId);
+    setEditingCrewUserIds([...new Set(assignedUserIds)]);
+    setEditingScheduleDate(schedule?.scheduled_date || "");
+    setEditingScheduleTimeStart(schedule?.scheduled_time_start || "");
+    setEditingScheduleTimeEnd(schedule?.scheduled_time_end || "");
+    setEditCrewDialogOpen(true);
+  };
+
+  const toggleEditingCrewUser = (userId: string) => {
+    setEditingCrewUserIds((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
+    );
+  };
+
+  const handleSaveCrewAssignments = async () => {
+    if (!id || !editingCrewScheduleId || !currentAccount || !user) {
+      toast.error("Missing data to update crew assignments");
+      return;
+    }
+    if (!editingScheduleDate) {
+      toast.error("Date is required");
+      return;
+    }
+    if (
+      (editingScheduleTimeStart && !editingScheduleTimeEnd) ||
+      (!editingScheduleTimeStart && editingScheduleTimeEnd)
+    ) {
+      toast.error("Set both start and end time");
+      return;
+    }
+    if (editingScheduleTimeStart && editingScheduleTimeEnd && editingScheduleTimeEnd <= editingScheduleTimeStart) {
+      toast.error("End time must be after start time");
+      return;
+    }
+
+    const currentSchedule = schedules.find((schedule) => schedule.id === editingCrewScheduleId);
+    if (!currentSchedule) {
+      toast.error("Unable to find scheduled date");
+      return;
+    }
+
+    const currentAssignments = getScheduleAssignments(editingCrewScheduleId);
+    const currentUserIds = [...new Set(currentAssignments.map((assignment) => assignment.user_id))];
+    const usersToAdd = editingCrewUserIds.filter((userId) => !currentUserIds.includes(userId));
+    const assignmentIdsToRemove = currentAssignments
+      .filter((assignment) => !editingCrewUserIds.includes(assignment.user_id))
+      .map((assignment) => assignment.id);
+    const crewChanged = usersToAdd.length > 0 || assignmentIdsToRemove.length > 0;
+    const currentTimeStart = currentSchedule.scheduled_time_start || "";
+    const currentTimeEnd = currentSchedule.scheduled_time_end || "";
+    const scheduleChanged =
+      editingScheduleDate !== currentSchedule.scheduled_date ||
+      editingScheduleTimeStart !== currentTimeStart ||
+      editingScheduleTimeEnd !== currentTimeEnd;
+
+    if (!crewChanged && !scheduleChanged) {
+      setEditCrewDialogOpen(false);
+      return;
+    }
+
+    setSavingCrewAssignments(true);
+    try {
+      if (scheduleChanged) {
+        const { error: scheduleError } = await supabase
+          .from("job_schedules")
+          .update({
+            scheduled_date: editingScheduleDate,
+            scheduled_time_start: editingScheduleTimeStart || null,
+            scheduled_time_end: editingScheduleTimeEnd || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingCrewScheduleId);
+
+        if (scheduleError) throw scheduleError;
+      }
+
+      for (const userId of usersToAdd) {
+        const { data: hasOverlap, error: overlapError } = await supabase.rpc("check_assignment_overlap", {
+          p_user_id: userId,
+          p_schedule_id: editingCrewScheduleId,
+          p_account_id: currentAccount.id,
+        });
+
+        if (overlapError) throw overlapError;
+        if (hasOverlap) {
+          const crewName = teamMembers.find((member) => member.user_id === userId)?.full_name || "This crew member";
+          toast.error(`${crewName} is already assigned to another job at this time.`);
+          return;
+        }
+      }
+
+      if (assignmentIdsToRemove.length > 0) {
+        const { error: removeError } = await supabase
+          .from("job_assignments")
+          .delete()
+          .in("id", assignmentIdsToRemove);
+
+        if (removeError) throw removeError;
+      }
+
+      if (usersToAdd.length > 0) {
+        const { error: addError } = await supabase
+          .from("job_assignments")
+          .insert(
+            usersToAdd.map((userId) => ({
+              lead_id: id,
+              user_id: userId,
+              job_schedule_id: editingCrewScheduleId,
+              account_id: currentAccount.id,
+              assigned_by: user.id,
+            })),
+          );
+
+        if (addError) throw addError;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["job-assignments", id] });
+      queryClient.invalidateQueries({ queryKey: ["job-schedules", id] });
+      queryClient.invalidateQueries({ queryKey: ["job", id] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["crew-hours"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
+
+      if (jobAny.recurring_job_id && crewChanged) {
+        setPendingCrewUserIds(editingCrewUserIds);
+        setCrewSavePromptOpen(true);
+      }
+
+      if (crewChanged && scheduleChanged) {
+        toast.success("Schedule and crew updated");
+      } else if (scheduleChanged) {
+        toast.success("Schedule updated");
+      } else {
+        toast.success("Crew assignments updated");
+      }
+      setEditCrewDialogOpen(false);
+    } catch (error) {
+      console.error("Error updating crew assignments:", error);
+      toast.error("Failed to update crew assignments");
+    } finally {
+      setSavingCrewAssignments(false);
+    }
+  };
+
 
   const handleDeleteSchedule = async (scheduleId: string) => {
-    if (!id) return;
+    if (!id) return false;
 
     try {
       await deleteSchedule.mutateAsync({
@@ -369,9 +707,20 @@ export default function JobDetail() {
         lead_id: id,
       });
       toast.success("Schedule removed!");
+      return true;
     } catch (error) {
       console.error("Error removing schedule:", error);
       toast.error("Failed to remove schedule");
+      return false;
+    }
+  };
+
+  const handleDeleteEditedSchedule = async () => {
+    if (!editingCrewScheduleId) return;
+    const deleted = await handleDeleteSchedule(editingCrewScheduleId);
+    setEditScheduleDeleteConfirmOpen(false);
+    if (deleted) {
+      setEditCrewDialogOpen(false);
     }
   };
 
@@ -532,14 +881,14 @@ export default function JobDetail() {
         queryClient.invalidateQueries({ queryKey: ["jobs"] });
         queryClient.invalidateQueries({ queryKey: ["projected-recurring-dates"] });
         queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-        toast.success("Job schedule and all associated jobs deleted successfully");
+        toast.success(deleteJobConfig.successMessage);
       } else {
         await deleteJobMutation.mutateAsync(id);
-        toast.success("Job deleted successfully");
+        toast.success(deleteJobConfig.successMessage);
       }
       queryClient.invalidateQueries({ queryKey: ["projected-recurring-dates"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-      navigate("/jobs");
+      navigate(deleteJobConfig.redirectPath);
     } catch (error) {
       console.error("Error deleting:", error);
       toast.error("Failed to delete");
@@ -589,635 +938,685 @@ export default function JobDetail() {
     paid: "Paid",
   };
 
+  const getJobStatusBadgeStatus = (status: string) => {
+    switch (status) {
+      case "unscheduled":
+        return "unscheduled";
+      case "unassigned":
+      case "needs_invoice":
+        return "attention";
+      case "scheduled":
+        return "scheduled";
+      case "in_progress":
+      case "in-progress":
+        return "in_progress";
+      case "completed":
+      case "paid":
+        return "completed";
+      case "job":
+        return "job";
+      default:
+        return "pending";
+    }
+  };
+
   const displayStatus = (job as any).display_status || job.status;
   const statusLabel = statusLabelMap[displayStatus] || displayStatus;
-  const isUnassigned = hasSchedules && jobAssignments.length === 0;
+  const assignedScheduleIds = new Set(
+    jobAssignments
+      .map((assignment) => assignment.job_schedule_id)
+      .filter((scheduleId): scheduleId is string => Boolean(scheduleId)),
+  );
+  const hasScheduleScopedAssignments = jobAssignments.some((assignment) => Boolean(assignment.job_schedule_id));
+  const isUnassigned = schedules.length === 0
+    ? jobAssignments.length === 0
+    : hasScheduleScopedAssignments
+      ? schedules.some((schedule) => !assignedScheduleIds.has(schedule.id))
+      : jobAssignments.length === 0;
+  const deleteJobConfig = getDetailDeleteConfig({
+    entity: "job",
+    name: job.name || "this job",
+    isRecurring: !!jobAny.recurring_job_id,
+  });
 
   return (
     <div className="min-h-screen  bg-surface-sunken pb-24">
-      <PageHeader title={job.name || "Job Details"} showBack backTo="/jobs" />
+      <PageHeader showBack backTo="/jobs" />
 
-      {/* Status Banner */}
-      <div className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
-        <div className="bg-card rounded-lg border border-border">
+      {/* Header */}
+      <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-0">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-3 min-w-0 w-full">
+            <div className="flex flex-wrap items-center gap-2">
+              {isUnassigned && (
+                <Badge
+                  variant="outline"
+                  className="text-xs border-[hsl(var(--status-attention))]/40 bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]"
+                >
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Unassigned
+                </Badge>
+              )}
+              {job.status === "completed" && !hasInvoice && (
+                <Badge
+                  variant="outline"
+                  className="text-xs border-[hsl(var(--status-attention))]/40 bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]"
+                >
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Needs Invoice
+                </Badge>
+              )}
+              {jobAny.recurring_job_id && (
+                <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
+                  <Repeat className="h-3 w-3 mr-1" />
+                  Visit #{jobAny.recurring_instance_number || ""}
+                </Badge>
+              )}
+              <button
+                type="button"
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onClick={() => setStatusGuidanceOpen(true)}
+                aria-label={`Open job status guide for ${statusLabel.toLowerCase()}`}
+              >
+                <StatusBadge status={getJobStatusBadgeStatus(displayStatus) as any} >
+                  {statusLabel}
+                </StatusBadge>
+              </button>
+            </div>
 
-          {/* Main Content */}
-          <div className="flex flex-col pt-8 pb-8 p-4 gap-4">
-
-            <div className="flex  gap-4">
-              {/*Left Column */}
-              <div className="flex flex-col gap-2 w-full">
-
-                <div className="flex items-center gap-2">
-                {job.customer?.id ? (
-                  <button
-                    onClick={() => navigate(`/customers/${job.customer.id}`)}
-                    className="text-1 hover:text-primary hover:underline transition-colors text-left"
-                  >
-                    {job.customer.name || "Unknown Client"}
-                  </button>
-                ) : (
-                  <p className="text-1">
-                    {job.customer?.name || "Unknown Client"}
-                  </p>
-                )}
-
+            <div className="flex items-end justify-between gap-3">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-1 break-words">{job.name || "Job"}</p>
                 {isManager() && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                        >
-                          <EllipsisVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={openEditDialog}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Job
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <EllipsisVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={openEditDialog}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit Job
+                      </DropdownMenuItem>
+                      {jobAny.recurring_job_id ? (
+                        <DropdownMenuItem onClick={() => setRecurringDetailModalOpen(true)}>
+                          <Repeat className="h-4 w-4 mr-2" />
+                          View Schedule Details
                         </DropdownMenuItem>
-                        {jobAny.recurring_job_id ? (
-                          <DropdownMenuItem onClick={() => setRecurringDetailModalOpen(true)}>
-                            <Repeat className="h-4 w-4 mr-2" />
-                            View Schedule Details
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
-                            <Repeat className="h-4 w-4 mr-2" />
-                            Create Recurring Schedule
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
-                          <Archive className="h-4 w-4 mr-2" />
-                          {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
+                      ) : (
+                        <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
+                          <Repeat className="h-4 w-4 mr-2" />
+                          Create Recurring Schedule
                         </DropdownMenuItem>
-                        {jobAny.recurring_job_id && (
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteDialogOpen(true)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Job Schedule
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-                
-                <div className="text-5">
+                      )}
+                      <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
+                        <Archive className="h-4 w-4 mr-2" />
+                        {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setDeleteDialogOpen(true)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {deleteJobConfig.menuLabel}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
+            <p
+              data-testid="job-description-preview"
+              className={cn(
+                "text-sm text-muted-foreground whitespace-pre-wrap",
+                !headerInfoOpen && "line-clamp-3",
+              )}
+            >
+              {jobDescription || "No description provided."}
+            </p>
+
+            <Collapsible
+              open={headerInfoOpen}
+              onOpenChange={setHeaderInfoOpen}
+              data-testid="job-header-actions-row"
+              className={cn(
+                "flex w-full items-center gap-2",
+                headerInfoOpen ? "flex-wrap" : "flex-nowrap md:justify-between",
+              )}
+            >
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="group h-auto w-auto px-0 py-0 hover:bg-transparent text-muted-foreground order-1"
+                >
+                  <span className="inline-flex items-center gap-1 text-sm font-medium">
+                    More info
+                    <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                  </span>
+                </Button>
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className="order-2 w-full space-y-2 pt-2">
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  <p className="flex items-start gap-1">
+                    <User className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    {job.customer?.id ? (
+                      <Link
+                        to={`/customers/${job.customer.id}`}
+                        className="break-words min-w-0 hover:text-foreground hover:underline transition-colors"
+                      >
+                        {job.customer?.name || "Unknown Client"}
+                      </Link>
+                    ) : (
+                      <span className="break-words min-w-0">{job.customer?.name || "Unknown Client"}</span>
+                    )}
+                  </p>
                   <div className="flex items-start gap-1">
-                    <Briefcase className="h-3.5 w-3.5 shrink-0 mt-0.5"></Briefcase>
+                    <Briefcase className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <p className="break-words min-w-0">
                       {job.service_type || "No service type"}{job?.is_estimate_visit ? ", Estimate" : ""}
                     </p>
                   </div>
-                  <button onClick={openAddressDialog} className="flex items-start gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors text-left">
+                  <button onClick={openAddressDialog} className="flex items-start gap-1 hover:text-foreground transition-colors text-left">
                     <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <span className="break-words min-w-0">{clientAddress || "No address"}</span>
                   </button>
+                  {(job.customer as any)?.phone && (
+                    <p className="flex items-start gap-1">
+                      <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{(job.customer as any).phone}</span>
+                    </p>
+                  )}
+                  {(job.customer as any)?.email && (
+                    <p className="flex items-start gap-1">
+                      <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words min-w-0">{(job.customer as any).email}</span>
+                    </p>
+                  )}
                 </div>
-              </div>
-              
-              {/*Right Column */}
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-end gap-2 flex-wrap ">
+              </CollapsibleContent>
 
-
-                  {isUnassigned && (
-                    <Badge variant="outline" className="text-xs border-red-300 bg-red-50 text-red-700">
-                      <Users className="h-3 w-3 mr-1" />
-                      Unassigned
-                    </Badge>
-                  )}
-
-                  {job.status === "completed" && !hasInvoice && (
-                    <Badge variant="outline" className="text-xs border-orange-300 bg-orange-50 text-orange-700">
-                      <DollarSign className="h-3 w-3 mr-1" />
-                      Needs Invoice: ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
-                    </Badge>
-                  )}
-
-                  {jobAny.recurring_job_id && (
-                    <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-700">
-                      <Repeat className="h-3 w-3 mr-1" />
-                      Visit #{jobAny.recurring_instance_number || ""}
-                    </Badge>
-                  )}
-
-                  <StatusBadge status={displayStatus as any} size="lg">
-                    {statusLabel}
-                  </StatusBadge>
-
-                </div>
-                
-                <div className="text-right text-muted-foreground">
-                  <p className="text-2 ">
-                  ${estimate?.total ? Number(estimate.total).toLocaleString() : (job.actual_value ? Number(job.actual_value).toLocaleString() : "0")}
-                  </p>
-                  <p className="text-xs ">{jobAny.recurring_job_id ? "Quote Total" : "Estimate Total"}</p>
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* Quick Actions */}
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs px-2"
-                onClick={handleCall}
+              <div
+                className={cn(
+                  "flex items-center gap-2 flex-nowrap",
+                  headerInfoOpen ? "order-3 w-full justify-start" : "order-1",
+                )}
               >
-                <Phone className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">Call</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs px-2"
-                onClick={handleText}
-              >
-                <MessageSquare className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">Text</span>
-              </Button>
-              <Button
-                size="sm"
-                className="gap-1.5 text-xs px-2"
-                onClick={handleNavigate}
-              >
-                <Navigation className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">Navigate</span>
-              </Button>
-            </div>
-          </div>
-
-
-          {/* Tabs */}
-          <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4 ">
-            <div className="flex">
-              {[
-                { id: "details", label: "Details" },
-                { id: "checklist", label: "Checklist" },
-                { id: "photos", label: "Photos" },
-                { id: "notes", label: "Notes" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id as typeof activeTab);
-                    if (tab.id === "checklist") {
-                      fetchBeforePhotos();
-                    }
-                  }}
-                  className={cn(
-                    "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
-                    activeTab === tab.id
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  )}
+                <Button
+                  aria-label="Call"
+                  variant="secondary"
+                  size="icon"
+                  onClick={handleCall}
                 >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+                  <Phone className="h-4 w-4" />
+                </Button>
+                <Button
+                  aria-label="Message"
+                  variant="secondary"
+                  size="icon"
+                  onClick={handleText}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
+                <Button
+                  aria-label="Navigate"
+                  variant="secondary"
+                  size="icon"
+                  onClick={handleNavigate}
+                >
+                  <Navigation className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  aria-label="Client Portal"
+                  variant="secondary"
+
+                  onClick={handleOpenClientPortal}
+                >
+                  <Share2 className="h-4 w-4" />
+                  Client Portal
+                </Button>
+              </div>
+            </Collapsible>
           </div>
-
-
-
         </div>
       </div>
 
-      
-
-
       {/* Tab Content */}
-
-        {activeTab === "details" && (
-          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
-            {/* Estimate / Quote */}
-            {estimate ? (
-              <button
-                onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-                className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">
-                      {jobAny.recurring_job_id ? `${job.customer?.name || ""} Quote` : "Estimate"}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      ${Number(estimate.total).toLocaleString()} · {estimate.status}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {estimate.line_items?.length || 0} line items
-                    </p>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </button>
-            ) : !estimateLoading ? (
-              <div className="card-elevated rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <DollarSign className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">
-                      {jobAny.recurring_job_id ? "Quote" : "Estimate"}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {jobAny.recurring_job_id ? "No quote yet" : "No estimate yet"}
-                    </p>
-                  </div>
-                </div>
+      <div className="p-4 max-w-[var(--content-max-width)] m-auto">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
+          <div data-testid="job-details-left-column">
+            <div className="bg-card border border-border rounded-lg overflow-hidden" data-testid="job-details-left-card">
+              <div className="flex items-center border-b border-border px-4">
+                {[
+                  { id: "details", label: "Details" },
+                  { id: "checklist", label: "Checklist" },
+                  { id: "photos", label: "Photos" },
+                  { id: "notes", label: "Notes" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id as typeof activeTab);
+                      if (tab.id === "checklist") {
+                        fetchBeforePhotos();
+                      }
+                    }}
+                    className={cn(
+                      "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                      activeTab === tab.id
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
+              <div className="space-y-4 p-5 md:p-6">
+                {activeTab === "details" && (
+              <>
+                {/* Schedule */}
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-start gap-2 justify-between">
+
+                      <div className="flex gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {jobAny.recurring_job_id ? "Scheduled Dates" : "Schedule"}
+                        </p>
+                      </div>
+
+
+
+                        
+                   
+              
+                  </div>
+
+                  {schedulesLoading ? (
+                    <div className="flex justify-center py-2 ">
+                      <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+                    </div>
+                  ) : hasSchedules ? (
+                    <div className="flex flex-col gap-8 mb-4">
+                      {schedules.map((schedule) => {
+                        const outsideHours = isOutsideBusinessHours(
+                          businessHours,
+                          schedule.scheduled_date,
+                          schedule.scheduled_time_start,
+                          schedule.scheduled_time_end
+                        );
+                        const scheduleAssignments = getScheduleAssignments(schedule.id);
+                        const scheduleTimeRange = formatScheduleTimeRange(
+                          schedule.scheduled_time_start,
+                          schedule.scheduled_time_end
+                        );
+
+                        return (
+                          <div key={schedule.id} className="rounded-xl">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex min-w-0 flex-1 items-start gap-3">
+                                <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center border border-border rounded-2xl bg-muted text-foreground">
+                                  <p className="text-[10px] font-semibold leading-none tracking-wide">
+                                    {format(new Date(schedule.scheduled_date + "T00:00:00"), "MMM").toUpperCase()}
+                                  </p>
+                                  <p className="mt-1 text-2xl font-semibold leading-none">
+                                    {format(new Date(schedule.scheduled_date + "T00:00:00"), "d")}
+                                  </p>
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-lg font-semibold leading-tight text-foreground ">
+                                      {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d")}
+                                    </p>
+                                  </div>
+                                  {outsideHours && (
+                                    <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
+                                      Outside normal hours
+                                    </Badge>
+                                  )}
+
+                                  {scheduleTimeRange && (
+                                    <p className="mt-0.5 text-xs  text-muted-foreground">
+                                      {scheduleTimeRange}
+                                    </p>
+                                  )}
+                                  {scheduleAssignments.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {scheduleAssignments.map((assignment) => (
+                                        <Badge key={assignment.id} variant="outline" className="text-xs text-muted-foreground py-0">
+                                          {assignment.profiles?.full_name || "Unknown"}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="mt-2 text-xs text-muted-foreground">No crew assigned</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isManager() && (
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openEditCrewDialog(schedule.id)}
+                                    className="h-7 w-7 p-0 text-muted-foreground"
+                                    aria-label="Edit crew"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mb-3">
+                      <div className="flex items-center p-2 bg-secondary/50 rounded-md">
+                        <p className="text-sm font-medium text-muted-foreground">
+                          No date scheduled
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                       {isManager() && !jobAny.recurring_job_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+
+                            onClick={openScheduleDialog}
+                          >
+                            <Plus className="h-4 w-4 shrink-0" />
+                            Add Date
+                          </Button>
+                        )}
+
+
+                  </div>
+
+
+                {/* Job Schedule Info */}
+                {recurringJobData && (
+                  <button
+                    onClick={() => setRecurringDetailModalOpen(true)}
+                    className="w-full text-left transition-colors hover:bg-muted/40 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-emerald-100">
+                        <Repeat className="h-5 w-5 text-emerald-700" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">Job Schedule</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          {recurringJobData.frequency === "weekly" && "Every week"}
+                          {recurringJobData.frequency === "biweekly" && "Every 2 weeks"}
+                          {recurringJobData.frequency === "monthly" && "Every month"}
+                          {recurringJobData.end_date
+                            ? ` until ${format(new Date(recurringJobData.end_date + "T00:00:00"), "MMM d, yyyy")}`
+                            : " (ongoing)"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Visit #{jobAny.recurring_instance_number || ""}
+                          {recurringJobData.is_active ? "" : " - Schedule paused"}
+                        </p>
+                      </div>
+                      {isManager() && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              setEditScheduleOpen(true);
+                            }}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Schedule
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              setMakeUniqueDialogOpen(true);
+                            }}>
+                              <Unlink className="h-4 w-4 mr-2" />
+                              Make Unique
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteDialogOpen(true);
+                              }}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Schedule
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  </button>
+                )}
+
+                {/* Crew */}
+                {job.crew_lead && (
+                  <div>
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-secondary">
+                        <User className="h-5 w-5 text-secondary-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">Crew Lead</p>
+                        <p className="text-sm text-foreground mt-0.5">
+                          {job.crew_lead?.full_name || "Assigned"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeTab === "checklist" && id && (
+              <>
+                <div className="flex gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    log your hours
+                  </p>
+                </div>
+                <JobTimeTracker
+                  jobId={id}
+                  jobAddress={clientAddress || null}
+                  accountId={currentAccount?.id}
+                  embedded
+                />
+                
+                <div className="py-4">
+                  <Separator />
+                </div>
+
+                <div className="flex gap-2">
+                  <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    checklist items
+                  </p>
+                </div>
+                <JobChecklist
+                  jobId={id}
+                  jobStatus={job?.status}
+                  isEstimateVisit={job?.is_estimate_visit}
+                  clientPortalUrl={portalLink || null}
+                  isManager={isManager()}
+                  hasBeforePhotos={hasBeforePhotos}
+                  embedded
+                  onMarkComplete={async () => {
+                    if (job?.is_estimate_visit) {
+                      await new Promise(resolve => setTimeout(resolve, 1000));
+
+                      const { data: newJob } = await supabase
+                        .from("leads")
+                        .select("*")
+                        .eq("estimate_job_id", id)
+                        .eq("is_estimate_visit", false)
+                        .eq("status", "job")
+                        .maybeSingle();
+
+                      if (newJob) {
+                        queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                        queryClient.invalidateQueries({ queryKey: ["leads"] });
+                        toast.success("Job created from estimate visit!");
+                        navigate(`/jobs/${newJob.id}`);
+                      } else {
+                        queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                        queryClient.invalidateQueries({ queryKey: ["leads"] });
+                      }
+                    } else {
+                      const { error } = await supabase
+                        .from("leads")
+                        .update({ status: "completed" })
+                        .eq("id", id);
+
+                      if (error) {
+                        console.error("Failed to mark job as complete:", error);
+                        throw error;
+                      }
+
+                      await queryClient.invalidateQueries({ queryKey: ["job", id] });
+                      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                      await queryClient.invalidateQueries({ queryKey: ["leads"] });
+                    }
+                  }}
+                />
+              </>
+            )}
+
+            {activeTab === "photos" && id && (
+              <>
+                <PhotoSection
+                  leadId={job?.is_estimate_visit && parentLeadId ? parentLeadId : id}
+                  photoType="before"
+                  title="Before Photos"
+                  onPhotosChange={() => fetchBeforePhotos()}
+                  onJobConverted={handleJobConverted}
+                  embedded
+                />
+                {!job?.is_estimate_visit && (
+                  <PhotoSection
+                    leadId={id}
+                    photoType="after"
+                    title="After Photos"
+                    onPhotosChange={() => fetchAfterPhotos()}
+                    embedded
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === "notes" && (
+              <>
+                <div className="flex gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    notes
+                  </p>
+                </div>
+                <div>
+                  <MentionInput
+                    value={newNote}
+                    onChange={setNewNote}
+                    placeholder="Add a note... (use @ to mention team members)"
+                    rows={2}
+                    teamMembers={teamMembers}
+                  />
+                  <Button
+                    size="sm"
+                    className="mt-2"
+                    onClick={addNote}
+                    disabled={!newNote.trim() || addingNote}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Add Note
+                  </Button>
+                </div>
+
+                {notes.length > 0 ? (
+                  <div className="space-y-3 flex flex-col gap-4">
+                    {notes.map((note) => (
+                      <div key={note.id} className="flex gap-4 py-3 border-b last:border-b-0">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                          <FileText className="h-4 w-4" />
+                        </div>
+
+                        <div className="flex-1 items-center justify-between gap-2 mb-0.5">
+                          <p className="text-3 whitespace-pre-wrap">
+                            {parseMentionsForDisplay(note.body || note.summary || "").map((part, idx) =>
+                              part.type === 'mention' ? (
+                                <span key={idx} className="font-bold text-primary">@{part.content}</span>
+                              ) : (
+                                <span key={idx}>{part.content}</span>
+                              )
+                            )}
+                          </p>
+
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {format(new Date(note.created_at), "MMM d, yyyy 'at' h:mm a")}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4" data-testid="job-details-right-column">
+            {/* Estimate / Quote */}
+            {displayEstimate ? (
+              <DetailEstimateCard
+                label={jobAny.recurring_job_id ? "Quote" : "Estimate"}
+                status={String(displayEstimate.status || "draft")}
+                total={Number(displayEstimate.total)}
+                lineItemCount={displayEstimate.line_items?.length || 0}
+                onClick={() => navigate(`/payments/estimates/${displayEstimate.id}`)}
+              />
+            ) : !estimateLoading ? (
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full"
+                onClick={() => void openBuildEstimateModal()}
+              >
+                <DollarSign className="h-4 w-4" />
+                Build Estimate
+              </Button>
             ) : null}
 
             {/* Job Costs */}
             {id && <JobCosts jobId={id} />}
 
-            {/* Schedule or Job Schedule Info */}
-            {!jobAny.recurring_job_id ? (
-              <div className="card-elevated rounded-lg p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <Clock className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">Schedule</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {scheduledDatesText}
-                    </p>
-                  </div>
-                </div>
-
-                {schedulesLoading ? (
-                  <div className="flex justify-center py-2">
-                    <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-                  </div>
-                ) : hasSchedules ? (
-                  <div className="space-y-2 mb-3">
-                    {schedules.map((schedule) => {
-                      const outsideHours = isOutsideBusinessHours(
-                        businessHours,
-                        schedule.scheduled_date,
-                        schedule.scheduled_time_start,
-                        schedule.scheduled_time_end
-                      );
-
-                      return (
-                        <div key={schedule.id} className="flex items-center justify-between p-2 bg-secondary/50 rounded-md">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium text-foreground">
-                                {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d, yyyy")}
-                              </p>
-                              {outsideHours && (
-                                <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
-                                  Outside normal hours
-                                </Badge>
-                              )}
-                            </div>
-                            {schedule.scheduled_time_start && schedule.scheduled_time_end && (
-                              <p className="text-xs text-muted-foreground">
-                                {schedule.scheduled_time_start} - {schedule.scheduled_time_end}
-                              </p>
-                            )}
-                          </div>
-                          {isManager() && (<Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteSchedule(schedule.id)}
-                            className="h-7 w-7 p-0"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>)}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {isManager() && (
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 gap-1.5 text-xs"
-                      onClick={() => setMakeRecurringOpen(true)}
-                    >
-                      <Repeat className="h-4 w-4 shrink-0" />
-                      Recurring
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 gap-1.5 text-xs"
-                      onClick={openScheduleDialog}
-                    >
-                      <Plus className="h-4 w-4 shrink-0" />
-                      Add Date
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {/* Crew Assignments */}
-            {id && !jobAny.recurring_job_id && (
-              <JobAssignments
-                leadId={id}
-              />
-            )}
-
-            {/* Crew info for recurring jobs */}
-            {id && jobAny.recurring_job_id && (
-              <JobAssignments
-                leadId={id}
-                onCrewChanged={() => {
-                  setTimeout(async () => {
-                    if (!id) return;
-                    const { data: currentAssignments } = await supabase
-                      .from("job_assignments")
-                      .select("user_id")
-                      .eq("lead_id", id);
-                    const crewIds = [...new Set((currentAssignments || []).map((a: any) => a.user_id))];
-                    setPendingCrewUserIds(crewIds);
-                    setCrewSavePromptOpen(true);
-                  }, 500);
-                }}
-              />
-            )}
-
-            {/* Crew */}
-            {job.crew_lead && (
-              <div className="card-elevated rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <User className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">Crew Lead</p>
-                    <p className="text-sm text-foreground mt-0.5">
-                      {job.crew_lead?.full_name || "Assigned"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Description/Notes */}
-            {(job.description || job.notes) && (
-              <div className="card-elevated rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-secondary">
-                    <FileText className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {job.description ? "Description" : "Notes"}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {job.description || job.notes}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Job Schedule Info */}
-            {recurringJobData && (
-              <button
-                onClick={() => setRecurringDetailModalOpen(true)}
-                className="card-elevated rounded-lg p-4 w-full text-left transition-all hover:shadow-md active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-100">
-                    <Repeat className="h-5 w-5 text-emerald-700" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">Job Schedule</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {recurringJobData.frequency === "weekly" && "Every week"}
-                      {recurringJobData.frequency === "biweekly" && "Every 2 weeks"}
-                      {recurringJobData.frequency === "monthly" && "Every month"}
-                      {recurringJobData.end_date
-                        ? ` until ${format(new Date(recurringJobData.end_date + "T00:00:00"), "MMM d, yyyy")}`
-                        : " (ongoing)"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Visit #{jobAny.recurring_instance_number || ""}
-                      {recurringJobData.is_active ? "" : " - Schedule paused"}
-                    </p>
-                  </div>
-                  {isManager() && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={(e) => {
-                          e.stopPropagation();
-                          setEditScheduleOpen(true);
-                        }}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Schedule
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => {
-                          e.stopPropagation();
-                          setMakeUniqueDialogOpen(true);
-                        }}>
-                          <Unlink className="h-4 w-4 mr-2" />
-                          Make Unique
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteDialogOpen(true);
-                          }}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Schedule
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-              </button>
-            )}
-
-            {/* Client Share Link */}
-            {isManager() && id && job.customer?.id && (
-              <ClientShareLink customerId={job.customer.id} />
-            )}
-
             {/* Invoices Section */}
             {isManager() && id && (
-              <div className="card-elevated rounded-lg p-4">
-                <div className="mb-3">
-                  <p className="font-medium text-foreground">Invoices</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Send invoices to collect payment
-                  </p>
-                </div>
-                <JobInvoiceCard
-                  jobId={id}
-                  customerEmail={job.customer?.email}
-                  customerName={job.customer?.name}
-                  estimateTotal={estimate?.total ? Number(estimate.total) : null}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "checklist" && id && (
-          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4"> 
-          <JobTimeTracker
-            jobId={id}
-            jobAddress={clientAddress || null}
-            accountId={currentAccount?.id}
-          />
-          <JobChecklist
-            jobId={id}
-            jobStatus={job?.status}
-            isEstimateVisit={job?.is_estimate_visit}
-            clientPortalUrl={
-              (() => {
-                const token = jobAny.recurring_job_id
-                  ? recurringJobData?.client_share_token
-                  : job?.is_estimate_visit ? parentLeadToken : jobAny.client_share_token;
-                return token ? `${window.location.origin}/client/job?token=${token}` : null;
-              })()
-            }
-            isManager={isManager()}
-            hasBeforePhotos={hasBeforePhotos}
-            onMarkComplete={async () => {
-              if (job?.is_estimate_visit) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                const { data: newJob } = await supabase
-                  .from("leads")
-                  .select("*")
-                  .eq("estimate_job_id", id)
-                  .eq("is_estimate_visit", false)
-                  .eq("status", "job")
-                  .maybeSingle();
-
-                if (newJob) {
-                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
-                  queryClient.invalidateQueries({ queryKey: ["leads"] });
-                  toast.success("Job created from estimate visit!");
-                  navigate(`/jobs/${newJob.id}`);
-                } else {
-                  queryClient.invalidateQueries({ queryKey: ["jobs"] });
-                  queryClient.invalidateQueries({ queryKey: ["leads"] });
-                }
-              } else {
-                const { error } = await supabase
-                  .from("leads")
-                  .update({ status: "completed" })
-                  .eq("id", id);
-
-                if (error) {
-                  console.error("Failed to mark job as complete:", error);
-                  throw error;
-                }
-
-                await queryClient.invalidateQueries({ queryKey: ["job", id] });
-                await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-                await queryClient.invalidateQueries({ queryKey: ["leads"] });
-              }
-            }}
-          />
-          </div>
-        )}
-
-        {activeTab === "photos" && id && (
-          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
-            <PhotoSection
-              leadId={job?.is_estimate_visit && parentLeadId ? parentLeadId : id}
-              photoType="before"
-              title="Before Photos"
-              onPhotosChange={() => fetchBeforePhotos()}
-              onJobConverted={handleJobConverted}
-            />
-            {!job?.is_estimate_visit && (
-              <PhotoSection
-                leadId={id}
-                photoType="after"
-                title="After Photos"
-                onPhotosChange={() => fetchAfterPhotos()}
+              <JobInvoiceCard
+                jobId={id}
+                customerEmail={job.customer?.email}
+                customerName={job.customer?.name}
+                estimateTotal={displayEstimate?.total ? Number(displayEstimate.total) : null}
               />
             )}
           </div>
-        )}
-
-        {activeTab === "notes" && (
-          <div className="p-4 flex flex-col justify-center max-w-[var(--content-max-width)] m-auto gap-4">
-            <div className="card-elevated rounded-lg p-4">
-                <MentionInput
-                  value={newNote}
-                  onChange={setNewNote}
-                  placeholder="Add a note... (use @ to mention team members)"
-                  rows={2}
-                  teamMembers={teamMembers}
-                />
-                <Button
-                  size="sm"
-                  className="mt-2"
-                  onClick={addNote}
-                  disabled={!newNote.trim() || addingNote}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Add Note
-                </Button>
-            </div>
-
-            {notes.length > 0 ? (
-              <div className="space-y-3 flex flex-col gap-4">
-                {notes.map((note) => (
-
-                  <div key={note.id} className="card-elevated flex gap-4 rounded-lg p-4">
-
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                        <FileText className="h-4 w-4" />
-                      </div>
-
-                    <div className="flex-1 items-center justify-between gap-2 mb-0.5">
-                    <p className="text-3 whitespace-pre-wrap">
-                      {parseMentionsForDisplay(note.body || note.summary || "").map((part, idx) =>
-                        part.type === 'mention' ? (
-                          <span key={idx} className="font-bold text-primary">@{part.content}</span>
-                        ) : (
-                          <span key={idx}>{part.content}</span>
-                        )
-                      )}
-                    </p>
-
-                    <span className="text-xs text-muted-foreground ml-auto">
-                      {format(new Date(note.created_at), "MMM d, yyyy 'at' h:mm a")}
-                    </span>
-                    </div>
-                  </div>
-
-                  
-                ))}
-              </div>
-            ) : (
-              null
-            )}
-          </div>
-        )}
+        </div>
+      </div>
 
       {/* Schedule Dialog */}
       {id && (
@@ -1230,6 +1629,105 @@ export default function JobDetail() {
           onMakeRecurring={!jobAny.recurring_job_id ? () => setMakeRecurringOpen(true) : undefined}
         />
       )}
+
+      {id && job && (
+        <LineItemsEstimateDialog
+          open={lineItemsEstimateDialogOpen}
+          onOpenChange={setLineItemsEstimateDialogOpen}
+          lead={{
+            id,
+            name: job.customer?.name || job.name || "Customer",
+            phone: job.customer?.phone || null,
+            email: job.customer?.email || null,
+            address: job.address || null,
+            city: (job as any).city || null,
+            service_type: job.service_type || null,
+            estimated_value: job.actual_value || null,
+          }}
+          onSuccess={handleEstimateSuccess}
+        />
+      )}
+
+      <Dialog open={portalDialogOpen} onOpenChange={setPortalDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Client Portal Link</DialogTitle>
+            <DialogDescription>
+              Share this link with your client so they can view their jobs, estimates, and invoices.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <Input
+              value={portalLink}
+              readOnly
+              className="flex-1"
+              onClick={(e) => e.currentTarget.select()}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={handleCopyPortalLink}
+            >
+              {portalCopied ? (
+                <Check className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPortalDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={statusGuidanceOpen} onOpenChange={setStatusGuidanceOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Job Status Stages</DialogTitle>
+            <DialogDescription>
+              Use this guide to understand what each job status means and what needs to happen before moving a job into that stage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {JOB_STATUS_GUIDANCE.map((stage) => (
+              <div key={stage.value} className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex justify-start">
+                  {stage.value === "unassigned" ? (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-[hsl(var(--status-attention))]/40 bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]"
+                    >
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      Unassigned
+                    </Badge>
+                  ) : stage.value === "needs_invoice" ? (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-[hsl(var(--status-attention))]/40 bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]"
+                    >
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      Needs Invoice
+                    </Badge>
+                  ) : (
+                    <StatusBadge status={getJobStatusBadgeStatus(stage.value) as any} size="lg">
+                      {stage.label}
+                    </StatusBadge>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{stage.description}</p>
+                <p className="mt-2 text-sm text-foreground">
+                  <span className="font-medium">To get here:</span> {stage.requirement}
+                </p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Address Dialog */}
       <Dialog open={addressDialogOpen} onOpenChange={setAddressDialogOpen}>
@@ -1353,9 +1851,9 @@ export default function JobDetail() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Job Schedule</AlertDialogTitle>
+            <AlertDialogTitle>{deleteJobConfig.dialogTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this job schedule? This will permanently delete all jobs associated with this schedule. This action cannot be undone.
+              {deleteJobConfig.dialogDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1386,6 +1884,139 @@ export default function JobDetail() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleSaveCrewForFuture}>
               Yes, save for future
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={editCrewDialogOpen}
+        onOpenChange={(open) => {
+          setEditCrewDialogOpen(open);
+          if (!open) {
+            setEditingCrewScheduleId(null);
+            setEditingCrewUserIds([]);
+            setEditingScheduleDate("");
+            setEditingScheduleTimeStart("");
+            setEditingScheduleTimeEnd("");
+            setEditScheduleDeleteConfirmOpen(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Assigned Crew</DialogTitle>
+            <DialogDescription>
+              Update this scheduled date and crew assignment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-schedule-date">Date</Label>
+              <Input
+                id="edit-schedule-date"
+                type="date"
+                value={editingScheduleDate}
+                onChange={(event) => setEditingScheduleDate(event.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-schedule-start-time">Start Time</Label>
+                <Input
+                  id="edit-schedule-start-time"
+                  type="time"
+                  value={editingScheduleTimeStart}
+                  onChange={(event) => setEditingScheduleTimeStart(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-schedule-end-time">End Time</Label>
+                <Input
+                  id="edit-schedule-end-time"
+                  type="time"
+                  value={editingScheduleTimeEnd}
+                  onChange={(event) => setEditingScheduleTimeEnd(event.target.value)}
+                />
+              </div>
+            </div>
+
+            {teamMembers.length > 0 ? (
+              <div className="max-h-72 overflow-y-auto border rounded-md">
+                {teamMembers.map((member) => {
+                  const memberId = `edit-crew-${member.user_id}`;
+                  const isSelected = editingCrewUserIds.includes(member.user_id);
+                  return (
+                    <div key={member.user_id} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id={memberId}
+                          checked={isSelected}
+                          onCheckedChange={() => toggleEditingCrewUser(member.user_id)}
+                        />
+                        <Label htmlFor={memberId} className="font-normal cursor-pointer">
+                          {member.full_name || "Unnamed"}
+                        </Label>
+                      </div>
+                      <Badge variant="outline" className="text-xs py-0">
+                        {member.role ? member.role.replace("_", " ") : "team"}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No crew members available</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {editingCrewUserIds.length} crew member{editingCrewUserIds.length === 1 ? "" : "s"} selected
+            </p>
+          </div>
+          <DialogFooter className="flex-row flex-wrap justify-end gap-2 sm:justify-end">
+            {!jobAny.recurring_job_id && (
+              <Button
+                variant="outline"
+                onClick={() => setEditScheduleDeleteConfirmOpen(true)}
+                className="order-3 h-10 w-10 p-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:order-1 sm:mr-auto"
+                aria-label="Delete scheduled date"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => setEditCrewDialogOpen(false)}
+              className="order-2 flex-1 sm:order-2 sm:flex-none"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCrewAssignments}
+              disabled={savingCrewAssignments}
+              className="order-1 w-full sm:order-3 sm:w-auto"
+            >
+              {savingCrewAssignments ? "Saving..." : "Save Crew"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={editScheduleDeleteConfirmOpen} onOpenChange={setEditScheduleDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove scheduled date?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove only this scheduled date from the job.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEditedSchedule}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove Date
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

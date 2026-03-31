@@ -3,7 +3,7 @@ import { Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
 import {
   Select,
   SelectContent,
@@ -55,9 +55,11 @@ function CompactLineItem({
   onRemove: () => void;
   onUndoRemove: () => void;
 }) {
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
   const lineTotal = qty * price;
+  const hasLongDescription = item.description.trim().length > 180;
 
   if (pendingDelete) {
     return (
@@ -81,29 +83,46 @@ function CompactLineItem({
   }
 
   return (
-    <div className="p-3 border border-border rounded-lg flex items-center justify-between gap-3 bg-card">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate">
-            {item.name || `Item ${index + 1}`}
-          </span>
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {item.quantity} x ${formatDollar(price)}
-          </span>
+    <div className="p-3 border border-border rounded-lg space-y-2 bg-card">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">
+              {item.name || `Item ${index + 1}`}
+            </span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {item.quantity} x ${formatDollar(price)}
+            </span>
+          </div>
         </div>
-        {item.description && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{item.description}</p>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-sm font-semibold">${formatDollar(lineTotal)}</span>
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <span className="text-sm font-semibold mr-1">${formatDollar(lineTotal)}</span>
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+      {item.description && (
+        <div className="mt-0.5">
+          <p
+            className={`text-xs text-muted-foreground break-words ${isDescriptionExpanded ? "" : "line-clamp-3"}`}
+          >
+            {item.description}
+          </p>
+          {hasLongDescription && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+              onClick={() => setIsDescriptionExpanded((current) => !current)}
+            >
+              {isDescriptionExpanded ? "View less" : "View more"}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -149,10 +168,14 @@ function ExpandedLineItem({
             leadId={jobId}
             onApply={(name, quantity, unit, unitPrice, description) => {
               onUpdate("name", name);
-              onUpdate("quantity", quantity);
+              if (quantity.trim().length > 0) {
+                onUpdate("quantity", quantity);
+              }
               onUpdate("unit", unit);
               onUpdate("unit_price", unitPrice);
-              onUpdate("description", description);
+              if (description.trim().length > 0) {
+                onUpdate("description", description);
+              }
             }}
           />
           <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
@@ -173,10 +196,10 @@ function ExpandedLineItem({
 
       <div className="space-y-2">
         <Label htmlFor={`edit-item-description-${index}`}>Description</Label>
-        <Textarea
+        <SpeechToTextTextarea
           id={`edit-item-description-${index}`}
           value={item.description}
-          onChange={(e) => onUpdate("description", e.target.value)}
+          onValueChange={(value) => onUpdate("description", value)}
           placeholder="Additional details..."
           rows={2}
         />
@@ -344,9 +367,11 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   };
 
   const updateLineItem = (index: number, field: keyof LineItemForm, value: string) => {
-    const updated = [...lineItems];
-    updated[index] = { ...updated[index], [field]: value };
-    setLineItems(updated);
+    setLineItems((previous) => {
+      const updated = [...previous];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
   };
 
   const markForDelete = (index: number) => {
@@ -573,7 +598,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100dvw-1rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Estimate</DialogTitle>
           <DialogDescription>

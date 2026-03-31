@@ -17,9 +17,20 @@ interface CSVImportModalProps {
   onImportComplete?: () => void;
 }
 
-type Step = "upload" | "mapping" | "importing" | "done";
+type Step = "upload" | "mapping" | "status-mapping" | "importing" | "done";
 
 const SKIP_VALUE = "__skip__";
+const SKIP_STATUS_VALUE = "__skip_status__";
+const LEAD_STATUS_OPTIONS = [
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "qualified", label: "Qualified" },
+  { value: "job", label: "Job" },
+  { value: "paid", label: "Paid" },
+  { value: "completed", label: "Completed" },
+  { value: "lost", label: "Lost" },
+  { value: "archived", label: "Archived" },
+] as const;
 
 function getCombineInfo(mapping: ColumnMapping, headers: string[]) {
   const fieldToHeaders: Partial<Record<LeadFieldKey, string[]>> = {};
@@ -42,6 +53,7 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
   const [fileName, setFileName] = useState("");
   const [importResult, setImportResult] = useState({ success: 0, failed: 0, errors: [] as string[] });
   const [dragOver, setDragOver] = useState(false);
+  const [statusMapping, setStatusMapping] = useState<Record<string, string>>({});
 
   const reset = () => {
     setStep("upload");
@@ -50,6 +62,7 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
     setFileName("");
     setImportResult({ success: 0, failed: 0, errors: [] });
     setDragOver(false);
+    setStatusMapping({});
   };
 
   const handleClose = (isOpen: boolean) => {
@@ -109,8 +122,73 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
   };
 
   const hasNameMapping = Object.values(mapping).includes("name");
+  const statusHeader = csv?.headers.find((header) => mapping[header] === "status") || null;
 
   const combineInfo = csv ? getCombineInfo(mapping, csv.headers) : {};
+  const distinctStatusValues = statusHeader && csv
+    ? Array.from(
+        new Set(
+          csv.rows
+            .map((row) => row[csv.headers.indexOf(statusHeader)]?.trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+
+  const normalizeStatusValue = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+
+  const getSuggestedLeadStatus = (value: string) => {
+    const normalized = normalizeStatusValue(value);
+
+    if (LEAD_STATUS_OPTIONS.some((option) => option.value === normalized)) {
+      return normalized;
+    }
+
+    if (["won", "in_progress", "active_job", "converted"].includes(normalized)) {
+      return "job";
+    }
+
+    if (["closed_won", "finished"].includes(normalized)) {
+      return "completed";
+    }
+
+    if (["closed_lost", "dead", "rejected"].includes(normalized)) {
+      return "lost";
+    }
+
+    return "new";
+  };
+
+  const handleStatusMappingChange = (sourceStatus: string, value: string) => {
+    setStatusMapping((prev) => ({ ...prev, [sourceStatus]: value }));
+  };
+
+  const handleContinueFromMapping = () => {
+    if (!hasNameMapping) {
+      toast.error("You must map at least the Name field");
+      return;
+    }
+
+    if (!statusHeader || distinctStatusValues.length === 0) {
+      void handleImport();
+      return;
+    }
+
+    setStatusMapping((prev) => {
+      const next = { ...prev };
+      for (const sourceStatus of distinctStatusValues) {
+        if (!next[sourceStatus]) {
+          next[sourceStatus] = getSuggestedLeadStatus(sourceStatus);
+        }
+      }
+      return next;
+    });
+    setStep("status-mapping");
+  };
 
   const handleImport = async () => {
     if (!csv || !user?.id || !currentAccount) return;
@@ -156,6 +234,7 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
       const phone = getValue("phone");
       const address = getValue("address");
       const city = getValue("city");
+      const importedStatus = getValue("status");
 
       const estimatedRaw = getValue("estimated_value");
       let estimatedValue: number | null = null;
@@ -194,7 +273,9 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
             estimated_value: estimatedValue,
             created_by: user.id,
             account_id: currentAccount.id,
-            status: "new" as const,
+            status: importedStatus && statusMapping[importedStatus] && statusMapping[importedStatus] !== SKIP_STATUS_VALUE
+              ? statusMapping[importedStatus]
+              : "new",
             approval_status: "approved",
           });
 
@@ -221,12 +302,14 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
           <DialogTitle>
             {step === "upload" && "Import Leads from CSV"}
             {step === "mapping" && "Map CSV Columns"}
+            {step === "status-mapping" && "Match Status Values"}
             {step === "importing" && "Importing Leads..."}
             {step === "done" && "Import Complete"}
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Upload a CSV file containing your leads data."}
             {step === "mapping" && "Match each CSV column to a lead field. Map multiple columns to the same field to combine them (e.g. First Name + Last Name)."}
+            {step === "status-mapping" && "Map each unique status from your CSV to a LeadSig status before importing."}
             {step === "importing" && "Please wait while your leads are being imported."}
             {step === "done" && `Processed ${importResult.success + importResult.failed} rows.`}
           </DialogDescription>
@@ -334,6 +417,50 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
           </div>
         )}
 
+        {step === "status-mapping" && csv && (
+          <div className="flex-1 min-h-0">
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground truncate">{fileName}</span>
+              <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">
+                {distinctStatusValues.length} status values
+              </span>
+            </div>
+
+            <ScrollArea className="h-[340px]">
+              <div className="space-y-3 px-1 py-1">
+                {distinctStatusValues.map((sourceStatus) => (
+                  <div key={sourceStatus} className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{sourceStatus}</p>
+                      <p className="text-xs text-muted-foreground truncate">Source status value</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="shrink-0 w-[180px]">
+                      <Select
+                        value={statusMapping[sourceStatus] || "new"}
+                        onValueChange={(value) => handleStatusMappingChange(sourceStatus, value)}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LEAD_STATUS_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={SKIP_STATUS_VALUE}>Skip and import as New</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+
         {step === "importing" && (
           <div className="flex flex-col items-center justify-center py-12">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
@@ -384,7 +511,17 @@ export function CSVImportModal({ open, onOpenChange, onImportComplete }: CSVImpo
               <Button variant="outline" onClick={reset}>
                 Back
               </Button>
-              <Button onClick={handleImport} disabled={!hasNameMapping}>
+              <Button onClick={handleContinueFromMapping} disabled={!hasNameMapping}>
+                {statusHeader ? "Continue to Status Matching" : `Import ${csv?.rows.length} Leads`}
+              </Button>
+            </>
+          )}
+          {step === "status-mapping" && (
+            <>
+              <Button variant="outline" onClick={() => setStep("mapping")}>
+                Back
+              </Button>
+              <Button onClick={handleImport}>
                 Import {csv?.rows.length} Leads
               </Button>
             </>

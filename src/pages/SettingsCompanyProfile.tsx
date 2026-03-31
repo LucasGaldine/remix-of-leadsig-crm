@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, Loader2, Copy, Check, Users } from "lucide-react";
+import { Building2, Loader2, Copy, Check, Users, Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -13,6 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  getCompanyLogoStoragePath,
+  getCompanyLogoValidationError,
+  loadImageDimensions,
+} from "@/lib/companyLogo";
 import { toast } from "sonner";
 
 export default function SettingsCompanyProfile() {
@@ -32,6 +37,11 @@ export default function SettingsCompanyProfile() {
   const [billingEmail, setBillingEmail] = useState("");
   const [website, setWebsite] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState("");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (currentAccount) {
@@ -42,8 +52,19 @@ export default function SettingsCompanyProfile() {
       setBillingEmail(currentAccount.billing_email || "");
       setWebsite(currentAccount.website || "");
       setInviteCode(currentAccount.invite_code || "");
+      setLogoUrl(currentAccount.logo_url || "");
+      setLogoPreviewUrl(currentAccount.logo_url || "");
+      setSelectedLogoFile(null);
     }
   }, [currentAccount]);
+
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl && logoPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+    };
+  }, [logoPreviewUrl]);
 
   const handleCopyCode = async () => {
     if (!inviteCode) return;
@@ -73,6 +94,36 @@ export default function SettingsCompanyProfile() {
 
     setIsSaving(true);
 
+    let uploadedLogoUrl = logoUrl || null;
+
+    if (selectedLogoFile) {
+      setIsUploadingLogo(true);
+      try {
+        const fileExt = selectedLogoFile.name.split(".").pop() || "png";
+        const filePath = getCompanyLogoStoragePath(currentAccount.id, Date.now(), fileExt);
+
+        const { error: uploadError } = await supabase.storage
+          .from("profiles")
+          .upload(filePath, selectedLogoFile, {
+            cacheControl: "3600",
+            upsert: true,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage.from("profiles").getPublicUrl(filePath);
+        uploadedLogoUrl = urlData.publicUrl;
+      } catch (error) {
+        console.error("Error uploading company logo:", error);
+        toast.error("Failed to upload company logo");
+        setIsUploadingLogo(false);
+        setIsSaving(false);
+        return;
+      } finally {
+        setIsUploadingLogo(false);
+      }
+    }
+
     const { error } = await supabase
       .from("accounts")
       .update({
@@ -82,6 +133,7 @@ export default function SettingsCompanyProfile() {
         company_address: companyAddress.trim() || null,
         billing_email: billingEmail.trim() || null,
         website: website.trim() || null,
+        logo_url: uploadedLogoUrl,
         updated_at: new Date().toISOString(),
       })
       .eq("id", currentAccount.id);
@@ -95,8 +147,39 @@ export default function SettingsCompanyProfile() {
     }
 
     setIsDirty(false);
+    setLogoUrl(uploadedLogoUrl || "");
+    setSelectedLogoFile(null);
     toast.success("Company profile updated successfully");
     await refreshProfile();
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const dimensions = await loadImageDimensions(file);
+      const validationError = getCompanyLogoValidationError(file, dimensions);
+      if (validationError) {
+        toast.error(validationError);
+        e.target.value = "";
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      if (logoPreviewUrl && logoPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+
+      setSelectedLogoFile(file);
+      setLogoPreviewUrl(objectUrl);
+      setIsDirty(true);
+      toast.success("Logo ready to save");
+    } catch (error) {
+      console.error("Error validating company logo:", error);
+      toast.error("Unable to read logo file");
+      e.target.value = "";
+    }
   };
 
   if (isLoading) {
@@ -173,6 +256,58 @@ export default function SettingsCompanyProfile() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="company-logo">Company Logo</Label>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/30">
+                  {logoPreviewUrl ? (
+                    <img
+                      src={logoPreviewUrl}
+                      alt={`${companyName || "Company"} logo`}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  ) : (
+                    <Building2 className="h-8 w-8 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Label
+                    htmlFor="company-logo"
+                    className="sr-only"
+                  >
+                    Company Logo
+                  </Label>
+                  <Input
+                    id="company-logo"
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={handleLogoUpload}
+                    disabled={isSaving || isUploadingLogo}
+                    className="sr-only"
+                  />
+                  <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={isSaving || isUploadingLogo}
+                      className="gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {logoPreviewUrl ? "Replace Logo" : "Upload Logo"}
+                    </Button>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {selectedLogoFile?.name || (logoPreviewUrl ? "Current logo selected" : "No file selected")}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Upload a PNG, JPG, SVG, or WebP logo up to 2MB. Logo must be between 1:1 and 4:1.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="company-name">
                 Company Name <span className="text-destructive">*</span>
@@ -267,7 +402,7 @@ export default function SettingsCompanyProfile() {
             }
             handleSave({ preventDefault: () => {} } as React.FormEvent);
           }}
-          isSaving={isSaving}
+          isSaving={isSaving || isUploadingLogo}
         />
       </form>
 

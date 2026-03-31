@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import { format } from 'date-fns';
+import jsPDF from "jspdf";
+import { format } from "date-fns";
 
 interface LineItem {
   name: string;
@@ -10,11 +10,12 @@ interface LineItem {
   total: number;
 }
 
-interface EstimatePDFData {
+interface PdfBaseData {
   customerName: string;
   jobName: string;
   address?: string;
   companyName?: string;
+  companyLogoUrl?: string;
   companyEmail?: string;
   companyPhone?: string;
   lineItems: LineItem[];
@@ -25,57 +26,105 @@ interface EstimatePDFData {
   total: number;
   notes?: string;
   createdAt?: string;
+}
+
+export interface EstimatePDFData extends PdfBaseData {
   expiresAt?: string;
 }
 
-export function generateEstimatePDF(data: EstimatePDFData) {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 20;
-  let yPosition = 20;
+export interface InvoicePDFData extends PdfBaseData {
+  invoiceNumber?: number | string;
+  dueDate?: string;
+  balanceDue?: number;
+}
 
+async function getImageDataUrl(imageUrl: string) {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error("Failed to load company logo");
+  }
+
+  const blob = await response.blob();
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+
+  return `data:${blob.type || "image/png"};base64,${btoa(binary)}`;
+}
+
+async function addCompanyLogo(doc: jsPDF, logoUrl: string | undefined, margin: number, yPosition: number) {
+  if (!logoUrl) return yPosition;
+
+  try {
+    const logoDataUrl = await getImageDataUrl(logoUrl);
+    const logoProps = doc.getImageProperties(logoDataUrl);
+    const maxLogoWidth = 36;
+    const maxLogoHeight = 18;
+    const widthScale = maxLogoWidth / logoProps.width;
+    const heightScale = maxLogoHeight / logoProps.height;
+    const logoScale = Math.min(widthScale, heightScale);
+    const logoWidth = logoProps.width * logoScale;
+    const logoHeight = logoProps.height * logoScale;
+
+    doc.addImage(logoDataUrl, "PNG", margin, yPosition, logoWidth, logoHeight);
+    return yPosition + logoHeight + 6;
+  } catch {
+    return yPosition;
+  }
+}
+
+function addHeader(doc: jsPDF, title: string, margin: number, yPosition: number) {
   doc.setFontSize(24);
-  doc.setFont('helvetica', 'bold');
-  doc.text('ESTIMATE', margin, yPosition);
+  doc.setFont("helvetica", "bold");
+  doc.text(title, margin, yPosition);
+  return yPosition + 15;
+}
 
-  yPosition += 15;
-  const timestamp = format(new Date(), 'MMMM d, yyyy \'at\' h:mm a');
+function addGeneratedTimestamp(doc: jsPDF, margin: number, yPosition: number) {
+  const timestamp = format(new Date(), "MMMM d, yyyy 'at' h:mm a");
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 100, 100);
   doc.text(`Generated: ${timestamp}`, margin, yPosition);
   doc.setTextColor(0, 0, 0);
+  return yPosition + 15;
+}
 
-  yPosition += 15;
+function addCompanySection(doc: jsPDF, data: PdfBaseData, margin: number, yPosition: number) {
+  if (!data.companyName) return yPosition;
 
-  if (data.companyName) {
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(data.companyName, margin, yPosition);
-    yPosition += 6;
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(data.companyName, margin, yPosition);
+  yPosition += 6;
 
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
 
-    if (data.companyEmail) {
-      doc.text(data.companyEmail, margin, yPosition);
-      yPosition += 5;
-    }
-
-    if (data.companyPhone) {
-      doc.text(data.companyPhone, margin, yPosition);
-      yPosition += 5;
-    }
-
+  if (data.companyEmail) {
+    doc.text(data.companyEmail, margin, yPosition);
     yPosition += 5;
   }
 
+  if (data.companyPhone) {
+    doc.text(data.companyPhone, margin, yPosition);
+    yPosition += 5;
+  }
+
+  return yPosition + 5;
+}
+
+function addRecipientSection(doc: jsPDF, label: string, data: PdfBaseData, margin: number, yPosition: number) {
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('BILL TO:', margin, yPosition);
+  doc.setFont("helvetica", "bold");
+  doc.text(label, margin, yPosition);
   yPosition += 6;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont("helvetica", "normal");
   doc.text(data.customerName, margin, yPosition);
   yPosition += 5;
 
@@ -89,38 +138,41 @@ export function generateEstimatePDF(data: EstimatePDFData) {
     yPosition += 5;
   }
 
-  yPosition += 10;
+  return yPosition + 10;
+}
 
-  if (data.createdAt) {
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Created: ${format(new Date(data.createdAt), 'MMM d, yyyy')}`, margin, yPosition);
-    yPosition += 5;
-  }
+function addDocumentMeta(
+  doc: jsPDF,
+  lines: string[],
+  margin: number,
+  yPosition: number,
+) {
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
 
-  if (data.expiresAt) {
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Expires: ${format(new Date(data.expiresAt), 'MMM d, yyyy')}`, margin, yPosition);
+  for (const line of lines) {
+    doc.text(line, margin, yPosition);
     yPosition += 5;
   }
 
   doc.setTextColor(0, 0, 0);
-  yPosition += 5;
+  return yPosition + 5;
+}
 
+function addLineItemsTable(doc: jsPDF, data: PdfBaseData, margin: number, pageWidth: number, yPosition: number) {
   doc.setFillColor(240, 240, 240);
-  doc.rect(margin, yPosition, pageWidth - margin * 2, 8, 'F');
+  doc.rect(margin, yPosition, pageWidth - margin * 2, 8, "F");
 
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Description', margin + 2, yPosition + 5);
-  doc.text('Qty', pageWidth - 100, yPosition + 5);
-  doc.text('Price', pageWidth - 70, yPosition + 5);
-  doc.text('Total', pageWidth - margin - 2, yPosition + 5, { align: 'right' });
+  doc.setFont("helvetica", "bold");
+  doc.text("Description", margin + 2, yPosition + 5);
+  doc.text("Qty", pageWidth - 100, yPosition + 5);
+  doc.text("Price", pageWidth - 70, yPosition + 5);
+  doc.text("Total", pageWidth - margin - 2, yPosition + 5, { align: "right" });
 
   yPosition += 10;
-
-  doc.setFont('helvetica', 'normal');
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
 
   for (const item of data.lineItems) {
@@ -129,12 +181,12 @@ export function generateEstimatePDF(data: EstimatePDFData) {
       yPosition = 20;
     }
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont("helvetica", "bold");
     doc.text(item.name, margin, yPosition);
     yPosition += 5;
 
     if (item.description) {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       const descLines = doc.splitTextToSize(item.description, pageWidth - margin * 2 - 20);
       doc.text(descLines, margin, yPosition);
@@ -142,64 +194,140 @@ export function generateEstimatePDF(data: EstimatePDFData) {
       doc.setFontSize(10);
     }
 
-    doc.setFont('helvetica', 'normal');
-    const qtyText = `${item.quantity} ${item.unit}`;
-    const priceText = `$${Number(item.unit_price).toFixed(2)}`;
-    const totalText = `$${Number(item.total).toFixed(2)}`;
-
-    doc.text(qtyText, pageWidth - 100, yPosition);
-    doc.text(priceText, pageWidth - 70, yPosition);
-    doc.text(totalText, pageWidth - margin - 2, yPosition, { align: 'right' });
+    doc.setFont("helvetica", "normal");
+    doc.text(`${item.quantity} ${item.unit}`, pageWidth - 100, yPosition);
+    doc.text(`$${Number(item.unit_price).toFixed(2)}`, pageWidth - 70, yPosition);
+    doc.text(`$${Number(item.total).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
 
     yPosition += 8;
   }
 
+  return yPosition;
+}
+
+function addSummary(
+  doc: jsPDF,
+  data: PdfBaseData,
+  margin: number,
+  pageWidth: number,
+  yPosition: number,
+  extraRows: Array<{ label: string; value: string; emphasized?: boolean }> = [],
+) {
   yPosition += 5;
   doc.setDrawColor(200, 200, 200);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
   yPosition += 8;
 
   const summaryX = pageWidth - 80;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont("helvetica", "normal");
 
-  doc.text('Subtotal:', summaryX, yPosition);
-  doc.text(`$${Number(data.subtotal).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  doc.text("Subtotal:", summaryX, yPosition);
+  doc.text(`$${Number(data.subtotal).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
   yPosition += 6;
 
   doc.text(`Tax (${(data.taxRate * 100).toFixed(1)}%):`, summaryX, yPosition);
-  doc.text(`$${Number(data.tax).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  doc.text(`$${Number(data.tax).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
   yPosition += 6;
 
   if (data.discount > 0) {
-    doc.text('Discount:', summaryX, yPosition);
-    doc.text(`-$${Number(data.discount).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: 'right' });
+    doc.text("Discount:", summaryX, yPosition);
+    doc.text(`-$${Number(data.discount).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
     yPosition += 6;
   }
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text('Total:', summaryX, yPosition);
-  doc.text(`$${Number(data.total).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: 'right' });
+  doc.text("Total:", summaryX, yPosition);
+  doc.text(`$${Number(data.total).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
+  yPosition += 8;
 
-  if (data.notes) {
-    yPosition += 15;
-
-    if (yPosition > 250) {
-      doc.addPage();
-      yPosition = 20;
-    }
-
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Notes:', margin, yPosition);
-    yPosition += 6;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const notesLines = doc.splitTextToSize(data.notes, pageWidth - margin * 2);
-    doc.text(notesLines, margin, yPosition);
+  for (const row of extraRows) {
+    doc.setFont("helvetica", row.emphasized ? "bold" : "normal");
+    doc.setFontSize(row.emphasized ? 12 : 10);
+    doc.text(row.label, summaryX, yPosition);
+    doc.text(row.value, pageWidth - margin - 2, yPosition, { align: "right" });
+    yPosition += row.emphasized ? 7 : 6;
   }
 
-  const filename = `estimate-${data.customerName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+  return yPosition;
+}
+
+function addNotes(doc: jsPDF, notes: string | undefined, margin: number, pageWidth: number, yPosition: number) {
+  if (!notes) return yPosition;
+
+  yPosition += 15;
+  if (yPosition > 250) {
+    doc.addPage();
+    yPosition = 20;
+  }
+
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("Notes:", margin, yPosition);
+  yPosition += 6;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const notesLines = doc.splitTextToSize(notes, pageWidth - margin * 2);
+  doc.text(notesLines, margin, yPosition);
+  return yPosition + notesLines.length * 4;
+}
+
+export async function generateEstimatePDF(data: EstimatePDFData) {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 20;
+  let yPosition = 20;
+
+  yPosition = await addCompanyLogo(doc, data.companyLogoUrl, margin, yPosition);
+  yPosition = addHeader(doc, "ESTIMATE", margin, yPosition);
+  yPosition = addGeneratedTimestamp(doc, margin, yPosition);
+  yPosition = addCompanySection(doc, data, margin, yPosition);
+  yPosition = addRecipientSection(doc, "BILL TO:", data, margin, yPosition);
+
+  const metaLines: string[] = [];
+  if (data.createdAt) metaLines.push(`Created: ${format(new Date(data.createdAt), "MMM d, yyyy")}`);
+  if (data.expiresAt) metaLines.push(`Expires: ${format(new Date(data.expiresAt), "MMM d, yyyy")}`);
+  if (metaLines.length > 0) {
+    yPosition = addDocumentMeta(doc, metaLines, margin, yPosition);
+  }
+
+  yPosition = addLineItemsTable(doc, data, margin, pageWidth, yPosition);
+  yPosition = addSummary(doc, data, margin, pageWidth, yPosition);
+  addNotes(doc, data.notes, margin, pageWidth, yPosition);
+
+  const filename = `estimate-${data.customerName.replace(/[^a-z0-9]/gi, "_").toLowerCase()}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
+  doc.save(filename);
+}
+
+export async function generateInvoicePDF(data: InvoicePDFData) {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 20;
+  let yPosition = 20;
+
+  yPosition = await addCompanyLogo(doc, data.companyLogoUrl, margin, yPosition);
+  yPosition = addHeader(doc, "INVOICE", margin, yPosition);
+  yPosition = addGeneratedTimestamp(doc, margin, yPosition);
+  yPosition = addCompanySection(doc, data, margin, yPosition);
+  yPosition = addRecipientSection(doc, "BILL TO:", data, margin, yPosition);
+
+  const metaLines: string[] = [];
+  if (data.invoiceNumber) metaLines.push(`Invoice #${data.invoiceNumber}`);
+  if (data.createdAt) metaLines.push(`Issued: ${format(new Date(data.createdAt), "MMM d, yyyy")}`);
+  if (data.dueDate) metaLines.push(`Due: ${format(new Date(data.dueDate), "MMM d, yyyy")}`);
+  yPosition = addDocumentMeta(doc, metaLines, margin, yPosition);
+
+  yPosition = addLineItemsTable(doc, data, margin, pageWidth, yPosition);
+  yPosition = addSummary(doc, data, margin, pageWidth, yPosition, [
+    {
+      label: "Balance Due:",
+      value: `$${Number(data.balanceDue ?? data.total).toFixed(2)}`,
+      emphasized: true,
+    },
+  ]);
+  addNotes(doc, data.notes, margin, pageWidth, yPosition);
+
+  const filename = `invoice-${data.customerName.replace(/[^a-z0-9]/gi, "_").toLowerCase()}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
   doc.save(filename);
 }

@@ -19,6 +19,7 @@ export interface InvoiceWithDetails extends Invoice {
   line_items: {
     id: string;
     name: string;
+    description?: string;
     quantity: number;
     unit: string;
     unit_price: number;

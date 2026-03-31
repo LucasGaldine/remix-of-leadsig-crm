@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { prepareLeadPhotoForUpload } from "@/lib/photoCompression";
 import { toast } from "sonner";
 
 const MAX_PHOTOS = 4;
@@ -18,6 +19,10 @@ export interface LeadPhoto {
   publicUrl: string;
   uploader_name?: string;
 }
+
+type LeadPhotoWithUploader = Omit<LeadPhoto, "publicUrl" | "uploader_name"> & {
+  uploader?: { full_name: string | null } | null;
+};
 
 export function useLeadPhotos(leadId: string | undefined, photoType: "before" | "after" = "before") {
   const { user, currentAccount } = useAuth();
@@ -44,7 +49,7 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
       console.error("Failed to fetch lead photos:", error);
       setPhotos([]);
     } else {
-      const withUrls = (data || []).map((photo: any) => ({
+      const withUrls = ((data || []) as LeadPhotoWithUploader[]).map((photo) => ({
         ...photo,
         uploader_name: photo.uploader?.full_name || "Unknown",
         publicUrl: supabase.storage
@@ -83,10 +88,6 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
         toast.error(`${file.name}: Only JPEG, PNG, WebP, and HEIC images are allowed`);
         return;
       }
-      if (file.size > MAX_FILE_SIZE) {
-        toast.error(`${file.name}: File must be under 10MB`);
-        return;
-      }
     }
 
     setIsUploading(true);
@@ -99,18 +100,32 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
         .maybeSingle();
 
       const wasNotJobBefore = leadBefore && leadBefore.status !== "job";
+      const preparedFiles: Array<{ originalName: string; file: File }> = [];
 
       for (const file of filesToUpload) {
-        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const preparedFile = await prepareLeadPhotoForUpload(file, MAX_FILE_SIZE);
+        if (!preparedFile) {
+          toast.error(`${file.name}: File must be under 10MB`);
+          return;
+        }
+
+        preparedFiles.push({
+          originalName: file.name,
+          file: preparedFile,
+        });
+      }
+
+      for (const prepared of preparedFiles) {
+        const ext = prepared.file.name.split(".").pop()?.toLowerCase() || "jpg";
         const filePath = `${currentAccount.id}/${leadId}/${photoType}/${crypto.randomUUID()}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
           .from("lead-photos")
-          .upload(filePath, file, { contentType: file.type });
+          .upload(filePath, prepared.file, { contentType: prepared.file.type });
 
         if (uploadError) {
           console.error("Storage upload error:", uploadError);
-          toast.error(`Failed to upload ${file.name}`);
+          toast.error(`Failed to upload ${prepared.originalName}`);
           continue;
         }
 
@@ -124,7 +139,7 @@ export function useLeadPhotos(leadId: string | undefined, photoType: "before" | 
 
         if (dbError) {
           console.error("DB insert error:", dbError);
-          toast.error(`Failed to save ${file.name}`);
+          toast.error(`Failed to save ${prepared.originalName}`);
           await supabase.storage.from("lead-photos").remove([filePath]);
         }
       }
