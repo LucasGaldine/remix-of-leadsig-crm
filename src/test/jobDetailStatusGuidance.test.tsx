@@ -66,6 +66,7 @@ const { testState, supabaseFromMock, deleteScheduleMutateAsyncMock } = vi.hoiste
     ],
     assignments: [{ id: "assign_1", user_id: "crew_1" }],
     checklistItems: [],
+    teamMembers: [] as Array<{ user_id: string; full_name?: string | null; role?: string | null; email?: string | null }>,
   },
   supabaseFromMock: vi.fn(),
   deleteScheduleMutateAsyncMock: vi.fn(),
@@ -192,7 +193,7 @@ vi.mock("@/hooks/useRecurringJobs", () => ({
 
 vi.mock("@/hooks/useTeamMembers", () => ({
   useTeamMembers: () => ({
-    data: [],
+    data: testState.teamMembers,
   }),
 }));
 
@@ -234,6 +235,7 @@ describe("JobDetail status guidance", () => {
     ];
     testState.assignments = [{ id: "assign_1", user_id: "crew_1" }];
     testState.checklistItems = [];
+    testState.teamMembers = [];
     deleteScheduleMutateAsyncMock.mockReset();
     deleteScheduleMutateAsyncMock.mockResolvedValue(undefined);
   });
@@ -367,7 +369,7 @@ describe("JobDetail status guidance", () => {
     });
   });
 
-  it("shows remaining checklist task count below the status badge when tasks are incomplete", async () => {
+  it("shows tasks-left copy in the status badge row when checklist tasks are incomplete", async () => {
     testState.checklistItems = [
       { id: "item_1", is_completed: false },
       { id: "item_2", is_completed: true },
@@ -423,7 +425,10 @@ describe("JobDetail status guidance", () => {
     renderJobDetail();
 
     await screen.findByRole("button", { name: /open job status guide for scheduled/i });
-    expect(screen.getByText("2 checklist tasks left")).toBeInTheDocument();
+    expect(screen.getByText("2 tasks left")).toBeInTheDocument();
+    const badgesRow = screen.getByTestId("job-detail-badges-row");
+    expect(badgesRow.className).not.toContain("justify-between");
+    expect(screen.queryByText("tasks left")).not.toBeInTheDocument();
   });
 
   it("shows unassigned badge when at least one scheduled day has no crew assignment", async () => {
@@ -849,6 +854,138 @@ describe("JobDetail status guidance", () => {
         lead_id: "job_1",
       });
     });
+  });
+
+  it("disables crew member selection when mark as assigned is checked", async () => {
+    testState.teamMembers = [
+      { user_id: "crew_1", full_name: "Lucas Galdine", role: "owner" },
+      { user_id: "crew_2", full_name: "Test Crew", role: "crew_member" },
+    ];
+
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    const modal = within(dialog);
+
+    const markAssignedCheckbox = modal.getByLabelText(/mark as assigned/i);
+    fireEvent.click(markAssignedCheckbox);
+
+    const crewCheckbox = modal.getByLabelText("Lucas Galdine");
+    expect(crewCheckbox).toBeDisabled();
+  });
+
+  it("disables mark as assigned after selecting a crew member", async () => {
+    testState.teamMembers = [
+      { user_id: "crew_1", full_name: "Lucas Galdine", role: "owner" },
+      { user_id: "crew_2", full_name: "Test Crew", role: "crew_member" },
+    ];
+
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    const modal = within(dialog);
+
+    fireEvent.click(modal.getByLabelText("Lucas Galdine"));
+    const markAssignedCheckbox = modal.getByLabelText(/mark as assigned/i);
+    expect(markAssignedCheckbox).toBeDisabled();
   });
 
   it("opens line items estimate modal when clicking Build Estimate", async () => {

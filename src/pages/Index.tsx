@@ -21,7 +21,7 @@ import { useCustomersNeedingAttention } from "@/hooks/useCustomersNeedingAttenti
 import { CustomerCard } from "@/components/customers/CustomerCard";
 import { Button } from "@/components/ui/button";
 import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
-import { AddJobDialog } from "@/components/jobs/AddJobDialog";
+import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 
 
 function getGreeting(): string {
@@ -331,11 +331,7 @@ export default function Index() {
         }}
       />
 
-      <AddJobDialog
-        open={addJobOpen}
-        onOpenChange={setAddJobOpen}
-        onJobCreated={(jobId) => navigate(`/jobs/${jobId}`)}
-      />
+      <CreateJobDialog open={addJobOpen} onOpenChange={setAddJobOpen} />
 
       <MobileNav />
     </div>

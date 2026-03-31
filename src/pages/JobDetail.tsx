@@ -44,6 +44,7 @@ import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
+import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallback";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { Separator } from "@/components/ui/separator";
@@ -567,9 +568,18 @@ export default function JobDetail() {
   };
 
   const toggleEditingCrewUser = (userId: string) => {
+    if (editingSuppressUnassigned) return;
     setEditingCrewUserIds((current) =>
       current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
     );
+  };
+
+  const toggleEditingSuppressUnassigned = (checked: boolean) => {
+    if (editingCrewUserIds.length > 0) return;
+    setEditingSuppressUnassigned(checked);
+    if (checked) {
+      setEditingCrewUserIds([]);
+    }
   };
 
   const handleSaveCrewAssignments = async () => {
@@ -623,16 +633,33 @@ export default function JobDetail() {
     setSavingCrewAssignments(true);
     try {
       if (scheduleChanged) {
-        const { error: scheduleError } = await supabase
+        const baseScheduleUpdate = {
+          scheduled_date: editingScheduleDate,
+          scheduled_time_start: editingScheduleTimeStart || null,
+          scheduled_time_end: editingScheduleTimeEnd || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        let { error: scheduleError } = await supabase
           .from("job_schedules")
           .update({
-            scheduled_date: editingScheduleDate,
-            scheduled_time_start: editingScheduleTimeStart || null,
-            scheduled_time_end: editingScheduleTimeEnd || null,
+            ...baseScheduleUpdate,
             suppress_unassigned: editingSuppressUnassigned,
-            updated_at: new Date().toISOString(),
           })
           .eq("id", editingCrewScheduleId);
+
+        if (isMissingSuppressUnassignedColumn(scheduleError)) {
+          const fallback = await supabase
+            .from("job_schedules")
+            .update(baseScheduleUpdate)
+            .eq("id", editingCrewScheduleId);
+          scheduleError = fallback.error;
+
+          if (!scheduleError && editingSuppressUnassigned) {
+            toast.error("Mark as assigned is not available until the latest database migration is applied.");
+            return;
+          }
+        }
 
         if (scheduleError) throw scheduleError;
       }
@@ -699,7 +726,8 @@ export default function JobDetail() {
       setEditCrewDialogOpen(false);
     } catch (error) {
       console.error("Error updating crew assignments:", error);
-      toast.error("Failed to update crew assignments");
+      const message = error instanceof Error ? error.message : "Failed to update crew assignments";
+      toast.error(message || "Failed to update crew assignments");
     } finally {
       setSavingCrewAssignments(false);
     }
@@ -996,7 +1024,7 @@ export default function JobDetail() {
       <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-0">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-3 min-w-0 w-full">
-            <div className="flex flex-wrap items-center gap-2">
+            <div data-testid="job-detail-badges-row" className="flex flex-wrap items-center gap-2">
               {isUnassigned && (
                 <Badge
                   variant="outline"
@@ -1021,23 +1049,21 @@ export default function JobDetail() {
                   Visit #{jobAny.recurring_instance_number || ""}
                 </Badge>
               )}
-              <div className="flex flex-col items-start gap-1">
-                <button
-                  type="button"
-                  className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  onClick={() => setStatusGuidanceOpen(true)}
-                  aria-label={`Open job status guide for ${statusLabel.toLowerCase()}`}
-                >
-                  <StatusBadge status={getJobStatusBadgeStatus(displayStatus) as any} >
-                    {statusLabel}
-                  </StatusBadge>
-                </button>
-                {remainingChecklistCount > 0 && (
-                  <p className="pl-1 text-xs text-muted-foreground">
-                    {remainingChecklistCount} checklist {remainingChecklistCount === 1 ? "task" : "tasks"} left
-                  </p>
-                )}
-              </div>
+              <button
+                type="button"
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onClick={() => setStatusGuidanceOpen(true)}
+                aria-label={`Open job status guide for ${statusLabel.toLowerCase()}`}
+              >
+                <StatusBadge status={getJobStatusBadgeStatus(displayStatus) as any} >
+                  {statusLabel}
+                </StatusBadge>
+              </button>
+              {remainingChecklistCount > 0 && (
+                <p className="text-xs text-muted-foreground whitespace-nowrap">
+                  {remainingChecklistCount} tasks left
+                </p>
+              )}
             </div>
 
             <div className="flex items-end justify-between gap-3">
@@ -1964,22 +1990,25 @@ export default function JobDetail() {
               </div>
             </div>
 
-            <div className="rounded-md border p-3">
-              <div className="flex items-center justify-between gap-3">
+            <div className="rounded-md border bg-muted p-3">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="edit-mark-assigned"
+                  checked={editingSuppressUnassigned}
+                  disabled={editingCrewUserIds.length > 0}
+                  onCheckedChange={(value) => toggleEditingSuppressUnassigned(value === true)}
+                />
                 <div>
-                  <p className="text-sm font-medium">Mark as assigned</p>
-                  <p className="text-xs text-muted-foreground">
-                    Suppress the unassigned state for this scheduled visit without assigning a crew member.
-                  </p>
+                  <Label
+                    htmlFor="edit-mark-assigned"
+                    className={cn(
+                      "text-sm font-semibold",
+                      editingCrewUserIds.length > 0 ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+                    )}
+                  >
+                    Mark as assigned
+                  </Label>
                 </div>
-                <Button
-                  type="button"
-                  variant={editingSuppressUnassigned ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setEditingSuppressUnassigned((value) => !value)}
-                >
-                  {editingSuppressUnassigned ? "Marked as assigned" : "Mark as assigned"}
-                </Button>
               </div>
             </div>
 
@@ -1989,14 +2018,27 @@ export default function JobDetail() {
                   const memberId = `edit-crew-${member.user_id}`;
                   const isSelected = editingCrewUserIds.includes(member.user_id);
                   return (
-                    <div key={member.user_id} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0">
+                    <div
+                      key={member.user_id}
+                      className={cn(
+                        "flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0",
+                        editingSuppressUnassigned && "opacity-60",
+                      )}
+                    >
                       <div className="flex items-center gap-3">
                         <Checkbox
                           id={memberId}
                           checked={isSelected}
+                          disabled={editingSuppressUnassigned}
                           onCheckedChange={() => toggleEditingCrewUser(member.user_id)}
                         />
-                        <Label htmlFor={memberId} className="font-normal cursor-pointer">
+                        <Label
+                          htmlFor={memberId}
+                          className={cn(
+                            "text-sm font-normal leading-none",
+                            editingSuppressUnassigned ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+                          )}
+                        >
                           {member.full_name || "Unnamed"}
                         </Label>
                       </div>

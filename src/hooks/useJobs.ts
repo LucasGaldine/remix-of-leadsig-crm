@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/types/database";
 import { useAuth } from "./useAuth";
 import { generateInstances, type RecurringJob } from "./useRecurringJobs";
+import { isJobLifecycleStatus, toDisplayStatus } from "@/lib/jobLifecycle";
+import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallback";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
 type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
@@ -50,49 +52,59 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
     queryFn: async () => {
       if (!currentAccount || !user) return [];
 
-      let query = supabase
-        .from("leads")
-        .select(`
-          *,
-          customer:customers!customer_id(id, name, email, phone, address),
-          crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
-          job_schedules!lead_id(id, scheduled_date, scheduled_time_start, scheduled_time_end, suppress_unassigned),
-          job_assignments!lead_id(id, user_id, job_schedule_id),
-          invoices!lead_id(id),
-          estimates!job_id(id, total)
-        `)
-        .eq("account_id", currentAccount.id)
-        .in("status", ["job", "completed"])
-        .order("created_at", { ascending: false });
+      const buildQuery = (includeSuppressUnassigned: boolean) => {
+        let query = supabase
+          .from("leads")
+          .select(`
+            *,
+            customer:customers!customer_id(id, name, email, phone, address),
+            crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
+            job_schedules!lead_id(id, scheduled_date, scheduled_time_start, scheduled_time_end${includeSuppressUnassigned ? ", suppress_unassigned" : ""}),
+            job_assignments!lead_id(id, user_id, job_schedule_id),
+            invoices!lead_id(id),
+            estimates!job_id(id, total)
+          `)
+          .eq("account_id", currentAccount.id)
+          .order("created_at", { ascending: false });
 
-      if (filter?.status) {
-        query = query.eq("status", filter.status);
+        if (filter?.status) {
+          query = query.eq("status", filter.status);
+        }
+
+        if (filter?.searchQuery && filter.searchQuery.trim()) {
+          query = query.or(
+            `name.ilike.%${filter.searchQuery}%,address.ilike.%${filter.searchQuery}%,service_type.ilike.%${filter.searchQuery}%,description.ilike.%${filter.searchQuery}%`
+          );
+        }
+
+        if (filter?.limit) {
+          query = query.limit(filter.limit);
+        }
+
+        return query;
+      };
+
+      let { data, error } = await buildQuery(true);
+      if (isMissingSuppressUnassignedColumn(error)) {
+        const fallback = await buildQuery(false);
+        data = fallback.data;
+        error = fallback.error;
       }
-
-      if (filter?.date) {
-        query = query.eq("scheduled_date", filter.date);
-      }
-
-      if (filter?.searchQuery && filter.searchQuery.trim()) {
-        query = query.or(
-          `name.ilike.%${filter.searchQuery}%,address.ilike.%${filter.searchQuery}%,service_type.ilike.%${filter.searchQuery}%,description.ilike.%${filter.searchQuery}%`
-        );
-      }
-
-      if (filter?.limit) {
-        query = query.limit(filter.limit);
-      }
-
-      const { data, error } = await query;
-
       if (error) throw error;
 
-      let filteredData = data || [];
+      let filteredData = (data || []).filter((job: any) => isJobLifecycleStatus(job.status));
 
       if (filter?.myJobsOnly) {
         filteredData = filteredData.filter((job: any) => {
           const assignments = job.job_assignments || [];
           return assignments.some((assignment: any) => assignment.user_id === user.id);
+        });
+      }
+
+      if (filter?.date) {
+        filteredData = filteredData.filter((job: any) => {
+          const schedules = job.job_schedules || [];
+          return schedules.some((schedule: any) => schedule.scheduled_date === filter.date);
         });
       }
 
@@ -121,28 +133,13 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
         const hasUnassignedSchedule = sortedSchedules.length === 0
           ? crewCount === 0
           : hasScheduleScopedAssignments
-            ? sortedSchedules.some((schedule: any) => !schedule.suppress_unassigned && !assignedScheduleIds.has(schedule.id))
-            : sortedSchedules.some((schedule: any) => !schedule.suppress_unassigned) && crewCount === 0;
+            ? sortedSchedules.some((schedule: any) => !Boolean(schedule.suppress_unassigned) && !assignedScheduleIds.has(schedule.id))
+            : sortedSchedules.some((schedule: any) => !Boolean(schedule.suppress_unassigned)) && crewCount === 0;
         const hasInvoice = (job as any).invoices?.length > 0;
         const estimate = (job as any).estimates?.[0] || null;
         const estimateTotal = estimate?.total ? Number(estimate.total) : null;
 
-        let displayStatus = 'unscheduled';
-        if (job.status === 'job' && sortedSchedules.length > 0) {
-          const now = new Date();
-          const firstDateTime = new Date(`${earliestSchedule.scheduled_date}T${earliestSchedule.scheduled_time_start || '00:00:00'}`);
-          const lastDateTime = new Date(`${latestSchedule.scheduled_date}T${latestSchedule.scheduled_time_end || '23:59:59'}`);
-
-          if (now > lastDateTime) {
-            displayStatus = 'completed';
-          } else if (now >= firstDateTime && now <= lastDateTime) {
-            displayStatus = 'in_progress';
-          } else {
-            displayStatus = 'scheduled';
-          }
-        } else if (job.status === 'completed') {
-          displayStatus = 'completed';
-        }
+        const displayStatus = toDisplayStatus(job.status, sortedSchedules);
 
         return {
           ...job,
@@ -228,22 +225,7 @@ export function useJob(id: string | undefined) {
       const earliestSchedule = sortedSchedules[0] || null;
       const latestSchedule = sortedSchedules[sortedSchedules.length - 1] || null;
 
-      let displayStatus = 'unscheduled';
-      if (data.status === 'job' && sortedSchedules.length > 0) {
-        const now = new Date();
-        const firstDateTime = new Date(`${earliestSchedule.scheduled_date}T${earliestSchedule.scheduled_time_start || '00:00:00'}`);
-        const lastDateTime = new Date(`${latestSchedule.scheduled_date}T${latestSchedule.scheduled_time_end || '23:59:59'}`);
-
-        if (now > lastDateTime) {
-          displayStatus = 'completed';
-        } else if (now >= firstDateTime && now <= lastDateTime) {
-          displayStatus = 'in_progress';
-        } else {
-          displayStatus = 'scheduled';
-        }
-      } else if (data.status === 'completed') {
-        displayStatus = 'completed';
-      }
+      const displayStatus = toDisplayStatus(data.status, sortedSchedules);
 
       return {
         ...data,
@@ -276,7 +258,7 @@ export function useCreateJob() {
           created_by: user.id,
           account_id: currentAccount.id,
           approval_status: "approved",
-          status: job.status || "scheduled"
+          status: job.status || "job"
         })
         .select()
         .single();
@@ -387,48 +369,23 @@ export function useJobCounts() {
           status,
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
-        .eq("account_id", currentAccount.id)
-        .in("status", ["job", "completed"]);
+        .eq("account_id", currentAccount.id);
 
       if (error) throw error;
 
+      const jobRows = (data || []).filter((lead: any) => isJobLifecycleStatus(lead.status));
+
       const counts: Record<string, number> = {
-        all: data.length,
+        all: jobRows.length,
         unscheduled: 0,
         scheduled: 0,
         in_progress: 0,
         completed: 0,
       };
 
-      data.forEach((lead: any) => {
+      jobRows.forEach((lead: any) => {
         const schedules = lead.job_schedules || [];
-        let displayStatus = 'unscheduled';
-
-        if (lead.status === 'job' && schedules.length > 0) {
-          const sortedSchedules = schedules.sort((a: any, b: any) => {
-            const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
-            if (dateCompare !== 0) return dateCompare;
-            if (!a.scheduled_time_start) return 1;
-            if (!b.scheduled_time_start) return -1;
-            return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
-          });
-
-          const earliestSchedule = sortedSchedules[0];
-          const latestSchedule = sortedSchedules[sortedSchedules.length - 1];
-          const now = new Date();
-          const firstDateTime = new Date(`${earliestSchedule.scheduled_date}T${earliestSchedule.scheduled_time_start || '00:00:00'}`);
-          const lastDateTime = new Date(`${latestSchedule.scheduled_date}T${latestSchedule.scheduled_time_end || '23:59:59'}`);
-
-          if (now > lastDateTime) {
-            displayStatus = 'completed';
-          } else if (now >= firstDateTime && now <= lastDateTime) {
-            displayStatus = 'in_progress';
-          } else {
-            displayStatus = 'scheduled';
-          }
-        } else if (lead.status === 'completed') {
-          displayStatus = 'completed';
-        }
+        const displayStatus = toDisplayStatus(lead.status, schedules);
 
         if (counts[displayStatus] !== undefined) {
           counts[displayStatus]++;

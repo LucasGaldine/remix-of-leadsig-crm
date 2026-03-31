@@ -83,7 +83,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
           description: formData.description.trim() || null,
           notes: formData.notes.trim() || null,
           created_by: user.id,
-          status: "scheduled",
+          status: "job",
           approval_status: "approved",
         }])
         .select()
