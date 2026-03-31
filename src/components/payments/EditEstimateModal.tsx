@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +44,10 @@ function CompactLineItem({
   item,
   index,
   pendingDelete,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onExpand,
   onRemove,
   onUndoRemove,
@@ -51,6 +55,10 @@ function CompactLineItem({
   item: LineItemForm;
   index: number;
   pendingDelete: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onExpand: () => void;
   onRemove: () => void;
   onUndoRemove: () => void;
@@ -85,8 +93,33 @@ function CompactLineItem({
   return (
     <div className="p-3 border border-border rounded-lg space-y-2 bg-card">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="flex flex-col gap-1 shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={onMoveUp}
+              disabled={!canMoveUp}
+              aria-label={`Move item ${index + 1} up`}
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={onMoveDown}
+              disabled={!canMoveDown}
+              aria-label={`Move item ${index + 1} down`}
+            >
+              <ArrowDown className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 min-w-0">
+            <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
             <span className="text-sm font-medium truncate">
               {item.name || `Item ${index + 1}`}
             </span>
@@ -131,15 +164,22 @@ function ExpandedLineItem({
   item,
   index,
   jobId,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onUpdate,
   onCollapse,
   onRevert,
   onRemove,
-  canRemove,
 }: {
   item: LineItemForm;
   index: number;
   jobId: string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onUpdate: (field: keyof LineItemForm, value: string) => void;
   onCollapse: () => void;
   onRevert: () => void;
@@ -161,8 +201,35 @@ function ExpandedLineItem({
 
   return (
     <div className="p-4 border border-border rounded-lg space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={onMoveUp}
+              disabled={!canMoveUp}
+              aria-label={`Move item ${index + 1} up`}
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={onMoveDown}
+              disabled={!canMoveDown}
+              aria-label={`Move item ${index + 1} down`}
+            >
+              <ArrowDown className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
         <div className="flex items-center gap-1">
           <QuickEstimateLineItem
             leadId={jobId}
@@ -374,6 +441,53 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     });
   };
 
+  const moveLineItem = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= lineItems.length) return;
+
+    setLineItems((previous) => {
+      const updated = [...previous];
+      const [movedItem] = updated.splice(index, 1);
+      updated.splice(nextIndex, 0, movedItem);
+      return updated;
+    });
+
+    setPendingDeleteIndices((previous) => {
+      const next = new Set<number>();
+      previous.forEach((pendingIndex) => {
+        if (pendingIndex === index) {
+          next.add(nextIndex);
+        } else if (pendingIndex === nextIndex) {
+          next.add(index);
+        } else {
+          next.add(pendingIndex);
+        }
+      });
+      return next;
+    });
+
+    setSnapshots((previous) => {
+      const remapped: Record<number, LineItemForm> = {};
+      Object.entries(previous).forEach(([key, value]) => {
+        const snapshotIndex = Number(key);
+        if (snapshotIndex === index) {
+          remapped[nextIndex] = value;
+        } else if (snapshotIndex === nextIndex) {
+          remapped[index] = value;
+        } else {
+          remapped[snapshotIndex] = value;
+        }
+      });
+      return remapped;
+    });
+
+    setExpandedIndex((previous) => {
+      if (previous === index) return nextIndex;
+      if (previous === nextIndex) return index;
+      return previous;
+    });
+  };
+
   const markForDelete = (index: number) => {
     setPendingDeleteIndices(prev => new Set(prev).add(index));
     if (expandedIndex === index) setExpandedIndex(null);
@@ -460,6 +574,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         const quantity = parseFloat(item.quantity) || 1;
         const unitPrice = parseFloat(item.unit_price) || 0;
         const total = quantity * unitPrice;
+        const sortOrder = lineItems.findIndex((lineItem) => lineItem === item);
 
         if (item.isNew) {
           if (shouldTrackChanges) {
@@ -472,7 +587,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               unit: item.unit,
               unit_price: unitPrice,
               total,
-              sort_order: lineItems.indexOf(item),
+              sort_order: sortOrder,
               category: item.category,
               is_change_order: true,
               change_order_type: 'added',
@@ -491,7 +606,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               unit: item.unit,
               unit_price: unitPrice,
               total,
-              sort_order: lineItems.indexOf(item),
+              sort_order: sortOrder,
               category: item.category,
               is_change_order: false,
             });
@@ -510,7 +625,8 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
               parseFloat(original.quantity) !== quantity ||
               original.unit !== item.unit ||
               parseFloat(original.unit_price) !== unitPrice ||
-              (original.category || 'other') !== item.category);
+              (original.category || 'other') !== item.category ||
+              Number(original.sort_order ?? 0) !== sortOrder);
 
           if (hasChanged) {
             if (shouldTrackChanges) {
@@ -526,6 +642,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                 unit_price: unitPrice,
                 total,
                 category: item.category,
+                sort_order: sortOrder,
               }).eq('id', item.id);
 
               if (error) throw error;
@@ -538,6 +655,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                 unit_price: unitPrice,
                 total,
                 category: item.category,
+                sort_order: sortOrder,
               }).eq('id', item.id);
 
               if (error) throw error;
@@ -617,6 +735,10 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                   item={item}
                   index={index}
                   jobId={estimate.job_id}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < lineItems.length - 1}
+                  onMoveUp={() => moveLineItem(index, -1)}
+                  onMoveDown={() => moveLineItem(index, 1)}
                   onUpdate={(field, value) => updateLineItem(index, field, value)}
                   onCollapse={() => setExpandedIndex(null)}
                   onRevert={() => revertLineItem(index)}
@@ -628,6 +750,10 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
                   item={item}
                   index={index}
                   pendingDelete={pendingDeleteIndices.has(index)}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < lineItems.length - 1}
+                  onMoveUp={() => moveLineItem(index, -1)}
+                  onMoveDown={() => moveLineItem(index, 1)}
                   onExpand={() => expandLineItem(index)}
                   onRemove={() => markForDelete(index)}
                   onUndoRemove={() => undoDelete(index)}
