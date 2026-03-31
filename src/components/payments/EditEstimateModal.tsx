@@ -589,19 +589,17 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
           const normalizeValue = (val: any) => (val === null || val === undefined || val === '') ? null : val;
 
-          const hasSubstantiveChanges =
+          const hasChanged =
             original &&
             (original.name !== item.name ||
               normalizeValue(original.description) !== normalizeValue(item.description) ||
               parseFloat(original.quantity) !== quantity ||
               original.unit !== item.unit ||
               parseFloat(original.unit_price) !== unitPrice ||
-              (original.category || 'other') !== item.category);
+              (original.category || 'other') !== item.category ||
+              Number(original.sort_order ?? 0) !== sortOrder);
 
-          const hasSortOrderChange =
-            original && Number(original.sort_order ?? 0) !== sortOrder;
-
-          if (hasSubstantiveChanges) {
+          if (hasChanged) {
             if (shouldTrackChanges) {
               const { error } = await supabase.from('estimate_line_items').update({
                 is_change_order: true,
@@ -633,12 +631,6 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
               if (error) throw error;
             }
-          } else if (hasSortOrderChange) {
-            const { error } = await supabase.from('estimate_line_items').update({
-              sort_order: sortOrder,
-            }).eq('id', item.id);
-
-            if (error) throw error;
           }
         }
       }
