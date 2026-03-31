@@ -372,7 +372,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       .sort((a: any, b: any) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
   }, [estimate.line_items]);
 
-  const [lineItems, setLineItems] = useState<LineItemForm[]>(() => {
+  const buildLineItemsFromEstimate = () => {
     return effectiveEstimateLineItems.map((item: any) => ({
       id: item.id,
       name: item.name,
@@ -382,7 +382,21 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       unit_price: item.unit_price.toString(),
       category: item.category || 'other',
     }));
-  });
+  };
+
+  const [lineItems, setLineItems] = useState<LineItemForm[]>(buildLineItemsFromEstimate);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setLineItems(buildLineItemsFromEstimate());
+    setPendingDeleteIndices(new Set());
+    setSnapshots({});
+    setExpandedIndex(null);
+    setDragIndex(null);
+    setProfitMargin((estimate.profit_margin || 0).toString());
+    setSurcharge((estimate.surcharge || 0).toString());
+  }, [open, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge]);
 
   const addLineItem = () => {
     const newItems = [
