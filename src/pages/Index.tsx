@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -40,6 +41,10 @@ export default function Index() {
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
   const firstName = profile?.full_name?.split(" ")[0] || "";
+
+  useEffect(() => {
+    console.log("Henry is connected");
+  }, []);
 
   const handleLeadClick = (leadId: string) => {
     navigate(`/leads/${leadId}`);
