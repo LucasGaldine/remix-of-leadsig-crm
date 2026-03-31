@@ -12,7 +12,7 @@ import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader as Loader2, ChevronRight, Briefcase, PlusCircle, FileText, DollarSign } from "lucide-react";
+import { Loader as Loader2, ChevronRight, Briefcase, PlusCircle } from "lucide-react";
 import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
@@ -120,17 +120,12 @@ export default function Index() {
         {/* Email Verification Banner */}
         {user?.email && <EmailVerificationBanner email={user.email} isEmailConfirmed={isEmailConfirmed} />}
 
-        <div className="flex flex-col pt-8 gap-2">
-          <h1 className="text-4xl font-semibold tracking-tight">{getGreeting()}{firstName ? `, ${firstName}` : ""}</h1>
-          <p className=" text-muted-foreground">{format(new Date(), "EEEE, MMMM d")}</p>
-        </div>
-
-        {/* Quick Stats */}
-        <DashboardStatCards />
-
-        <section className="space-y-3">
-          <SectionHeader title="Quick Actions" className="mb-0" />
-          <div className="flex flex-wrap gap-3">
+        <div className="flex items-start justify-between gap-3 pt-8">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-4xl font-semibold tracking-tight">{getGreeting()}{firstName ? `, ${firstName}` : ""}</h1>
+            <p className=" text-muted-foreground">{format(new Date(), "EEEE, MMMM d")}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <Button onClick={() => setAddLeadOpen(true)} size="sm" className="gap-2">
               <PlusCircle className="h-4 w-4" />
               Add Lead
@@ -139,16 +134,11 @@ export default function Index() {
               <Briefcase className="h-4 w-4" />
               Add Job
             </Button>
-            <Button onClick={() => navigate("/payments/estimates/new")} size="sm" variant="outline" className="gap-2">
-              <FileText className="h-4 w-4" />
-              New Estimate
-            </Button>
-            <Button onClick={() => navigate("/payments/invoices/new")} size="sm" variant="outline" className="gap-2">
-              <DollarSign className="h-4 w-4" />
-              New Invoice
-            </Button>
           </div>
-        </section>
+        </div>
+
+        {/* Quick Stats */}
+        <DashboardStatCards />
 
         <div className="flex flex-col gap-8">
         {sections.includes("awaiting_approval") && !approvalsLoading && pendingApprovals.length > 0 && (

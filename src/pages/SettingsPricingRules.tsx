@@ -42,7 +42,8 @@ export default function SettingsPricingRules() {
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
   const [rules, setRules] = useState<Record<ServiceType, PricingRule>>({} as Record<ServiceType, PricingRule>);
-  const [activeTab, setActiveTab] = useState<ServiceType>("pavers");
+  const pricingServiceTypes = Object.keys(DEFAULT_PRICING_RULES) as ServiceType[];
+  const [activeTab, setActiveTab] = useState<ServiceType>(pricingServiceTypes[0] || "pavers");
   const [taxRate, setTaxRate] = useState<string>("");
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
@@ -78,7 +79,7 @@ export default function SettingsPricingRules() {
     // Initialize with defaults and merge with saved rules
     const initialRules: Record<ServiceType, PricingRule> = {} as Record<ServiceType, PricingRule>;
     
-    (Object.keys(DEFAULT_PRICING_RULES) as ServiceType[]).forEach((serviceType) => {
+    pricingServiceTypes.forEach((serviceType) => {
       const savedRule = data?.find((r) => r.service_type === serviceType);
       if (savedRule) {
         initialRules[serviceType] = savedRule as PricingRule;
@@ -125,7 +126,7 @@ export default function SettingsPricingRules() {
 
       if (taxError) throw taxError;
 
-      for (const serviceType of Object.keys(rules) as ServiceType[]) {
+      for (const serviceType of pricingServiceTypes) {
         const rule = rules[serviceType];
 
         if (rule.id) {
@@ -192,7 +193,7 @@ export default function SettingsPricingRules() {
   };
 
   const currentRule = rules[activeTab];
-  const isFencing = activeTab === "fencing";
+  const isLinearFeet = currentRule?.unit_type === "linear_ft";
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -303,17 +304,14 @@ export default function SettingsPricingRules() {
 
             {/* Service Tabs */}
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ServiceType)}>
-              <TabsList className="w-full grid grid-cols-5 h-auto">
-                {(Object.keys(SERVICE_LABELS) as ServiceType[]).map((service) => (
+              <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+                {pricingServiceTypes.map((service) => (
                   <TabsTrigger 
                     key={service} 
                     value={service}
                     className="text-xs px-2 py-2"
                   >
-                    {service === "pavers" ? "Pavers" :
-                     service === "concrete" ? "Concrete" :
-                     service === "sod" ? "Sod" :
-                     service === "deck" ? "Deck" : "Fence"}
+                    {SERVICE_LABELS[service]}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -336,7 +334,7 @@ export default function SettingsPricingRules() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="labor-rate">
-                          Labor Rate (per {isFencing ? "linear ft" : "sq ft"})
+                          Labor Rate (per {isLinearFeet ? "linear ft" : "sq ft"})
                         </Label>
                         <div className="relative mt-1.5">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
@@ -353,7 +351,7 @@ export default function SettingsPricingRules() {
 
                       <div>
                         <Label htmlFor="material-rate">
-                          Material Rate (per {isFencing ? "linear ft" : "sq ft"})
+                          Material Rate (per {isLinearFeet ? "linear ft" : "sq ft"})
                         </Label>
                         <div className="relative mt-1.5">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
@@ -414,7 +412,7 @@ export default function SettingsPricingRules() {
 
                     {/* Example Calculation */}
                     <div className="border-t border-border pt-4">
-                      <p className="text-sm font-medium mb-2">Example: 100 {isFencing ? "linear ft" : "sq ft"}</p>
+                      <p className="text-sm font-medium mb-2">Example: 100 {isLinearFeet ? "linear ft" : "sq ft"}</p>
                       <div className="bg-secondary/50 rounded-lg p-3 space-y-1 text-sm">
                         {(() => {
                           const qty = 100;

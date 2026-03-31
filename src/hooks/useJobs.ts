@@ -56,7 +56,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           *,
           customer:customers!customer_id(id, name, email, phone, address),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
-          job_schedules!lead_id(id, scheduled_date, scheduled_time_start, scheduled_time_end),
+          job_schedules!lead_id(id, scheduled_date, scheduled_time_start, scheduled_time_end, suppress_unassigned),
           job_assignments!lead_id(id, user_id, job_schedule_id),
           invoices!lead_id(id),
           estimates!job_id(id, total)
@@ -121,8 +121,8 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
         const hasUnassignedSchedule = sortedSchedules.length === 0
           ? crewCount === 0
           : hasScheduleScopedAssignments
-            ? sortedSchedules.some((schedule: any) => !assignedScheduleIds.has(schedule.id))
-            : crewCount === 0;
+            ? sortedSchedules.some((schedule: any) => !schedule.suppress_unassigned && !assignedScheduleIds.has(schedule.id))
+            : sortedSchedules.some((schedule: any) => !schedule.suppress_unassigned) && crewCount === 0;
         const hasInvoice = (job as any).invoices?.length > 0;
         const estimate = (job as any).estimates?.[0] || null;
         const estimateTotal = estimate?.total ? Number(estimate.total) : null;

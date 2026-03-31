@@ -128,6 +128,7 @@ export default function JobDetail() {
   const [editingScheduleDate, setEditingScheduleDate] = useState("");
   const [editingScheduleTimeStart, setEditingScheduleTimeStart] = useState("");
   const [editingScheduleTimeEnd, setEditingScheduleTimeEnd] = useState("");
+  const [editingSuppressUnassigned, setEditingSuppressUnassigned] = useState(false);
   const [editScheduleDeleteConfirmOpen, setEditScheduleDeleteConfirmOpen] = useState(false);
   const [savingCrewAssignments, setSavingCrewAssignments] = useState(false);
   const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
@@ -561,6 +562,7 @@ export default function JobDetail() {
     setEditingScheduleDate(schedule?.scheduled_date || "");
     setEditingScheduleTimeStart(schedule?.scheduled_time_start || "");
     setEditingScheduleTimeEnd(schedule?.scheduled_time_end || "");
+    setEditingSuppressUnassigned(Boolean(schedule?.suppress_unassigned));
     setEditCrewDialogOpen(true);
   };
 
@@ -606,10 +608,12 @@ export default function JobDetail() {
     const crewChanged = usersToAdd.length > 0 || assignmentIdsToRemove.length > 0;
     const currentTimeStart = currentSchedule.scheduled_time_start || "";
     const currentTimeEnd = currentSchedule.scheduled_time_end || "";
+    const currentSuppressUnassigned = Boolean(currentSchedule.suppress_unassigned);
     const scheduleChanged =
       editingScheduleDate !== currentSchedule.scheduled_date ||
       editingScheduleTimeStart !== currentTimeStart ||
-      editingScheduleTimeEnd !== currentTimeEnd;
+      editingScheduleTimeEnd !== currentTimeEnd ||
+      editingSuppressUnassigned !== currentSuppressUnassigned;
 
     if (!crewChanged && !scheduleChanged) {
       setEditCrewDialogOpen(false);
@@ -625,6 +629,7 @@ export default function JobDetail() {
             scheduled_date: editingScheduleDate,
             scheduled_time_start: editingScheduleTimeStart || null,
             scheduled_time_end: editingScheduleTimeEnd || null,
+            suppress_unassigned: editingSuppressUnassigned,
             updated_at: new Date().toISOString(),
           })
           .eq("id", editingCrewScheduleId);
@@ -975,8 +980,8 @@ export default function JobDetail() {
   const isUnassigned = schedules.length === 0
     ? jobAssignments.length === 0
     : hasScheduleScopedAssignments
-      ? schedules.some((schedule) => !assignedScheduleIds.has(schedule.id))
-      : jobAssignments.length === 0;
+      ? schedules.some((schedule) => !schedule.suppress_unassigned && !assignedScheduleIds.has(schedule.id))
+      : schedules.some((schedule) => !schedule.suppress_unassigned) && jobAssignments.length === 0;
   const deleteJobConfig = getDetailDeleteConfig({
     entity: "job",
     name: job.name || "this job",
@@ -1306,15 +1311,14 @@ export default function JobDetail() {
                                     </div>
                                   ) : (
                                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                                      <p className="text-xs text-muted-foreground">No crew assigned</p>
                                       {isManager() && (
                                         <Button
-                                          variant="outline"
+                                          variant="ghost"
                                           size="sm"
                                           onClick={() => openEditCrewDialog(schedule.id)}
-                                          className="h-7 px-2 text-xs"
+                                          className="h-7 px-2 text-xs text-muted-foreground"
                                         >
-                                          Mark as assigned
+                                          Assign crew member
                                         </Button>
                                       )}
                                     </div>
@@ -1916,15 +1920,16 @@ export default function JobDetail() {
             setEditingScheduleDate("");
             setEditingScheduleTimeStart("");
             setEditingScheduleTimeEnd("");
+            setEditingSuppressUnassigned(false);
             setEditScheduleDeleteConfirmOpen(false);
           }
         }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Assigned Crew</DialogTitle>
+            <DialogTitle>Edit Crew</DialogTitle>
             <DialogDescription>
-              Update this scheduled date and crew assignment.
+              Update this scheduled date, crew assignment, or assigned-state override.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1956,6 +1961,25 @@ export default function JobDetail() {
                   value={editingScheduleTimeEnd}
                   onChange={(event) => setEditingScheduleTimeEnd(event.target.value)}
                 />
+              </div>
+            </div>
+
+            <div className="rounded-md border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Mark as assigned</p>
+                  <p className="text-xs text-muted-foreground">
+                    Suppress the unassigned state for this scheduled visit without assigning a crew member.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={editingSuppressUnassigned ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setEditingSuppressUnassigned((value) => !value)}
+                >
+                  {editingSuppressUnassigned ? "Marked as assigned" : "Mark as assigned"}
+                </Button>
               </div>
             </div>
 
