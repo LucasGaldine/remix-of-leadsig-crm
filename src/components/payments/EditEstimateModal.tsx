@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { ArrowDown, ArrowUp, GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
+import type { DragEvent } from "react";
+import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,10 +45,6 @@ function CompactLineItem({
   item,
   index,
   pendingDelete,
-  canMoveUp,
-  canMoveDown,
-  onMoveUp,
-  onMoveDown,
   onExpand,
   onRemove,
   onUndoRemove,
@@ -55,10 +52,6 @@ function CompactLineItem({
   item: LineItemForm;
   index: number;
   pendingDelete: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onExpand: () => void;
   onRemove: () => void;
   onUndoRemove: () => void;
@@ -94,32 +87,13 @@ function CompactLineItem({
     <div className="p-3 border border-border rounded-lg space-y-2 bg-card">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="flex flex-col gap-1 shrink-0">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={onMoveUp}
-              disabled={!canMoveUp}
-              aria-label={`Move item ${index + 1} up`}
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={onMoveDown}
-              disabled={!canMoveDown}
-              aria-label={`Move item ${index + 1} down`}
-            >
-              <ArrowDown className="h-3.5 w-3.5" />
-            </Button>
+          <div
+            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
+            aria-label={`Drag item ${index + 1}`}
+          >
+            <GripVertical className="h-4 w-4" />
           </div>
           <div className="flex items-center gap-2 min-w-0">
-            <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
             <span className="text-sm font-medium truncate">
               {item.name || `Item ${index + 1}`}
             </span>
@@ -164,10 +138,6 @@ function ExpandedLineItem({
   item,
   index,
   jobId,
-  canMoveUp,
-  canMoveDown,
-  onMoveUp,
-  onMoveDown,
   onUpdate,
   onCollapse,
   onRevert,
@@ -176,10 +146,6 @@ function ExpandedLineItem({
   item: LineItemForm;
   index: number;
   jobId: string;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onUpdate: (field: keyof LineItemForm, value: string) => void;
   onCollapse: () => void;
   onRevert: () => void;
@@ -203,32 +169,13 @@ function ExpandedLineItem({
     <div className="p-4 border border-border rounded-lg space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={onMoveUp}
-              disabled={!canMoveUp}
-              aria-label={`Move item ${index + 1} up`}
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={onMoveDown}
-              disabled={!canMoveDown}
-              aria-label={`Move item ${index + 1} down`}
-            >
-              <ArrowDown className="h-3.5 w-3.5" />
-            </Button>
+          <div
+            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
+            aria-label={`Drag item ${index + 1}`}
+          >
+            <GripVertical className="h-4 w-4" />
           </div>
+          <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
         </div>
         <div className="flex items-center gap-1">
           <QuickEstimateLineItem
@@ -375,6 +322,7 @@ function ExpandedLineItem({
 
 export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: EditEstimateModalProps) {
   const [saving, setSaving] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
@@ -441,24 +389,27 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     });
   };
 
-  const moveLineItem = (index: number, direction: -1 | 1) => {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= lineItems.length) return;
+  const reorderLineItems = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= lineItems.length || toIndex >= lineItems.length) {
+      return;
+    }
 
     setLineItems((previous) => {
       const updated = [...previous];
-      const [movedItem] = updated.splice(index, 1);
-      updated.splice(nextIndex, 0, movedItem);
+      const [movedItem] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, movedItem);
       return updated;
     });
 
     setPendingDeleteIndices((previous) => {
       const next = new Set<number>();
       previous.forEach((pendingIndex) => {
-        if (pendingIndex === index) {
-          next.add(nextIndex);
-        } else if (pendingIndex === nextIndex) {
-          next.add(index);
+        if (pendingIndex === fromIndex) {
+          next.add(toIndex);
+        } else if (fromIndex < toIndex && pendingIndex > fromIndex && pendingIndex <= toIndex) {
+          next.add(pendingIndex - 1);
+        } else if (fromIndex > toIndex && pendingIndex >= toIndex && pendingIndex < fromIndex) {
+          next.add(pendingIndex + 1);
         } else {
           next.add(pendingIndex);
         }
@@ -470,10 +421,12 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       const remapped: Record<number, LineItemForm> = {};
       Object.entries(previous).forEach(([key, value]) => {
         const snapshotIndex = Number(key);
-        if (snapshotIndex === index) {
-          remapped[nextIndex] = value;
-        } else if (snapshotIndex === nextIndex) {
-          remapped[index] = value;
+        if (snapshotIndex === fromIndex) {
+          remapped[toIndex] = value;
+        } else if (fromIndex < toIndex && snapshotIndex > fromIndex && snapshotIndex <= toIndex) {
+          remapped[snapshotIndex - 1] = value;
+        } else if (fromIndex > toIndex && snapshotIndex >= toIndex && snapshotIndex < fromIndex) {
+          remapped[snapshotIndex + 1] = value;
         } else {
           remapped[snapshotIndex] = value;
         }
@@ -482,10 +435,28 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     });
 
     setExpandedIndex((previous) => {
-      if (previous === index) return nextIndex;
-      if (previous === nextIndex) return index;
+      if (previous === null) return previous;
+      if (previous === fromIndex) return toIndex;
+      if (fromIndex < toIndex && previous > fromIndex && previous <= toIndex) return previous - 1;
+      if (fromIndex > toIndex && previous >= toIndex && previous < fromIndex) return previous + 1;
       return previous;
     });
+  };
+
+
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, index: number) => {
+    event.preventDefault();
+    if (dragIndex === null || dragIndex === index) return;
+    reorderLineItems(dragIndex, index);
+    setDragIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
   };
 
   const markForDelete = (index: number) => {
@@ -730,34 +701,42 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
             {lineItems.map((item, index) =>
               expandedIndex === index && !pendingDeleteIndices.has(index) ? (
-                <ExpandedLineItem
+                <div
                   key={index}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(event) => handleDragOver(event, index)}
+                  onDragEnd={handleDragEnd}
+                  className={dragIndex === index ? "opacity-50" : undefined}
+                >
+                <ExpandedLineItem
                   item={item}
                   index={index}
                   jobId={estimate.job_id}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < lineItems.length - 1}
-                  onMoveUp={() => moveLineItem(index, -1)}
-                  onMoveDown={() => moveLineItem(index, 1)}
                   onUpdate={(field, value) => updateLineItem(index, field, value)}
                   onCollapse={() => setExpandedIndex(null)}
                   onRevert={() => revertLineItem(index)}
                   onRemove={() => markForDelete(index)}
                 />
+                </div>
               ) : (
-                <CompactLineItem
+                <div
                   key={index}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(event) => handleDragOver(event, index)}
+                  onDragEnd={handleDragEnd}
+                  className={dragIndex === index ? "opacity-50" : undefined}
+                >
+                <CompactLineItem
                   item={item}
                   index={index}
                   pendingDelete={pendingDeleteIndices.has(index)}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < lineItems.length - 1}
-                  onMoveUp={() => moveLineItem(index, -1)}
-                  onMoveDown={() => moveLineItem(index, 1)}
                   onExpand={() => expandLineItem(index)}
                   onRemove={() => markForDelete(index)}
                   onUndoRemove={() => undoDelete(index)}
                 />
+                </div>
               )
             )}
 
