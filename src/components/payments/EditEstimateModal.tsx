@@ -350,11 +350,30 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   const [surcharge, setSurcharge] = useState<string>(() => {
     return (estimate.surcharge || 0).toString();
   });
-  const [lineItems, setLineItems] = useState<LineItemForm[]>(() => {
-    const activeItems = estimate.line_items.filter(
-      (item: any) => !item.is_change_order || item.change_order_type !== 'deleted'
+  const effectiveEstimateLineItems = useMemo(() => {
+    const nonDeletedItems = estimate.line_items.filter(
+      (item: any) => item.change_order_type !== 'deleted'
     );
-    return activeItems.map((item: any) => ({
+
+    const approvedEditedOriginalIds = new Set(
+      nonDeletedItems
+        .filter((item: any) => item.is_change_order && item.change_order_type === 'edited' && item.change_order_approved === true && item.original_line_item_id)
+        .map((item: any) => item.original_line_item_id)
+    );
+
+    return nonDeletedItems
+      .filter((item: any) => {
+        if (!item.is_change_order) {
+          return !approvedEditedOriginalIds.has(item.id);
+        }
+
+        return item.change_order_approved === true || item.change_order_approved === false;
+      })
+      .sort((a: any, b: any) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+  }, [estimate.line_items]);
+
+  const [lineItems, setLineItems] = useState<LineItemForm[]>(() => {
+    return effectiveEstimateLineItems.map((item: any) => ({
       id: item.id,
       name: item.name,
       description: item.description || '',
@@ -499,9 +518,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
   const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
 
   const changeSummary = useMemo(() => {
-    const existingItems = estimate.line_items.filter(
-      (item: any) => !item.is_change_order || item.change_order_type !== 'deleted'
-    );
+    const existingItems = effectiveEstimateLineItems;
 
     const currentItemsById = new Map(
       activeLineItems
@@ -578,7 +595,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       hasSubstantiveChanges,
       hasSortOnlyChanges: hasSortOnlyChanges && !hasSubstantiveChanges,
     };
-  }, [activeLineItems, estimate.line_items, estimate.profit_margin, estimate.surcharge, profitMargin, surcharge]);
+  }, [activeLineItems, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge, profitMargin, surcharge]);
 
   const calculateTotals = () => {
     const subtotal = activeLineItems.reduce((sum, item) => {
@@ -608,9 +625,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
       const shouldTrackChanges = estimate.status === 'accepted';
 
       const existingIds = new Set(
-        estimate.line_items
-          .filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted')
-          .map((item: any) => item.id)
+        effectiveEstimateLineItems.map((item: any) => item.id)
       );
 
       const currentIds = new Set(activeLineItems.filter((item) => item.id).map((item) => item.id));
@@ -685,7 +700,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
             if (error) throw error;
           }
         } else if (item.id) {
-          const original = estimate.line_items.find((li: any) => li.id === item.id);
+          const original = effectiveEstimateLineItems.find((li: any) => li.id === item.id);
 
           const hasSubstantiveChanges =
             original &&

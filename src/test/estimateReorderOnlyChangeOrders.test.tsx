@@ -136,6 +136,71 @@ describe("EditEstimateModal change detection", () => {
     expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
   });
 
+
+  it("treats approved change-order items as the new clean baseline", () => {
+    render(
+      <EditEstimateModal
+        open
+        onOpenChange={() => {}}
+        onSuccess={() => {}}
+        estimate={{
+          ...baseEstimate,
+          has_pending_changes: false,
+          line_items: [
+            {
+              id: "item_1",
+              name: "Original Item One",
+              description: "Old version",
+              quantity: 1,
+              unit: "each",
+              unit_price: 100,
+              total: 100,
+              sort_order: 0,
+              category: "labor",
+              is_change_order: false,
+              change_order_type: null,
+              change_order_approved: null,
+            },
+            {
+              id: "item_1_edit",
+              original_line_item_id: "item_1",
+              name: "Updated Item One",
+              description: "Approved version",
+              quantity: 2,
+              unit: "each",
+              unit_price: 125,
+              total: 250,
+              sort_order: 0,
+              category: "labor",
+              is_change_order: true,
+              change_order_type: "edited",
+              change_order_approved: true,
+            },
+            {
+              id: "item_3_added",
+              name: "Approved Added Item",
+              description: "Already approved",
+              quantity: 1,
+              unit: "each",
+              unit_price: 80,
+              total: 80,
+              sort_order: 1,
+              category: "materials",
+              is_change_order: true,
+              change_order_type: "added",
+              change_order_approved: true,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/updated item one/i)).toBeInTheDocument();
+    expect(screen.getByText(/approved added item/i)).toBeInTheDocument();
+    expect(screen.queryByText(/original item one/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+  });
+
   it("saves reorder-only changes without turning reordered items into change orders", async () => {
     render(
       <EditEstimateModal
