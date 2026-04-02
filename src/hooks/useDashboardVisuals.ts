@@ -4,6 +4,14 @@ import { useAuth } from "./useAuth";
 import { subDays, startOfWeek, endOfWeek, format, differenceInMinutes } from "date-fns";
 
 type Timeframe = "week" | "month";
+type DrilldownJobEntry = { id: string; name: string; amount: number };
+type RevenueExpensesPoint = {
+  week: string;
+  revenue: number;
+  expenses: number;
+  revenueJobs: DrilldownJobEntry[];
+  expenseJobs: DrilldownJobEntry[];
+};
 
 function getDateRange(tf: Timeframe) {
   const now = new Date();
@@ -40,14 +48,14 @@ export function useRevenueExpenses(timeframe: Timeframe) {
       const [paymentsRes, jobsRes] = await Promise.all([
         supabase
           .from("payments")
-          .select("amount, created_at")
+          .select("id, amount, created_at, lead_id, job:leads(id, name)")
           .eq("account_id", currentAccount.id)
           .eq("status", "completed")
           .gte("created_at", from.toISOString())
           .lte("created_at", to.toISOString()),
         supabase
           .from("leads")
-          .select("id, updated_at")
+          .select("id, name, updated_at")
           .eq("account_id", currentAccount.id)
           .eq("status", "completed")
           .gte("updated_at", from.toISOString())
@@ -70,37 +78,69 @@ export function useRevenueExpenses(timeframe: Timeframe) {
         if (lineItemsRes.error && !isMissingTable(lineItemsRes.error)) throw lineItemsRes.error;
       }
 
-      const weeks: Record<string, { revenue: number; expenses: number; order: number }> = {};
+      const weeks: Record<
+        string,
+        { revenue: number; expenses: number; order: number; revenueJobs: DrilldownJobEntry[]; expenseJobs: DrilldownJobEntry[] }
+      > = {};
 
-      (paymentsRes.data || []).forEach((p: any) => {
+      const ensureWeekBucket = (weekKey: string, order: number) => {
+        if (!weeks[weekKey]) {
+          weeks[weekKey] = { revenue: 0, expenses: 0, order, revenueJobs: [], expenseJobs: [] };
+        }
+      };
+
+      (paymentsRes.data || []).forEach((p: any, idx: number) => {
         const date = new Date(p.created_at);
         const weekStart = startOfWeek(date, { weekStartsOn: 1 });
         const weekKey = format(weekStart, "MMM d");
-        if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
+        ensureWeekBucket(weekKey, weekStart.getTime());
         const amt = Number(p.amount) || 0;
         weeks[weekKey].revenue += amt;
+        const fallbackName = p.lead_id
+          ? `Payment for job ${String(p.lead_id).slice(0, 8)}`
+          : `Unlinked payment #${idx + 1}`;
+        weeks[weekKey].revenueJobs.push({
+          id: p.lead_id || p.id || `payment-${weekStart.getTime()}-${idx}`,
+          name: p.job?.name || fallbackName,
+          amount: amt,
+        });
       });
 
       const jobDateMap = new Map((jobsRes.data || []).map((j: any) => [j.id, j.updated_at]));
+      const jobNameMap = new Map((jobsRes.data || []).map((j: any) => [j.id, j.name || "Completed Job"]));
+      const expenseTotalsByLead = new Map<string, number>();
 
       (lineItemsRes?.data || []).forEach((item: any) => {
         if (!item.lead_id) return;
+        const lineTotal = Number(item.total) || 0;
+        expenseTotalsByLead.set(item.lead_id, (expenseTotalsByLead.get(item.lead_id) || 0) + lineTotal);
+      });
 
-        const jobDate = jobDateMap.get(item.lead_id);
+      Array.from(expenseTotalsByLead.entries()).forEach(([leadId, total]) => {
+        const jobDate = jobDateMap.get(leadId);
         if (!jobDate) return;
 
         const date = new Date(jobDate);
         const weekStart = startOfWeek(date, { weekStartsOn: 1 });
         const weekKey = format(weekStart, "MMM d");
-        if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
-
-        const cost = Number(item.total) || 0;
-        weeks[weekKey].expenses += cost;
+        ensureWeekBucket(weekKey, weekStart.getTime());
+        weeks[weekKey].expenses += total;
+        weeks[weekKey].expenseJobs.push({
+          id: leadId,
+          name: jobNameMap.get(leadId) || `Completed job ${leadId.slice(0, 8)}`,
+          amount: total,
+        });
       });
 
       return Object.entries(weeks)
         .sort(([, a], [, b]) => a.order - b.order)
-        .map(([week, vals]) => ({ week, revenue: vals.revenue, expenses: vals.expenses }));
+        .map(([week, vals]) => ({
+          week,
+          revenue: vals.revenue,
+          expenses: vals.expenses,
+          revenueJobs: vals.revenueJobs,
+          expenseJobs: vals.expenseJobs,
+        })) as RevenueExpensesPoint[];
     },
     enabled: !!currentAccount,
   });
@@ -300,9 +340,10 @@ export function useCostVsQuoted(timeframe: Timeframe) {
 
       const { data, error } = await supabase
         .from("leads")
-        .select("name, estimated_value, actual_value, updated_at")
+        .select("id, customer_id, name, estimated_value, actual_value, updated_at")
         .eq("account_id", currentAccount.id)
         .not("estimated_value", "is", null)
+        .not("customer_id", "is", null)
         .gte("updated_at", from.toISOString())
         .lte("updated_at", to.toISOString())
         .order("updated_at", { ascending: false })
@@ -311,6 +352,8 @@ export function useCostVsQuoted(timeframe: Timeframe) {
       if (error) throw error;
 
       return (data || []).map((lead: any) => ({
+        id: lead.id,
+        customerId: lead.customer_id,
         name: lead.name || "Untitled",
         quoted: Number(lead.estimated_value) || 0,
         actual: Number(lead.actual_value) || 0,

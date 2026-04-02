@@ -3,8 +3,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid,
 } from "recharts";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Loader as Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   useRevenueExpenses,
   useLeadFunnel,
@@ -59,8 +61,20 @@ function VisualCard({ title, children, isLoading }: { title: string; children: R
 
 function RevenueExpenses({ timeframe }: { timeframe: Timeframe }) {
   const { data = [], isLoading } = useRevenueExpenses(timeframe);
+  const [drilldownType, setDrilldownType] = useState<"revenue" | "expenses" | null>(null);
 
   const hasData = data.length > 0;
+  const drilldownGroups =
+    drilldownType === null
+      ? []
+      : data
+          .map((period: any) => ({
+            week: period.week,
+            entries: drilldownType === "revenue" ? period.revenueJobs || [] : period.expenseJobs || [],
+          }))
+          .filter((period: any) => period.entries.length > 0);
+  const selectedTypeLabel = drilldownType === "revenue" ? "Revenue" : "Expenses";
+  const selectedEntryLabel = drilldownType === "revenue" ? "revenue" : "expense";
 
   return (
     <VisualCard title="Revenue vs Expenses" isLoading={isLoading}>
@@ -88,6 +102,67 @@ function RevenueExpenses({ timeframe }: { timeframe: Timeframe }) {
               </span>
             ))}
           </div>
+          <div className="pt-2 border-t border-border space-y-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDrilldownType("revenue")}
+                className={cn(
+                  "px-2 py-1 text-xs rounded-md border transition-colors",
+                  drilldownType === "revenue" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                )}
+              >
+                Show revenue jobs
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrilldownType("expenses")}
+                className={cn(
+                  "px-2 py-1 text-xs rounded-md border transition-colors",
+                  drilldownType === "expenses" ? "bg-muted text-foreground border-border" : "bg-background hover:bg-muted"
+                )}
+              >
+                Show expense jobs
+              </button>
+            </div>
+          </div>
+
+          <Dialog open={drilldownType !== null} onOpenChange={(open) => !open && setDrilldownType(null)}>
+            <DialogContent className="max-w-xl">
+              <DialogHeader>
+                <DialogTitle>{selectedTypeLabel} Jobs Considered</DialogTitle>
+                <DialogDescription>
+                  Showing jobs currently included in {selectedEntryLabel} totals for this dashboard timeframe.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3">
+                {drilldownGroups.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    No {selectedEntryLabel} entries in this timeframe.
+                  </div>
+                ) : (
+                  drilldownGroups.map((period: any) => (
+                    <section key={`${drilldownType}-${period.week}`} className="space-y-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Week of {period.week}
+                      </h4>
+                      <ul className="space-y-1">
+                        {period.entries.map((entry: any, idx: number) => (
+                          <li
+                            key={`${entry.id}-${entry.amount}-${idx}`}
+                            className="text-xs flex items-center justify-between bg-muted/40 rounded px-2 py-1.5"
+                          >
+                            <span className="text-foreground">{entry.name}</span>
+                            <span className="text-muted-foreground">${Number(entry.amount || 0).toLocaleString()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </VisualCard>
@@ -226,6 +301,7 @@ function PlannedVsActual({ timeframe }: { timeframe: Timeframe }) {
 
 function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
   const { data = [], isLoading } = useCostVsQuoted(timeframe);
+  const navigate = useNavigate();
 
   return (
     <VisualCard title="Cost vs Quoted" isLoading={isLoading}>
@@ -236,7 +312,13 @@ function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
           {data.map((job: any) => {
             const profitable = job.actual <= job.quoted;
             return (
-              <div key={job.name} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+              <button
+                key={job.id}
+                type="button"
+                onClick={() => navigate(`/customers/${job.customerId}`)}
+                className="w-full flex items-center justify-between p-2 rounded-md bg-muted/50 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                aria-label={`Open client ${job.name}`}
+              >
                 <div>
                   <div className="text-sm font-medium text-foreground">{job.name}</div>
                 </div>
@@ -249,7 +331,7 @@ function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
                   </div>
                   <span className="text-lg">{profitable ? "✓" : "✗"}</span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -308,8 +390,7 @@ export function DashboardVisuals() {
         <RevenueExpenses timeframe={timeframe} />
         <LeadFunnel timeframe={timeframe} />
         <CompletionDonut timeframe={timeframe} />
-        
-        
+        <CostVsQuoted timeframe={timeframe} />
         <CrewHours timeframe={timeframe} />
       </div>
     </section>
