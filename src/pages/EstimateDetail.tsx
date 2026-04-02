@@ -1,26 +1,25 @@
 // @ts-nocheck
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check, FileText } from "lucide-react";
+import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { useEstimate } from "@/hooks/useEstimates";
+import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
 import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
+import { prepareLeadPhotoForUpload } from "@/lib/photoCompression";
 
 const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
   draft: { label: "Draft", icon: Edit2, className: "bg-secondary text-secondary-foreground" },
@@ -51,11 +51,30 @@ const normalizeCategory = (category?: string) =>
     ? (category as (typeof CATEGORY_ORDER)[number])
     : "other";
 
+const isManualApprovalPhotoColumnMissing = (error: unknown) => {
+  if (!error || typeof error !== "object") return false;
+
+  const err = error as Record<string, unknown>;
+  const code = typeof err.code === "string" ? err.code : "";
+  const status = typeof err.status === "number" ? err.status : null;
+  const message = [err.message, err.details, err.hint]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  if (!message.includes("manual_approval_photo_url")) {
+    return false;
+  }
+
+  return code === "PGRST204" || code === "42703" || status === 400 || message.includes("column");
+};
+
 
 export default function EstimateDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user, currentAccount } = useAuth();
   const { data: estimate, isLoading } = useEstimate(id);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -66,6 +85,18 @@ export default function EstimateDetail() {
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(() => new Set());
+  const [manualApprovalPhoto, setManualApprovalPhoto] = useState<File | null>(null);
+  const [manualApprovalPreviewUrl, setManualApprovalPreviewUrl] = useState<string | null>(null);
+  const uploadPhotoInputRef = useRef<HTMLInputElement>(null);
+  const takePhotoInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (manualApprovalPreviewUrl) {
+        URL.revokeObjectURL(manualApprovalPreviewUrl);
+      }
+    };
+  }, [manualApprovalPreviewUrl]);
 
   const handleDownloadPDF = async () => {
     if (!estimate) return;
@@ -231,28 +262,183 @@ export default function EstimateDetail() {
       [] as Array<{ category: (typeof CATEGORY_ORDER)[number]; items: typeof displayLineItems }>,
     );
 
+  const resetManualApprovalPhoto = () => {
+    if (manualApprovalPreviewUrl) {
+      URL.revokeObjectURL(manualApprovalPreviewUrl);
+    }
+
+    setManualApprovalPhoto(null);
+    setManualApprovalPreviewUrl(null);
+
+    if (uploadPhotoInputRef.current) {
+      uploadPhotoInputRef.current.value = "";
+    }
+
+    if (takePhotoInputRef.current) {
+      takePhotoInputRef.current.value = "";
+    }
+  };
+
+  const handleApproveDialogChange = (open: boolean) => {
+    setShowApproveDialog(open);
+    if (!open) {
+      resetManualApprovalPhoto();
+    }
+  };
+
+  const handleManualApprovalPhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      event.target.value = "";
+      return;
+    }
+
+    if (manualApprovalPreviewUrl) {
+      URL.revokeObjectURL(manualApprovalPreviewUrl);
+    }
+
+    setManualApprovalPhoto(file);
+    setManualApprovalPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const uploadManualApprovalPhoto = async () => {
+    if (!manualApprovalPhoto) return null;
+    if (!id) {
+      throw new Error("Missing estimate context");
+    }
+
+    const preparedFile = await prepareLeadPhotoForUpload(manualApprovalPhoto, 10 * 1024 * 1024);
+    if (!preparedFile) {
+      throw new Error("Image must be under 10MB");
+    }
+
+    const extension = preparedFile.name.split(".").pop()?.toLowerCase() || "jpg";
+    const filePath = `estimate-approvals/${id}/${crypto.randomUUID()}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("lead-photos")
+      .upload(filePath, preparedFile, { contentType: preparedFile.type, upsert: false });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("lead-photos")
+      .getPublicUrl(filePath);
+
+    return {
+      filePath,
+      publicUrl: urlData.publicUrl,
+    };
+  };
+
   const handleManualApprove = async () => {
     setManualApproving(true);
-    try {
-      const { error } = await supabase
-        .from("estimates")
-        .update({
-          status: "accepted",
-          accepted_at: new Date().toISOString(),
-          approved_via: "manual",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
+    const isApprovingPendingChanges = estimate.has_pending_changes === true;
+    let uploadedPhoto: { filePath: string; publicUrl: string } | null = null;
+    let photoUploadFailed = false;
+    let photoPersistenceFailed = false;
 
-      if (error) throw error;
+    try {
+      if (manualApprovalPhoto) {
+        try {
+          uploadedPhoto = await uploadManualApprovalPhoto();
+        } catch (photoError) {
+          photoUploadFailed = true;
+          if (photoError instanceof Error && photoError.message === "Image must be under 10MB") {
+            throw photoError;
+          }
+
+          console.error("Approval photo upload failed:", photoError);
+        }
+      }
+
+      if (isApprovingPendingChanges) {
+        const { error: changeOrderError } = await supabase
+          .from("estimate_line_items")
+          .update({ change_order_approved: true })
+          .eq("estimate_id", id)
+          .eq("is_change_order", true)
+          .eq("change_order_approved", false);
+
+        if (changeOrderError) throw changeOrderError;
+      }
+
+      const estimateApprovalUpdate: Record<string, unknown> = {
+        approved_via: "manual",
+        updated_at: new Date().toISOString(),
+      };
+
+      if (!isApprovingPendingChanges) {
+        estimateApprovalUpdate.status = "accepted";
+      }
+
+      estimateApprovalUpdate.accepted_at = new Date().toISOString();
+
+      if (uploadedPhoto?.publicUrl) {
+        estimateApprovalUpdate.manual_approval_photo_url = uploadedPhoto.publicUrl;
+      } else if (!isApprovingPendingChanges) {
+        estimateApprovalUpdate.manual_approval_photo_url = null;
+      }
+
+      const estimateUpdateQuery = supabase
+        .from("estimates")
+        .update(estimateApprovalUpdate)
+        .eq("id", id);
+      const { error } = await estimateUpdateQuery;
+
+      if (
+        error &&
+        uploadedPhoto?.publicUrl &&
+        "manual_approval_photo_url" in estimateApprovalUpdate &&
+        isManualApprovalPhotoColumnMissing(error)
+      ) {
+        const { manual_approval_photo_url: _manualApprovalPhotoUrl, ...estimateApprovalFallbackUpdate } =
+          estimateApprovalUpdate;
+
+        const { error: fallbackError } = await supabase
+          .from("estimates")
+          .update(estimateApprovalFallbackUpdate)
+          .eq("id", id);
+
+        if (fallbackError) throw fallbackError;
+
+        photoPersistenceFailed = true;
+      } else if (error) {
+        throw error;
+      }
+
+      if (photoPersistenceFailed && uploadedPhoto?.filePath) {
+        const { error: removePhotoError } = await supabase.storage.from("lead-photos").remove([uploadedPhoto.filePath]);
+        if (removePhotoError) {
+          console.error("Failed to remove unlinked manual approval photo:", removePhotoError);
+        }
+      }
 
       await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      toast.success("Estimate marked as approved");
-    } catch {
-      toast.error("Failed to approve estimate");
+      setShowApproveDialog(false);
+      resetManualApprovalPhoto();
+      const approvalSubject = isApprovingPendingChanges ? "Changes" : "Estimate";
+      toast.success(
+        photoUploadFailed || photoPersistenceFailed
+          ? `${approvalSubject} approved without saving the signature photo`
+          : manualApprovalPhoto
+            ? `${approvalSubject} approved and signature saved`
+            : `${approvalSubject} marked as approved`,
+      );
+    } catch (error) {
+      if (uploadedPhoto?.filePath) {
+        await supabase.storage.from("lead-photos").remove([uploadedPhoto.filePath]);
+      }
+
+      toast.error(isApprovingPendingChanges ? "Failed to approve changes" : "Failed to approve estimate");
     } finally {
       setManualApproving(false);
     }
@@ -701,10 +887,14 @@ export default function EstimateDetail() {
                 size="sm"
                 className="gap-2 flex-1 sm:flex-none"
                 onClick={() => setShowApproveDialog(true)}
-                disabled={estimate.status === "accepted" || manualApproving}
+                disabled={(estimate.status === "accepted" && !estimate.has_pending_changes) || manualApproving}
               >
                 <Check className="h-4 w-4" />
-                {estimate.status === "accepted" ? "Approved" : manualApproving ? "Approving..." : "Approve"}
+                {(estimate.status === "accepted" && !estimate.has_pending_changes)
+                  ? "Approved"
+                  : manualApproving
+                    ? "Approving..."
+                    : "Approve"}
               </Button>
               <Button
                 variant="secondary"
@@ -790,6 +980,18 @@ export default function EstimateDetail() {
                         <> on {format(new Date(estimate.accepted_at), "MMM d, yyyy 'at' h:mm a")}</>
                       )}
                     </p>
+                    {(estimate as any).manual_approval_photo_url && (
+                      <div className="mt-3">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Signature photo
+                        </p>
+                        <img
+                          src={(estimate as any).manual_approval_photo_url}
+                          alt="Signature photo captured during approval"
+                          className="mt-2 h-40 w-auto max-w-full rounded-lg border border-emerald-200 object-cover shadow-sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
                 <div data-testid="line-items-header-row" className="mt-3 flex items-center justify-between">
@@ -1065,24 +1267,107 @@ export default function EstimateDetail() {
         </div>
       </div>
 
-      <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{isRecurringQuote ? "Approve Quote" : "Approve Estimate"}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {isRecurringQuote
-                ? "Mark this quote as approved by the customer?"
-                : "Mark this estimate as approved by the customer?"}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setShowApproveDialog(false); handleManualApprove(); }}>
-              Approve
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Dialog open={showApproveDialog} onOpenChange={handleApproveDialogChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {estimate.has_pending_changes
+                ? "Approve Changes"
+                : isRecurringQuote
+                  ? "Approve Quote"
+                  : "Approve Estimate"}
+            </DialogTitle>
+            <DialogDescription>
+              {estimate.has_pending_changes
+                ? "This approves the pending change order updates. Add a photo only if you want it attached to this approval."
+                : isRecurringQuote
+                ? "This marks the quote as approved. Add a photo only if you want it attached to the approval."
+                : "This marks the estimate as approved. Add a photo only if you want it attached to the approval."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">Signature photo</p>
+              <p className="text-sm text-muted-foreground">
+                Optional. You can approve now and add the photo later if needed.
+              </p>
+            </div>
+
+            {manualApprovalPreviewUrl ? (
+              <div className="space-y-3">
+                <div className="overflow-hidden rounded-lg border border-border bg-background">
+                  <img
+                    src={manualApprovalPreviewUrl}
+                    alt="Selected signature photo"
+                    className="h-48 w-full object-cover"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="min-w-0 truncate text-sm text-muted-foreground">
+                    {manualApprovalPhoto?.name}
+                  </p>
+                  <Button type="button" variant="ghost" size="sm" onClick={resetManualApprovalPhoto}>
+                    <X className="h-4 w-4 mr-2" />
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => takePhotoInputRef.current?.click()}
+                >
+                  <Camera className="h-4 w-4 mr-2" />
+                  Take Photo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => uploadPhotoInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Photo
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <input
+            ref={takePhotoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleManualApprovalPhotoSelect}
+            className="hidden"
+          />
+          <input
+            ref={uploadPhotoInputRef}
+            data-testid="manual-approval-upload-input"
+            type="file"
+            accept="image/*"
+            onChange={handleManualApprovalPhotoSelect}
+            className="hidden"
+          />
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => handleApproveDialogChange(false)} disabled={manualApproving}>
+              Cancel
+            </Button>
+            <Button onClick={handleManualApprove} disabled={manualApproving}>
+              {manualApproving
+                ? "Approving..."
+                : estimate.has_pending_changes
+                  ? "Approve Changes"
+                  : isRecurringQuote
+                    ? "Approve Quote"
+                    : "Approve Estimate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <EditEstimateModal
         open={editModalOpen}
