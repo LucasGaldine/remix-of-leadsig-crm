@@ -1,8 +1,29 @@
+import { useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Toast, ToastClose, ToastDescription, ToastProvider, ToastTitle, ToastViewport } from "@/components/ui/toast";
+import { initializeNotificationSound, playNotificationSound } from "@/lib/notificationSound";
 
 export function Toaster() {
   const { toasts } = useToast();
+  const seenToastIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    initializeNotificationSound();
+
+    const currentToastIds = new Set(toasts.map((toast) => toast.id));
+    for (const toast of toasts) {
+      if (toast.open === false) {
+        continue;
+      }
+      if (seenToastIdsRef.current.has(toast.id)) {
+        continue;
+      }
+
+      playNotificationSound({ key: `shadcn:${toast.id}` });
+    }
+
+    seenToastIdsRef.current = currentToastIds;
+  }, [toasts]);
 
   return (
     <ToastProvider>
