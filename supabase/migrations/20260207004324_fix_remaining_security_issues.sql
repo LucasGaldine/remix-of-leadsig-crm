@@ -27,7 +27,11 @@ CREATE INDEX IF NOT EXISTS idx_account_members_invited_by ON account_members(inv
 CREATE INDEX IF NOT EXISTS idx_api_keys_account_id ON api_keys(account_id);
 CREATE INDEX IF NOT EXISTS idx_customers_account_id ON customers(account_id);
 CREATE INDEX IF NOT EXISTS idx_customers_lead_id ON customers(lead_id);
-CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_account_id ON estimate_change_orders(account_id);
+DO $$ BEGIN
+  IF to_regclass('public.estimate_change_orders') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_account_id ON public.estimate_change_orders(account_id)';
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_estimate_line_items_account_id ON estimate_line_items(account_id);
 CREATE INDEX IF NOT EXISTS idx_estimates_created_by ON estimates(created_by);
 CREATE INDEX IF NOT EXISTS idx_interactions_account_id ON interactions(account_id);

@@ -13,7 +13,11 @@
 */
 
 CREATE INDEX IF NOT EXISTS idx_days_off_created_by ON days_off(created_by);
-CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_changed_by ON estimate_change_orders(changed_by);
+DO $$ BEGIN
+  IF to_regclass('public.estimate_change_orders') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_changed_by ON public.estimate_change_orders(changed_by)';
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_estimate_line_items_original_line_item_id ON estimate_line_items(original_line_item_id);
 CREATE INDEX IF NOT EXISTS idx_job_assignments_assigned_by ON job_assignments(assigned_by);
 CREATE INDEX IF NOT EXISTS idx_job_schedules_created_by ON job_schedules(created_by);

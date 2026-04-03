@@ -55,15 +55,15 @@ describe("DashboardVisuals cost vs quoted navigation", () => {
     expect(navigateMock).toHaveBeenCalledWith("/customers/cust_1");
   });
 
-  it("opens a drilldown modal and groups jobs by week for revenue and expenses", () => {
+  it("opens one combined revenue-and-cost modal from the card and shows labeled total profit", () => {
     useRevenueExpensesMock.mockReturnValue({
       data: [
         {
           week: "Mar 4",
           revenue: 2800,
           expenses: 1200,
-          revenueJobs: [{ id: "lead_r1", name: "Maple St", amount: 2800 }],
-          expenseJobs: [{ id: "lead_e1", name: "Oak Ave", amount: 1200 }],
+          revenueJobs: [{ id: "lead_1", name: "Maple St", amount: 2800 }],
+          expenseJobs: [{ id: "lead_1", name: "Maple St", amount: 1200 }],
         },
         {
           week: "Mar 11",
@@ -78,23 +78,19 @@ describe("DashboardVisuals cost vs quoted navigation", () => {
 
     render(<DashboardVisuals />);
 
-    expect(screen.queryByText("Maple St")).not.toBeInTheDocument();
-    expect(screen.queryByText("Oak Ave")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /show revenue jobs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /show expense jobs/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /show revenue jobs/i }));
+    expect(screen.getByText(/total profit/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /open revenue and cost job details/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText(/revenue jobs considered/i)).toBeInTheDocument();
+    expect(screen.getByText(/revenue and costs by job/i)).toBeInTheDocument();
     expect(screen.getByText("Week of Mar 4")).toBeInTheDocument();
     expect(screen.getByText("Week of Mar 11")).toBeInTheDocument();
     expect(screen.getByText("Maple St")).toBeInTheDocument();
+    expect(screen.getByText(/revenue \$2,800 \| costs \$1,200/i)).toBeInTheDocument();
     expect(screen.getByText("Birch Ln")).toBeInTheDocument();
-    expect(screen.queryByText("Oak Ave")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /close/i }));
-    fireEvent.click(screen.getByRole("button", { name: /show expense jobs/i }));
-    expect(screen.getByText(/expenses jobs considered/i)).toBeInTheDocument();
-    expect(screen.getByText("Oak Ave")).toBeInTheDocument();
     expect(screen.getByText("Pine Dr")).toBeInTheDocument();
-    expect(screen.queryByText("Maple St")).not.toBeInTheDocument();
   });
 });

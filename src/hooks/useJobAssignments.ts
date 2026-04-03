@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { getTeamMemberDisplayName } from '@/lib/teamMembers';
 
 export interface JobAssignment {
   id: string;
@@ -45,10 +46,21 @@ export function useJobAssignments(leadId: string | undefined) {
 
       const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
 
-      return assignmentsData.map(assignment => ({
-        ...assignment,
-        profiles: profilesMap.get(assignment.user_id) || { full_name: null, email: null, phone: null }
-      })) as JobAssignment[];
+      return assignmentsData.map(assignment => {
+        const profile = profilesMap.get(assignment.user_id) || { full_name: null, email: null, phone: null };
+        return {
+          ...assignment,
+          profiles: {
+            ...profile,
+            full_name: getTeamMemberDisplayName({
+              user_id: assignment.user_id,
+              full_name: profile.full_name,
+              email: profile.email,
+              role: "crew_member",
+            }),
+          },
+        };
+      }) as JobAssignment[];
     },
     enabled: !!leadId,
   });
@@ -100,7 +112,11 @@ export function useJobAssignments(leadId: string | undefined) {
         .eq('user_id', userId)
         .maybeSingle();
 
-      const userName = userProfile?.full_name || 'This crew member';
+      const userName = getTeamMemberDisplayName({
+        user_id: userId,
+        full_name: userProfile?.full_name,
+        role: 'crew_member',
+      });
 
       const { data: existingAssignments, error: checkError } = await supabase
         .from('job_assignments')

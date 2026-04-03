@@ -1,9 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { subDays, startOfWeek, endOfWeek, format, differenceInMinutes } from "date-fns";
+import { subWeeks, subMonths, startOfWeek, startOfMonth, format, differenceInMinutes } from "date-fns";
+import {
+  DASHBOARD_MONTHS_TO_SHOW,
+  DASHBOARD_WEEKS_TO_SHOW,
+  getDashboardDateRange,
+  type DashboardVisualsTimeframe,
+} from "./dashboardVisualsDateRange";
 
-type Timeframe = "week" | "month";
+type Timeframe = DashboardVisualsTimeframe;
 type DrilldownJobEntry = { id: string; name: string; amount: number };
 type RevenueExpensesPoint = {
   week: string;
@@ -12,15 +18,6 @@ type RevenueExpensesPoint = {
   revenueJobs: DrilldownJobEntry[];
   expenseJobs: DrilldownJobEntry[];
 };
-
-function getDateRange(tf: Timeframe) {
-  const now = new Date();
-  if (tf === "week") {
-    return { from: startOfWeek(now, { weekStartsOn: 1 }), to: endOfWeek(now, { weekStartsOn: 1 }) };
-  }
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { from, to: now };
-}
 
 const isMissingTable = (error: any) =>
   error?.code === "PGRST205" || error?.message?.toLowerCase?.().includes("does not exist");
@@ -38,7 +35,7 @@ const computeScheduleHours = (start?: string | null, end?: string | null) => {
 
 export function useRevenueExpenses(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-revenue-expenses", currentAccount?.id, timeframe],
@@ -82,6 +79,10 @@ export function useRevenueExpenses(timeframe: Timeframe) {
         string,
         { revenue: number; expenses: number; order: number; revenueJobs: DrilldownJobEntry[]; expenseJobs: DrilldownJobEntry[] }
       > = {};
+      const getBucketDate = (date: Date) =>
+        timeframe === "week" ? startOfWeek(date, { weekStartsOn: 1 }) : startOfMonth(date);
+      const getBucketLabel = (date: Date) =>
+        timeframe === "week" ? format(date, "MMM d") : format(date, "MMM yyyy");
 
       const ensureWeekBucket = (weekKey: string, order: number) => {
         if (!weeks[weekKey]) {
@@ -89,18 +90,26 @@ export function useRevenueExpenses(timeframe: Timeframe) {
         }
       };
 
+      for (let i = 0; i < (timeframe === "week" ? DASHBOARD_WEEKS_TO_SHOW : DASHBOARD_MONTHS_TO_SHOW); i++) {
+        const bucketDate = timeframe === "week"
+          ? startOfWeek(subWeeks(to, i), { weekStartsOn: 1 })
+          : startOfMonth(subMonths(to, i));
+        const bucketLabel = getBucketLabel(bucketDate);
+        ensureWeekBucket(bucketLabel, bucketDate.getTime());
+      }
+
       (paymentsRes.data || []).forEach((p: any, idx: number) => {
         const date = new Date(p.created_at);
-        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
-        const weekKey = format(weekStart, "MMM d");
-        ensureWeekBucket(weekKey, weekStart.getTime());
+        const bucketDate = getBucketDate(date);
+        const weekKey = getBucketLabel(bucketDate);
+        ensureWeekBucket(weekKey, bucketDate.getTime());
         const amt = Number(p.amount) || 0;
         weeks[weekKey].revenue += amt;
         const fallbackName = p.lead_id
           ? `Payment for job ${String(p.lead_id).slice(0, 8)}`
           : `Unlinked payment #${idx + 1}`;
         weeks[weekKey].revenueJobs.push({
-          id: p.lead_id || p.id || `payment-${weekStart.getTime()}-${idx}`,
+          id: p.lead_id || p.id || `payment-${bucketDate.getTime()}-${idx}`,
           name: p.job?.name || fallbackName,
           amount: amt,
         });
@@ -121,9 +130,9 @@ export function useRevenueExpenses(timeframe: Timeframe) {
         if (!jobDate) return;
 
         const date = new Date(jobDate);
-        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
-        const weekKey = format(weekStart, "MMM d");
-        ensureWeekBucket(weekKey, weekStart.getTime());
+        const bucketDate = getBucketDate(date);
+        const weekKey = getBucketLabel(bucketDate);
+        ensureWeekBucket(weekKey, bucketDate.getTime());
         weeks[weekKey].expenses += total;
         weeks[weekKey].expenseJobs.push({
           id: leadId,
@@ -148,7 +157,7 @@ export function useRevenueExpenses(timeframe: Timeframe) {
 
 export function useLeadFunnel(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-lead-funnel", currentAccount?.id, timeframe],
@@ -188,7 +197,7 @@ export function useLeadFunnel(timeframe: Timeframe) {
 
 export function useJobCompletion(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-job-completion", currentAccount?.id, timeframe],
@@ -255,7 +264,7 @@ export function useJobCompletion(timeframe: Timeframe) {
 
 export function usePlannedVsActual(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-planned-vs-actual", currentAccount?.id, timeframe],
@@ -331,7 +340,7 @@ export function usePlannedVsActual(timeframe: Timeframe) {
 
 export function useCostVsQuoted(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-cost-vs-quoted", currentAccount?.id, timeframe],
@@ -365,7 +374,7 @@ export function useCostVsQuoted(timeframe: Timeframe) {
 
 export function useCrewHours(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-crew-hours", currentAccount?.id, timeframe],

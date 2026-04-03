@@ -19,8 +19,8 @@ import {
 type Timeframe = "week" | "month";
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
-  { value: "week", label: "This Week" },
-  { value: "month", label: "This Month" },
+  { value: "week", label: "Weeks" },
+  { value: "month", label: "Months" },
 ];
 
 function TimeframeToggle({ value, onChange }: { value: Timeframe; onChange: (v: Timeframe) => void }) {
@@ -61,20 +61,42 @@ function VisualCard({ title, children, isLoading }: { title: string; children: R
 
 function RevenueExpenses({ timeframe }: { timeframe: Timeframe }) {
   const { data = [], isLoading } = useRevenueExpenses(timeframe);
-  const [drilldownType, setDrilldownType] = useState<"revenue" | "expenses" | null>(null);
+  const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
 
   const hasData = data.length > 0;
-  const drilldownGroups =
-    drilldownType === null
-      ? []
-      : data
-          .map((period: any) => ({
-            week: period.week,
-            entries: drilldownType === "revenue" ? period.revenueJobs || [] : period.expenseJobs || [],
-          }))
-          .filter((period: any) => period.entries.length > 0);
-  const selectedTypeLabel = drilldownType === "revenue" ? "Revenue" : "Expenses";
-  const selectedEntryLabel = drilldownType === "revenue" ? "revenue" : "expense";
+  const totalProfit = data.reduce((sum: number, period: any) => sum + ((period.revenue || 0) - (period.expenses || 0)), 0);
+  const drilldownGroups = data
+    .map((period: any) => {
+      const entriesByJobId = new Map<string, { id: string; name: string; revenue: number; expenses: number }>();
+
+      (period.revenueJobs || []).forEach((entry: any) => {
+        const existing = entriesByJobId.get(entry.id) || {
+          id: entry.id,
+          name: entry.name || "Unnamed Job",
+          revenue: 0,
+          expenses: 0,
+        };
+        existing.revenue += Number(entry.amount) || 0;
+        entriesByJobId.set(entry.id, existing);
+      });
+
+      (period.expenseJobs || []).forEach((entry: any) => {
+        const existing = entriesByJobId.get(entry.id) || {
+          id: entry.id,
+          name: entry.name || "Unnamed Job",
+          revenue: 0,
+          expenses: 0,
+        };
+        existing.expenses += Number(entry.amount) || 0;
+        entriesByJobId.set(entry.id, existing);
+      });
+
+      return {
+        week: period.week,
+        entries: Array.from(entriesByJobId.values()),
+      };
+    })
+    .filter((period: any) => period.entries.length > 0);
 
   return (
     <VisualCard title="Revenue vs Expenses" isLoading={isLoading}>
@@ -82,78 +104,69 @@ function RevenueExpenses({ timeframe }: { timeframe: Timeframe }) {
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No payment data yet</div>
       ) : (
         <>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={data} barGap={2}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="week" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-              <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip
-                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
-              />
-              <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Revenue" />
-              <Bar dataKey="expenses" fill="hsl(var(--destructive) / 0.5)" radius={[4, 4, 0, 0]} name="Expenses" />
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="flex justify-between text-xs text-muted-foreground px-1">
-            {data.map((d: any) => (
-              <span key={d.week} className="text-primary font-semibold">
-                +${((d.revenue - d.expenses) / 1000).toFixed(1)}k
-              </span>
-            ))}
-          </div>
-          <div className="pt-2 border-t border-border space-y-2">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setDrilldownType("revenue")}
-                className={cn(
-                  "px-2 py-1 text-xs rounded-md border transition-colors",
-                  drilldownType === "revenue" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
-                )}
-              >
-                Show revenue jobs
-              </button>
-              <button
-                type="button"
-                onClick={() => setDrilldownType("expenses")}
-                className={cn(
-                  "px-2 py-1 text-xs rounded-md border transition-colors",
-                  drilldownType === "expenses" ? "bg-muted text-foreground border-border" : "bg-background hover:bg-muted"
-                )}
-              >
-                Show expense jobs
-              </button>
+          <button
+            type="button"
+            onClick={() => setIsDrilldownOpen(true)}
+            aria-label="Open revenue and cost job details"
+            className="w-full text-left rounded-md p-1 -m-1 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={data} barGap={2}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="week" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                />
+                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Revenue" />
+                <Bar dataKey="expenses" fill="hsl(var(--destructive) / 0.5)" radius={[4, 4, 0, 0]} name="Expenses" />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Total Profit</span>
+                <span className={cn("text-sm font-semibold", totalProfit >= 0 ? "text-primary" : "text-destructive")}>
+                  ${totalProfit.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground px-1">
+                {data.map((d: any) => (
+                  <span key={d.week} className="font-medium">
+                    {d.week}: ${((d.revenue - d.expenses) / 1000).toFixed(1)}k
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
+          </button>
 
-          <Dialog open={drilldownType !== null} onOpenChange={(open) => !open && setDrilldownType(null)}>
+          <Dialog open={isDrilldownOpen} onOpenChange={setIsDrilldownOpen}>
             <DialogContent className="max-w-xl">
               <DialogHeader>
-                <DialogTitle>{selectedTypeLabel} Jobs Considered</DialogTitle>
+                <DialogTitle>Revenue and Costs by Job</DialogTitle>
                 <DialogDescription>
-                  Showing jobs currently included in {selectedEntryLabel} totals for this dashboard timeframe.
+                  Showing both revenue and cost totals for each job in the selected dashboard periods.
                 </DialogDescription>
               </DialogHeader>
               <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3">
                 {drilldownGroups.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">
-                    No {selectedEntryLabel} entries in this timeframe.
-                  </div>
+                  <div className="text-sm text-muted-foreground">No revenue or cost entries in this timeframe.</div>
                 ) : (
                   drilldownGroups.map((period: any) => (
-                    <section key={`${drilldownType}-${period.week}`} className="space-y-2">
+                    <section key={period.week} className="space-y-2">
                       <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Week of {period.week}
+                        {timeframe === "week" ? `Week of ${period.week}` : period.week}
                       </h4>
                       <ul className="space-y-1">
-                        {period.entries.map((entry: any, idx: number) => (
+                        {period.entries.map((entry: any) => (
                           <li
-                            key={`${entry.id}-${entry.amount}-${idx}`}
+                            key={entry.id}
                             className="text-xs flex items-center justify-between bg-muted/40 rounded px-2 py-1.5"
                           >
-                            <span className="text-foreground">{entry.name}</span>
-                            <span className="text-muted-foreground">${Number(entry.amount || 0).toLocaleString()}</span>
+                            <span className="text-foreground font-medium">{entry.name}</span>
+                            <span className="text-muted-foreground">
+                              Revenue ${Number(entry.revenue || 0).toLocaleString()} | Costs ${Number(entry.expenses || 0).toLocaleString()}
+                            </span>
                           </li>
                         ))}
                       </ul>

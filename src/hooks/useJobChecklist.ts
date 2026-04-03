@@ -2,6 +2,29 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 
+export const CHECKLIST_ITEM_CATEGORIES = ["standard", "task", "tool", "material"] as const;
+export type ChecklistItemCategory = (typeof CHECKLIST_ITEM_CATEGORIES)[number];
+
+export interface ChecklistItemMetadata {
+  category?: ChecklistItemCategory;
+}
+
+export function getChecklistItemCategory(
+  metadata: ChecklistItemMetadata | Record<string, unknown> | null | undefined,
+): ChecklistItemCategory {
+  const rawCategory =
+    metadata &&
+    typeof metadata === "object" &&
+    "category" in metadata &&
+    typeof metadata.category === "string"
+      ? metadata.category
+      : null;
+
+  return CHECKLIST_ITEM_CATEGORIES.includes(rawCategory as ChecklistItemCategory)
+    ? (rawCategory as ChecklistItemCategory)
+    : "standard";
+}
+
 export interface ChecklistItem {
   id: string;
   job_id: string;
@@ -11,6 +34,7 @@ export interface ChecklistItem {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  metadata?: ChecklistItemMetadata | null;
 }
 
 export function useJobChecklist(jobId: string | undefined) {
@@ -51,7 +75,15 @@ export function useJobChecklist(jobId: string | undefined) {
   });
 
   const addItem = useMutation({
-    mutationFn: async ({ label, sort_order }: { label: string; sort_order: number }) => {
+    mutationFn: async ({
+      label,
+      sort_order,
+      metadata,
+    }: {
+      label: string;
+      sort_order: number;
+      metadata?: ChecklistItemMetadata | null;
+    }) => {
       if (!jobId || !currentAccount?.id) throw new Error("Missing context");
 
       const { error } = await supabase
@@ -61,6 +93,7 @@ export function useJobChecklist(jobId: string | undefined) {
           account_id: currentAccount.id,
           label,
           sort_order,
+          metadata: metadata || null,
         });
 
       if (error) throw error;
@@ -71,10 +104,18 @@ export function useJobChecklist(jobId: string | undefined) {
   });
 
   const updateItem = useMutation({
-    mutationFn: async ({ id, label }: { id: string; label: string }) => {
+    mutationFn: async ({
+      id,
+      label,
+      metadata,
+    }: {
+      id: string;
+      label: string;
+      metadata?: ChecklistItemMetadata | null;
+    }) => {
       const { error } = await supabase
         .from("job_checklist_items")
-        .update({ label, updated_at: new Date().toISOString() })
+        .update({ label, metadata: metadata || null, updated_at: new Date().toISOString() })
         .eq("id", id);
 
       if (error) throw error;
