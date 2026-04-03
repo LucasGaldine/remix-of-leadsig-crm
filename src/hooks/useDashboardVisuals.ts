@@ -1,18 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { subDays, startOfWeek, endOfWeek, format, differenceInMinutes } from "date-fns";
+import { subWeeks, subMonths, startOfWeek, startOfMonth, format, differenceInMinutes } from "date-fns";
+import {
+  DASHBOARD_MONTHS_TO_SHOW,
+  DASHBOARD_WEEKS_TO_SHOW,
+  getDashboardDateRange,
+  type DashboardVisualsTimeframe,
+} from "./dashboardVisualsDateRange";
 
-type Timeframe = "week" | "month";
-
-function getDateRange(tf: Timeframe) {
-  const now = new Date();
-  if (tf === "week") {
-    return { from: startOfWeek(now, { weekStartsOn: 1 }), to: endOfWeek(now, { weekStartsOn: 1 }) };
-  }
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { from, to: now };
-}
+type Timeframe = DashboardVisualsTimeframe;
+type DrilldownJobEntry = { id: string; name: string; amount: number };
+type RevenueExpensesPoint = {
+  week: string;
+  revenue: number;
+  expenses: number;
+  revenueJobs: DrilldownJobEntry[];
+  expenseJobs: DrilldownJobEntry[];
+};
 
 const isMissingTable = (error: any) =>
   error?.code === "PGRST205" || error?.message?.toLowerCase?.().includes("does not exist");
@@ -30,7 +35,7 @@ const computeScheduleHours = (start?: string | null, end?: string | null) => {
 
 export function useRevenueExpenses(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-revenue-expenses", currentAccount?.id, timeframe],
@@ -40,14 +45,14 @@ export function useRevenueExpenses(timeframe: Timeframe) {
       const [paymentsRes, jobsRes] = await Promise.all([
         supabase
           .from("payments")
-          .select("amount, created_at")
+          .select("id, amount, created_at, lead_id, job:leads(id, name)")
           .eq("account_id", currentAccount.id)
           .eq("status", "completed")
           .gte("created_at", from.toISOString())
           .lte("created_at", to.toISOString()),
         supabase
           .from("leads")
-          .select("id, updated_at")
+          .select("id, name, updated_at")
           .eq("account_id", currentAccount.id)
           .eq("status", "completed")
           .gte("updated_at", from.toISOString())
@@ -70,37 +75,81 @@ export function useRevenueExpenses(timeframe: Timeframe) {
         if (lineItemsRes.error && !isMissingTable(lineItemsRes.error)) throw lineItemsRes.error;
       }
 
-      const weeks: Record<string, { revenue: number; expenses: number; order: number }> = {};
+      const weeks: Record<
+        string,
+        { revenue: number; expenses: number; order: number; revenueJobs: DrilldownJobEntry[]; expenseJobs: DrilldownJobEntry[] }
+      > = {};
+      const getBucketDate = (date: Date) =>
+        timeframe === "week" ? startOfWeek(date, { weekStartsOn: 1 }) : startOfMonth(date);
+      const getBucketLabel = (date: Date) =>
+        timeframe === "week" ? format(date, "MMM d") : format(date, "MMM yyyy");
 
-      (paymentsRes.data || []).forEach((p: any) => {
+      const ensureWeekBucket = (weekKey: string, order: number) => {
+        if (!weeks[weekKey]) {
+          weeks[weekKey] = { revenue: 0, expenses: 0, order, revenueJobs: [], expenseJobs: [] };
+        }
+      };
+
+      for (let i = 0; i < (timeframe === "week" ? DASHBOARD_WEEKS_TO_SHOW : DASHBOARD_MONTHS_TO_SHOW); i++) {
+        const bucketDate = timeframe === "week"
+          ? startOfWeek(subWeeks(to, i), { weekStartsOn: 1 })
+          : startOfMonth(subMonths(to, i));
+        const bucketLabel = getBucketLabel(bucketDate);
+        ensureWeekBucket(bucketLabel, bucketDate.getTime());
+      }
+
+      (paymentsRes.data || []).forEach((p: any, idx: number) => {
         const date = new Date(p.created_at);
-        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
-        const weekKey = format(weekStart, "MMM d");
-        if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
+        const bucketDate = getBucketDate(date);
+        const weekKey = getBucketLabel(bucketDate);
+        ensureWeekBucket(weekKey, bucketDate.getTime());
         const amt = Number(p.amount) || 0;
         weeks[weekKey].revenue += amt;
+        const fallbackName = p.lead_id
+          ? `Payment for job ${String(p.lead_id).slice(0, 8)}`
+          : `Unlinked payment #${idx + 1}`;
+        weeks[weekKey].revenueJobs.push({
+          id: p.lead_id || p.id || `payment-${bucketDate.getTime()}-${idx}`,
+          name: p.job?.name || fallbackName,
+          amount: amt,
+        });
       });
 
       const jobDateMap = new Map((jobsRes.data || []).map((j: any) => [j.id, j.updated_at]));
+      const jobNameMap = new Map((jobsRes.data || []).map((j: any) => [j.id, j.name || "Completed Job"]));
+      const expenseTotalsByLead = new Map<string, number>();
 
       (lineItemsRes?.data || []).forEach((item: any) => {
         if (!item.lead_id) return;
+        const lineTotal = Number(item.total) || 0;
+        expenseTotalsByLead.set(item.lead_id, (expenseTotalsByLead.get(item.lead_id) || 0) + lineTotal);
+      });
 
-        const jobDate = jobDateMap.get(item.lead_id);
+      Array.from(expenseTotalsByLead.entries()).forEach(([leadId, total]) => {
+        const jobDate = jobDateMap.get(leadId);
         if (!jobDate) return;
 
         const date = new Date(jobDate);
-        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
-        const weekKey = format(weekStart, "MMM d");
-        if (!weeks[weekKey]) weeks[weekKey] = { revenue: 0, expenses: 0, order: weekStart.getTime() };
-
-        const cost = Number(item.total) || 0;
-        weeks[weekKey].expenses += cost;
+        const bucketDate = getBucketDate(date);
+        const weekKey = getBucketLabel(bucketDate);
+        ensureWeekBucket(weekKey, bucketDate.getTime());
+        weeks[weekKey].expenses += total;
+        weeks[weekKey].expenseJobs.push({
+          id: leadId,
+          name: jobNameMap.get(leadId) || `Completed job ${leadId.slice(0, 8)}`,
+          amount: total,
+        });
       });
 
       return Object.entries(weeks)
         .sort(([, a], [, b]) => a.order - b.order)
-        .map(([week, vals]) => ({ week, revenue: vals.revenue, expenses: vals.expenses }));
+        .map(([week, vals]) => ({
+          week,
+          revenue: vals.revenue,
+          expenses: vals.expenses,
+          revenueJobs: vals.revenueJobs,
+          expenseJobs: vals.expenseJobs,
+        })) as RevenueExpensesPoint[];
     },
     enabled: !!currentAccount,
   });
@@ -108,7 +157,7 @@ export function useRevenueExpenses(timeframe: Timeframe) {
 
 export function useLeadFunnel(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-lead-funnel", currentAccount?.id, timeframe],
@@ -148,7 +197,7 @@ export function useLeadFunnel(timeframe: Timeframe) {
 
 export function useJobCompletion(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-job-completion", currentAccount?.id, timeframe],
@@ -215,7 +264,7 @@ export function useJobCompletion(timeframe: Timeframe) {
 
 export function usePlannedVsActual(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-planned-vs-actual", currentAccount?.id, timeframe],
@@ -291,7 +340,7 @@ export function usePlannedVsActual(timeframe: Timeframe) {
 
 export function useCostVsQuoted(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-cost-vs-quoted", currentAccount?.id, timeframe],
@@ -303,6 +352,7 @@ export function useCostVsQuoted(timeframe: Timeframe) {
         .select("id, customer_id, name, estimated_value, actual_value, updated_at")
         .eq("account_id", currentAccount.id)
         .not("estimated_value", "is", null)
+        .not("customer_id", "is", null)
         .gte("updated_at", from.toISOString())
         .lte("updated_at", to.toISOString())
         .order("updated_at", { ascending: false })
@@ -324,7 +374,7 @@ export function useCostVsQuoted(timeframe: Timeframe) {
 
 export function useCrewHours(timeframe: Timeframe) {
   const { currentAccount } = useAuth();
-  const { from, to } = getDateRange(timeframe);
+  const { from, to } = getDashboardDateRange(timeframe);
 
   return useQuery({
     queryKey: ["dashboard-crew-hours", currentAccount?.id, timeframe],

@@ -31,8 +31,16 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_account_id ON api_keys(account_id);
 CREATE INDEX IF NOT EXISTS idx_customers_account_id ON customers(account_id);
 CREATE INDEX IF NOT EXISTS idx_customers_lead_id ON customers(lead_id);
 CREATE INDEX IF NOT EXISTS idx_days_off_created_by ON days_off(created_by);
-CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_account_id ON estimate_change_orders(account_id);
-CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_changed_by ON estimate_change_orders(changed_by);
+DO $$ BEGIN
+  IF to_regclass('public.estimate_change_orders') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_account_id ON public.estimate_change_orders(account_id)';
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF to_regclass('public.estimate_change_orders') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_changed_by ON public.estimate_change_orders(changed_by)';
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_estimate_line_items_account_id ON estimate_line_items(account_id);
 CREATE INDEX IF NOT EXISTS idx_estimate_line_items_original_line_item_id ON estimate_line_items(original_line_item_id);
 CREATE INDEX IF NOT EXISTS idx_estimates_created_by ON estimates(created_by);

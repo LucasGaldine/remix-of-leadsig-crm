@@ -31,8 +31,16 @@ CREATE INDEX IF NOT EXISTS idx_customers_lead_id ON customers(lead_id);
 CREATE INDEX IF NOT EXISTS idx_days_off_created_by ON days_off(created_by);
 CREATE INDEX IF NOT EXISTS idx_email_digest_log_account_id ON email_digest_log(account_id);
 CREATE INDEX IF NOT EXISTS idx_email_digest_log_user_id ON email_digest_log(user_id);
-CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_account_id ON estimate_change_orders(account_id);
-CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_changed_by ON estimate_change_orders(changed_by);
+DO $$ BEGIN
+  IF to_regclass('public.estimate_change_orders') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_account_id ON public.estimate_change_orders(account_id)';
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF to_regclass('public.estimate_change_orders') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_estimate_change_orders_changed_by ON public.estimate_change_orders(changed_by)';
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_estimate_line_items_account_id ON estimate_line_items(account_id);
 CREATE INDEX IF NOT EXISTS idx_estimate_line_items_original_line_item_id ON estimate_line_items(original_line_item_id);
 CREATE INDEX IF NOT EXISTS idx_estimates_created_by ON estimates(created_by);
@@ -88,7 +96,7 @@ CREATE POLICY "Users can view own time entries"
   TO authenticated
   USING (
     account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = (select auth.uid())
+      SELECT account_id::text FROM account_members WHERE user_id = (select auth.uid())
     )
   );
 
@@ -100,7 +108,7 @@ CREATE POLICY "Users can create own time entries"
   WITH CHECK (
     user_id = (select auth.uid())
     AND account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = (select auth.uid())
+      SELECT account_id::text FROM account_members WHERE user_id = (select auth.uid())
     )
   );
 
@@ -112,13 +120,13 @@ CREATE POLICY "Users can update own time entries"
   USING (
     user_id = (select auth.uid())
     AND account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = (select auth.uid())
+      SELECT account_id::text FROM account_members WHERE user_id = (select auth.uid())
     )
   )
   WITH CHECK (
     user_id = (select auth.uid())
     AND account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = (select auth.uid())
+      SELECT account_id::text FROM account_members WHERE user_id = (select auth.uid())
     )
   );
 
@@ -130,7 +138,7 @@ CREATE POLICY "Users can delete own time entries"
   USING (
     user_id = (select auth.uid())
     AND account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = (select auth.uid())
+      SELECT account_id::text FROM account_members WHERE user_id = (select auth.uid())
     )
   );
 

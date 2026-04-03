@@ -1,19 +1,42 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CheckCircle2,
   Circle,
   Pencil,
   Plus,
   Trash2,
-  X,
-  Save,
   Copy,
   Check,
+  Wrench,
+  Package,
+  ClipboardList,
+  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { useJobChecklist, ChecklistItem } from "@/hooks/useJobChecklist";
+import {
+  useJobChecklist,
+  ChecklistItem,
+  ChecklistItemCategory,
+  getChecklistItemCategory,
+} from "@/hooks/useJobChecklist";
+import {
+  DEFAULT_REVIEW_REQUEST_CHECKLIST_LABEL,
+  SEND_CLIENT_PORTAL_CHECKLIST_LABEL,
+  isReviewRequestChecklistItem,
+  shouldUsePortalFallback,
+} from "@/lib/jobCompletionReview";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,17 +54,39 @@ interface JobChecklistProps {
   jobStatus?: string;
   isEstimateVisit?: boolean;
   clientPortalUrl?: string | null;
+  customerPhone?: string | null;
+  isTwilioConfigured?: boolean;
   isManager?: boolean;
   onMarkComplete?: () => Promise<void> | void;
   hasBeforePhotos?: boolean;
   embedded?: boolean;
 }
 
+type ChecklistEditorMode = "add" | "edit";
+
+interface ChecklistEditorState {
+  open: boolean;
+  mode: ChecklistEditorMode;
+  itemId: string | null;
+  label: string;
+  category: Exclude<ChecklistItemCategory, "standard">;
+}
+
+const DEFAULT_EDITOR_STATE: ChecklistEditorState = {
+  open: false,
+  mode: "add",
+  itemId: null,
+  label: "",
+  category: "task",
+};
+
 export function JobChecklist({
   jobId,
   jobStatus,
   isEstimateVisit,
   clientPortalUrl,
+  customerPhone,
+  isTwilioConfigured = false,
   isManager = false,
   onMarkComplete,
   hasBeforePhotos = false,
@@ -50,9 +95,7 @@ export function JobChecklist({
   const { items, isLoading, toggleItem, addItem, updateItem, deleteItem } =
     useJobChecklist(jobId);
   const [editMode, setEditMode] = useState(false);
-  const [newItemLabel, setNewItemLabel] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingLabel, setEditingLabel] = useState("");
+  const [editor, setEditor] = useState<ChecklistEditorState>(DEFAULT_EDITOR_STATE);
   const [copiedPortal, setCopiedPortal] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
@@ -61,6 +104,64 @@ export function JobChecklist({
   const completedCount = items.filter((i) => i.is_completed).length;
   const totalCount = items.length;
   const allComplete = totalCount > 0 && completedCount === totalCount;
+  const hasReviewRequestItem = items.some((item) => isReviewRequestChecklistItem(item.label));
+  const shouldShowPortalCopyHint = shouldUsePortalFallback(isTwilioConfigured, customerPhone);
+  const categoryOptions: { value: Exclude<ChecklistItemCategory, "standard">; label: string }[] = [
+    { value: "task", label: "Task" },
+    { value: "tool", label: "Tool" },
+    { value: "material", label: "Material" },
+  ];
+
+  const buildMetadataFromCategory = (category: ChecklistItemCategory) =>
+    category === "standard" ? null : { category };
+
+  const getDisplayCategory = (
+    item: ChecklistItem,
+  ): Exclude<ChecklistItemCategory, "standard"> => {
+    const category = getChecklistItemCategory(item.metadata);
+    return category === "standard" ? "task" : category;
+  };
+
+  const sectionItems = useMemo(
+    () => ({
+      task: items.filter((item) => getDisplayCategory(item) === "task"),
+      tool: items.filter((item) => getDisplayCategory(item) === "tool"),
+      material: items.filter((item) => getDisplayCategory(item) === "material"),
+    }),
+    [items],
+  );
+
+  const checklistSections: {
+    category: Exclude<ChecklistItemCategory, "standard">;
+    title: string;
+    icon: typeof ClipboardList;
+  }[] = [
+    { category: "task", title: "Tasks", icon: ClipboardList },
+    { category: "tool", title: "Tools", icon: Wrench },
+    { category: "material", title: "Materials", icon: Package },
+  ];
+
+  const resetEditor = () => setEditor(DEFAULT_EDITOR_STATE);
+
+  const openAddDialog = (category: Exclude<ChecklistItemCategory, "standard"> = "task") => {
+    setEditor({
+      open: true,
+      mode: "add",
+      itemId: null,
+      label: "",
+      category,
+    });
+  };
+
+  const openEditDialog = (item: ChecklistItem) => {
+    setEditor({
+      open: true,
+      mode: "edit",
+      itemId: item.id,
+      label: item.label,
+      category: getDisplayCategory(item),
+    });
+  };
 
   const handleToggle = async (item: ChecklistItem) => {
     if (editMode || isJobCompleted) return;
@@ -106,33 +207,28 @@ export function JobChecklist({
     }
   };
 
-  const handleCancelComplete = () => {
-    setCompleteDialogOpen(false);
-  };
-
-  const handleAdd = async () => {
-    const label = newItemLabel.trim();
+  const handleSaveItem = async () => {
+    const label = editor.label.trim();
     if (!label) return;
-    try {
-      await addItem.mutateAsync({
-        label,
-        sort_order: items.length,
-      });
-      setNewItemLabel("");
-    } catch {
-      toast.error("Failed to add checklist item");
-    }
-  };
 
-  const handleSaveEdit = async (id: string) => {
-    const label = editingLabel.trim();
-    if (!label) return;
     try {
-      await updateItem.mutateAsync({ id, label });
-      setEditingId(null);
-      setEditingLabel("");
+      if (editor.mode === "add") {
+        await addItem.mutateAsync({
+          label,
+          sort_order: items.length,
+          metadata: buildMetadataFromCategory(editor.category),
+        });
+      } else if (editor.itemId) {
+        await updateItem.mutateAsync({
+          id: editor.itemId,
+          label,
+          metadata: buildMetadataFromCategory(editor.category),
+        });
+      }
+
+      resetEditor();
     } catch {
-      toast.error("Failed to update item");
+      toast.error(editor.mode === "add" ? "Failed to add checklist item" : "Failed to update item");
     }
   };
 
@@ -142,11 +238,6 @@ export function JobChecklist({
     } catch {
       toast.error("Failed to delete item");
     }
-  };
-
-  const startEdit = (item: ChecklistItem) => {
-    setEditingId(item.id);
-    setEditingLabel(item.label);
   };
 
   const copyPortalLink = async () => {
@@ -187,7 +278,7 @@ export function JobChecklist({
   }
 
   return (
-    <div >
+    <div>
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">
@@ -204,7 +295,7 @@ export function JobChecklist({
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-500",
-                allComplete ? "bg-green-600" : "bg-primary"
+                allComplete ? "bg-green-600" : "bg-primary",
               )}
               style={{
                 width: totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : "0%",
@@ -218,8 +309,7 @@ export function JobChecklist({
             size="sm"
             onClick={() => {
               setEditMode(!editMode);
-              setEditingId(null);
-              setNewItemLabel("");
+              resetEditor();
             }}
           >
             {editMode ? (
@@ -237,145 +327,161 @@ export function JobChecklist({
         )}
       </div>
 
-      <div className={cn(
-        "overflow-hidden divide-y divide-border",
-        embedded ? "" : "rounded-lg border border-border bg-card"
-      )}>
-        {items.map((item) => {
-          const isPortalItem =
-            item.label.toLowerCase() === "send client portal";
-
-          if (editMode && editingId === item.id) {
-            return (
-              <div key={item.id} className="flex items-center gap-2 p-3">
-                <Input
-                  value={editingLabel}
-                  onChange={(e) => setEditingLabel(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveEdit(item.id);
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                  className="flex-1 h-9"
-                  autoFocus
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 w-9 p-0"
-                  onClick={() => handleSaveEdit(item.id)}
-                >
-                  <Check className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 w-9 p-0"
-                  onClick={() => setEditingId(null)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            );
-          }
+      <div
+        className={cn(
+          "overflow-hidden divide-y divide-border",
+          embedded ? "" : "rounded-lg border border-border bg-card",
+        )}
+      >
+        {checklistSections.map((section) => {
+          const Icon = section.icon;
+          const sectionList = sectionItems[section.category];
 
           return (
-            <div
-              key={item.id}
-              className={cn(
-                "flex items-center gap-3 p-3 transition-colors",
-                !editMode && !isJobCompleted && "cursor-pointer hover:bg-muted/50",
-                item.is_completed && !editMode && "bg-muted/30"
-              )}
-              onClick={() => !editMode && handleToggle(item)}
+            <section
+              key={section.category}
+              aria-labelledby={`checklist-section-${section.category}`}
+              className="p-3 space-y-2"
             >
-              {!editMode && (
-                <div className="flex-shrink-0">
-                  {item.is_completed ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-muted-foreground" />
-                  )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                  <h3 id={`checklist-section-${section.category}`} className="text-sm font-medium">
+                    {section.title}
+                  </h3>
+                  <span className="text-xs text-muted-foreground">({sectionList.length})</span>
+                </div>
+              </div>
+              {sectionList.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-1 py-2">
+                  No {section.title.toLowerCase()} yet
+                </p>
+              ) : (
+                <div>
+                  {sectionList.map((item) => {
+                    const normalizedLabel = item.label.toLowerCase();
+                    const isPortalItem =
+                      normalizedLabel === SEND_CLIENT_PORTAL_CHECKLIST_LABEL.toLowerCase();
+                    const isReviewItem = isReviewRequestChecklistItem(item.label);
+                    const itemCategory = getDisplayCategory(item);
+                    const isToolItem = itemCategory === "tool";
+                    const isMaterialItem = itemCategory === "material";
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "flex items-center gap-3 p-3 transition-colors",
+                          "border-b border-border last:border-b-0",
+                          !editMode && !isJobCompleted && "cursor-pointer hover:bg-muted/50",
+                          item.is_completed && !editMode && "bg-muted/30",
+                        )}
+                        onClick={() => !editMode && handleToggle(item)}
+                      >
+                        {!editMode && (
+                          <div className="flex-shrink-0">
+                            {item.is_completed ? (
+                              <CheckCircle2 className="h-5 w-5 text-green-600" />
+                            ) : (
+                              <Circle className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {isToolItem && (
+                              <Badge variant="outline" size="sm" className="text-amber-700 border-amber-300 bg-amber-50">
+                                <Wrench className="h-3 w-3 mr-1" />
+                                Tool
+                              </Badge>
+                            )}
+                            {isMaterialItem && (
+                              <Badge variant="outline" size="sm" className="text-blue-700 border-blue-300 bg-blue-50">
+                                <Package className="h-3 w-3 mr-1" />
+                                Material
+                              </Badge>
+                            )}
+                          </div>
+                          <span
+                            className={cn(
+                              "block text-sm",
+                              item.is_completed && !editMode && "line-through text-muted-foreground",
+                            )}
+                          >
+                            {item.label}
+                          </span>
+                        </div>
+
+                        {!editMode && (isPortalItem || (isReviewItem && shouldShowPortalCopyHint)) && clientPortalUrl && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyPortalLink();
+                            }}
+                          >
+                            {copiedPortal ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                            {copiedPortal ? "Copied" : "Copy Link"}
+                          </Button>
+                        )}
+
+                        {!editMode && (isPortalItem || (isReviewItem && shouldShowPortalCopyHint)) && !clientPortalUrl && (
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            Generate link in Details tab
+                          </span>
+                        )}
+
+                        {editMode && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              aria-label={`Edit checklist item ${item.label}`}
+                              onClick={() => openEditDialog(item)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                              aria-label={`Delete checklist item ${item.label}`}
+                              onClick={() => handleDelete(item.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              <span
-                className={cn(
-                  "flex-1 text-sm",
-                  item.is_completed && !editMode &&
-                    "line-through text-muted-foreground"
-                )}
-              >
-                {item.label}
-              </span>
-
-              {!editMode && isPortalItem && clientPortalUrl && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    copyPortalLink();
-                  }}
-                >
-                  {copiedPortal ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                  {copiedPortal ? "Copied" : "Copy Link"}
-                </Button>
-              )}
-
-              {!editMode && isPortalItem && !clientPortalUrl && (
-                <span className="text-xs text-muted-foreground shrink-0">
-                  Generate link in Details tab
-                </span>
-              )}
-
-              {editMode && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => startEdit(item)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                    onClick={() => handleDelete(item.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
+            </section>
           );
         })}
 
-        {editMode && (
-          <div className="flex items-center gap-2 p-3 bg-muted/20">
-            <Input
-              value={newItemLabel}
-              onChange={(e) => setNewItemLabel(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAdd();
-              }}
-              placeholder="Add new item..."
-              className="flex-1 h-9"
-            />
+        {editMode && isManager && (
+          <div className="!border-t-0 border-border ">
             <Button
+              type="button"
               variant="outline"
-              size="sm"
-              className="h-9"
-              onClick={handleAdd}
-              disabled={!newItemLabel.trim()}
+              className="h-auto justify-start gap-3 rounded-full p-3 w-full my-4 [&_svg]:size-5"
+              onClick={() => openAddDialog("task")}
+              aria-label="Add task"
             >
-              <Plus className="h-4 w-4 mr-1" />
-              Add
+              <Plus className="h-5 w-5" />
+              <span>Add task</span>
             </Button>
           </div>
         )}
@@ -385,7 +491,6 @@ export function JobChecklist({
             <Button
               type="button"
               variant="outline"
-              
               className="h-auto justify-start gap-3 rounded-full p-3 w-full my-4 [&_svg]:size-5 hover:text-green-600 hover:border-green-600 hover:bg-card"
               onClick={handleCompleteClick}
               disabled={isJobCompleted}
@@ -395,11 +500,7 @@ export function JobChecklist({
               ) : (
                 <CheckCircle2 className="h-5 w-5 " />
               )}
-              <span
-                className={cn(
-                  isJobCompleted && "line-through text-muted-foreground"
-                )}
-              >
+              <span className={cn(isJobCompleted && "line-through text-muted-foreground")}>
                 Complete
               </span>
             </Button>
@@ -407,7 +508,103 @@ export function JobChecklist({
         )}
       </div>
 
-      {/* Completion confirmation dialog */}
+      <Dialog
+        open={editor.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetEditor();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editor.mode === "add" ? "Add Checklist Item" : "Edit Checklist Item"}
+            </DialogTitle>
+            <DialogDescription>
+              {editor.mode === "add"
+                ? "Add a checklist item for this job."
+                : "Update this checklist item for the job."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="checklist-item-category">
+                Category
+              </label>
+              <Select
+                value={editor.category}
+                onValueChange={(value) =>
+                  setEditor((current) => ({
+                    ...current,
+                    category: value as Exclude<ChecklistItemCategory, "standard">,
+                  }))
+                }
+              >
+                <SelectTrigger
+                  id="checklist-item-category"
+                  aria-label={editor.mode === "add" ? "New checklist item category" : "Checklist item category"}
+                  className="w-full"
+                >
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="checklist-item-label">
+                Item label
+              </label>
+              <Input
+                id="checklist-item-label"
+                value={editor.label}
+                onChange={(e) => setEditor((current) => ({ ...current, label: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    void handleSaveItem();
+                  }
+                }}
+                placeholder={
+                  editor.mode === "add" && !hasReviewRequestItem
+                    ? `Add new item... (${DEFAULT_REVIEW_REQUEST_CHECKLIST_LABEL} is recommended)`
+                    : "Add new item..."
+                }
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={resetEditor}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleSaveItem()}
+              disabled={!editor.label.trim()}
+              aria-label={editor.mode === "add" ? "Add checklist item" : "Save checklist item"}
+            >
+              {editor.mode === "add" ? (
+                <>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Item
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-1" />
+                  Save Item
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -417,7 +614,7 @@ export function JobChecklist({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelComplete} disabled={markingComplete}>
+            <AlertDialogCancel onClick={() => setCompleteDialogOpen(false)} disabled={markingComplete}>
               No, Keep Open
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmComplete} disabled={markingComplete}>
