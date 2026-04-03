@@ -3,7 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-export type ServiceType = "pavers" | "concrete" | "sod" | "deck" | "fencing";
+export type ServiceType =
+  | "pavers"
+  | "concrete"
+  | "sod"
+  | "deck"
+  | "fencing"
+  | "retaining_wall"
+  | "grading"
+  | "landscaping"
+  | "hardscaping"
+  | "other";
 
 export interface PricingRule {
   id: string;
@@ -86,6 +96,56 @@ export const DEFAULT_PRICING_RULES: Record<ServiceType, Omit<PricingRule, 'id' |
     unit_type: "linear_ft",
     notes: "Per linear ft - 6ft wood privacy fence",
   },
+  retaining_wall: {
+    service_type: "retaining_wall",
+    base_labor_rate: 22,
+    material_rate: 14,
+    waste_factor: 8,
+    overhead_multiplier: 1.18,
+    profit_margin: 22,
+    unit_type: "sq_ft",
+    notes: "Per sq ft - standard retaining wall install",
+  },
+  grading: {
+    service_type: "grading",
+    base_labor_rate: 3.5,
+    material_rate: 1.5,
+    waste_factor: 5,
+    overhead_multiplier: 1.12,
+    profit_margin: 20,
+    unit_type: "sq_ft",
+    notes: "Per sq ft - light grading and site prep",
+  },
+  landscaping: {
+    service_type: "landscaping",
+    base_labor_rate: 4.5,
+    material_rate: 3.5,
+    waste_factor: 10,
+    overhead_multiplier: 1.15,
+    profit_margin: 22,
+    unit_type: "sq_ft",
+    notes: "Per sq ft - planting bed and landscape install",
+  },
+  hardscaping: {
+    service_type: "hardscaping",
+    base_labor_rate: 10,
+    material_rate: 7,
+    waste_factor: 10,
+    overhead_multiplier: 1.18,
+    profit_margin: 22,
+    unit_type: "sq_ft",
+    notes: "Per sq ft - general hardscape install",
+  },
+  other: {
+    service_type: "other",
+    base_labor_rate: 5,
+    material_rate: 3,
+    waste_factor: 10,
+    overhead_multiplier: 1.15,
+    profit_margin: 20,
+    unit_type: "sq_ft",
+    notes: "General fallback pricing rule",
+  },
 };
 
 export const SERVICE_LABELS: Record<ServiceType, string> = {
@@ -94,6 +154,11 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
   sod: "Sod / Lawn",
   deck: "Deck",
   fencing: "Fencing",
+  retaining_wall: "Retaining Wall",
+  grading: "Grading",
+  landscaping: "Landscaping",
+  hardscaping: "Hardscaping",
+  other: "Other",
 };
 
 export function useQuickEstimate(leadId: string) {

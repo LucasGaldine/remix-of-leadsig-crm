@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid,
@@ -313,6 +314,7 @@ function PlannedVsActual({ timeframe }: { timeframe: Timeframe }) {
 }
 
 function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
+  const navigate = useNavigate();
   const { data = [], isLoading } = useCostVsQuoted(timeframe);
   const navigate = useNavigate();
 
@@ -324,6 +326,7 @@ function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
         <div className="space-y-2 max-h-[220px] overflow-y-auto">
           {data.map((job: any) => {
             const profitable = job.actual <= job.quoted;
+            const canNavigate = Boolean(job.customerId);
             return (
               <button
                 key={job.id}

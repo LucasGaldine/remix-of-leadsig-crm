@@ -1152,26 +1152,6 @@ export default function EstimateDetail() {
               )}
             </div>
 
-            {hasChangeOrders && !estimate.has_pending_changes && (() => {
-              const recentChanges = estimate.line_items.some((item: any) => {
-                if (!item.is_change_order || !item.changed_at) return false;
-                const changedDate = new Date(item.changed_at);
-                const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
-                return hoursSinceChange < 24;
-              });
-
-              if (!recentChanges) return null;
-
-              return (
-                <Alert>
-                  <History className="h-4 w-4" />
-                  <AlertDescription>
-                    This estimate has been modified. Recent changes are marked with badges on the line items above.
-                  </AlertDescription>
-                </Alert>
-              );
-            })()}
-
           </div>
 
           <div className="space-y-4" data-testid="estimate-details-right-column">
