@@ -8,6 +8,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppKeyboardShortcuts } from "@/components/layout/AppKeyboardShortcuts";
 import { shouldAnimateMainPageTransition } from "@/lib/pageTransition";
+import { supabaseConfigError } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Schedule from "./pages/Schedule";
 import Leads from "./pages/Leads";
@@ -60,6 +61,24 @@ import AffiliateSignup from "./pages/AffiliateSignup";
 const queryClient = new QueryClient();
 
 function RootLayout() {
+  if (supabaseConfigError) {
+    return (
+      <div className="min-h-screen bg-background px-6 py-10 text-foreground">
+        <div className="mx-auto w-full max-w-2xl rounded-lg border bg-card p-6 shadow-sm">
+          <h1 className="text-xl font-semibold">Local setup required</h1>
+          <p className="mt-3 text-sm text-muted-foreground">{supabaseConfigError}</p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Add these variables to a local <code>.env</code> file, then restart the dev server.
+          </p>
+          <pre className="mt-4 overflow-x-auto rounded-md bg-muted p-3 text-xs">
+            {`VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

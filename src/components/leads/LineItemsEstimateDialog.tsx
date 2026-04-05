@@ -8,6 +8,9 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
+import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
+import { normalizeVoiceEstimateParsedData } from "@/lib/voiceIntake";
+import type { VoiceEstimateParsedData } from "@/types/voiceIntake";
 export type EstimateLineItemInit = EstimateLineItem;
 
 interface LineItemsEstimateDialogProps {
@@ -41,6 +44,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
   const [creating, setCreating] = useState(false);
+  const [showVoiceEstimateIntake, setShowVoiceEstimateIntake] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
   const [snapshots, setSnapshots] = useState<Record<number, EstimateLineItemInit>>({});
 
@@ -52,8 +56,36 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       setSurcharge(String(currentAccount?.default_surcharge ?? 0));
       setExpandedIndex(0);
       setSnapshots({});
+      setShowVoiceEstimateIntake(false);
     }
   }, [open, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
+
+  const applyVoiceEstimateIntake = (parsedData: VoiceEstimateParsedData) => {
+    const parsed = normalizeVoiceEstimateParsedData(parsedData);
+
+    if (parsed.lineItems && parsed.lineItems.length > 0) {
+      const parsedLineItems = parsed.lineItems.map((lineItem) => {
+        const quantity = lineItem.quantity && lineItem.quantity > 0 ? lineItem.quantity : 1;
+        const unitPrice = lineItem.unitPrice && lineItem.unitPrice > 0 ? lineItem.unitPrice : 0;
+
+        return {
+          name: lineItem.name || "",
+          description: lineItem.description || "",
+          quantity: String(quantity),
+          unit: lineItem.unit || "item",
+          unit_price: unitPrice > 0 ? String(unitPrice) : "",
+          category: "other" as LineItemCategory,
+        };
+      });
+
+      setLineItems(parsedLineItems);
+      setPendingDeleteIndices(new Set());
+      setExpandedIndex(parsedLineItems.length > 0 ? 0 : null);
+      setSnapshots({});
+    }
+
+    setShowVoiceEstimateIntake(false);
+  };
 
   const addLineItem = () => {
     const newItems = [...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" as LineItemCategory }];
@@ -238,24 +270,56 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <EstimateLineItemsEditor
-            leadId={lead.id}
-            lineItems={lineItems}
-            pendingDeleteIndices={pendingDeleteIndices}
-            expandedIndex={expandedIndex}
-            profitMargin={profitMargin}
-            surcharge={surcharge}
-            defaultTaxRate={currentAccount?.default_tax_rate ?? 0}
-            onExpandLineItem={expandLineItem}
-            onCollapseExpandedLineItem={() => setExpandedIndex(null)}
-            onRevertLineItem={revertLineItem}
-            onMarkForDelete={markForDelete}
-            onUndoDelete={undoDelete}
-            onUpdateLineItem={updateLineItem}
-            onAddLineItem={addLineItem}
-            onProfitMarginChange={setProfitMargin}
-            onSurchargeChange={setSurcharge}
-          />
+          {!showVoiceEstimateIntake ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowVoiceEstimateIntake(true)}
+              >
+                Voice Estimate Intake
+              </Button>
+
+              <EstimateLineItemsEditor
+                leadId={lead.id}
+                lineItems={lineItems}
+                pendingDeleteIndices={pendingDeleteIndices}
+                expandedIndex={expandedIndex}
+                profitMargin={profitMargin}
+                surcharge={surcharge}
+                defaultTaxRate={currentAccount?.default_tax_rate ?? 0}
+                onExpandLineItem={expandLineItem}
+                onCollapseExpandedLineItem={() => setExpandedIndex(null)}
+                onRevertLineItem={revertLineItem}
+                onMarkForDelete={markForDelete}
+                onUndoDelete={undoDelete}
+                onUpdateLineItem={updateLineItem}
+                onAddLineItem={addLineItem}
+                onProfitMarginChange={setProfitMargin}
+                onSurchargeChange={setSurcharge}
+              />
+            </>
+          ) : (
+            <div className="space-y-3">
+              <VoiceIntakePanel
+                entityType="estimate"
+                title="Voice Estimate Intake"
+                description="Dictate estimate details. Required fields will trigger follow-up questions before values are applied."
+                transcriptPlaceholder="Example: Estimate for roof wash, add line items roof wash 1 each 900 and gutter flush 1 each 250..."
+                variant="plain"
+                onApply={(parsed) => applyVoiceEstimateIntake(parsed as VoiceEstimateParsedData)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowVoiceEstimateIntake(false)}
+              >
+                Back to Manual Form
+              </Button>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -264,7 +328,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={creating || !activeLineItems.some(item => item.name && item.unit_price)}
+            disabled={creating || showVoiceEstimateIntake || !activeLineItems.some(item => item.name && item.unit_price)}
           >
             {creating ? "Creating..." : "Create Estimate"}
           </Button>
