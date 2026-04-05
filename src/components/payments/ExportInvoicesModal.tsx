@@ -11,9 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO, subMonths, startOfMonth, endOfMonth, subDays, startOfYear } from "date-fns";
-import { useFinancialExportHistory, useGenerateExport } from "@/hooks/useFinancialExports";
+import { ExportTarget, useFinancialExportHistory, useGenerateExport } from "@/hooks/useFinancialExports";
 
 interface ExportInvoicesModalProps {
   open: boolean;
@@ -57,12 +57,13 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
   const [dateTo, setDateTo] = useState<Date>(new Date());
   const [fromOpen, setFromOpen] = useState(false);
   const [toOpen, setToOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<ExportTarget>("csv");
 
   const generateExport = useGenerateExport();
   const { data: exports = [], isLoading: isLoadingHistory } = useFinancialExportHistory();
   const lastExport = exports[0];
 
-  const handlePresetClick = (key: PresetKey) => {
+  const handlePresetChange = (key: PresetKey) => {
     setSelectedPreset(key);
     if (key !== "custom") {
       const { from, to } = getPresetDates(key);
@@ -73,7 +74,7 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
 
   const handleExport = () => {
     generateExport.mutate(
-      { dateFrom, dateTo },
+      { dateFrom, dateTo, exportTarget },
       {
         onSuccess: () => {
           onOpenChange(false);
@@ -88,26 +89,38 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
         <DialogHeader>
           <DialogTitle>Export Financial Data</DialogTitle>
           <DialogDescription>
-            Select a time period to export invoices, payments, and crew hours as a CSV file for your accounting software.
+            Select a time period and destination for your exported payment and accounting data.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-2">
-            {presets.map((preset) => (
-              <button
-                key={preset.key}
-                onClick={() => handlePresetClick(preset.key)}
-                className={cn(
-                  "px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border",
-                  selectedPreset === preset.key
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-foreground border-border hover:bg-muted"
-                )}
-              >
-                {preset.label}
-              </button>
-            ))}
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Destination</p>
+            <Select value={exportTarget} onValueChange={(value) => setExportTarget(value as ExportTarget)}>
+              <SelectTrigger aria-label="Destination">
+                <SelectValue placeholder="Choose destination" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">CSV File</SelectItem>
+                <SelectItem value="quickbooks">QuickBooks (Payments)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Timeline</p>
+            <Select value={selectedPreset} onValueChange={(value) => handlePresetChange(value as PresetKey)}>
+              <SelectTrigger aria-label="Timeline">
+                <SelectValue placeholder="Choose timeline" />
+              </SelectTrigger>
+              <SelectContent>
+                {presets.map((preset) => (
+                  <SelectItem key={preset.key} value={preset.key}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {selectedPreset === "custom" && (
@@ -175,15 +188,26 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
             </div>
           )}
 
-          <div className="rounded-lg bg-muted/50 border border-border p-3 space-y-1">
+          <div className="rounded-lg bg-muted/50 p-3 space-y-1">
             <p className="text-sm font-medium text-foreground">Export includes:</p>
             <ul className="text-sm text-muted-foreground space-y-0.5">
-              <li>Invoices with line item details</li>
-              <li>Payment records and methods</li>
-              <li>Customer and job information</li>
-              <li>Tax breakdown (subtotal, rate, tax amount)</li>
-              <li>Crew hours worked per job</li>
-              <li>Job costs by category (equipment, materials, labor, other)</li>
+              {exportTarget === "csv" ? (
+                <>
+                  <li>Invoices with line item details</li>
+                  <li>Payment records and methods</li>
+                  <li>Customer and job information</li>
+                  <li>Tax breakdown (subtotal, rate, tax amount)</li>
+                  <li>Crew hours worked per job</li>
+                  <li>Job costs by category (equipment, materials, labor, other)</li>
+                </>
+              ) : (
+                <>
+                  <li>Completed payments from the selected date range</li>
+                  <li>Payment amount, date, and reference details</li>
+                  <li>Customer mapping by name in QuickBooks</li>
+                  <li>Direct sync to your connected QuickBooks company</li>
+                </>
+              )}
             </ul>
           </div>
 
@@ -212,7 +236,7 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
             ) : (
               <>
                 <Download className="mr-2 h-4 w-4" />
-                Export CSV
+                {exportTarget === "quickbooks" ? "Export to QuickBooks" : "Export CSV"}
               </>
             )}
           </Button>

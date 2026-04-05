@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   scheduleJobMock: vi.fn(),
   insertAssignmentsMock: vi.fn(),
   rpcMock: vi.fn(),
+  invalidateQueriesMock: vi.fn(),
 }));
 
 function buildQueryResult<T>(result: T) {
@@ -82,6 +83,9 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: new Set<string>() }),
+  useQueryClient: () => ({
+    invalidateQueries: mocks.invalidateQueriesMock,
+  }),
 }));
 
 vi.mock("@/components/ui/calendar", () => ({
@@ -94,6 +98,7 @@ vi.mock("@/components/ui/calendar", () => ({
 
 describe("ScheduleJobDialog multi-crew assignment", () => {
   it("assigns multiple selected crew members from one modal submission", async () => {
+    mocks.invalidateQueriesMock.mockReset();
     mocks.scheduleJobMock.mockResolvedValue({ ok: true, scheduleId: "schedule_1" });
     mocks.insertAssignmentsMock.mockResolvedValue({ error: null });
     mocks.rpcMock.mockResolvedValue({ data: false });
@@ -115,5 +120,9 @@ describe("ScheduleJobDialog multi-crew assignment", () => {
         expect.objectContaining({ user_id: "crew_2", job_schedule_id: "schedule_1", lead_id: "job_1" }),
       ]),
     );
+
+    await waitFor(() => {
+      expect(mocks.invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["job-assignments", "job_1"] });
+    });
   });
 });

@@ -96,7 +96,7 @@ export function JobAssignments({ leadId, onCrewChanged, embedded = false }: JobA
 
   const handleAssign = () => {
     if (selectedMember && selectedSchedules.length > 0) {
-      assignCrew({ userId: selectedMember, scheduleIds: selectedSchedules });
+      assignCrew({ assigneeId: selectedMember, scheduleIds: selectedSchedules });
       setSelectedMember('');
       setSelectedSchedules([]);
       setShowAssignDialog(false);

@@ -13,3 +13,11 @@ export function shouldUsePortalFallback(hasTwilioConfigured: boolean, customerPh
   if (!hasTwilioConfigured) return true;
   return !customerPhone?.trim();
 }
+
+export function isTwilioNotConfiguredErrorMessage(errorMessage?: string | null) {
+  return (errorMessage || "").toLowerCase().includes("twilio credentials not configured");
+}
+
+export function shouldShowReviewRequestCard(statusLabel: string, dismissed: boolean) {
+  return statusLabel === "Completed" && !dismissed;
+}

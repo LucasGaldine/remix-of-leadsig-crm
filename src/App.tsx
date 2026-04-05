@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { createBrowserRouter, RouterProvider, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AppKeyboardShortcuts } from "@/components/layout/AppKeyboardShortcuts";
 import { shouldAnimateMainPageTransition } from "@/lib/pageTransition";
 import Index from "./pages/Index";
 import Schedule from "./pages/Schedule";
@@ -33,6 +34,7 @@ import SettingsMinJobSize from "./pages/SettingsMinJobSize";
 import SettingsAvailability from "./pages/SettingsAvailability";
 import SettingsCrewManagement from "./pages/SettingsCrewManagement";
 import SettingsAutoResponses from "./pages/SettingsAutoResponses";
+import SettingsLeadAutomations from "./pages/SettingsLeadAutomations";
 import SettingsNotifications from "./pages/SettingsNotifications";
 import SettingsPricingRules from "./pages/SettingsPricingRules";
 import SettingsDashboard from "./pages/SettingsDashboard";
@@ -51,7 +53,9 @@ import DataDeletion from "./pages/DataDeletion";
 import Customers from "./pages/Customers";
 import CustomerDetail from "./pages/CustomerDetail";
 import Tutorial from "./pages/Tutorial";
+import OnboardingSource from "./pages/OnboardingSource";
 import OnboardingImport from "./pages/OnboardingImport";
+import AffiliateSignup from "./pages/AffiliateSignup";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +76,7 @@ function RootLayout() {
 function Protected({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
+      <AppKeyboardShortcuts />
       <MainPageTransition>{children}</MainPageTransition>
     </ProtectedRoute>
   );
@@ -145,6 +150,8 @@ const router = createBrowserRouter([
       { path: "/privacy", element: <PrivacyPolicy /> },
       { path: "/terms", element: <TermsOfService /> },
       { path: "/data-deletion", element: <DataDeletion /> },
+      { path: "/affiliate", element: <AffiliateSignup /> },
+      { path: "/onboarding/source", element: <Protected><OnboardingSource /></Protected> },
       { path: "/onboarding/import", element: <Protected><OnboardingImport /></Protected> },
       { path: "/tutorial", element: <Protected><Tutorial /></Protected> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
@@ -169,6 +176,7 @@ const router = createBrowserRouter([
       { path: "/settings/availability", element: <Protected><SettingsAvailability /></Protected> },
       { path: "/settings/crew", element: <Protected><SettingsCrewManagement /></Protected> },
       { path: "/settings/auto-responses", element: <Protected><SettingsAutoResponses /></Protected> },
+      { path: "/settings/lead-automations", element: <Protected><SettingsLeadAutomations /></Protected> },
       { path: "/settings/notifications", element: <Protected><SettingsNotifications /></Protected> },
       { path: "/settings/pricing-rules", element: <Protected><SettingsPricingRules /></Protected> },
       { path: "/settings/dashboard", element: <Protected><SettingsDashboard /></Protected> },

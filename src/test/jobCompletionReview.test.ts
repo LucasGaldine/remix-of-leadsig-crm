@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_REVIEW_REQUEST_CHECKLIST_LABEL,
+  shouldShowReviewRequestCard,
+  isTwilioNotConfiguredErrorMessage,
   isReviewRequestChecklistItem,
   shouldUsePortalFallback,
 } from "@/lib/jobCompletionReview";
@@ -19,5 +21,19 @@ describe("jobCompletionReview", () => {
     expect(shouldUsePortalFallback(true, "")).toBe(true);
     expect(shouldUsePortalFallback(true, null)).toBe(true);
     expect(shouldUsePortalFallback(true, "5551231234")).toBe(false);
+  });
+
+  it("detects twilio-not-configured errors case-insensitively", () => {
+    expect(isTwilioNotConfiguredErrorMessage("Twilio credentials not configured")).toBe(true);
+    expect(isTwilioNotConfiguredErrorMessage("TWILIO CREDENTIALS NOT CONFIGURED")).toBe(true);
+    expect(isTwilioNotConfiguredErrorMessage("network timeout")).toBe(false);
+    expect(isTwilioNotConfiguredErrorMessage(undefined)).toBe(false);
+  });
+
+  it("shows the review request only when the job is completed and not dismissed", () => {
+    expect(shouldShowReviewRequestCard("Completed", false)).toBe(true);
+    expect(shouldShowReviewRequestCard("Completed", true)).toBe(false);
+    expect(shouldShowReviewRequestCard("In Progress", false)).toBe(false);
+    expect(shouldShowReviewRequestCard("Paid", false)).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bell, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { UserMenu } from "./UserMenu";
 import { NotificationsPanel } from "@/components/notifications/NotificationsPanel";
 import { GlobalSearch } from "./GlobalSearch";
 import { useNotifications } from "@/hooks/useNotifications";
+import { OPEN_GLOBAL_SEARCH_EVENT } from "@/lib/keyboardShortcuts";
 
 export interface PageHeaderProps {
   title: string;
@@ -36,13 +37,13 @@ export function PageHeader({
   const [searchOpen, setSearchOpen] = useState(false);
   const { unreadCount } = useNotifications();
 
-  const handleSearchClick = () => {
+  const handleSearchClick = useCallback(() => {
     if (onSearchClick) {
       onSearchClick();
     } else {
       setSearchOpen(true);
     }
-  };
+  }, [onSearchClick]);
 
   const handleBack = () => {
     if (window.history.state?.idx > 0) {
@@ -53,6 +54,19 @@ export function PageHeader({
       navigate("/");
     }
   };
+
+  useEffect(() => {
+    if (!showSearch) return;
+
+    const openSearch = () => {
+      handleSearchClick();
+    };
+
+    window.addEventListener(OPEN_GLOBAL_SEARCH_EVENT, openSearch);
+    return () => {
+      window.removeEventListener(OPEN_GLOBAL_SEARCH_EVENT, openSearch);
+    };
+  }, [handleSearchClick, showSearch]);
 
   return (
     <>

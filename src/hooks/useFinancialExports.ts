@@ -41,6 +41,8 @@ export interface ExportRow {
   job_cost_total: string;
 }
 
+export type ExportTarget = "csv" | "quickbooks";
+
 export function useFinancialExportHistory() {
   const { user, currentAccount } = useAuth();
 
@@ -137,11 +139,49 @@ export function useGenerateExport() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ dateFrom, dateTo }: { dateFrom: Date; dateTo: Date }) => {
+    mutationFn: async ({
+      dateFrom,
+      dateTo,
+      exportTarget = "csv",
+    }: {
+      dateFrom: Date;
+      dateTo: Date;
+      exportTarget?: ExportTarget;
+    }) => {
       if (!currentAccount || !user) throw new Error("Not authenticated");
 
       const startStr = format(dateFrom, "yyyy-MM-dd");
       const endStr = format(dateTo, "yyyy-MM-dd");
+
+      if (exportTarget === "quickbooks") {
+        const { data, error } = await supabase.functions.invoke("quickbooks-export-payments", {
+          body: {
+            dateFrom: startStr,
+            dateTo: endStr,
+          },
+        });
+
+        if (error) {
+          throw new Error(error.message || "Unable to export to QuickBooks");
+        }
+
+        const exportedCount = Number(data?.exportedCount ?? 0);
+        const filename = `quickbooks-payments-${startStr}-to-${endStr}`;
+
+        const { error: insertError } = await supabase.from("financial_exports").insert({
+          account_id: currentAccount.id,
+          created_by: user.id,
+          filename,
+          date_from: startStr,
+          date_to: endStr,
+          record_count: exportedCount,
+          export_type: "payments_quickbooks",
+        });
+
+        if (insertError) throw insertError;
+
+        return { filename, recordCount: exportedCount, exportTarget };
+      }
 
       const [invoicesRes, paymentsRes, timeEntriesRes, jobLineItemsRes] = await Promise.all([
         supabase
@@ -320,10 +360,14 @@ export function useGenerateExport() {
 
       if (insertError) throw insertError;
 
-      return { filename, recordCount: rows.length };
+      return { filename, recordCount: rows.length, exportTarget };
     },
-    onSuccess: ({ filename, recordCount }) => {
+    onSuccess: ({ filename, recordCount, exportTarget }) => {
       queryClient.invalidateQueries({ queryKey: ["financial-exports"] });
+      if (exportTarget === "quickbooks") {
+        toast.success(`Exported ${recordCount} payments to QuickBooks`);
+        return;
+      }
       toast.success(`Exported ${recordCount} records to ${filename}`);
     },
     onError: (error: Error) => {

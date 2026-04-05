@@ -14,6 +14,9 @@ import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { CSVImportModal } from "./CSVImportModal";
 import { ClientSelector } from "@/components/clients/ClientSelector";
 import { formatCurrency } from "@/lib/formatter";
+import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
+import { matchServiceType, normalizeVoiceLeadParsedData } from "@/lib/voiceIntake";
+import type { VoiceLeadParsedData } from "@/types/voiceIntake";
 
 interface AddLeadDialogProps {
   open: boolean;
@@ -34,6 +37,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
   const createCustomer = useCreateCustomer();
   const [saving, setSaving] = useState(false);
   const [showCSVImport, setShowCSVImport] = useState(false);
+  const [showVoiceLeadIntake, setShowVoiceLeadIntake] = useState(false);
 
   const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -55,11 +59,37 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
   handleLeadChange("estimatedBudget", numericValue);
   };
 
+  const applyVoiceLeadIntake = (parsedData: VoiceLeadParsedData) => {
+    const parsed = normalizeVoiceLeadParsedData(parsedData);
+
+    setClientMode("new");
+    setSelectedCustomer(null);
+    setNewClientData((current) => ({
+      ...current,
+      name: parsed.customerName || current.name,
+      phone: parsed.customerPhone || current.phone || "",
+      email: parsed.customerEmail || current.email || "",
+      address: parsed.customerAddress || current.address || "",
+      city: parsed.customerCity || current.city || "",
+    }));
+    setLeadData((current) => ({
+      ...current,
+      serviceType: matchServiceType(parsed.serviceType, SERVICE_TYPES) || current.serviceType,
+      estimatedBudget: parsed.estimatedBudget !== undefined
+        ? String(Math.round(parsed.estimatedBudget))
+        : current.estimatedBudget,
+      source: parsed.source || current.source || "Manual",
+      notes: parsed.notes || current.notes,
+    }));
+    setShowVoiceLeadIntake(false);
+  };
+
   const resetForm = () => {
     setClientMode("existing");
     setSelectedCustomer(null);
     setNewClientData({ ...INITIAL_CLIENT_DATA });
     setLeadData({ serviceType: "", estimatedBudget: "", source: "Manual", notes: "" });
+    setShowVoiceLeadIntake(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -210,65 +240,94 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <ClientSelector
-              selectedCustomer={selectedCustomer}
-              onSelect={setSelectedCustomer}
-              newClientData={newClientData}
-              onNewClientDataChange={setNewClientData}
-              mode={clientMode}
-              onModeChange={setClientMode}
-            />
-
-            
-
-            <div>
-                <Label htmlFor="serviceType">Service Type</Label>
-                <Select
-                  value={leadData.serviceType}
-                  onValueChange={(v) => handleLeadChange("serviceType", v)}
+            {!showVoiceLeadIntake ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setShowVoiceLeadIntake(true)}
                 >
-                  <SelectTrigger id="serviceType" className="mt-1.5">
-                    <SelectValue placeholder="Select service type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SERVICE_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  Voice Lead Intake
+                </Button>
 
-              <div>
-                <Label htmlFor="estimatedBudget">Budget</Label>
-                <Input
-                  id="estimatedBudget"
-                  type="text"
-                  value={formatCurrency(leadData.estimatedBudget)}
-                  onChange={(e) => handleBudgetChange(e.target.value)}
-                  placeholder="$5,000"
-                  className="mt-1.5"
+                <ClientSelector
+                  selectedCustomer={selectedCustomer}
+                  onSelect={setSelectedCustomer}
+                  newClientData={newClientData}
+                  onNewClientDataChange={setNewClientData}
+                  mode={clientMode}
+                  onModeChange={setClientMode}
                 />
-              </div>
 
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={leadData.notes}
-                  onChange={(e) => handleLeadChange("notes", e.target.value)}
-                  placeholder="Any additional notes..."
-                  className="mt-1.5 min-h-[60px] resize-none"
+                <div>
+                    <Label htmlFor="serviceType">Service Type</Label>
+                    <Select
+                      value={leadData.serviceType}
+                      onValueChange={(v) => handleLeadChange("serviceType", v)}
+                    >
+                      <SelectTrigger id="serviceType" className="mt-1.5">
+                        <SelectValue placeholder="Select service type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SERVICE_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="estimatedBudget">Budget</Label>
+                    <Input
+                      id="estimatedBudget"
+                      type="text"
+                      value={formatCurrency(leadData.estimatedBudget)}
+                      onChange={(e) => handleBudgetChange(e.target.value)}
+                      placeholder="$5,000"
+                      className="mt-1.5"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="notes">Notes</Label>
+                    <Textarea
+                      id="notes"
+                      value={leadData.notes}
+                      onChange={(e) => handleLeadChange("notes", e.target.value)}
+                      placeholder="Any additional notes..."
+                      className="mt-1.5 min-h-[60px] resize-none"
+                    />
+                  </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <VoiceIntakePanel
+                  entityType="lead"
+                  title="Voice Lead Intake"
+                  description="Speak naturally and I’ll map this into lead fields. If required info is missing, follow-up questions appear before apply."
+                  transcriptPlaceholder="Example: New lead Sarah Johnson, phone 555-111-2222, wants a driveway pressure wash at 11 Elm Street, budget about 650, source is referral..."
+                  variant="plain"
+                  onApply={(parsed) => applyVoiceLeadIntake(parsed as VoiceLeadParsedData)}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setShowVoiceLeadIntake(false)}
+                >
+                  Back to Manual Form
+                </Button>
               </div>
-
+            )}
 
             <DialogFooter className="pt-4">
               <Button type="button" variant="outline" size="lg" onClick={() => { resetForm(); onOpenChange(false); }}>
                 Cancel
               </Button>
-              <Button size="lg" type="submit" disabled={saving}>
+              <Button size="lg" type="submit" disabled={saving || showVoiceLeadIntake}>
                 {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Add Lead
               </Button>

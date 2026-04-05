@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeInteractionMetadataWithPostLink } from "../_shared/post-links.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +11,15 @@ interface InteractionPayload {
   direction?: "inbound" | "outbound" | "na";
   summary?: string;
   body?: string;
+  post_url?: string;
+  postUrl?: string;
+  post_link?: string;
+  postLink?: string;
+  url?: string;
+  link?: string;
+  platform?: string;
+  platform_name?: string;
+  platformName?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -112,6 +122,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    const normalizedMetadata = normalizeInteractionMetadataWithPostLink(
+      payload as Record<string, unknown>,
+      payload.metadata,
+      payload.body,
+      payload.summary,
+    );
+
     // Create interaction
     const { data: interaction, error: insertError } = await supabase
       .from("interactions")
@@ -121,7 +138,7 @@ Deno.serve(async (req) => {
         direction: payload.direction || "na",
         summary: payload.summary,
         body: payload.body,
-        metadata: payload.metadata,
+        metadata: normalizedMetadata,
       })
       .select()
       .single();

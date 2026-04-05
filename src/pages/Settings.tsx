@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
-import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2, Search, Bug } from "lucide-react";
+import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2, Search, Bug, Webhook } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
@@ -132,6 +132,14 @@ export default function Settings() {
     {
       title: "Automation",
       items: [
+        {
+          icon: <Webhook className="h-5 w-5" />,
+          label: "Lead Automations",
+          description: "Webhook hooks and auto-qualification",
+          onClick: () => navigate("/settings/lead-automations"),
+          requiredPlan: "basic",
+          searchTerms: ["automation", "webhook", "bot", "call intake", "auto qualify", "integration leads", "lead automation"],
+        },
         {
           icon: <Zap className="h-5 w-5" />,
           label: "Auto-Responses",

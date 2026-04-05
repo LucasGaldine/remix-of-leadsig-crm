@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid,
 } from "recharts";
-import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Loader as Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -316,7 +315,6 @@ function PlannedVsActual({ timeframe }: { timeframe: Timeframe }) {
 function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
   const navigate = useNavigate();
   const { data = [], isLoading } = useCostVsQuoted(timeframe);
-  const navigate = useNavigate();
 
   return (
     <VisualCard title="Cost vs Quoted" isLoading={isLoading}>

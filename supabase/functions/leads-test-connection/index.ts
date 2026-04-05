@@ -1,4 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  buildIntegrationLeadStatus,
+  evaluateAutoQualifyWebhook,
+  getIntegrationAutomationSettings,
+} from "../_shared/integration-lead-automation.ts";
+import {
+  isRelevanceAiTimeoutError,
+  parseLeadWithRelevanceAi,
+} from "../_shared/relevance-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,56 +41,14 @@ const platformNames: Record<string, string> = {
   thumbtack: "Thumbtack",
 };
 
-const RELEVANCE_AI_STUDIO_ID = "d50e7c9d-7933-47c5-b284-9295b3faf020";
-const RELEVANCE_AI_PROJECT_ID = "a8f61433-8567-40b3-a274-8c65d6d9a062";
-
 async function parseLeadWithAI(rawPayload: unknown): Promise<ParsedLead> {
   const apiKey = Deno.env.get("RELEVANCE_AI_API_KEY");
   if (!apiKey) {
     throw new Error("RELEVANCE_AI_API_KEY not configured");
   }
 
-  const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook?project=${RELEVANCE_AI_PROJECT_ID}`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
-
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": apiKey,
-      },
-      body: JSON.stringify({ lead_data: rawPayload }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`AI API returned ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.answer) {
-      try {
-        return JSON.parse(result.answer);
-      } catch {
-        throw new Error("AI returned invalid JSON format");
-      }
-    }
-
-    return result.output || result;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Relevance AI API timeout after 45 seconds");
-    }
-    throw error;
-  }
+  const { data } = await parseLeadWithRelevanceAi<ParsedLead>(rawPayload, apiKey);
+  return data;
 }
 
 function buildTestPayload(platform: string): Record<string, unknown> {
@@ -142,6 +109,8 @@ async function processTestLeadInBackground(
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   const testPayload = buildTestPayload(platform);
+  const automationSettings = await getIntegrationAutomationSettings(supabase, accountId);
+  const autoQualify = automationSettings.autoQualifyEnabled;
 
   let leadName = `Test Lead - ${platformNames[platform] || platform}`;
   let leadEmail: string | null = `test.${platform}@leadsig.test`;
@@ -153,6 +122,7 @@ async function processTestLeadInBackground(
   let leadNotes: string | null = null;
   let leadBudget: number | null = null;
   let parsingMethod = "fallback";
+  let aiTimeoutFallback = false;
 
   try {
     console.log("leads-test-connection: Sending test lead to Relevance AI");
@@ -169,8 +139,44 @@ async function processTestLeadInBackground(
     leadBudget = aiParsed.budget || leadBudget;
     parsingMethod = "ai";
   } catch (aiError) {
+    aiTimeoutFallback = isRelevanceAiTimeoutError(aiError);
+    if (aiTimeoutFallback) {
+      console.warn("leads-test-connection: Auto-Qualify endpoint timed out, using fallback test lead values", {
+        platform,
+        accountId,
+      });
+    }
     console.error("leads-test-connection: AI parsing failed, using fallback", aiError);
+    parsingMethod = aiTimeoutFallback ? "fallback_timeout" : "fallback";
   }
+
+  let qualificationDecision = {
+    qualified: autoQualify,
+    reason: autoQualify ? "Auto-qualify enabled" : "Auto-qualify disabled",
+    metadata: { webhook_used: false },
+  };
+
+  if (autoQualify && automationSettings.webhookConfig) {
+    qualificationDecision = await evaluateAutoQualifyWebhook({
+      config: automationSettings.webhookConfig,
+      accountId,
+      source: platform,
+      leadData: {
+        full_name: leadName,
+        email: leadEmail,
+        phone_number: leadPhone,
+        city: leadCity,
+        state: leadState,
+        address: leadAddress,
+        service_type: leadServiceType,
+        notes: leadNotes,
+        budget: leadBudget,
+      },
+      rawPayload: testPayload,
+    });
+  }
+
+  const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
 
   const { data: lead, error: leadError } = await supabase
     .from("leads")
@@ -187,11 +193,9 @@ async function processTestLeadInBackground(
       source: platform,
       external_source_id: `test_${Date.now()}`,
       external_payload: testPayload,
-      status: "new",
+      ...leadStatus,
       created_by: userId,
       account_id: accountId,
-      approval_status: "pending",
-      submitted_at: new Date().toISOString(),
     })
     .select("id")
     .maybeSingle();
@@ -203,12 +207,23 @@ async function processTestLeadInBackground(
 
   if (lead) {
     await supabase.from("interactions").insert({
-      lead_id: lead.id,
-      type: "system",
-      direction: "na",
-      summary: `Test lead created for ${platformNames[platform] || platform} connection verification`,
-      metadata: { test: true, platform, parsing_method: parsingMethod },
-    });
+        lead_id: lead.id,
+        type: "system",
+        direction: "na",
+        summary: autoQualify
+          ? qualificationDecision.qualified
+            ? `Test lead auto-qualified for ${platformNames[platform] || platform} connection verification`
+            : `Test lead marked not qualified by endpoint for ${platformNames[platform] || platform} connection verification`
+          : `Test lead created for ${platformNames[platform] || platform} connection verification`,
+        metadata: {
+          test: true,
+          platform,
+          parsing_method: parsingMethod,
+          auto_qualify_endpoint_timeout: aiTimeoutFallback,
+          auto_qualify_reason: qualificationDecision.reason,
+          ...qualificationDecision.metadata,
+        },
+      });
   }
 
   await supabase

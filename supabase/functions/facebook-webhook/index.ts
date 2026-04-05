@@ -1,4 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  buildIntegrationLeadStatus,
+  evaluateAutoQualifyWebhook,
+  getIntegrationAutomationSettings,
+} from "../_shared/integration-lead-automation.ts";
+import {
+  isRelevanceAiTimeoutError,
+  parseLeadWithRelevanceAi,
+} from "../_shared/relevance-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,56 +50,14 @@ interface ParsedLead {
   notes?: string;
 }
 
-const RELEVANCE_AI_STUDIO_ID = "d50e7c9d-7933-47c5-b284-9295b3faf020";
-const RELEVANCE_AI_PROJECT_ID = "a8f61433-8567-40b3-a274-8c65d6d9a062";
-
 async function parseLeadWithAI(rawPayload: unknown): Promise<ParsedLead> {
   const apiKey = Deno.env.get("RELEVANCE_AI_API_KEY");
   if (!apiKey) {
     throw new Error("RELEVANCE_AI_API_KEY not configured");
   }
 
-  const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook?project=${RELEVANCE_AI_PROJECT_ID}`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
-
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": apiKey,
-      },
-      body: JSON.stringify({ lead_data: rawPayload }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`AI API returned ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.answer) {
-      try {
-        return JSON.parse(result.answer);
-      } catch {
-        throw new Error("AI returned invalid JSON format");
-      }
-    }
-
-    return result.output || result;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Relevance AI API timeout after 45 seconds");
-    }
-    throw error;
-  }
+  const { data } = await parseLeadWithRelevanceAi<ParsedLead>(rawPayload, apiKey);
+  return data;
 }
 
 async function fetchLeadData(
@@ -208,6 +175,9 @@ async function processLeadgenEvent(
     let leadNotes: string | null = null;
     let leadBudget: number | null = null;
     let parsingMethod = "manual";
+    let aiTimeoutFallback = false;
+    const automationSettings = await getIntegrationAutomationSettings(supabase, connection.account_id);
+    const autoQualify = automationSettings.autoQualifyEnabled;
 
     try {
       const aiParsed = await parseLeadWithAI(leadData);
@@ -221,7 +191,16 @@ async function processLeadgenEvent(
       leadNotes = aiParsed.notes || null;
       leadBudget = aiParsed.budget || null;
       parsingMethod = "ai";
-    } catch {
+    } catch (aiError) {
+      aiTimeoutFallback = isRelevanceAiTimeoutError(aiError);
+      if (aiTimeoutFallback) {
+        console.warn("facebook-webhook: Auto-Qualify endpoint timed out, using manual parsing fallback", {
+          accountId: connection.account_id,
+          pageId: page_id,
+          leadgenId: leadgen_id,
+        });
+      }
+      console.error("facebook-webhook: AI parsing failed, using manual fallback", aiError);
       const fallback = parseFacebookFieldData(leadData.field_data);
       leadName = fallback.name;
       leadEmail = fallback.email;
@@ -231,8 +210,36 @@ async function processLeadgenEvent(
       leadAddress = fallback.address;
       leadServiceType = fallback.service_type;
       leadNotes = fallback.notes;
-      parsingMethod = "manual";
+      parsingMethod = aiTimeoutFallback ? "manual_timeout_fallback" : "manual";
     }
+
+    let qualificationDecision = {
+      qualified: autoQualify,
+      reason: autoQualify ? "Auto-qualify enabled" : "Auto-qualify disabled",
+      metadata: { webhook_used: false },
+    };
+
+    if (autoQualify && automationSettings.webhookConfig) {
+      qualificationDecision = await evaluateAutoQualifyWebhook({
+        config: automationSettings.webhookConfig,
+        accountId: connection.account_id,
+        source: "facebook",
+        leadData: {
+          full_name: leadName,
+          email: leadEmail,
+          phone_number: leadPhone,
+          city: leadCity,
+          state: leadState,
+          address: leadAddress,
+          service_type: leadServiceType,
+          notes: leadNotes,
+          budget: leadBudget,
+        },
+        rawPayload: leadData as unknown as Record<string, unknown>,
+      });
+    }
+
+    const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
 
     const { data: lead, error: leadError } = await supabase
       .from("leads")
@@ -249,11 +256,9 @@ async function processLeadgenEvent(
         source: "facebook",
         external_source_id: leadgen_id,
         external_payload: leadData,
-        status: "new",
-        approval_status: "pending",
+        ...leadStatus,
         created_by: connection.user_id,
         account_id: connection.account_id,
-        submitted_at: new Date().toISOString(),
       })
       .select("id")
       .maybeSingle();
@@ -268,13 +273,20 @@ async function processLeadgenEvent(
         lead_id: lead.id,
         type: "system",
         direction: "na",
-        summary: "Lead received from Facebook Lead Ads",
+        summary: autoQualify
+          ? qualificationDecision.qualified
+            ? "Lead received from Facebook Lead Ads and auto-qualified"
+            : "Lead received from Facebook Lead Ads and marked not qualified by endpoint"
+          : "Lead received from Facebook Lead Ads",
         metadata: {
           source: "facebook",
           leadgen_id,
           page_id,
           form_id: change.value.form_id,
           parsing_method: parsingMethod,
+          auto_qualify_endpoint_timeout: aiTimeoutFallback,
+          auto_qualify_reason: qualificationDecision.reason,
+          ...qualificationDecision.metadata,
         },
       });
     }

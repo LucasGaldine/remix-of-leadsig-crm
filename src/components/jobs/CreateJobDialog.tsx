@@ -29,6 +29,10 @@ import { EstimateLineItemsEditor, type EstimateLineItem } from "@/components/lea
 import { ScheduleDateBuilder, type ScheduleEntry } from "@/components/scheduling/ScheduleDateBuilder";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
+import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
+import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
+import { matchServiceType, normalizeVoiceJobParsedData } from "@/lib/voiceIntake";
+import type { VoiceJobParsedData } from "@/types/voiceIntake";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -72,6 +76,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const { data: crewMembers = [] } = useTeamMembers();
 
   const [showCSVImport, setShowCSVImport] = useState(false);
+  const [showVoiceJobIntake, setShowVoiceJobIntake] = useState(false);
   const [manualStep, setManualStep] = useState<ManualStep>("client");
 
   const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
@@ -123,25 +128,54 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     const loadCrewConflicts = async () => {
       setIsLoadingCrewConflicts(true);
 
-      const { data: existingAssignments, error } = await supabase
-        .from("job_assignments")
-        .select("user_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
-        .in("user_id", crewMembers.map((member) => member.user_id))
-        .eq("account_id", currentAccount.id);
+      const parsedCrew = crewMembers.map((member) => parseCrewAssigneeId(member.user_id));
+      const realCrewIds = parsedCrew
+        .filter((member) => member.type === "user" && member.userId)
+        .map((member) => member.userId as string);
+      const mockCrewIds = parsedCrew
+        .filter((member) => member.type === "mock" && member.mockProfileId)
+        .map((member) => member.mockProfileId as string);
 
-      if (isCancelled) return;
+      const assignmentRows: any[] = [];
 
-      if (error) {
-        console.error("Error loading crew conflicts:", error);
-        setCrewConflictByMember({});
-        setIsLoadingCrewConflicts(false);
-        return;
+      if (realCrewIds.length > 0) {
+        const { data, error } = await supabase
+          .from("job_assignments")
+          .select("user_id, mock_crew_profile_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
+          .in("user_id", realCrewIds)
+          .eq("account_id", currentAccount.id);
+
+        if (isCancelled) return;
+        if (error) {
+          console.error("Error loading crew conflicts:", error);
+          setCrewConflictByMember({});
+          setIsLoadingCrewConflicts(false);
+          return;
+        }
+        assignmentRows.push(...(data || []));
+      }
+
+      if (mockCrewIds.length > 0) {
+        const { data, error } = await supabase
+          .from("job_assignments")
+          .select("user_id, mock_crew_profile_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
+          .in("mock_crew_profile_id", mockCrewIds)
+          .eq("account_id", currentAccount.id);
+
+        if (isCancelled) return;
+        if (error) {
+          console.error("Error loading crew conflicts:", error);
+          setCrewConflictByMember({});
+          setIsLoadingCrewConflicts(false);
+          return;
+        }
+        assignmentRows.push(...(data || []));
       }
 
       const conflictMap: Record<string, number[]> = {};
 
       for (const [scheduleIndex, schedule] of addedSchedules.entries()) {
-        for (const assignment of existingAssignments || []) {
+        for (const assignment of assignmentRows) {
           const scheduleRows = Array.isArray((assignment as any).job_schedules)
             ? (assignment as any).job_schedules
             : [(assignment as any).job_schedules];
@@ -161,7 +195,11 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
             if (!hasOverlap) continue;
 
-            const crewId = (assignment as any).user_id;
+            const crewId = (assignment as any).user_id
+              || ((assignment as any).mock_crew_profile_id
+                ? buildMockCrewAssigneeId((assignment as any).mock_crew_profile_id)
+                : "");
+            if (!crewId) continue;
             if (!conflictMap[crewId]) {
               conflictMap[crewId] = [];
             }
@@ -263,6 +301,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setCrewConflictByMember({});
     setCrewSearchQuery("");
     setActiveCrewId("");
+    setShowVoiceJobIntake(false);
     setLineItems([{ ...INITIAL_LINE_ITEM }]);
     setPendingDeleteIndices(new Set());
     setExpandedIndex(0);
@@ -337,19 +376,43 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         }
 
         const uniqueCrewIds = Array.from(new Set(proposedCrewAssignments.map((assignment) => assignment.crewId)));
-        const { data: existingAssignments, error: existingAssignmentsError } = await supabase
-          .from("job_assignments")
-          .select("user_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
-          .in("user_id", uniqueCrewIds)
-          .eq("account_id", currentAccount.id);
+        const parsedCrewIds = uniqueCrewIds.map((crewId) => parseCrewAssigneeId(crewId));
+        const realCrewIds = parsedCrewIds
+          .filter((crew) => crew.type === "user" && crew.userId)
+          .map((crew) => crew.userId as string);
+        const mockCrewIds = parsedCrewIds
+          .filter((crew) => crew.type === "mock" && crew.mockProfileId)
+          .map((crew) => crew.mockProfileId as string);
+        const existingAssignments: any[] = [];
 
-        if (existingAssignmentsError) {
-          throw existingAssignmentsError;
+        if (realCrewIds.length > 0) {
+          const { data, error } = await supabase
+            .from("job_assignments")
+            .select("user_id, mock_crew_profile_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
+            .in("user_id", realCrewIds)
+            .eq("account_id", currentAccount.id);
+
+          if (error) throw error;
+          existingAssignments.push(...(data || []));
+        }
+
+        if (mockCrewIds.length > 0) {
+          const { data, error } = await supabase
+            .from("job_assignments")
+            .select("user_id, mock_crew_profile_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
+            .in("mock_crew_profile_id", mockCrewIds)
+            .eq("account_id", currentAccount.id);
+
+          if (error) throw error;
+          existingAssignments.push(...(data || []));
         }
 
         for (const proposedAssignment of proposedCrewAssignments) {
+          const parsedProposedCrew = parseCrewAssigneeId(proposedAssignment.crewId);
           const matchingAssignments = (existingAssignments || []).filter(
-            (assignment: any) => assignment.user_id === proposedAssignment.crewId,
+            (assignment: any) =>
+              (parsedProposedCrew.type === "user" && assignment.user_id === parsedProposedCrew.userId) ||
+              (parsedProposedCrew.type === "mock" && assignment.mock_crew_profile_id === parsedProposedCrew.mockProfileId),
           );
 
           for (const assignment of matchingAssignments) {
@@ -423,13 +486,17 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
       const assignmentsToInsert = createdSchedules.flatMap(({ scheduleId, sourceIndex }) => {
         const selectedCrewForSchedule = crewByScheduleIndex[sourceIndex] || [];
-        return selectedCrewForSchedule.map((crewId) => ({
-          lead_id: createdJob.id,
-          user_id: crewId,
-          job_schedule_id: scheduleId,
-          account_id: currentAccount?.id,
-          assigned_by: user?.id,
-        }));
+        return selectedCrewForSchedule.map((crewId) => {
+          const parsedCrew = parseCrewAssigneeId(crewId);
+          return {
+            lead_id: createdJob.id,
+            user_id: parsedCrew.type === "user" ? parsedCrew.userId : null,
+            mock_crew_profile_id: parsedCrew.type === "mock" ? parsedCrew.mockProfileId : null,
+            job_schedule_id: scheduleId,
+            account_id: currentAccount?.id,
+            assigned_by: user?.id,
+          };
+        });
       });
 
       if (assignmentsToInsert.length > 0) {
@@ -689,6 +756,26 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setLineItems(updated);
   };
 
+  const applyVoiceJobIntake = (parsedData: VoiceJobParsedData) => {
+    const parsed = normalizeVoiceJobParsedData(parsedData);
+
+    setClientMode("new");
+    setSelectedCustomer(null);
+    setNewClientData((current) => ({
+      ...current,
+      name: parsed.customerName || current.name,
+      phone: parsed.customerPhone || current.phone || "",
+      email: parsed.customerEmail || current.email || "",
+      address: parsed.customerAddress || current.address || "",
+    }));
+
+    setJobName((current) => parsed.jobName || current);
+    setServiceType((current) => matchServiceType(parsed.serviceType, SERVICE_TYPES) || current);
+    setJobAddress((current) => parsed.jobAddress || current);
+    setDescription((current) => parsed.description || current);
+    setShowVoiceJobIntake(false);
+  };
+
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       resetForm();
@@ -745,14 +832,46 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                   <div className="h-px bg-border flex-1" />
                 </div>
 
-                <ClientSelector
-                  selectedCustomer={selectedCustomer}
-                  onSelect={setSelectedCustomer}
-                  newClientData={newClientData}
-                  onNewClientDataChange={setNewClientData}
-                  mode={clientMode}
-                  onModeChange={setClientMode}
-                />
+                {!showVoiceJobIntake ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setShowVoiceJobIntake(true)}
+                    >
+                      Voice Job Intake
+                    </Button>
+
+                    <ClientSelector
+                      selectedCustomer={selectedCustomer}
+                      onSelect={setSelectedCustomer}
+                      newClientData={newClientData}
+                      onNewClientDataChange={setNewClientData}
+                      mode={clientMode}
+                      onModeChange={setClientMode}
+                    />
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <VoiceIntakePanel
+                      entityType="job"
+                      title="Voice Job Intake"
+                      description="Speak customer and job details in one pass. Required details trigger follow-up questions before values are applied."
+                      transcriptPlaceholder="Example: Create a job for Mike Carter, phone 555-333-1212, email mike@home.com, at 48 Pine Lane for gutter cleaning and roof wash..."
+                      variant="plain"
+                      onApply={(parsed) => applyVoiceJobIntake(parsed as VoiceJobParsedData)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setShowVoiceJobIntake(false)}
+                    >
+                      Back to Manual Form
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 

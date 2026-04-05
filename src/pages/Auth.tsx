@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, AppRole } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { usePasswordStrength } from '@/hooks/usePasswordStrength';
 import { PasswordStrengthIndicator } from '@/components/auth/PasswordStrengthIndicator';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
 import { getPostAuthRedirectPath } from '@/lib/onboarding';
+import { extractAffiliateReferralCode } from '@/lib/affiliate';
 import { cn } from '@/lib/utils';
 
 const emailSchema = z.string().email('Please enter a valid email address');
@@ -29,7 +30,9 @@ const roleLabels: Record<AppRole, string> = {
 
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, signIn, signUp, isLoading: authLoading } = useAuth();
+  const affiliateReferralCode = extractAffiliateReferralCode(location.search);
   
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -204,7 +207,8 @@ export default function Auth() {
       isCreatingCompany
         ? { companyName, companyPhone, companyAddress }
         : { companyCode },
-      phone
+      phone,
+      affiliateReferralCode
     );
     setIsLoading(false);
 
@@ -219,11 +223,7 @@ export default function Auth() {
       }
     } else {
       toast.success('Account created successfully!');
-      if (isCreatingCompany) {
-        navigate('/settings/pricing?onboarding=1&trial=14&defaultPlan=basic');
-      } else {
-        navigate(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: false }));
-      }
+      navigate(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: isCreatingCompany }));
     }
   };
 
@@ -332,6 +332,11 @@ export default function Auth() {
             
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4 mt-4">
+                {affiliateReferralCode && (
+                  <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
+                    Referral code applied: <span className="font-semibold">{affiliateReferralCode}</span>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                     Step {signupStep} of 3
@@ -576,6 +581,12 @@ export default function Auth() {
               </form>
             </TabsContent>
           </Tabs>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Want to earn referral commissions?{" "}
+            <Link to="/affiliate" className="font-medium text-primary hover:underline">
+              Become an affiliate
+            </Link>
+          </p>
         </CardContent>
       </Card>
 

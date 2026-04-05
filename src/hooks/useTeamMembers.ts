@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { getTeamMemberDisplayName } from "@/lib/teamMembers";
+import { buildMockCrewAssigneeId } from "@/lib/crewIdentifiers";
+import { isMissingRelationError } from "@/lib/supabaseErrors";
 
 export interface TeamMember {
   user_id: string;
@@ -10,6 +12,8 @@ export interface TeamMember {
   role: string;
   invited_at?: string | null;
   is_mock_profile: boolean;
+  mock_profile_id?: string | null;
+  phone?: string | null;
 }
 
 export function useTeamMembers() {
@@ -37,11 +41,23 @@ export function useTeamMembers() {
 
       if (profilesError) throw profilesError;
 
+      const { data: mockProfiles, error: mockProfilesError } = await supabase
+        .from("mock_crew_profiles")
+        .select("id, full_name, phone, role")
+        .eq("account_id", currentAccount.id)
+        .order("full_name", { ascending: true });
+
+      const mockProfilesTableMissing = isMissingRelationError(mockProfilesError, "mock_crew_profiles");
+
+      if (mockProfilesError && !mockProfilesTableMissing) {
+        throw mockProfilesError;
+      }
+
       const profilesMap = new Map(
         (profiles || []).map(p => [p.user_id, p])
       );
 
-      return members
+      const realMembers = members
         .map(member => {
           const profile = profilesMap.get(member.user_id);
           return {
@@ -57,9 +73,28 @@ export function useTeamMembers() {
             role: member.role,
             invited_at: member.invited_at,
             is_mock_profile: !profile?.full_name,
+            mock_profile_id: null,
+            phone: null,
           };
         })
         .sort((a, b) => a.full_name.localeCompare(b.full_name)) as TeamMember[];
+
+      const mockMembers = (mockProfiles || []).map((mockProfile) => ({
+        user_id: buildMockCrewAssigneeId(mockProfile.id),
+        full_name: getTeamMemberDisplayName({
+          user_id: buildMockCrewAssigneeId(mockProfile.id),
+          role: mockProfile.role,
+          mock_profile_name: mockProfile.full_name,
+        }),
+        email: "",
+        role: mockProfile.role,
+        invited_at: null,
+        is_mock_profile: true,
+        mock_profile_id: mockProfile.id,
+        phone: mockProfile.phone || null,
+      })) as TeamMember[];
+
+      return [...realMembers, ...mockMembers].sort((a, b) => a.full_name.localeCompare(b.full_name));
     },
     enabled: !!currentAccount?.id,
   });

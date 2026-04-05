@@ -35,12 +35,20 @@ export default function OnboardingImport() {
     <div className="min-h-screen bg-surface-sunken pb-10">
       <PageHeader
         title="Import Your Data"
-        subtitle={isReplay ? "Replay your import onboarding anytime" : "Optional setup before your tutorial"}
+        subtitle={isReplay ? "Replay your import onboarding anytime" : "Step 2 of 2 before your tutorial"}
         showNotifications={false}
         showSearch={false}
       />
 
       <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6">
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-muted-foreground">Step 2 of 2</div>
+          <div className="grid grid-cols-2 gap-2" aria-hidden>
+            <div className="h-2 rounded-full bg-primary" />
+            <div className="h-2 rounded-full bg-primary" />
+          </div>
+        </div>
+
         {view === "intro" ? (
           <Card className="border-border/70 shadow-sm">
             <CardHeader className="space-y-3">

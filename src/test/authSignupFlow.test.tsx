@@ -1,9 +1,14 @@
 import { createContext, useContext, useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Auth from "@/pages/Auth";
+import {
+  ONBOARDING_IMPORT_STORAGE_KEY,
+  ONBOARDING_SOURCE_STORAGE_KEY,
+  ONBOARDING_TUTORIAL_STORAGE_KEY,
+} from "@/lib/onboarding";
 
 const { navigateMock, signInMock, signUpMock } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
@@ -121,6 +126,15 @@ vi.mock("@/components/ui/select", () => ({
 }));
 
 describe("Auth signup flow", () => {
+  beforeEach(() => {
+    signInMock.mockReset();
+    signUpMock.mockReset();
+    navigateMock.mockReset();
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+  });
+
   it("uses a three-step signup flow with company choice before company details", () => {
     render(
       <MemoryRouter>
@@ -158,7 +172,7 @@ describe("Auth signup flow", () => {
     expect(screen.queryByLabelText(/Company Code/i)).not.toBeInTheDocument();
   });
 
-  it("redirects new company signups to pricing onboarding", async () => {
+  it("redirects new company signups into onboarding sequence", async () => {
     signUpMock.mockResolvedValue({ error: null });
 
     render(
@@ -181,7 +195,72 @@ describe("Auth signup flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Create Company & Account$/i }));
 
     await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith("/settings/pricing?onboarding=1&trial=14&defaultPlan=basic");
+      expect(navigateMock).toHaveBeenCalledWith("/onboarding/source");
+    });
+
+    expect(window.localStorage.getItem(ONBOARDING_SOURCE_STORAGE_KEY)).toBe("pending");
+    expect(window.localStorage.getItem(ONBOARDING_IMPORT_STORAGE_KEY)).toBe("pending");
+    expect(window.localStorage.getItem(ONBOARDING_TUTORIAL_STORAGE_KEY)).toBe("pending");
+  });
+
+  it("redirects join-company signups to tutorial", async () => {
+    signUpMock.mockResolvedValue({ error: null });
+
+    render(
+      <MemoryRouter>
+        <Auth />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Sign Up/i }));
+
+    fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Join an existing company/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    fireEvent.change(screen.getByLabelText(/Company Code/i), { target: { value: "ABC123" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Join Company$/i }));
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/tutorial");
+    });
+  });
+
+  it("passes affiliate referral code from the signup URL", async () => {
+    signUpMock.mockResolvedValue({ error: null });
+
+    render(
+      <MemoryRouter initialEntries={["/auth?ref=partner777"]}>
+        <Auth />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Sign Up/i }));
+
+    fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Create a new company/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+    fireEvent.change(screen.getByLabelText(/Company Name/i), { target: { value: "LeadSig Landscaping" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Create Company & Account$/i }));
+
+    await waitFor(() => {
+      expect(signUpMock).toHaveBeenCalledWith(
+        "taylor@example.com",
+        "StrongPassword123!",
+        "Taylor Smith",
+        "owner",
+        expect.objectContaining({ companyName: "LeadSig Landscaping" }),
+        "",
+        "PARTNER777",
+      );
     });
   });
 });

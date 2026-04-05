@@ -10,12 +10,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { cn } from "@/lib/utils";
+import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 
 const roleLabels: Record<string, string> = {
   owner: 'Owner',
@@ -52,6 +53,7 @@ export function ScheduleJobDialog({
 }: ScheduleJobDialogProps) {
   const { user, currentAccount } = useAuth();
   const { scheduleJob, isScheduling } = useScheduleJob();
+  const queryClient = useQueryClient();
   
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
@@ -101,18 +103,48 @@ export function ScheduleJobDialog({
     }
 
     if (selectedCrewIds.length > 0) {
-      const { data: conflicts } = await supabase
-        .from("job_assignments")
-        .select(`
-          user_id,
-          job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end),
-          profiles!inner(full_name)
-        `)
-        .in("user_id", selectedCrewIds)
-        .eq("job_schedules.scheduled_date", scheduledDate);
+      const parsedCrew = selectedCrewIds.map((crewId) => parseCrewAssigneeId(crewId));
+      const realCrewIds = parsedCrew
+        .filter((crew) => crew.type === "user" && crew.userId)
+        .map((crew) => crew.userId as string);
+      const mockCrewIds = parsedCrew
+        .filter((crew) => crew.type === "mock" && crew.mockProfileId)
+        .map((crew) => crew.mockProfileId as string);
+      const conflicts: any[] = [];
 
-      if (conflicts && conflicts.length > 0) {
-        const crewMemberName = conflicts[0]?.profiles?.full_name || "This crew member";
+      if (realCrewIds.length > 0) {
+        const { data, error } = await supabase
+          .from("job_assignments")
+          .select(`
+            user_id,
+            mock_crew_profile_id,
+            job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)
+          `)
+          .in("user_id", realCrewIds)
+          .eq("job_schedules.scheduled_date", scheduledDate);
+        if (error) throw error;
+        conflicts.push(...(data || []));
+      }
+
+      if (mockCrewIds.length > 0) {
+        const { data, error } = await supabase
+          .from("job_assignments")
+          .select(`
+            user_id,
+            mock_crew_profile_id,
+            job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)
+          `)
+          .in("mock_crew_profile_id", mockCrewIds)
+          .eq("job_schedules.scheduled_date", scheduledDate);
+        if (error) throw error;
+        conflicts.push(...(data || []));
+      }
+
+      if (conflicts.length > 0) {
+        const conflict = conflicts[0];
+        const conflictId = conflict?.user_id
+          || (conflict?.mock_crew_profile_id ? buildMockCrewAssigneeId(conflict.mock_crew_profile_id) : selectedCrewIds[0]);
+        const crewMemberName = crewMembers.find((member) => member.user_id === conflictId)?.full_name || "This crew member";
         toast.error(
           `Scheduling conflict: ${crewMemberName} is already assigned to another job on ${format(new Date(scheduledDate), "MMM d, yyyy")}`
         );
@@ -133,20 +165,23 @@ export function ScheduleJobDialog({
 
     if (selectedCrewIds.length > 0 && currentAccount && user) {
       for (const crewId of selectedCrewIds) {
-        const { data: hasOverlap } = await supabase.rpc('check_assignment_overlap', {
-          p_user_id: crewId,
-          p_schedule_id: result.scheduleId,
-          p_account_id: currentAccount.id,
-        });
+        const parsedCrew = parseCrewAssigneeId(crewId);
+        const overlapFn = parsedCrew.type === "user" ? "check_assignment_overlap" : "check_mock_assignment_overlap";
+        const overlapArgs = parsedCrew.type === "user"
+          ? {
+              p_user_id: parsedCrew.userId,
+              p_schedule_id: result.scheduleId,
+              p_account_id: currentAccount.id,
+            }
+          : {
+              p_mock_profile_id: parsedCrew.mockProfileId,
+              p_schedule_id: result.scheduleId,
+              p_account_id: currentAccount.id,
+            };
+        const { data: hasOverlap } = await supabase.rpc(overlapFn, overlapArgs as any);
 
         if (hasOverlap) {
-          const { data: crewMemberProfile } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('user_id', crewId)
-            .maybeSingle();
-
-          const crewName = crewMemberProfile?.full_name || 'This crew member';
+          const crewName = crewMembers.find((member) => member.user_id === crewId)?.full_name || "This crew member";
           const dateStr = scheduledDate
             ? format(new Date(scheduledDate), "EEEE, MMMM d, yyyy")
             : 'the selected date';
@@ -159,13 +194,17 @@ export function ScheduleJobDialog({
       const { error: assignError } = await supabase
         .from("job_assignments")
         .insert(
-          selectedCrewIds.map((crewId) => ({
-            lead_id: jobId,
-            user_id: crewId,
-            job_schedule_id: result.scheduleId,
-            account_id: currentAccount.id,
-            assigned_by: user.id,
-          })),
+          selectedCrewIds.map((crewId) => {
+            const parsedCrew = parseCrewAssigneeId(crewId);
+            return {
+              lead_id: jobId,
+              user_id: parsedCrew.type === "user" ? parsedCrew.userId : null,
+              mock_crew_profile_id: parsedCrew.type === "mock" ? parsedCrew.mockProfileId : null,
+              job_schedule_id: result.scheduleId,
+              account_id: currentAccount.id,
+              assigned_by: user.id,
+            };
+          }),
         );
 
       if (assignError) {
@@ -177,6 +216,14 @@ export function ScheduleJobDialog({
         }
         return;
       }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["job-assignments", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["crew-hours"] }),
+        queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] }),
+      ]);
     }
 
     setSelectedDate(undefined);

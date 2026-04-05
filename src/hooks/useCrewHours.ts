@@ -37,6 +37,7 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
         .from("job_assignments")
         .select("user_id, job_schedule_id, lead_id")
         .in("job_schedule_id", scheduleIds)
+        .not("user_id", "is", null)
         .not("job_schedule_id", "is", null);
 
       if (userId) {
@@ -46,7 +47,7 @@ export function useCrewHours(startDate: Date, endDate: Date, userId?: string) {
       const { data: assignments, error: assignmentsError } = await assignmentsQuery;
       if (assignmentsError) throw assignmentsError;
 
-      const assignedUserIds = [...new Set((assignments || []).map(a => a.user_id))];
+      const assignedUserIds = [...new Set((assignments || []).map(a => a.user_id).filter((id): id is string => Boolean(id)))];
       if (assignedUserIds.length === 0) return [];
 
       const { data: profiles, error: profilesError } = await supabase

@@ -8,6 +8,8 @@ import { ClientPortalEstimate } from "@/components/client-portal/ClientPortalEst
 import { ClientPortalPhotos } from "@/components/client-portal/ClientPortalPhotos";
 import { ClientPortalSchedule } from "@/components/client-portal/ClientPortalSchedule";
 import { ClientPortalActivity } from "@/components/client-portal/ClientPortalActivity";
+import { ClientPortalReviewRequestCard } from "@/components/client-portal/ClientPortalReviewRequestCard";
+import { shouldShowReviewRequestCard } from "@/lib/jobCompletionReview";
 
 interface JobData {
   name: string;
@@ -159,6 +161,7 @@ export default function ClientJobPortal() {
   const [data, setData] = useState<PortalData | null>(null);
   const [customerData, setCustomerData] = useState<CustomerPortalData | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [reviewCardDismissed, setReviewCardDismissed] = useState(false);
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-client-portal`;
   const apiHeaders = {
@@ -213,10 +216,12 @@ export default function ClientJobPortal() {
   };
 
   const handleSelectJob = (selectedJobId: string) => {
+    setReviewCardDismissed(false);
     setSearchParams({ token: token!, jobId: selectedJobId });
   };
 
   const handleBackToList = () => {
+    setReviewCardDismissed(false);
     setSearchParams({ token: token! });
   };
 
@@ -411,6 +416,7 @@ export default function ClientJobPortal() {
 
   const statusLabel = getStatusLabel(job.status, schedules);
   const statusColor = getStatusColor(job.status, schedules);
+  const shouldRenderReviewRequestCard = shouldShowReviewRequestCard(statusLabel, reviewCardDismissed);
 
   const showBackButton = customerData || data?.portal_metadata?.has_portal;
 
@@ -434,6 +440,13 @@ export default function ClientJobPortal() {
           statusLabel={statusLabel}
           statusColor={statusColor}
         />
+
+        {shouldRenderReviewRequestCard && (
+          <ClientPortalReviewRequestCard
+            onLeaveReview={() => undefined}
+            onDismiss={() => setReviewCardDismissed(true)}
+          />
+        )}
 
         {(schedules.length > 0 || estimate_visit_schedules?.length > 0) && (
           <ClientPortalSchedule

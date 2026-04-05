@@ -4,11 +4,15 @@ export interface TeamMemberLike {
   email?: string | null;
   role?: string | null;
   invited_at?: string | null;
+  mock_profile_name?: string | null;
 }
 
 export function getTeamMemberDisplayName(member: TeamMemberLike) {
   const trimmedName = member.full_name?.trim();
   if (trimmedName) return trimmedName;
+
+  const trimmedMockName = member.mock_profile_name?.trim();
+  if (trimmedMockName) return trimmedMockName;
 
   const trimmedEmail = member.email?.trim();
   if (trimmedEmail) {

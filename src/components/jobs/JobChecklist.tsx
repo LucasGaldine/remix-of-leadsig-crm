@@ -11,10 +11,11 @@ import {
   Package,
   ClipboardList,
   Save,
+  Info,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -60,6 +61,7 @@ interface JobChecklistProps {
   onMarkComplete?: () => Promise<void> | void;
   hasBeforePhotos?: boolean;
   embedded?: boolean;
+  onGoToDetailsTab?: () => void;
 }
 
 type ChecklistEditorMode = "add" | "edit";
@@ -91,6 +93,7 @@ export function JobChecklist({
   onMarkComplete,
   hasBeforePhotos = false,
   embedded = false,
+  onGoToDetailsTab,
 }: JobChecklistProps) {
   const { items, isLoading, toggleItem, addItem, updateItem, deleteItem } =
     useJobChecklist(jobId);
@@ -279,7 +282,7 @@ export function JobChecklist({
 
   return (
     <div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">
             {completedCount}/{totalCount} complete
@@ -304,28 +307,59 @@ export function JobChecklist({
           </div>
         </div>
         {isManager && !isJobCompleted && (
-          <Button
-            variant={editMode ? "default" : "ghost"}
-            size="sm"
-            onClick={() => {
-              setEditMode(!editMode);
-              resetEditor();
-            }}
-          >
-            {editMode ? (
-              <>
-                <Save className="h-4 w-4 mr-1" />
-                Done
-              </>
-            ) : (
-              <div className="text-muted-foreground flex gap-1 justify-center items-center">
-                <Pencil className="h-4 w-4 mr-1" />
-                Edit
-              </div>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <Button
+              variant={editMode ? "default" : "ghost"}
+              size="sm"
+              onClick={() => {
+                setEditMode(!editMode);
+                resetEditor();
+              }}
+            >
+              {editMode ? (
+                <>
+                  <Save className="h-4 w-4 mr-1" />
+                  Done
+                </>
+              ) : (
+                <div className="text-muted-foreground flex gap-1 justify-center items-center">
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Edit
+                </div>
+              )}
+            </Button>
+
+            {editMode && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 justify-center gap-2 [&_svg]:size-4"
+                onClick={() => openAddDialog("task")}
+                aria-label="Add task"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add task</span>
+              </Button>
             )}
-          </Button>
+          </div>
         )}
       </div>
+
+      {editMode && (
+        <div
+          role="status"
+          className="mt-3 mb-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground"
+        >
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-primary" />
+            <span className="font-medium">Editing checklist</span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Add, edit, or delete items, then select Done to return to checkoff mode.
+          </p>
+        </div>
+      )}
 
       <div
         className={cn(
@@ -363,9 +397,6 @@ export function JobChecklist({
                     const isPortalItem =
                       normalizedLabel === SEND_CLIENT_PORTAL_CHECKLIST_LABEL.toLowerCase();
                     const isReviewItem = isReviewRequestChecklistItem(item.label);
-                    const itemCategory = getDisplayCategory(item);
-                    const isToolItem = itemCategory === "tool";
-                    const isMaterialItem = itemCategory === "material";
 
                     return (
                       <div
@@ -373,35 +404,32 @@ export function JobChecklist({
                         className={cn(
                           "flex items-center gap-3 p-3 transition-colors",
                           "border-b border-border last:border-b-0",
-                          !editMode && !isJobCompleted && "cursor-pointer hover:bg-muted/50",
+                          !editMode && !isJobCompleted && "hover:bg-muted/50",
                           item.is_completed && !editMode && "bg-muted/30",
                         )}
-                        onClick={() => !editMode && handleToggle(item)}
                       >
                         {!editMode && (
-                          <div className="flex-shrink-0">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 flex-shrink-0"
+                            aria-label={
+                              item.is_completed
+                                ? `Mark ${item.label} as incomplete`
+                                : `Mark ${item.label} as complete`
+                            }
+                            onClick={() => handleToggle(item)}
+                            disabled={isJobCompleted}
+                          >
                             {item.is_completed ? (
                               <CheckCircle2 className="h-5 w-5 text-green-600" />
                             ) : (
                               <Circle className="h-5 w-5 text-muted-foreground" />
                             )}
-                          </div>
+                          </Button>
                         )}
                         <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {isToolItem && (
-                              <Badge variant="outline" size="sm" className="text-amber-700 border-amber-300 bg-amber-50">
-                                <Wrench className="h-3 w-3 mr-1" />
-                                Tool
-                              </Badge>
-                            )}
-                            {isMaterialItem && (
-                              <Badge variant="outline" size="sm" className="text-blue-700 border-blue-300 bg-blue-50">
-                                <Package className="h-3 w-3 mr-1" />
-                                Material
-                              </Badge>
-                            )}
-                          </div>
                           <span
                             className={cn(
                               "block text-sm",
@@ -433,9 +461,22 @@ export function JobChecklist({
                         )}
 
                         {!editMode && (isPortalItem || (isReviewItem && shouldShowPortalCopyHint)) && !clientPortalUrl && (
-                          <span className="text-xs text-muted-foreground shrink-0">
-                            Generate link in Details tab
-                          </span>
+                          onGoToDetailsTab ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs shrink-0"
+                              onClick={onGoToDetailsTab}
+                            >
+                              Generate Link
+                              <ArrowRight className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              Generate link in Details tab
+                            </span>
+                          )
                         )}
 
                         {editMode && (
@@ -471,41 +512,24 @@ export function JobChecklist({
           );
         })}
 
-        {editMode && isManager && (
-          <div className="!border-t-0 border-border ">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-auto justify-start gap-3 rounded-full p-3 w-full my-4 [&_svg]:size-5"
-              onClick={() => openAddDialog("task")}
-              aria-label="Add task"
-            >
-              <Plus className="h-5 w-5" />
-              <span>Add task</span>
-            </Button>
-          </div>
-        )}
-
-        {!editMode && (
-          <div className="!border-t-0 border-border ">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-auto justify-start gap-3 rounded-full p-3 w-full my-4 [&_svg]:size-5 hover:text-green-600 hover:border-green-600 hover:bg-card"
-              onClick={handleCompleteClick}
-              disabled={isJobCompleted}
-            >
-              {isJobCompleted ? (
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-              ) : (
-                <CheckCircle2 className="h-5 w-5 " />
-              )}
-              <span className={cn(isJobCompleted && "line-through text-muted-foreground")}>
-                Complete
-              </span>
-            </Button>
-          </div>
-        )}
+        <div className="!border-t-0 border-border ">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto justify-start gap-3 rounded-full p-3 w-full my-4 [&_svg]:size-5 hover:text-green-600 hover:border-green-600 hover:bg-card"
+            onClick={handleCompleteClick}
+            disabled={isJobCompleted || editMode}
+          >
+            {isJobCompleted ? (
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5 " />
+            )}
+            <span className={cn(isJobCompleted && "line-through text-muted-foreground")}>
+              Complete
+            </span>
+          </Button>
+        </div>
       </div>
 
       <Dialog

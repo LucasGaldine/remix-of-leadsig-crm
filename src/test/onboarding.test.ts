@@ -5,11 +5,17 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import {
   completeOnboardingImport,
+  completeOnboardingSource,
   completeOnboardingTutorial,
   getPostAuthRedirectPath,
   ONBOARDING_IMPORT_STORAGE_KEY,
+  ONBOARDING_PREVIOUS_CRM_STORAGE_KEY,
+  ONBOARDING_SOURCE_STORAGE_KEY,
   ONBOARDING_TUTORIAL_STORAGE_KEY,
+  saveOnboardingPreviousCrm,
+  getOnboardingPreviousCrm,
   shouldShowOnboardingImport,
+  shouldShowOnboardingSource,
   shouldShowOnboardingTutorial,
 } from "@/lib/onboarding";
 import { filterSearchPages } from "@/lib/globalSearch";
@@ -22,38 +28,57 @@ vi.mock("@/components/layout/PageHeader", () => ({
 }));
 
 describe("onboarding tutorial state", () => {
-  it("routes new signups to the import onboarding step", () => {
-    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
-    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+  it("routes new signups to the CRM source onboarding step", () => {
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
-    expect(getPostAuthRedirectPath({ isNewSignup: true })).toBe("/onboarding/import");
+    expect(getPostAuthRedirectPath({ isNewSignup: true })).toBe("/onboarding/source");
+    expect(shouldShowOnboardingSource()).toBe(true);
     expect(shouldShowOnboardingImport()).toBe(true);
     expect(shouldShowOnboardingTutorial()).toBe(true);
   });
 
-  it("routes new signups directly home when onboarding is not requested", () => {
-    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
-    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+  it("routes new signups to tutorial even when onboarding setup steps are skipped", () => {
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
-    expect(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: false })).toBe("/");
+    expect(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: false })).toBe("/tutorial");
+    expect(shouldShowOnboardingSource()).toBe(false);
     expect(shouldShowOnboardingImport()).toBe(false);
-    expect(shouldShowOnboardingTutorial()).toBe(false);
+    expect(shouldShowOnboardingTutorial()).toBe(true);
   });
 
-  it("routes to import onboarding before tutorial when import is pending", () => {
-    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
-    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+  it("routes to CRM source onboarding first when source and import are pending", () => {
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
     getPostAuthRedirectPath({ isNewSignup: true });
 
+    expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/onboarding/source");
+  });
+
+  it("routes to import onboarding after CRM source is complete", () => {
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+
+    getPostAuthRedirectPath({ isNewSignup: true });
+    completeOnboardingSource();
+
+    expect(shouldShowOnboardingSource()).toBe(false);
     expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/onboarding/import");
   });
 
   it("routes to tutorial after import onboarding is complete", () => {
-    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
-    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
     getPostAuthRedirectPath({ isNewSignup: true });
+    completeOnboardingSource();
     completeOnboardingImport();
 
     expect(shouldShowOnboardingImport()).toBe(false);
@@ -61,10 +86,12 @@ describe("onboarding tutorial state", () => {
   });
 
   it("marks the tutorial complete after finishing", () => {
-    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
-    localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
     getPostAuthRedirectPath({ isNewSignup: true });
+    completeOnboardingSource();
     completeOnboardingImport();
     completeOnboardingTutorial();
 
@@ -73,11 +100,33 @@ describe("onboarding tutorial state", () => {
   });
 });
 
+describe("onboarding previous CRM state", () => {
+  it("stores and retrieves selected previous CRM", () => {
+    window.localStorage.removeItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY);
+
+    saveOnboardingPreviousCrm("Jobber");
+
+    expect(getOnboardingPreviousCrm()).toBe("Jobber");
+  });
+
+  it("returns null when no previous CRM is set", () => {
+    window.localStorage.removeItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY);
+
+    expect(getOnboardingPreviousCrm()).toBeNull();
+  });
+});
+
 describe("global search tutorial entry", () => {
   it("finds the tutorial from onboarding-related terms", () => {
     const results = filterSearchPages("tutorial", "owner");
 
     expect(results.some((page) => page.path === "/tutorial")).toBe(true);
+  });
+
+  it("finds CRM source replay from onboarding-related terms", () => {
+    const results = filterSearchPages("crm", "owner");
+
+    expect(results.some((page) => page.path === "/onboarding/source")).toBe(true);
   });
 
   it("finds import onboarding replay from import-related terms", () => {

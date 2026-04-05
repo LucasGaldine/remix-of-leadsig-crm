@@ -5,6 +5,30 @@ import { toast } from 'sonner';
 
 export type AccountSettings = {
   daily_job_limit?: number | null;
+  auto_qualify_integration_leads?: boolean | null;
+  auto_qualify_webhook?: {
+    endpoint_url?: string;
+    auth_header_name?: string;
+    auth_header_value?: string;
+  } | null;
+  job_message_automation?: {
+    enabled?: boolean;
+    message_template?: string;
+    job_service_types?: string[];
+    trigger?: {
+      type?: "immediate" | "before_schedule_start" | "after_schedule_start";
+      offset_minutes?: number;
+    };
+    endpoint?: {
+      url?: string;
+      auth_header_name?: string;
+      auth_header_value?: string;
+    };
+    retry?: {
+      max_attempts?: number;
+      backoff_minutes?: number;
+    };
+  } | null;
   min_job_size?: Record<string, number> | null;
   service_areas?: Array<{
     location: string;
@@ -54,7 +78,7 @@ export function useAccountSettings() {
     onSuccess: (data) => {
       if (!currentAccount?.id) return;
       queryClient.setQueryData(['account-settings', currentAccount.id], data ?? {});
-      toast.success('Availability settings saved');
+      toast.success('Settings saved');
     },
     onError: (error: Error) => {
       toast.error(error.message);

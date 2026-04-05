@@ -18,6 +18,9 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
+import { normalizeVoiceEstimateParsedData } from "@/lib/voiceIntake";
+import type { VoiceEstimateParsedData } from "@/types/voiceIntake";
 
 interface LineItem {
   id: string;
@@ -44,6 +47,7 @@ export default function CreateEstimate() {
   const { user, currentAccount } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [jobsLoading, setJobsLoading] = useState(true);
+  const [showVoiceEstimateIntake, setShowVoiceEstimateIntake] = useState(false);
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState("");
@@ -152,6 +156,73 @@ export default function CreateEstimate() {
         return item;
       })
     );
+  };
+
+  const findJobIdByName = (jobName: string): string | null => {
+    const normalizedTarget = jobName.trim().toLowerCase();
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const exact = jobs.find((job) => (job.name || "").trim().toLowerCase() === normalizedTarget);
+    if (exact) {
+      return exact.id;
+    }
+
+    const partial = jobs.find((job) => {
+      const composite = `${job.name || ""} ${job.customer?.name || ""}`.trim().toLowerCase();
+      return composite.includes(normalizedTarget) || normalizedTarget.includes((job.name || "").trim().toLowerCase());
+    });
+
+    return partial?.id || null;
+  };
+
+  const applyVoiceEstimateIntake = (parsedData: VoiceEstimateParsedData) => {
+    const parsed = normalizeVoiceEstimateParsedData(parsedData);
+
+    if (parsed.jobName) {
+      const matchedJobId = findJobIdByName(parsed.jobName);
+      if (matchedJobId) {
+        setSelectedJobId(matchedJobId);
+      } else {
+        toast.error(`No existing job found for "${parsed.jobName}".`);
+      }
+    }
+
+    if (parsed.notes) {
+      setNotes(parsed.notes);
+    }
+
+    if (parsed.expiresAt) {
+      setExpiresAt(parsed.expiresAt);
+    }
+
+    if (parsed.taxRate !== undefined) {
+      setTaxRate(String(parsed.taxRate));
+    }
+
+    if (parsed.discount !== undefined) {
+      setDiscount(String(parsed.discount));
+    }
+
+    if (parsed.lineItems && parsed.lineItems.length > 0) {
+      setLineItems(parsed.lineItems.map((lineItem) => {
+        const quantity = lineItem.quantity && lineItem.quantity > 0 ? lineItem.quantity : 1;
+        const unitPrice = lineItem.unitPrice && lineItem.unitPrice > 0 ? lineItem.unitPrice : 0;
+
+        return {
+          id: crypto.randomUUID(),
+          name: lineItem.name || "",
+          description: lineItem.description || "",
+          quantity,
+          unit: lineItem.unit || "each",
+          unit_price: unitPrice,
+          total: quantity * unitPrice,
+        };
+      }));
+    }
+
+    setShowVoiceEstimateIntake(false);
   };
 
   const calculateTotals = () => {
@@ -309,52 +380,82 @@ export default function CreateEstimate() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Estimate Details</CardTitle>
+            <CardTitle>Estimate Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="job">
-                  Select Job <span className="text-red-500">*</span>
-                </Label>
-                <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                  <SelectTrigger id="job">
-                    <SelectValue placeholder="Choose a job" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {jobs.map((job) => (
-                      <SelectItem key={job.id} value={job.id}>
-                        {job.name ? `${job.name} - ${job.customer.name}` : job.customer.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-gray-500">
-                  Each job can only have one estimate
-                </p>
-              </div>
+              {!showVoiceEstimateIntake ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowVoiceEstimateIntake(true)}
+                  >
+                    Voice Estimate Intake
+                  </Button>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="expiresAt">Expiration Date</Label>
-                  <Input
-                    id="expiresAt"
-                    type="date"
-                    value={expiresAt}
-                    onChange={(e) => setExpiresAt(e.target.value)}
+                  <div className="space-y-2">
+                    <Label htmlFor="job">
+                      Select Job <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+                      <SelectTrigger id="job">
+                        <SelectValue placeholder="Choose a job" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {jobs.map((job) => (
+                          <SelectItem key={job.id} value={job.id}>
+                            {job.name ? `${job.name} - ${job.customer.name}` : job.customer.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-sm text-gray-500">
+                      Each job can only have one estimate
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="expiresAt">Expiration Date</Label>
+                      <Input
+                        id="expiresAt"
+                        type="date"
+                        value={expiresAt}
+                        onChange={(e) => setExpiresAt(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Notes</Label>
+                    <Textarea
+                      id="notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Additional notes for the customer..."
+                      className="min-h-24"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <VoiceIntakePanel
+                    entityType="estimate"
+                    title="Voice Estimate Intake"
+                    description="Dictate job + estimate details. Required fields will trigger follow-up questions before values are applied."
+                    transcriptPlaceholder="Example: Estimate for the Carter roof wash job, expires next Friday, add 2 line items: roof wash 1 each 900, gutter flush 1 each 250, notes include 30% deposit..."
+                    variant="plain"
+                    onApply={(parsed) => applyVoiceEstimateIntake(parsed as VoiceEstimateParsedData)}
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowVoiceEstimateIntake(false)}
+                  >
+                    Back to Manual Form
+                  </Button>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Additional notes for the customer..."
-                  className="min-h-24"
-                />
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -369,97 +470,95 @@ export default function CreateEstimate() {
             <CardContent>
               <div className="space-y-4">
                 {lineItems.map((item, index) => (
-                  <Card key={item.id} className="border-2">
-                    <CardContent className="pt-6">
-                      <div className="flex justify-between items-start mb-4">
-                        <h4 className="font-semibold text-gray-700">Item {index + 1}</h4>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeLineItem(item.id)}
-                          disabled={lineItems.length === 1}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
+                  <div key={item.id} className="rounded-lg border-2 border-border p-6 bg-background">
+                    <div className="flex justify-between items-start mb-4">
+                      <h4 className="font-semibold text-gray-700">Item {index + 1}</h4>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeLineItem(item.id)}
+                        disabled={lineItems.length === 1}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <Label>Item Name *</Label>
+                        <Input
+                          value={item.name}
+                          onChange={(e) => updateLineItem(item.id, "name", e.target.value)}
+                          placeholder="Labor, Materials, etc."
+                          required
+                        />
                       </div>
 
-                      <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <Label>Description</Label>
+                        <SpeechToTextTextarea
+                          value={item.description}
+                          onValueChange={(value) => updateLineItem(item.id, "description", value)}
+                          placeholder="Item description..."
+                          className="min-h-20"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-4">
                         <div className="space-y-2">
-                          <Label>Item Name *</Label>
+                          <Label>Quantity</Label>
                           <Input
-                            value={item.name}
-                            onChange={(e) => updateLineItem(item.id, "name", e.target.value)}
-                            placeholder="Labor, Materials, etc."
-                            required
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.quantity}
+                            onChange={(e) => updateLineItem(item.id, "quantity", parseFloat(e.target.value) || 0)}
                           />
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Description</Label>
-                          <SpeechToTextTextarea
-                            value={item.description}
-                            onValueChange={(value) => updateLineItem(item.id, "description", value)}
-                            placeholder="Item description..."
-                            className="min-h-20"
+                          <Label>Unit</Label>
+                          <Select
+                            value={item.unit}
+                            onValueChange={(value) => updateLineItem(item.id, "unit", value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="each">Each</SelectItem>
+                              <SelectItem value="hour">Hour</SelectItem>
+                              <SelectItem value="sq ft">Sq Ft</SelectItem>
+                              <SelectItem value="linear ft">Linear Ft</SelectItem>
+                              <SelectItem value="day">Day</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Unit Price</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unit_price}
+                            onChange={(e) => updateLineItem(item.id, "unit_price", parseFloat(e.target.value) || 0)}
                           />
                         </div>
 
-                        <div className="grid grid-cols-4 gap-4">
-                          <div className="space-y-2">
-                            <Label>Quantity</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={item.quantity}
-                              onChange={(e) => updateLineItem(item.id, "quantity", parseFloat(e.target.value) || 0)}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label>Unit</Label>
-                            <Select
-                              value={item.unit}
-                              onValueChange={(value) => updateLineItem(item.id, "unit", value)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="each">Each</SelectItem>
-                                <SelectItem value="hour">Hour</SelectItem>
-                                <SelectItem value="sq ft">Sq Ft</SelectItem>
-                                <SelectItem value="linear ft">Linear Ft</SelectItem>
-                                <SelectItem value="day">Day</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label>Unit Price</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={item.unit_price}
-                              onChange={(e) => updateLineItem(item.id, "unit_price", parseFloat(e.target.value) || 0)}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label>Total</Label>
-                            <Input
-                              type="text"
-                              value={`$${item.total.toFixed(2)}`}
-                              disabled
-                              className="bg-gray-50"
-                            />
-                          </div>
+                        <div className="space-y-2">
+                          <Label>Total</Label>
+                          <Input
+                            type="text"
+                            value={`$${item.total.toFixed(2)}`}
+                            disabled
+                            className="bg-gray-50"
+                          />
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>

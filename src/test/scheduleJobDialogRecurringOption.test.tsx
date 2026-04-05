@@ -38,6 +38,9 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: new Set<string>() }),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(),
+  }),
 }));
 
 vi.mock("@/components/ui/calendar", () => ({

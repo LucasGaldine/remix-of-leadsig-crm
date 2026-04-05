@@ -41,10 +41,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { isMissingRelationError } from "@/lib/supabaseErrors";
 
 interface AccountMember {
   id: string;
@@ -54,6 +56,14 @@ interface AccountMember {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+}
+
+interface MockCrewProfile {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  role: "crew_lead" | "crew_member";
+  created_at: string;
 }
 
 const roleLabels: Record<AppRole, string> = {
@@ -80,6 +90,11 @@ export default function SettingsCrewManagement() {
   const [memberToRemove, setMemberToRemove] = useState<AccountMember | null>(null);
   const [memberToEdit, setMemberToEdit] = useState<AccountMember | null>(null);
   const [newRole, setNewRole] = useState<AppRole | "">("");
+  const [mockProfileToEdit, setMockProfileToEdit] = useState<MockCrewProfile | { id?: string } | null>(null);
+  const [mockProfileToRemove, setMockProfileToRemove] = useState<MockCrewProfile | null>(null);
+  const [mockProfileName, setMockProfileName] = useState("");
+  const [mockProfilePhone, setMockProfilePhone] = useState("");
+  const [mockProfileRole, setMockProfileRole] = useState<"crew_lead" | "crew_member">("crew_member");
 
   const { data: members, isLoading } = useQuery({
     queryKey: ['account-members', currentAccount?.id],
@@ -140,6 +155,92 @@ export default function SettingsCrewManagement() {
     },
   });
 
+  const { data: mockProfiles, isLoading: isMockProfilesLoading } = useQuery({
+    queryKey: ['mock-crew-profiles', currentAccount?.id],
+    queryFn: async () => {
+      if (!currentAccount?.id) return [];
+
+      const { data, error } = await supabase
+        .from("mock_crew_profiles")
+        .select("id, full_name, phone, role, created_at")
+        .eq("account_id", currentAccount.id)
+        .order("created_at", { ascending: false });
+
+      const tableMissing = isMissingRelationError(error, "mock_crew_profiles");
+      if (error && !tableMissing) throw error;
+
+      return (data || []) as MockCrewProfile[];
+    },
+    enabled: !!currentAccount?.id,
+  });
+
+  const upsertMockProfileMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentAccount?.id) throw new Error("Missing company account");
+      if (!mockProfileName.trim()) throw new Error("Name is required");
+
+      if (mockProfileToEdit?.id) {
+        const { error } = await supabase
+          .from("mock_crew_profiles")
+          .update({
+            full_name: mockProfileName.trim(),
+            phone: mockProfilePhone.trim() || null,
+            role: mockProfileRole,
+          })
+          .eq("id", mockProfileToEdit.id)
+          .eq("account_id", currentAccount.id);
+        if (error) throw error;
+        return;
+      }
+
+      const { error } = await supabase
+        .from("mock_crew_profiles")
+        .insert({
+          account_id: currentAccount.id,
+          full_name: mockProfileName.trim(),
+          phone: mockProfilePhone.trim() || null,
+          role: mockProfileRole,
+        });
+      if (error) {
+        if (isMissingRelationError(error, "mock_crew_profiles")) {
+          throw new Error("Mock crew profiles are unavailable until the latest database migration is applied.");
+        }
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mock-crew-profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      toast.success(mockProfileToEdit ? "Mock crew profile updated" : "Mock crew profile added");
+      setMockProfileToEdit(null);
+      setMockProfileName("");
+      setMockProfilePhone("");
+      setMockProfileRole("crew_member");
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to save mock crew profile: " + error.message);
+    },
+  });
+
+  const removeMockProfileMutation = useMutation({
+    mutationFn: async (mockProfileId: string) => {
+      const { error } = await supabase
+        .from("mock_crew_profiles")
+        .delete()
+        .eq("id", mockProfileId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mock-crew-profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      toast.success("Mock crew profile removed");
+      setMockProfileToRemove(null);
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to remove mock crew profile: " + error.message);
+    },
+  });
+
   const updateRoleMutation = useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: AppRole }) => {
       const { error } = await supabase
@@ -187,6 +288,29 @@ export default function SettingsCrewManagement() {
       setMemberToEdit(null);
       setNewRole("");
     }
+  };
+
+  const openCreateMockProfile = () => {
+    setMockProfileToEdit({});
+    setMockProfileName("");
+    setMockProfilePhone("");
+    setMockProfileRole("crew_member");
+  };
+
+  const openEditMockProfile = (profile: MockCrewProfile) => {
+    setMockProfileToEdit(profile);
+    setMockProfileName(profile.full_name || "");
+    setMockProfilePhone(profile.phone || "");
+    setMockProfileRole(profile.role || "crew_member");
+  };
+
+  const handleSaveMockProfile = () => {
+    upsertMockProfileMutation.mutate();
+  };
+
+  const handleRemoveMockProfile = () => {
+    if (!mockProfileToRemove) return;
+    removeMockProfileMutation.mutate(mockProfileToRemove.id);
   };
 
   const canManageMembers = currentAccount && user;
@@ -252,7 +376,7 @@ export default function SettingsCrewManagement() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Team Members ({members?.length || 0})</CardTitle>
+            <CardTitle>Signed Team Members ({members?.length || 0})</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -336,6 +460,92 @@ export default function SettingsCrewManagement() {
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
                             )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Mock Crew Profiles ({mockProfiles?.length || 0})</CardTitle>
+            <Button onClick={openCreateMockProfile} size="sm">
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Mock Profile
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {isMockProfilesLoading ? (
+              <div className="space-y-3">
+                {[1, 2].map((i) => (
+                  <Skeleton key={i} className="h-14 w-full" />
+                ))}
+              </div>
+            ) : !mockProfiles || mockProfiles.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+                <p className="text-muted-foreground">No mock crew profiles yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Add unsigned crew so you can assign them to jobs now.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {mockProfiles.map((profile) => (
+                      <TableRow key={profile.id}>
+                        <TableCell className="font-medium">{profile.full_name}</TableCell>
+                        <TableCell>
+                          {profile.phone ? (
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-4 w-4 text-muted-foreground" />
+                              {profile.phone}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${roleBadgeColors[profile.role]} text-white`}>
+                            {roleLabels[profile.role]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(profile.created_at).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditMockProfile(profile)}
+                              title="Edit profile"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setMockProfileToRemove(profile)}
+                              title="Remove profile"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -448,6 +658,101 @@ export default function SettingsCrewManagement() {
               className="bg-destructive hover:bg-destructive/90"
             >
               Remove Member
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={Boolean(mockProfileToEdit)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMockProfileToEdit(null);
+            setMockProfileName("");
+            setMockProfilePhone("");
+            setMockProfileRole("crew_member");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{mockProfileToEdit?.id ? "Edit Mock Crew Profile" : "Add Mock Crew Profile"}</DialogTitle>
+            <DialogDescription>
+              Use mock profiles to assign unsigned crew members to job schedules.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="mock-profile-name">Name</Label>
+              <Input
+                id="mock-profile-name"
+                value={mockProfileName}
+                onChange={(event) => setMockProfileName(event.target.value)}
+                placeholder="e.g. Alex - Seasonal Crew"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mock-profile-phone">Phone (optional)</Label>
+              <Input
+                id="mock-profile-phone"
+                value={mockProfilePhone}
+                onChange={(event) => setMockProfilePhone(event.target.value)}
+                placeholder="(555) 123-4567"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mock-profile-role">Role</Label>
+              <Select
+                value={mockProfileRole}
+                onValueChange={(value) => setMockProfileRole(value as "crew_lead" | "crew_member")}
+              >
+                <SelectTrigger id="mock-profile-role">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="crew_lead">Crew Lead</SelectItem>
+                  <SelectItem value="crew_member">Crew Member</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMockProfileToEdit(null);
+                setMockProfileName("");
+                setMockProfilePhone("");
+                setMockProfileRole("crew_member");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveMockProfile}
+              disabled={!mockProfileName.trim() || upsertMockProfileMutation.isPending}
+            >
+              {upsertMockProfileMutation.isPending ? "Saving..." : "Save Profile"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!mockProfileToRemove} onOpenChange={(open) => !open && setMockProfileToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Mock Crew Profile</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove {mockProfileToRemove?.full_name}? Existing mock assignments for this profile will also be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveMockProfile}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Remove Profile
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -35,4 +35,16 @@ describe("getTeamMemberDisplayName", () => {
       }),
     ).toBe("Unsigned crew member");
   });
+
+  it("uses mock profile name when the user has no account profile", () => {
+    expect(
+      getTeamMemberDisplayName({
+        user_id: "mock:1",
+        full_name: null,
+        email: null,
+        role: "crew_member",
+        mock_profile_name: "Seasonal Helper",
+      }),
+    ).toBe("Seasonal Helper");
+  });
 });

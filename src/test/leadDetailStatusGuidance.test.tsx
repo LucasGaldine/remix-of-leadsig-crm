@@ -24,7 +24,22 @@ const leadRecord = {
   customer: null,
 };
 
-const renderLeadDetail = (leadOverrides: Partial<typeof leadRecord> = {}) => {
+type InteractionRecord = {
+  id: string;
+  lead_id: string;
+  type: "call" | "text" | "note" | "status_change" | "booking" | "system";
+  direction: "inbound" | "outbound" | "na";
+  summary: string | null;
+  body: string | null;
+  metadata: Record<string, unknown> | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+const renderLeadDetail = (
+  leadOverrides: Partial<typeof leadRecord> = {},
+  interactions: InteractionRecord[] = [],
+) => {
   const testLeadRecord = { ...leadRecord, ...leadOverrides };
 
   vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
@@ -45,7 +60,7 @@ const renderLeadDetail = (leadOverrides: Partial<typeof leadRecord> = {}) => {
       return {
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
-            order: vi.fn().mockResolvedValue({ data: [], error: null }),
+            order: vi.fn().mockResolvedValue({ data: interactions, error: null }),
           })),
         })),
         insert: interactionsInsertMock,
@@ -220,6 +235,64 @@ describe("LeadDetail status guidance", () => {
     fireEvent.click(callLink);
     fireEvent.click(textLink);
     expect(interactionsInsertMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a view-post action for posted interactions with a valid post link", async () => {
+    renderLeadDetail(
+      {},
+      [
+        {
+          id: "interaction_1",
+          lead_id: "lead_1",
+          type: "text",
+          direction: "outbound",
+          summary: "Posted to social",
+          body: "Posted via automation",
+          metadata: {
+            platform: "linkedin",
+            post_url: "https://www.linkedin.com/posts/example-post",
+          },
+          created_by: null,
+          created_at: "2026-03-20T00:00:00.000Z",
+        },
+      ],
+    );
+
+    await screen.findByText("Taylor Smith");
+
+    const viewPostLink = screen.getByRole("link", { name: /view on linkedin/i });
+    expect(viewPostLink).toHaveAttribute("href", "https://www.linkedin.com/posts/example-post");
+    expect(viewPostLink).toHaveAttribute("target", "_blank");
+  });
+
+  it("does not visually display checklist lines for posted items in notes", async () => {
+    renderLeadDetail(
+      {},
+      [
+        {
+          id: "interaction_2",
+          lead_id: "lead_1",
+          type: "note",
+          direction: "na",
+          summary: "Posted update",
+          body: "Posted via automation\n- [x] Checklist item one\n- [ ] Checklist item two\nFinal caption",
+          metadata: {
+            platform: "linkedin",
+            post_url: "https://www.linkedin.com/posts/example-post",
+          },
+          created_by: null,
+          created_at: "2026-03-20T00:00:00.000Z",
+        },
+      ],
+    );
+
+    await screen.findByText("Taylor Smith");
+    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+
+    expect(screen.getByText(/posted via automation/i)).toBeInTheDocument();
+    expect(screen.getByText(/final caption/i)).toBeInTheDocument();
+    expect(screen.queryByText(/checklist item one/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/checklist item two/i)).not.toBeInTheDocument();
   });
 
   it("uses a navigate quick action that opens maps for the lead address", async () => {

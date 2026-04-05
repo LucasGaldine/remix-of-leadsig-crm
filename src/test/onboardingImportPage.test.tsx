@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import OnboardingImport from "@/pages/OnboardingImport";
-import { ONBOARDING_IMPORT_STORAGE_KEY } from "@/lib/onboarding";
+import { ONBOARDING_IMPORT_STORAGE_KEY, ONBOARDING_PREVIOUS_CRM_STORAGE_KEY } from "@/lib/onboarding";
 
 const navigateMock = vi.fn();
 
@@ -60,7 +60,8 @@ vi.mock("@/components/jobs/JobCSVImportModal", () => ({
 describe("OnboardingImport page", () => {
   beforeEach(() => {
     navigateMock.mockReset();
-    localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY);
   });
 
   it("supports skipping imports and continues to tutorial", () => {
@@ -68,7 +69,7 @@ describe("OnboardingImport page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Skip for now/i }));
 
-    expect(localStorage.getItem(ONBOARDING_IMPORT_STORAGE_KEY)).toBe("completed");
+    expect(window.localStorage.getItem(ONBOARDING_IMPORT_STORAGE_KEY)).toBe("completed");
     expect(navigateMock).toHaveBeenCalledWith("/tutorial");
   });
 
@@ -80,6 +81,24 @@ describe("OnboardingImport page", () => {
     expect(screen.getByRole("heading", { name: /Import leads/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Import clients/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Import jobs/i })).toBeInTheDocument();
+  });
+
+  it("does not show CRM comparison copy on the import slide", () => {
+    window.localStorage.setItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY, "Jobber");
+
+    render(<OnboardingImport />);
+
+    expect(screen.queryByText(/LeadSig is already outrunning Jobber/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Import now/i }));
+
+    expect(screen.queryByText(/LeadSig is already outrunning Jobber/i)).not.toBeInTheDocument();
+  });
+
+  it("shows step indicator for the second onboarding step", () => {
+    render(<OnboardingImport />);
+
+    expect(screen.getByText(/^Step 2 of 2$/i)).toBeInTheDocument();
   });
 
   it("opens each import modal from the section actions", () => {

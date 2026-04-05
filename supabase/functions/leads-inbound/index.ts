@@ -1,4 +1,17 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  buildIntegrationLeadStatus,
+  evaluateAutoQualifyWebhook,
+  getIntegrationAutomationSettings,
+} from "../_shared/integration-lead-automation.ts";
+import {
+  buildFallbackInteractionPayload,
+  buildFallbackLeadInsertValues,
+} from "../_shared/lead-ingestion-fallback.ts";
+import {
+  isRelevanceAiTimeoutError,
+  parseLeadWithRelevanceAi,
+} from "../_shared/relevance-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -219,56 +232,14 @@ function detectSourceAndParse(rawPayload: Record<string, unknown>): { source: st
   return { source: "unknown", parsed: null };
 }
 
-const RELEVANCE_AI_STUDIO_ID = "d50e7c9d-7933-47c5-b284-9295b3faf020";
-const RELEVANCE_AI_PROJECT_ID = "a8f61433-8567-40b3-a274-8c65d6d9a062";
-
 async function parseLeadWithAI(rawPayload: unknown): Promise<ParsedLead> {
   const apiKey = Deno.env.get("RELEVANCE_AI_API_KEY");
   if (!apiKey) {
     throw new Error("RELEVANCE_AI_API_KEY not configured");
   }
 
-  const endpoint = `https://api-bcbe5a.stack.tryrelevance.com/latest/studios/${RELEVANCE_AI_STUDIO_ID}/trigger_webhook?project=${RELEVANCE_AI_PROJECT_ID}`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
-
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": apiKey,
-      },
-      body: JSON.stringify({ lead_data: rawPayload }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`AI API returned ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.answer) {
-      try {
-        return JSON.parse(result.answer);
-      } catch {
-        throw new Error("AI returned invalid JSON format");
-      }
-    }
-
-    return result.output || result;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Relevance AI API timeout after 45 seconds");
-    }
-    throw error;
-  }
+  const { data } = await parseLeadWithRelevanceAi<ParsedLead>(rawPayload, apiKey);
+  return data;
 }
 
 async function processLeadInBackground(
@@ -279,51 +250,77 @@ async function processLeadInBackground(
   supabaseServiceKey: string
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const automationSettings = await getIntegrationAutomationSettings(supabase, accountId);
+  const autoQualify = automationSettings.autoQualifyEnabled;
 
   const { source, parsed: directParsed } = detectSourceAndParse(rawPayload);
   console.log(`leads-inbound: Source detected as '${source}', direct parse result:`, directParsed ? "success" : "null");
 
   let leadData: ParsedLead | null = directParsed;
+  let aiFallbackReason: "timeout" | "error" | null = null;
 
   if (!leadData) {
     try {
       leadData = await parseLeadWithAI(rawPayload);
     } catch (aiError) {
+      aiFallbackReason = isRelevanceAiTimeoutError(aiError) ? "timeout" : "error";
+      if (aiFallbackReason === "timeout") {
+        console.warn("leads-inbound: Auto-Qualify endpoint timed out, inserting lead via fallback path", {
+          accountId,
+          source,
+        });
+      }
       console.error("leads-inbound: AI parsing failed", aiError);
     }
   }
 
+  let qualificationDecision = {
+    qualified: autoQualify,
+    reason: autoQualify ? "Auto-qualify enabled" : "Auto-qualify disabled",
+    metadata: { webhook_used: false },
+  };
+
+  if (autoQualify && automationSettings.webhookConfig && leadData) {
+    qualificationDecision = await evaluateAutoQualifyWebhook({
+      config: automationSettings.webhookConfig,
+      accountId,
+      source,
+      leadData: leadData as Record<string, unknown>,
+      rawPayload,
+    });
+  }
+
   if (!leadData || (!leadData.full_name && !leadData.phone_number && !leadData.email)) {
+    const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
+
     const { data: lead } = await supabase
       .from("leads")
-      .insert({
-        name: leadData?.full_name || "Needs Review",
-        phone: leadData?.phone_number || null,
-        email: leadData?.email || null,
+      .insert(buildFallbackLeadInsertValues({
+        leadData,
         source,
-        external_payload: rawPayload,
-        notes: leadData?.notes || "Could not fully parse lead data. Please review raw payload.",
-        status: "new",
-        created_by: userId,
-        account_id: accountId,
-        approval_status: "pending",
-        submitted_at: new Date().toISOString(),
-      })
+        rawPayload,
+        leadStatus,
+        userId,
+        accountId,
+      }))
       .select()
       .maybeSingle();
 
     if (lead) {
-      await supabase.from("interactions").insert({
-        lead_id: lead.id,
-        type: "system",
-        direction: "na",
-        summary: "Lead created with incomplete data - needs review",
-        metadata: { source, parsing_method: directParsed ? "direct" : "failed" },
-      });
+      await supabase.from("interactions").insert(
+        buildFallbackInteractionPayload({
+          leadId: lead.id,
+          autoQualify: qualificationDecision.qualified,
+          source,
+          directParsed: Boolean(directParsed),
+          aiFallbackReason,
+        }),
+      );
     }
     return;
   }
 
+  const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
   const { data: lead, error: leadError } = await supabase
     .from("leads")
     .insert({
@@ -338,11 +335,9 @@ async function processLeadInBackground(
       source,
       external_payload: rawPayload,
       notes: leadData.notes || null,
-      status: "new",
+      ...leadStatus,
       created_by: userId,
       account_id: accountId,
-      approval_status: "pending",
-      submitted_at: new Date().toISOString(),
     })
     .select()
     .maybeSingle();
@@ -357,8 +352,17 @@ async function processLeadInBackground(
       lead_id: lead.id,
       type: "system",
       direction: "na",
-      summary: `Lead created via ${source} (parsed directly)`,
-      metadata: { source, parsing_method: directParsed ? "direct" : "ai" },
+      summary: autoQualify
+        ? qualificationDecision.qualified
+          ? `Lead created via ${source} and auto-qualified`
+          : `Lead created via ${source} and marked not qualified by endpoint`
+        : `Lead created via ${source} (parsed directly)`,
+      metadata: {
+        source,
+        parsing_method: directParsed ? "direct" : "ai",
+        auto_qualify_reason: qualificationDecision.reason,
+        ...qualificationDecision.metadata,
+      },
     });
   }
 

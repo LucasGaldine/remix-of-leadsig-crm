@@ -56,7 +56,8 @@ interface AuthContextType {
     fullName: string,
     role: AppRole,
     companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
-    phone?: string
+    phone?: string,
+    affiliateReferralCode?: string | null
   ) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
@@ -128,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const storedAccountId = localStorage.getItem('currentAccountId');
       const accountToSet = storedAccountId
-        ? formattedAccounts.find(a => a.account_id === storedAccountId)
+        ? formattedAccounts.find(a => a.account_id === storedAccountId) ?? formattedAccounts[0]
         : formattedAccounts[0];
 
       if (accountToSet) {
@@ -136,7 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole(accountToSet.role);
         localStorage.setItem('currentAccountId', accountToSet.account_id);
       }
+      return;
     }
+
+    setAccounts([]);
+    setCurrentAccount(null);
+    setRole(null);
+    localStorage.removeItem('currentAccountId');
   };
 
   useEffect(() => {
@@ -189,7 +196,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fullName: string,
     selectedRole: AppRole,
     companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
-    phone?: string
+    phone?: string,
+    affiliateReferralCode?: string | null
   ) => {
     try {
       let targetAccountId: string | null = null;
@@ -220,6 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             company_phone: companyInfo.companyPhone || null,
             company_address: companyInfo.companyAddress || null,
             target_account_id: targetAccountId,
+            affiliate_referral_code: affiliateReferralCode || null,
           },
         },
       });

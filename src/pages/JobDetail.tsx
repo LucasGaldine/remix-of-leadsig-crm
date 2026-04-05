@@ -28,7 +28,7 @@ import { useBusinessHours } from "@/hooks/useBusinessHours";
 import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
-import { DEFAULT_REVIEW_REQUEST_CHECKLIST_LABEL, shouldUsePortalFallback } from "@/lib/jobCompletionReview";
+import { isTwilioNotConfiguredErrorMessage, shouldUsePortalFallback } from "@/lib/jobCompletionReview";
 import { PhotoSection } from "@/components/photos/PhotoSection";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
 import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, useRecurringJobEstimate } from "@/hooks/useRecurringJobs";
@@ -46,6 +46,7 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallback";
+import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { Separator } from "@/components/ui/separator";
@@ -546,8 +547,9 @@ export default function JobDetail() {
     const portalLink = await resolveCustomerPortalLink();
 
     if (portalFallback) {
-      toast.success("Job completed. Copy the client portal link to request a review.");
       setPortalLink(portalLink);
+      setPortalDialogOpen(true);
+      toast.success("Job completed. Share the client portal link to request a review.");
       return;
     }
 
@@ -569,8 +571,16 @@ export default function JobDetail() {
     });
 
     const result = await response.json().catch(() => null);
-    if (!response.ok || result?.error) {
-      throw new Error(result?.error || "Failed to send review request");
+    const errorMessage = String(result?.error || "");
+    if (!response.ok || errorMessage) {
+      if (isTwilioNotConfiguredErrorMessage(errorMessage)) {
+        setIsTwilioConfigured(false);
+        setPortalLink(portalLink);
+        setPortalDialogOpen(true);
+        toast.success("Job completed. Share the client portal link to request a review.");
+        return;
+      }
+      throw new Error(errorMessage || "Failed to send review request");
     }
 
     toast.success("Review request sent to the client");
@@ -633,9 +643,17 @@ export default function JobDetail() {
     return jobAssignments.filter((assignment) => assignment.job_schedule_id === scheduleId);
   };
 
+  const getAssignmentAssigneeId = (assignment: { user_id: string | null; mock_crew_profile_id?: string | null }) => {
+    if (assignment.user_id) return assignment.user_id;
+    if (assignment.mock_crew_profile_id) return buildMockCrewAssigneeId(assignment.mock_crew_profile_id);
+    return "";
+  };
+
   const openEditCrewDialog = (scheduleId: string) => {
     const schedule = schedules.find((item) => item.id === scheduleId);
-    const assignedUserIds = getScheduleAssignments(scheduleId).map((assignment) => assignment.user_id);
+    const assignedUserIds = getScheduleAssignments(scheduleId)
+      .map((assignment) => getAssignmentAssigneeId(assignment))
+      .filter(Boolean);
     setEditingCrewScheduleId(scheduleId);
     setEditingCrewUserIds([...new Set(assignedUserIds)]);
     setEditingScheduleDate(schedule?.scheduled_date || "");
@@ -688,10 +706,10 @@ export default function JobDetail() {
     }
 
     const currentAssignments = getScheduleAssignments(editingCrewScheduleId);
-    const currentUserIds = [...new Set(currentAssignments.map((assignment) => assignment.user_id))];
+    const currentUserIds = [...new Set(currentAssignments.map((assignment) => getAssignmentAssigneeId(assignment)).filter(Boolean))];
     const usersToAdd = editingCrewUserIds.filter((userId) => !currentUserIds.includes(userId));
     const assignmentIdsToRemove = currentAssignments
-      .filter((assignment) => !editingCrewUserIds.includes(assignment.user_id))
+      .filter((assignment) => !editingCrewUserIds.includes(getAssignmentAssigneeId(assignment)))
       .map((assignment) => assignment.id);
     const crewChanged = usersToAdd.length > 0 || assignmentIdsToRemove.length > 0;
     const currentTimeStart = currentSchedule.scheduled_time_start || "";
@@ -743,11 +761,21 @@ export default function JobDetail() {
       }
 
       for (const userId of usersToAdd) {
-        const { data: hasOverlap, error: overlapError } = await supabase.rpc("check_assignment_overlap", {
-          p_user_id: userId,
-          p_schedule_id: editingCrewScheduleId,
-          p_account_id: currentAccount.id,
-        });
+        const parsed = parseCrewAssigneeId(userId);
+        const overlapFn = parsed.type === "user" ? "check_assignment_overlap" : "check_mock_assignment_overlap";
+        const overlapArgs = parsed.type === "user"
+          ? {
+              p_user_id: parsed.userId,
+              p_schedule_id: editingCrewScheduleId,
+              p_account_id: currentAccount.id,
+            }
+          : {
+              p_mock_profile_id: parsed.mockProfileId,
+              p_schedule_id: editingCrewScheduleId,
+              p_account_id: currentAccount.id,
+            };
+
+        const { data: hasOverlap, error: overlapError } = await supabase.rpc(overlapFn, overlapArgs as any);
 
         if (overlapError) throw overlapError;
         if (hasOverlap) {
@@ -770,13 +798,17 @@ export default function JobDetail() {
         const { error: addError } = await supabase
           .from("job_assignments")
           .insert(
-            usersToAdd.map((userId) => ({
-              lead_id: id,
-              user_id: userId,
-              job_schedule_id: editingCrewScheduleId,
-              account_id: currentAccount.id,
-              assigned_by: user.id,
-            })),
+            usersToAdd.map((userId) => {
+              const parsed = parseCrewAssigneeId(userId);
+              return {
+                lead_id: id,
+                user_id: parsed.type === "user" ? parsed.userId : null,
+                mock_crew_profile_id: parsed.type === "mock" ? parsed.mockProfileId : null,
+                job_schedule_id: editingCrewScheduleId,
+                account_id: currentAccount.id,
+                assigned_by: user.id,
+              };
+            }),
           );
 
         if (addError) throw addError;
@@ -790,8 +822,15 @@ export default function JobDetail() {
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
 
       if (jobAny.recurring_job_id && crewChanged) {
-        setPendingCrewUserIds(editingCrewUserIds);
-        setCrewSavePromptOpen(true);
+        const realCrewIds = editingCrewUserIds
+          .map((assigneeId) => parseCrewAssigneeId(assigneeId))
+          .filter((assignee) => assignee.type === "user" && assignee.userId)
+          .map((assignee) => assignee.userId as string);
+
+        if (realCrewIds.length > 0) {
+          setPendingCrewUserIds(realCrewIds);
+          setCrewSavePromptOpen(true);
+        }
       }
 
       if (crewChanged && scheduleChanged) {
@@ -1561,7 +1600,7 @@ export default function JobDetail() {
                 <div className="flex gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    log your hours
+                    1. log your hours
                   </p>
                 </div>
                 <JobTimeTracker
@@ -1578,7 +1617,7 @@ export default function JobDetail() {
                 <div className="flex gap-2">
                   <CheckSquare className="h-4 w-4 text-muted-foreground" />
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    checklist items
+                    2. checklist items
                   </p>
                 </div>
                 <JobChecklist
@@ -1591,6 +1630,7 @@ export default function JobDetail() {
                   isManager={isManager()}
                   hasBeforePhotos={hasBeforePhotos}
                   embedded
+                  onGoToDetailsTab={() => setActiveTab("details")}
                   onMarkComplete={async () => {
                     if (job?.is_estimate_visit) {
                       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1624,19 +1664,7 @@ export default function JobDetail() {
                       }
 
                       try {
-                        const { data: checklistItems } = await supabase
-                          .from("job_checklist_items")
-                          .select("label")
-                          .eq("job_id", id);
-
-                        const shouldRequestReview = (checklistItems || []).some(
-                          (item: { label: string | null }) =>
-                            item.label?.trim().toLowerCase() === DEFAULT_REVIEW_REQUEST_CHECKLIST_LABEL.toLowerCase(),
-                        );
-
-                        if (shouldRequestReview) {
-                          await sendCompletionReviewRequest();
-                        }
+                        await sendCompletionReviewRequest();
                       } catch (reviewError) {
                         console.error("Failed to send completion review request:", reviewError);
                         toast.error("Job completed, but the review request could not be sent automatically.");

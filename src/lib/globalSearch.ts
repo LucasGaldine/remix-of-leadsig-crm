@@ -74,6 +74,13 @@ export const searchPages: SearchPage[] = [
     keywords: ["tutorial", "onboarding", "walkthrough", "guide", "help", "training"],
   },
   {
+    name: "Replay CRM Source Setup",
+    path: "/onboarding/source",
+    icon: "book-open",
+    description: "Run the CRM source onboarding step again",
+    keywords: ["crm", "source", "onboarding", "setup", "migration", "switch", "replay"],
+  },
+  {
     name: "Replay Import Setup",
     path: "/onboarding/import",
     icon: "book-open",

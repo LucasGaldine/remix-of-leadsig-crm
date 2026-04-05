@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy } from "lucide-react";
+import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy, ExternalLink } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -38,6 +38,7 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { parseMentionsForDisplay, parseMentionsToHTML } from "@/lib/mentionParser";
 import { formatCurrency } from "@/lib/formatter";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
+import { getInteractionPostLabel, getInteractionPostUrl } from "@/lib/interactionPostLink";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
 type InteractionType = Database["public"]["Enums"]["interaction_type"];
@@ -86,6 +87,34 @@ interface Qualification {
   fit_score?: number;
   disqualify_reason: DisqualifyReason | null;
   notes: string | null;
+}
+
+const CHECKLIST_MARKDOWN_LINE_REGEX = /^\s*[-*]\s+\[(?:\s|x|X)\]\s+/;
+
+function stripChecklistMarkdownLines(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
+    .split("\n")
+    .filter((line) => !CHECKLIST_MARKDOWN_LINE_REGEX.test(line))
+    .join("\n")
+    .trim();
+}
+
+function getInteractionDisplayBody(interaction: Interaction): string {
+  const rawText = interaction.body || interaction.summary || "";
+  const postUrl = getInteractionPostUrl(
+    interaction.metadata,
+    interaction.body,
+    interaction.summary,
+  );
+
+  // Posted interactions can include automation checklist markdown that should stay hidden in the UI.
+  if (!postUrl) return rawText;
+
+  const sanitized = stripChecklistMarkdownLines(rawText);
+  if (sanitized) return sanitized;
+
+  return stripChecklistMarkdownLines(interaction.summary) || "";
 }
 
 const PIPELINE_STAGES: { value: string; label: string; color: string, bg_color: string}[] = [
@@ -1493,7 +1522,7 @@ export default function LeadDetail() {
                 {interactions.filter((i) => i.type === "note").map((interaction) => (
                   <div key={interaction.id} className="rounded-lg border border-border p-4">
                     <p className="text-3">
-                      {parseMentionsForDisplay(interaction.body || interaction.summary || "").map((part, idx) =>
+                      {parseMentionsForDisplay(getInteractionDisplayBody(interaction)).map((part, idx) =>
                         part.type === "mention" ? (
                           <span key={idx} className="font-bold text-primary">@{part.content}</span>
                         ) : (
@@ -1557,6 +1586,26 @@ export default function LeadDetail() {
                         </p>
                         <p className="text-xs text-muted-foreground">{formatDate(interaction.created_at)}</p>
                       </div>
+                      {(() => {
+                        const postUrl = getInteractionPostUrl(
+                          interaction.metadata,
+                          interaction.body,
+                          interaction.summary,
+                        );
+
+                        if (!postUrl) return null;
+
+                        const postLabel = getInteractionPostLabel(interaction.metadata, postUrl);
+
+                        return (
+                          <Button asChild size="sm" variant="outline" className="h-8 shrink-0 px-2 text-xs">
+                            <a href={postUrl} target="_blank" rel="noopener noreferrer">
+                              {postLabel}
+                              <ExternalLink className="ml-1 h-3 w-3" />
+                            </a>
+                          </Button>
+                        );
+                      })()}
                     </div>
                   ))
                 )}

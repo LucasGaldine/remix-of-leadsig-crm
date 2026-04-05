@@ -256,4 +256,58 @@ input[type="number"] {
       opacity: 0;
     }
   }
+
+  .crm-race-bar {
+    height: 0;
+    transform-origin: bottom center;
+  }
+
+  .crm-race-bar--leadsig {
+    animation: leadsig-accelerate 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .crm-race-bar--previous {
+    animation: previous-crm-stall 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .crm-win-animation {
+    animation: crm-animation-reveal 320ms ease-out;
+  }
+
+  @keyframes leadsig-accelerate {
+    from {
+      height: 18%;
+    }
+    to {
+      height: 96%;
+    }
+  }
+
+  @keyframes previous-crm-stall {
+    from {
+      height: 74%;
+    }
+    to {
+      height: 61%;
+    }
+  }
+
+  @keyframes crm-animation-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+.crm-race-bar--leadsig {
+  height: 96%;
+}
+
+.crm-race-bar--previous {
+  height: 61%;
 }

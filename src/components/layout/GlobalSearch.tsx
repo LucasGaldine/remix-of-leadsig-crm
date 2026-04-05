@@ -51,7 +51,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   };
 
   const handleSelect = (path: string) => {
-    navigate(path === "/tutorial" || path === "/onboarding/import" ? `${path}?source=search` : path);
+    navigate(path === "/tutorial" || path === "/onboarding/source" || path === "/onboarding/import" ? `${path}?source=search` : path);
     onOpenChange(false);
     setQuery("");
   };

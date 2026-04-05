@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.stripe-manage-subscription]
 verify_jwt = false
+
+[functions.voice-intake-parser]
+verify_jwt = false
