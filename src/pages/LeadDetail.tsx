@@ -1542,16 +1542,13 @@ export default function LeadDetail() {
           <div className="space-y-4">
             <div className="space-y-4">
               {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
-
-                <Button size="lg" variant="outline" className="w-full" onClick={() => setLineItemsDialogOpen(true)}>
-
-                      <DollarSign className="h-4 w-4"/>
-
-                      Build Estimate
-
-                </Button>
-
-             
+                <div className="rounded-lg border border-dashed border-border bg-card p-4 space-y-3">
+                  <p className="text-sm text-muted-foreground">No estimate available</p>
+                  <Button size="lg" variant="outline" className="w-full" onClick={() => setLineItemsDialogOpen(true)}>
+                    <DollarSign className="h-4 w-4" />
+                    Build Estimate
+                  </Button>
+                </div>
               )}
 
               {hasEstimate && estimate && (

@@ -64,22 +64,44 @@ export default function Leads() {
     }
   };
 
-  const mapLead = (lead: any): Lead => ({
-    id: lead.id,
-    name: lead.name,
-    phone: lead.phone || "",
-    serviceType: lead.service_type || "Unknown",
-    estimatedBudget: lead.estimated_value || 0,
-    location: [lead.address, lead.city].filter(Boolean).join(", ") || "Unknown",
-    source: lead.source || "Unknown",
-    createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),
-    status: lead.status as LeadStatus,
-    qualificationScore: lead.qualification_score || undefined,
-    customer: lead.customer ? {
-      id: lead.customer.id,
-      name: lead.customer.name,
-    } : null,
-  });
+  const mapLead = (lead: any): Lead => {
+    // Archived rows can include both legacy leads and jobs from the unified table.
+    // Treat cancelled/archived (and estimate-linked rows) as job records for routing and labels.
+    const hasJobSignals =
+      !!lead.scheduled_date ||
+      !!lead.scheduled_time_start ||
+      !!lead.scheduled_time_end ||
+      !!lead.crew_lead_id ||
+      !!lead.recurring_job_id ||
+      !!lead.estimate_job_id ||
+      lead.is_estimate_visit === true ||
+      lead.actual_value !== null;
+
+    const isJobRecord =
+      lead.status === "cancelled" ||
+      lead.status === "archived" ||
+      hasJobSignals;
+
+    const status = (lead.status === "lost" && isJobRecord ? "cancelled" : lead.status) as LeadStatus;
+
+    return {
+      isJob: isJobRecord,
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone || "",
+      serviceType: lead.service_type || "Unknown",
+      estimatedBudget: lead.estimated_value || 0,
+      location: [lead.address, lead.city].filter(Boolean).join(", ") || "Unknown",
+      source: lead.source || "Unknown",
+      createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),
+      status,
+      qualificationScore: lead.qualification_score || undefined,
+      customer: lead.customer ? {
+        id: lead.customer.id,
+        name: lead.customer.name,
+      } : null,
+    };
+  };
 
   const allLeads: Lead[] = (leadsData || []).map(mapLead);
   const archivedLeads: Lead[] = (archivedLeadsData || []).map(mapLead);
@@ -153,6 +175,7 @@ export default function Leads() {
   const qualifiedCount = counts?.qualified || 0;
   const totalCount = counts?.all || 0;
   const isArchiveTab = activeFilter === "archive";
+  const detailPathForLead = (lead: Lead) => (lead.isJob ? `/jobs/${lead.id}` : `/leads/${lead.id}`);
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -244,7 +267,7 @@ export default function Leads() {
                       key={lead.id}
                       lead={lead}
                       archiveMode
-                      onClick={() => navigate(`/leads/${lead.id}`)}
+                      onClick={() => navigate(detailPathForLead(lead))}
                       onUnarchive={() => handleUnarchive(lead.id, lead.status)}
                       onDelete={() => handleDeleteArchived(lead.id)}
                     />

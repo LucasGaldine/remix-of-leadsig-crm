@@ -8,6 +8,7 @@ type Lead = Database["public"]["Tables"]["leads"]["Row"];
 type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
 type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 type LeadStatus = Database["public"]["Enums"]["unified_status"];
+const ARCHIVED_LEAD_STATUSES = new Set(["lost", "cancelled", "archived"]);
 
 export function useLeads(filter?: LeadStatus | "all") {
   const { user, currentAccount } = useAuth();
@@ -221,11 +222,12 @@ export function useArchivedLeads() {
         .select("*, customer:customers!customer_id(id, name, email, phone, address, city)")
         .eq("account_id", currentAccount.id)
         .eq("approval_status", "approved")
-        .in("status", ["lost", "archived"])
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
-      return (data || []).map((lead: any) => ({
+      return (data || [])
+        .filter((lead: any) => ARCHIVED_LEAD_STATUSES.has(lead.status))
+        .map((lead: any) => ({
         ...lead,
         name: lead.customer?.name || lead.name,
         phone: lead.customer?.phone || lead.phone,
@@ -256,8 +258,7 @@ export function useLeadCounts() {
         .from("leads")
         .select("status")
         .eq("account_id", currentAccount.id)
-        .eq("approval_status", "approved")
-        .in("status", ["new", "contacted", "qualified", "lost", "archived"]);
+        .eq("approval_status", "approved");
 
       if (error) throw error;
 
@@ -270,7 +271,7 @@ export function useLeadCounts() {
       };
 
       data.forEach((lead) => {
-        if (lead.status === "lost" || lead.status === "archived") {
+        if (lead.status && ARCHIVED_LEAD_STATUSES.has(lead.status)) {
           counts.archive++;
         } else {
           counts.all++;

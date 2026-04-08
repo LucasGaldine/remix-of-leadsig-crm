@@ -282,6 +282,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     const body = await req.json();
     const action = body.action;
     const clientUpdatedAt = body.updated_at;
+    const estimateVersionId = typeof body.estimate_version_id === "string" ? body.estimate_version_id : null;
 
     if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
       return jsonResponse({ error: "Invalid action" }, 400);
@@ -297,7 +298,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       return jsonResponse({ error: "No quote found for this job schedule" }, 404);
     }
 
-    return await handleEstimateAction(supabase, estimate, action, null, clientUpdatedAt);
+    return await handleEstimateAction(supabase, estimate, action, null, clientUpdatedAt, estimateVersionId);
   }
 
   if (req.method !== "GET") {
@@ -399,6 +400,14 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     originalLineItemsRecurring = originals;
   }
 
+  const { data: estimateVersionsRecurring } = estimate
+    ? await supabase
+        .from("estimate_versions")
+        .select("id, name, subtotal, tax_rate, tax, discount, total, profit_margin, notes, line_items, created_at, updated_at")
+        .eq("estimate_id", estimate.id)
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
   const instanceMap = new Map((instances || []).map((i: any) => [i.id, i]));
   const schedulesWithVisit = (allSchedules || []).map((s: any) => {
     const inst = instanceMap.get(s.lead_id);
@@ -444,6 +453,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
           original_notes: estimate.original_notes,
           original_line_items: originalLineItemsRecurring,
           has_pending_changes: estimate.has_pending_changes,
+          estimate_versions: estimateVersionsRecurring || [],
         }
       : null,
     photos: {
@@ -464,6 +474,7 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
   const body = await req.json();
   const action = body.action;
   const clientUpdatedAt = body.updated_at;
+  const estimateVersionId = typeof body.estimate_version_id === "string" ? body.estimate_version_id : null;
 
   if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
     return jsonResponse({ error: "Invalid action" }, 400);
@@ -496,10 +507,10 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
       return jsonResponse({ error: "No estimate found for this job" }, 404);
     }
 
-    return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt);
+    return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt, estimateVersionId);
   }
 
-  return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt);
+  return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt, estimateVersionId);
 }
 
 async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) {
@@ -634,6 +645,14 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
     originalLineItems = originals;
   }
 
+  const { data: estimateVersions } = parentEstimate
+    ? await supabase
+        .from("estimate_versions")
+        .select("id, name, subtotal, tax_rate, tax, discount, total, profit_margin, notes, line_items, created_at, updated_at")
+        .eq("estimate_id", parentEstimate.id)
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
   return jsonResponse({
     job: {
       name: job.name,
@@ -669,6 +688,7 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
           original_notes: parentEstimate.original_notes,
           original_line_items: originalLineItems,
           has_pending_changes: parentEstimate.has_pending_changes,
+          estimate_versions: estimateVersions || [],
         }
       : null,
     photos: {
@@ -698,7 +718,8 @@ async function handleEstimateAction(
   estimate: { id: string; status: string; expires_at: string | null; job_id: string | null; recurring_job_id?: string | null; updated_at: string; has_pending_changes?: boolean },
   action: "approve" | "decline" | "approve_changes" | "decline_changes",
   portalJobId: string | null,
-  clientUpdatedAt?: string
+  clientUpdatedAt?: string,
+  estimateVersionId?: string | null
 ) {
   if (clientUpdatedAt && estimate.updated_at !== clientUpdatedAt) {
     return jsonResponse({
@@ -756,6 +777,13 @@ async function handleEstimateAction(
   }
 
   if (action === "approve") {
+    if (estimateVersionId) {
+      const applyResult = await applyEstimateVersionBeforeApproval(supabase, estimate.id, estimateVersionId);
+      if (!applyResult.ok) {
+        return jsonResponse({ error: applyResult.error }, applyResult.statusCode);
+      }
+    }
+
     const { error } = await supabase
       .from("estimates")
       .update({
@@ -810,4 +838,80 @@ async function handleEstimateAction(
   }
 
   return jsonResponse({ success: true, message: "Estimate declined" });
+}
+
+async function applyEstimateVersionBeforeApproval(
+  supabase: any,
+  estimateId: string,
+  estimateVersionId: string,
+): Promise<{ ok: true } | { ok: false; error: string; statusCode: number }> {
+  const { data: version, error: versionError } = await supabase
+    .from("estimate_versions")
+    .select("id, estimate_id, account_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, line_items")
+    .eq("id", estimateVersionId)
+    .eq("estimate_id", estimateId)
+    .maybeSingle();
+
+  if (versionError || !version) {
+    return { ok: false, error: "Selected estimate version was not found", statusCode: 400 };
+  }
+
+  const { error: deleteLineItemsError } = await supabase
+    .from("estimate_line_items")
+    .delete()
+    .eq("estimate_id", estimateId);
+
+  if (deleteLineItemsError) {
+    return { ok: false, error: "Failed to apply selected estimate version", statusCode: 500 };
+  }
+
+  const lineItems = Array.isArray(version.line_items) ? version.line_items : [];
+  if (lineItems.length > 0) {
+    const inserts = lineItems.map((item: any, index: number) => ({
+      estimate_id: estimateId,
+      account_id: version.account_id,
+      name: item.name || "Line item",
+      description: item.description || null,
+      quantity: Number(item.quantity) || 0,
+      unit: item.unit || "item",
+      unit_price: Number(item.unit_price) || 0,
+      total: Number(item.total) || 0,
+      sort_order: Number(item.sort_order ?? index),
+      category: item.category || "other",
+      is_change_order: false,
+      change_order_type: null,
+      change_order_approved: null,
+      changed_at: null,
+      original_line_item_id: null,
+    }));
+
+    const { error: insertLineItemsError } = await supabase
+      .from("estimate_line_items")
+      .insert(inserts);
+
+    if (insertLineItemsError) {
+      return { ok: false, error: "Failed to apply selected estimate version", statusCode: 500 };
+    }
+  }
+
+  const { error: updateEstimateError } = await supabase
+    .from("estimates")
+    .update({
+      subtotal: Number(version.subtotal) || 0,
+      tax_rate: Number(version.tax_rate) || 0,
+      tax: Number(version.tax) || 0,
+      discount: Number(version.discount) || 0,
+      total: Number(version.total) || 0,
+      profit_margin: Number(version.profit_margin) || 0,
+      surcharge: Number(version.surcharge) || 0,
+      notes: version.notes || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", estimateId);
+
+  if (updateEstimateError) {
+    return { ok: false, error: "Failed to apply selected estimate version", statusCode: 500 };
+  }
+
+  return { ok: true };
 }

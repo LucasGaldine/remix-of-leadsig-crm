@@ -101,6 +101,12 @@ Deno.serve(async (req: Request) => {
         originalLineItems = originals;
       }
 
+      const { data: estimateVersions } = await supabase
+        .from("estimate_versions")
+        .select("id, name, subtotal, tax_rate, tax, discount, total, profit_margin, notes, line_items, created_at, updated_at")
+        .eq("estimate_id", estimate.id)
+        .order("created_at", { ascending: true });
+
       return new Response(
         JSON.stringify({
           estimate: {
@@ -115,6 +121,7 @@ Deno.serve(async (req: Request) => {
                   (a.sort_order || 0) - (b.sort_order || 0)
               ),
             original_line_items: originalLineItems,
+            estimate_versions: estimateVersions || [],
           },
           company: account || {},
         }),
@@ -128,6 +135,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST") {
       const body = await req.json();
       const { action } = body;
+      const estimateVersionId = typeof body.estimate_version_id === "string" ? body.estimate_version_id : null;
 
       const { data: estimate, error: fetchError } = await supabase
         .from("estimates")
@@ -235,6 +243,23 @@ Deno.serve(async (req: Request) => {
           );
         }
 
+        if (action === "approve" && estimateVersionId) {
+          const applyResult = await applyEstimateVersionBeforeApproval(
+            supabase,
+            estimate.id,
+            estimateVersionId,
+          );
+          if (!applyResult.ok) {
+            return new Response(
+              JSON.stringify({ error: applyResult.error }),
+              {
+                status: applyResult.statusCode,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+        }
+
         const newStatus = action === "approve" ? "accepted" : "declined";
         const { error: updateError } = await supabase
           .from("estimates")
@@ -289,3 +314,79 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+async function applyEstimateVersionBeforeApproval(
+  supabase: any,
+  estimateId: string,
+  estimateVersionId: string,
+): Promise<{ ok: true } | { ok: false; error: string; statusCode: number }> {
+  const { data: version, error: versionError } = await supabase
+    .from("estimate_versions")
+    .select("id, estimate_id, account_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, line_items")
+    .eq("id", estimateVersionId)
+    .eq("estimate_id", estimateId)
+    .maybeSingle();
+
+  if (versionError || !version) {
+    return { ok: false, error: "Selected estimate version was not found", statusCode: 400 };
+  }
+
+  const { error: deleteLineItemsError } = await supabase
+    .from("estimate_line_items")
+    .delete()
+    .eq("estimate_id", estimateId);
+
+  if (deleteLineItemsError) {
+    return { ok: false, error: "Failed to apply selected estimate version", statusCode: 500 };
+  }
+
+  const lineItems = Array.isArray(version.line_items) ? version.line_items : [];
+  if (lineItems.length > 0) {
+    const inserts = lineItems.map((item: any, index: number) => ({
+      estimate_id: estimateId,
+      account_id: version.account_id,
+      name: item.name || "Line item",
+      description: item.description || null,
+      quantity: Number(item.quantity) || 0,
+      unit: item.unit || "item",
+      unit_price: Number(item.unit_price) || 0,
+      total: Number(item.total) || 0,
+      sort_order: Number(item.sort_order ?? index),
+      category: item.category || "other",
+      is_change_order: false,
+      change_order_type: null,
+      change_order_approved: null,
+      changed_at: null,
+      original_line_item_id: null,
+    }));
+
+    const { error: insertLineItemsError } = await supabase
+      .from("estimate_line_items")
+      .insert(inserts);
+
+    if (insertLineItemsError) {
+      return { ok: false, error: "Failed to apply selected estimate version", statusCode: 500 };
+    }
+  }
+
+  const { error: updateEstimateError } = await supabase
+    .from("estimates")
+    .update({
+      subtotal: Number(version.subtotal) || 0,
+      tax_rate: Number(version.tax_rate) || 0,
+      tax: Number(version.tax) || 0,
+      discount: Number(version.discount) || 0,
+      total: Number(version.total) || 0,
+      profit_margin: Number(version.profit_margin) || 0,
+      surcharge: Number(version.surcharge) || 0,
+      notes: version.notes || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", estimateId);
+
+  if (updateEstimateError) {
+    return { ok: false, error: "Failed to apply selected estimate version", statusCode: 500 };
+  }
+
+  return { ok: true };
+}

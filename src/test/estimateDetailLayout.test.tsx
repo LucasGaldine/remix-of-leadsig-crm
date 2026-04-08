@@ -124,6 +124,13 @@ const estimateSelectMock = vi.fn(() => ({
     maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
   })),
 }));
+const estimateVersionsOrderMock = vi.fn().mockResolvedValue({ data: [], error: null });
+const estimateVersionsEqMock = vi.fn(() => ({
+  order: estimateVersionsOrderMock,
+}));
+const estimateVersionsSelectMock = vi.fn(() => ({
+  eq: estimateVersionsEqMock,
+}));
 const storageUploadMock = vi.fn().mockResolvedValue({ error: null });
 const storageGetPublicUrlMock = vi.fn(() => ({
   data: { publicUrl: "https://example.com/manual-approval-photo.jpg" },
@@ -213,6 +220,16 @@ vi.mock("@/integrations/supabase/client", () => ({
         };
       }
 
+      if (table === "estimate_versions") {
+        return {
+          select: estimateVersionsSelectMock,
+          insert: vi.fn().mockResolvedValue({ error: null }),
+          update: vi.fn(() => ({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          })),
+        };
+      }
+
       return {
         update: vi.fn(() => ({
           eq: vi.fn().mockResolvedValue({ error: null }),
@@ -242,6 +259,9 @@ describe("EstimateDetail layout", () => {
     lineItemUpdateMock.mockClear();
     lineItemUpdateEqMock.mockClear();
     estimateSelectMock.mockClear();
+    estimateVersionsOrderMock.mockClear();
+    estimateVersionsEqMock.mockClear();
+    estimateVersionsSelectMock.mockClear();
     storageUploadMock.mockClear();
     storageGetPublicUrlMock.mockClear();
     storageRemoveMock.mockClear();
@@ -296,7 +316,7 @@ describe("EstimateDetail layout", () => {
     expect(
       compareTabs.compareDocumentPosition(pendingAlert) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(within(compareTabs).getByRole("tab", { name: /^Modified$/i })).toBeInTheDocument();
+    expect(within(compareTabs).getByRole("tab", { name: /^Current$/i })).toBeInTheDocument();
     expect(within(compareTabs).getByRole("tab", { name: /^Original$/i })).toBeInTheDocument();
 
     const originalTab = within(compareTabs).getByRole("tab", { name: /^Original$/i });

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Plus, Trash2 } from "lucide-react";
+import { FileText, Mic, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
 import { normalizeVoiceEstimateParsedData } from "@/lib/voiceIntake";
 import type { VoiceEstimateParsedData } from "@/types/voiceIntake";
+import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
 
 interface LineItem {
   id: string;
@@ -309,8 +310,32 @@ export default function CreateEstimate() {
         if (lineItemsError) throw lineItemsError;
       }
 
+      await createEstimateVersionSnapshot({
+        estimateId: estimate.id,
+        accountId: currentAccount.id,
+        name: "Version 1",
+        subtotal,
+        taxRate: parseFloat(taxRate) / 100,
+        tax: taxAmount,
+        discount: discountAmount,
+        total,
+        profitMargin: currentAccount?.default_profit_margin ?? 0,
+        surcharge: 0,
+        notes: notes || null,
+        lineItems: lineItemsToInsert.map((item) => ({
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total: item.total,
+          sort_order: item.sort_order,
+          category: "other",
+        })),
+      });
+
       toast.success("Estimate created successfully!");
-      navigate(`/estimate/${estimate.id}`);
+      navigate(`/payments/estimates/${estimate.id}`);
     } catch (error) {
       console.error("Error creating estimate:", error);
       toast.error("Failed to create estimate");
@@ -390,6 +415,7 @@ export default function CreateEstimate() {
                     variant="outline"
                     onClick={() => setShowVoiceEstimateIntake(true)}
                   >
+                    <Mic className="h-4 w-4 mr-2" />
                     Voice Estimate Intake
                   </Button>
 

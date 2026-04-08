@@ -308,6 +308,64 @@ describe("JobDetail status guidance", () => {
     expect(dialogContent.queryByText("Contacted")).not.toBeInTheDocument();
   });
 
+  it("opens status guidance when clicking a warning badge in the header row", async () => {
+    testState.assignments = [];
+
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+
+    const badgesRow = await screen.findByTestId("job-detail-badges-row");
+    fireEvent.click(within(badgesRow).getByText("Unassigned"));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Job Status Stages")).toBeInTheDocument();
+  });
+
   it("fetches the latest estimate using created_at ordering", async () => {
     const estimateOrderMock = vi.fn();
     const estimateLimitMock = vi.fn();

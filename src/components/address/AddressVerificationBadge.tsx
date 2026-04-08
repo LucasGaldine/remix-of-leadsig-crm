@@ -15,7 +15,7 @@ export function AddressVerificationBadge({ verifying, result, onVerify, onAccept
     return (
       <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground mt-1", className)}>
         <Loader2 className="h-3 w-3 animate-spin" />
-        Verifying with USPS...
+        Verifying with Google...
       </div>
     );
   }
@@ -25,7 +25,7 @@ export function AddressVerificationBadge({ verifying, result, onVerify, onAccept
       <div className={cn("mt-1 space-y-1", className)}>
         <div className="flex items-center gap-1.5 text-xs text-emerald-700">
           <CheckCircle2 className="h-3 w-3" />
-          USPS verified
+          Google verified
         </div>
         {onAccept && (
           <button

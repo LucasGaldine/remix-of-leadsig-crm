@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.voice-intake-parser]
 verify_jwt = false
+
+[functions.verify-address]
+verify_jwt = false

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, FileText, CircleAlert as AlertCircle, Clock, Building2 } from "lucide-react";
+import { Check, CircleAlert as AlertCircle, Clock, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -32,6 +32,18 @@ interface EstimateData {
   customer: { name: string; email?: string; phone?: string } | null;
   job: { name: string; address?: string; service_type?: string } | null;
   line_items: LineItem[];
+  estimate_versions?: Array<{
+    id: string;
+    name: string;
+    subtotal: number;
+    tax_rate: number;
+    tax: number;
+    discount: number;
+    total: number;
+    profit_margin?: number;
+    notes?: string | null;
+    line_items: LineItem[];
+  }>;
 }
 
 interface CompanyData {
@@ -52,6 +64,7 @@ export default function EstimateApproval() {
   const [company, setCompany] = useState<CompanyData>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [approving, setApproving] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-approve`;
   const apiHeaders = {
@@ -84,6 +97,8 @@ export default function EstimateApproval() {
       const data = await response.json();
       setEstimate(data.estimate);
       setCompany(data.company || {});
+      const versions = data.estimate.estimate_versions || [];
+      setSelectedVersionId(versions.length > 0 ? versions[versions.length - 1].id : null);
 
       if (data.estimate.status === "accepted") {
         setPageState("already_approved");
@@ -109,6 +124,10 @@ export default function EstimateApproval() {
       const response = await fetch(`${apiUrl}?token=${token}`, {
         method: "POST",
         headers: apiHeaders,
+        body: JSON.stringify({
+          action: "approve",
+          estimate_version_id: selectedVersionId,
+        }),
       });
 
       if (!response.ok) {
@@ -116,6 +135,25 @@ export default function EstimateApproval() {
         setErrorMessage(data.error || "Failed to approve estimate.");
         setPageState("error");
         return;
+      }
+
+      if (selectedVersionId) {
+        setEstimate((previous) => {
+          if (!previous) return previous;
+          const version = previous.estimate_versions?.find((entry) => entry.id === selectedVersionId);
+          if (!version) return previous;
+
+          return {
+            ...previous,
+            subtotal: version.subtotal,
+            tax_rate: version.tax_rate,
+            tax: version.tax,
+            discount: version.discount,
+            total: version.total,
+            notes: version.notes || undefined,
+            line_items: version.line_items,
+          };
+        });
       }
 
       setPageState("approved");
@@ -219,6 +257,17 @@ export default function EstimateApproval() {
 
   if (!estimate) return null;
 
+  const selectedVersion =
+    estimate.estimate_versions?.find((version) => version.id === selectedVersionId) || null;
+  const displayLineItems = selectedVersion?.line_items || estimate.line_items;
+  const displaySubtotal = selectedVersion?.subtotal ?? estimate.subtotal;
+  const displayTaxRate = selectedVersion?.tax_rate ?? estimate.tax_rate;
+  const displayTax = selectedVersion?.tax ?? estimate.tax;
+  const displayDiscount = selectedVersion?.discount ?? estimate.discount;
+  const displayTotal = selectedVersion?.total ?? estimate.total;
+  const displayProfitMargin = Number(selectedVersion?.profit_margin ?? estimate.profit_margin ?? 0);
+  const displayNotes = selectedVersion?.notes ?? estimate.notes;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
@@ -248,7 +297,7 @@ export default function EstimateApproval() {
               <div className="text-right">
                 <p className="text-sm text-slate-400">Total</p>
                 <p className="text-3xl font-bold text-white">
-                  ${Number(estimate.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ${Number(displayTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </p>
               </div>
             </div>
@@ -283,12 +332,31 @@ export default function EstimateApproval() {
             </div>
           </div>
 
+          {estimate.estimate_versions && estimate.estimate_versions.length > 0 && (
+            <div className="px-6 py-5 sm:px-8 border-b border-slate-100">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                Choose Option
+              </p>
+              <select
+                value={selectedVersionId || ""}
+                onChange={(event) => setSelectedVersionId(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+              >
+                {estimate.estimate_versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.name} - ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="px-6 sm:px-8 py-5">
             <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">
               Line Items
             </h2>
             <div className="space-y-0">
-              {estimate.line_items.map((item) => (
+              {displayLineItems.map((item) => (
                 <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0 mr-4">
@@ -314,50 +382,50 @@ export default function EstimateApproval() {
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Subtotal</span>
                 <span className="text-slate-700">
-                  ${Number(estimate.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ${Number(displaySubtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
-              {Number(estimate.profit_margin) > 0 && (
+              {displayProfitMargin > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">
-                    Profit Margin ({Number(estimate.profit_margin).toFixed(1)}%)
+                    Profit Margin ({displayProfitMargin.toFixed(1)}%)
                   </span>
                   <span className="text-slate-700">
-                    ${(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    ${(Number(displaySubtotal) * (displayProfitMargin / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">
-                  Tax ({(Number(estimate.tax_rate) * 100).toFixed(1)}%)
+                  Tax ({(Number(displayTaxRate) * 100).toFixed(1)}%)
                 </span>
                 <span className="text-slate-700">
-                  ${Number(estimate.tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ${Number(displayTax).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
-              {Number(estimate.discount) > 0 && (
+              {Number(displayDiscount) > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Discount</span>
                   <span className="text-emerald-600">
-                    -${Number(estimate.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    -${Number(displayDiscount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               )}
               <div className="flex justify-between pt-3 border-t border-slate-200">
                 <span className="text-lg font-bold text-slate-900">Total</span>
                 <span className="text-lg font-bold text-slate-900">
-                  ${Number(estimate.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ${Number(displayTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
           </div>
 
-          {estimate.notes && (
+          {displayNotes && (
             <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
               <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
                 Notes
               </h2>
-              <p className="text-sm text-slate-600 whitespace-pre-wrap">{estimate.notes}</p>
+              <p className="text-sm text-slate-600 whitespace-pre-wrap">{displayNotes}</p>
             </div>
           )}
 
@@ -376,7 +444,7 @@ export default function EstimateApproval() {
           <div className="px-6 sm:px-8 py-6 border-t border-slate-100">
             <Button
               onClick={handleApprove}
-              disabled={approving}
+              disabled={approving || ((estimate.estimate_versions?.length || 0) > 0 && !selectedVersionId)}
               className={cn(
                 "w-full h-14 text-lg font-semibold rounded-xl transition-all",
                 "bg-emerald-600 hover:bg-emerald-700 text-white",

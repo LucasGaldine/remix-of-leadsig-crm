@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 
 import EstimateDetail from "@/pages/EstimateDetail";
 
@@ -11,6 +12,9 @@ const lineItemsUpdateFinalEq = vi.fn(() => Promise.resolve({ error: null }));
 const lineItemsUpdateEq2 = vi.fn(() => ({ eq: lineItemsUpdateFinalEq }));
 const lineItemsUpdateEq1 = vi.fn(() => ({ eq: lineItemsUpdateEq2 }));
 const lineItemsUpdate = vi.fn(() => ({ eq: lineItemsUpdateEq1 }));
+const estimateVersionsOrder = vi.fn().mockResolvedValue({ data: [], error: null });
+const estimateVersionsEq = vi.fn(() => ({ order: estimateVersionsOrder }));
+const estimateVersionsSelect = vi.fn(() => ({ eq: estimateVersionsEq }));
 
 let estimateData: any;
 
@@ -42,6 +46,13 @@ vi.mock("@/hooks/useEstimates", () => ({
   useEstimate: () => ({
     isLoading: false,
     data: estimateData,
+  }),
+}));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "user_1" },
+    currentAccount: { id: "acct_1" },
   }),
 }));
 
@@ -84,6 +95,16 @@ vi.mock("@/integrations/supabase/client", () => ({
         };
       }
 
+      if (table === "estimate_versions") {
+        return {
+          select: estimateVersionsSelect,
+          insert: vi.fn().mockResolvedValue({ error: null }),
+          update: vi.fn(() => ({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          })),
+        };
+      }
+
       return {
         update: vi.fn(() => ({
           eq: vi.fn().mockResolvedValue({ error: null }),
@@ -96,6 +117,9 @@ vi.mock("@/integrations/supabase/client", () => ({
 describe("EstimateDetail manual approve actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    estimateVersionsOrder.mockClear();
+    estimateVersionsEq.mockClear();
+    estimateVersionsSelect.mockClear();
 
     estimateData = {
       id: "est_1",
@@ -147,18 +171,48 @@ describe("EstimateDetail manual approve actions", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("button", { name: /approve changes/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /approve changes/i }));
-    expect(await screen.findByText(/approve change order/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^approve$/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    expect(await screen.findByRole("heading", { name: /approve changes/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^approve changes$/i }));
 
     await waitFor(() => {
       expect(lineItemsUpdate).toHaveBeenCalledWith({ change_order_approved: true });
     });
 
-    expect(estimateUpdate).not.toHaveBeenCalled();
+    expect(estimateUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approved_via: "manual",
+      }),
+    );
     expect(invalidateQueries).toHaveBeenCalled();
+  });
+
+  it("does not show estimate versions load error when estimate_versions table is unavailable", async () => {
+    estimateVersionsOrder.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: "PGRST205",
+        message: "Could not find the table 'public.estimate_versions' in the schema cache",
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/payments/estimates/est_1"]}>
+        <Routes>
+          <Route path="/payments/estimates/:id" element={<EstimateDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: /^approve$/i });
+
+    await waitFor(() => {
+      expect(estimateVersionsOrder).toHaveBeenCalled();
+    });
+
+    expect(toast.error).not.toHaveBeenCalledWith("Failed to load estimate versions");
   });
 });

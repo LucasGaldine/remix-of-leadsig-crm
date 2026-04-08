@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type EstimateLineItemInit } from "./LineItemsEstimateDialog";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 import { buildDefaultJobName } from "@/lib/defaultJobName";
+import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
 
 interface CreateDraftEstimateDialogProps {
   open: boolean;
@@ -155,6 +156,30 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
 
         if (lineItemsError) throw new Error("Failed to create line items");
       }
+
+      await createEstimateVersionSnapshot({
+        estimateId: estimateData.id,
+        accountId: currentAccount.id,
+        name: "Version 1",
+        subtotal: estimateSubtotal,
+        taxRate: (currentAccount?.default_tax_rate ?? 0) / 100,
+        tax: estimateTax,
+        discount: 0,
+        total: estimateTotal,
+        profitMargin: parseFloat(profitMargin) || 0,
+        surcharge: 0,
+        notes: null,
+        lineItems: lineItemsToInsert.map((item) => ({
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total: item.total,
+          sort_order: item.sort_order,
+          category: "other",
+        })),
+      });
 
       await supabase.from("interactions").insert({
         lead_id: lead.id,

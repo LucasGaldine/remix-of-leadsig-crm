@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 
-export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid" | "completed" | "lost" | "archived";
+export type LeadStatus = "new" | "contacted" | "qualified" | "job" | "paid" | "completed" | "lost" | "cancelled" | "archived";
 
 export interface Lead {
   id: string;
@@ -34,6 +34,7 @@ export interface Lead {
     id: string;
     name: string;
   } | null;
+  isJob?: boolean;
 }
 
 interface LeadCardProps {
@@ -71,6 +72,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
       case "completed":
         return "confirmed";
       case "lost":
+      case "cancelled":
         return "attention";
       case "archived":
         return "pending";
@@ -90,6 +92,7 @@ export function LeadCard({ lead, onClick, onCall, onMessage, onQualify, onViewEs
     paid: "Paid",
     completed: "Completed",
     lost: "Lost",
+    cancelled: "Canceled",
     archived: "Archived",
   };
 

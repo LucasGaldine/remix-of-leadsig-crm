@@ -1053,7 +1053,7 @@ export default function JobDetail() {
   const archiveJob = async () => {
     if (!id || !job) return;
     const isCompleted = job.status === "completed" || job.status === "paid";
-    const newStatus = isCompleted ? "archived" : "lost";
+    const newStatus = isCompleted ? "archived" : "cancelled";
 
     try {
       const { error } = await supabase
@@ -1068,7 +1068,7 @@ export default function JobDetail() {
       queryClient.invalidateQueries({ queryKey: ["lead-counts"] });
       queryClient.invalidateQueries({ queryKey: ["archived-leads"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-      toast.success(isCompleted ? "Job archived" : "Job marked as lost");
+      toast.success(isCompleted ? "Job archived" : "Job marked as canceled");
       navigate("/jobs");
     } catch (error) {
       console.error("Error archiving:", error);
@@ -1141,7 +1141,11 @@ export default function JobDetail() {
       <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-0">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-3 min-w-0 w-full">
-            <div data-testid="job-detail-badges-row" className="flex flex-wrap items-center gap-2">
+            <div
+              data-testid="job-detail-badges-row"
+              onClick={() => setStatusGuidanceOpen(true)}
+              className="flex flex-wrap items-center gap-2 cursor-pointer"
+            >
               {isUnassigned && (
                 <Badge
                   variant="outline"
@@ -1211,7 +1215,7 @@ export default function JobDetail() {
                       )}
                       <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
                         <Archive className="h-4 w-4 mr-2" />
-                        {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
+                        {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Cancelled"}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
@@ -1771,15 +1775,18 @@ export default function JobDetail() {
                 onClick={() => navigate(`/payments/estimates/${displayEstimate.id}`)}
               />
             ) : !estimateLoading ? (
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full"
-                onClick={() => void openBuildEstimateModal()}
-              >
-                <DollarSign className="h-4 w-4" />
-                Build Estimate
-              </Button>
+              <div className="rounded-lg border border-dashed border-border bg-card p-4 space-y-3">
+                <p className="text-sm text-muted-foreground">No estimate available</p>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => void openBuildEstimateModal()}
+                >
+                  <DollarSign className="h-4 w-4" />
+                  Build Estimate
+                </Button>
+              </div>
             ) : null}
 
             {/* Job Costs */}
@@ -1999,23 +2006,23 @@ export default function JobDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Archive / Mark as Lost Dialog */}
+      {/* Archive / Mark as Cancelled Dialog */}
       <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {job?.status === "completed" || job?.status === "paid" ? "Archive Job" : "Mark as Lost"}
+              {job?.status === "completed" || job?.status === "paid" ? "Archive Job" : "Mark as Canceled"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {job?.status === "completed" || job?.status === "paid"
                 ? `This will archive "${job?.name || "this job"}" and send it to the archive. You can restore it later from the Archive section on the Leads page.`
-                : `This will mark "${job?.name || "this job"}" as lost and send it to the archive. You can restore it later from the Archive section on the Leads page.`}
+                : `This will mark "${job?.name || "this job"}" as canceled and send it to the archive. You can restore it later from the Archive section on the Leads page.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={archiveJob}>
-              {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Lost"}
+              {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Canceled"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

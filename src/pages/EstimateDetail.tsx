@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X } from "lucide-react";
+import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,14 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
 import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { prepareLeadPhotoForUpload } from "@/lib/photoCompression";
+import { createEstimateVersionSnapshot, isEstimateVersionsUnavailableError } from "@/lib/estimateVersions";
 
 const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
   draft: { label: "Draft", icon: Edit2, className: "bg-secondary text-secondary-foreground" },
@@ -69,6 +71,35 @@ const isManualApprovalPhotoColumnMissing = (error: unknown) => {
   return code === "PGRST204" || code === "42703" || status === 400 || message.includes("column");
 };
 
+const isEstimateVersionsUnavailable = (error: unknown) => isEstimateVersionsUnavailableError(error);
+
+interface EstimateVersionSnapshotItem {
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total: number;
+  sort_order?: number;
+  category?: "equipment" | "materials" | "labor" | "other";
+}
+
+interface EstimateVersion {
+  id: string;
+  name: string;
+  subtotal: number;
+  tax_rate: number;
+  tax: number;
+  discount: number;
+  total: number;
+  profit_margin?: number;
+  surcharge?: number;
+  notes?: string | null;
+  line_items: EstimateVersionSnapshotItem[];
+  created_at: string;
+  updated_at: string;
+}
+
 
 export default function EstimateDetail() {
   const { id } = useParams();
@@ -87,6 +118,14 @@ export default function EstimateDetail() {
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(() => new Set());
   const [manualApprovalPhoto, setManualApprovalPhoto] = useState<File | null>(null);
   const [manualApprovalPreviewUrl, setManualApprovalPreviewUrl] = useState<string | null>(null);
+  const [estimateVersions, setEstimateVersions] = useState<EstimateVersion[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [loadingVersions, setLoadingVersions] = useState(true);
+  const [creatingVersion, setCreatingVersion] = useState(false);
+  const [isCreatingVersionDraft, setIsCreatingVersionDraft] = useState(false);
+  const [newVersionNameDraft, setNewVersionNameDraft] = useState("");
+  const [renamingVersionId, setRenamingVersionId] = useState<string | null>(null);
+  const [versionNameDrafts, setVersionNameDrafts] = useState<Record<string, string>>({});
   const uploadPhotoInputRef = useRef<HTMLInputElement>(null);
   const takePhotoInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +136,209 @@ export default function EstimateDetail() {
       }
     };
   }, [manualApprovalPreviewUrl]);
+
+  const fetchEstimateVersions = async () => {
+    if (!id) return;
+
+    setLoadingVersions(true);
+    try {
+      const { data, error } = await supabase
+        .from("estimate_versions")
+        .select(`
+          id,
+          name,
+          subtotal,
+          tax_rate,
+          tax,
+          discount,
+          total,
+          profit_margin,
+          surcharge,
+          notes,
+          line_items,
+          created_at,
+          updated_at
+        `)
+        .eq("estimate_id", id)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        if (isEstimateVersionsUnavailable(error)) {
+          setEstimateVersions([]);
+          setVersionNameDrafts({});
+          setSelectedVersionId(null);
+          return;
+        }
+        throw error;
+      }
+
+      const versions = (data || []) as EstimateVersion[];
+      setEstimateVersions(versions);
+      setVersionNameDrafts(
+        versions.reduce((acc, version) => {
+          acc[version.id] = version.name;
+          return acc;
+        }, {} as Record<string, string>),
+      );
+      setSelectedVersionId((previous) => {
+        if (previous && versions.some((version) => version.id === previous)) {
+          return previous;
+        }
+        return versions[versions.length - 1]?.id || null;
+      });
+    } catch (error) {
+      console.error("Failed to load estimate versions:", error);
+      toast.error("Failed to load estimate versions");
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEstimateVersions();
+  }, [id]);
+
+  const createEstimateVersion = async (nameOverride?: string): Promise<boolean> => {
+    if (!estimate || !id) return false;
+
+    const activeLineItems = estimate.line_items
+      .filter((item: any) => !item.is_change_order || item.change_order_type !== "deleted")
+      .sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+      .map((item: any, index: number) => ({
+        name: item.name,
+        description: item.description || null,
+        quantity: Number(item.quantity) || 0,
+        unit: item.unit,
+        unit_price: Number(item.unit_price) || 0,
+        total: Number(item.total) || 0,
+        sort_order: Number(item.sort_order ?? index),
+        category: normalizeCategory(item.category),
+      }));
+
+    const newVersionName = (nameOverride || `Version ${estimateVersions.length + 1}`).trim();
+
+    if (!newVersionName) {
+      toast.error("Version name is required");
+      return false;
+    }
+
+    setCreatingVersion(true);
+    try {
+      const { unavailable } = await createEstimateVersionSnapshot({
+        estimateId: id,
+        accountId: estimate.account_id,
+        name: newVersionName,
+        subtotal: Number(estimate.subtotal) || 0,
+        taxRate: Number(estimate.tax_rate) || 0,
+        tax: Number(estimate.tax) || 0,
+        discount: Number(estimate.discount) || 0,
+        total: Number(estimate.total) || 0,
+        profitMargin: Number((estimate as any).profit_margin) || 0,
+        surcharge: Number((estimate as any).surcharge) || 0,
+        notes: estimate.notes || null,
+        lineItems: activeLineItems,
+      });
+
+      if (unavailable) {
+        toast.error("Estimate versions are unavailable in this environment");
+        return false;
+      }
+
+      await fetchEstimateVersions();
+      toast.success("Version created");
+      return true;
+    } catch (error) {
+      console.error("Failed to create estimate version:", error);
+      toast.error("Failed to create version");
+      return false;
+    } finally {
+      setCreatingVersion(false);
+    }
+  };
+
+  const beginCreateEstimateVersion = () => {
+    setRenamingVersionId(null);
+    setNewVersionNameDraft(`Version ${estimateVersions.length + 1}`);
+    setIsCreatingVersionDraft(true);
+  };
+
+  const cancelCreateEstimateVersion = () => {
+    setNewVersionNameDraft("");
+    setIsCreatingVersionDraft(false);
+  };
+
+  const confirmCreateEstimateVersion = async () => {
+    const nextName = newVersionNameDraft.trim();
+    if (!nextName) {
+      toast.error("Version name is required");
+      return;
+    }
+
+    const created = await createEstimateVersion(nextName);
+    if (created) {
+      setNewVersionNameDraft("");
+      setIsCreatingVersionDraft(false);
+    }
+  };
+
+  const saveVersionName = async (versionId: string) => {
+    const nextName = (versionNameDrafts[versionId] || "").trim();
+    if (!nextName) {
+      toast.error("Version name is required");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("estimate_versions")
+        .update({ name: nextName })
+        .eq("id", versionId);
+
+      if (error) throw error;
+
+      setEstimateVersions((previous) =>
+        previous.map((version) =>
+          version.id === versionId ? { ...version, name: nextName } : version,
+        ),
+      );
+      setRenamingVersionId(null);
+      toast.success("Version renamed");
+    } catch (error) {
+      console.error("Failed to rename version:", error);
+      toast.error("Failed to rename version");
+    }
+  };
+
+  const deleteEstimateVersion = async (versionId: string) => {
+    try {
+      const { error } = await supabase
+        .from("estimate_versions")
+        .delete()
+        .eq("id", versionId);
+
+      if (error) throw error;
+
+      setEstimateVersions((previous) => {
+        const next = previous.filter((version) => version.id !== versionId);
+        setSelectedVersionId((current) => {
+          if (current !== versionId) return current;
+          return next[next.length - 1]?.id || null;
+        });
+        return next;
+      });
+
+      setVersionNameDrafts((previous) => {
+        const next = { ...previous };
+        delete next[versionId];
+        return next;
+      });
+      setRenamingVersionId((current) => (current === versionId ? null : current));
+      toast.success("Version deleted");
+    } catch (error) {
+      console.error("Failed to delete version:", error);
+      toast.error("Failed to delete version");
+    }
+  };
 
   const handleDownloadPDF = async () => {
     if (!estimate) return;
@@ -221,20 +463,83 @@ export default function EstimateDetail() {
   const displayTitle = isRecurringQuote
     ? `${estimate.customer?.name || "Unknown"} Quote`
     : `${estimate.customer?.name || "Unknown"}, Estimate`;
+  const selectedVersion =
+    estimateVersions.find((version) => version.id === selectedVersionId) || null;
+  const canManageEstimateVersions =
+    estimate.status !== "accepted" &&
+    estimate.status !== "declined" &&
+    !estimate.has_pending_changes;
+  const hasEstimateVersions = estimateVersions.length > 0;
+  const showNoVersionFullState =
+    canManageEstimateVersions &&
+    !loadingVersions &&
+    !hasEstimateVersions;
+  const canSelectVersionForApproval =
+    estimate.status !== "accepted" &&
+    estimate.status !== "declined" &&
+    !estimate.has_pending_changes &&
+    hasEstimateVersions;
 
   const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
   const showPendingChangesCard = estimate.has_pending_changes && !showingOriginal;
   const showApprovedCard =
     (estimate.status === "accepted" && !showPendingChangesCard) ||
     (estimate.has_pending_changes && showingOriginal);
+  const activeVersionSnapshot =
+    canManageEstimateVersions && !showingOriginal && selectedVersion ? selectedVersion : null;
 
   const displayLineItems = showingOriginal && hasOriginalEstimate
     ? estimate.original_line_items!
-    : estimate.line_items.filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted');
+    : activeVersionSnapshot
+      ? activeVersionSnapshot.line_items.map((item, index) => ({
+          ...item,
+          id: `version-item-${activeVersionSnapshot.id}-${index}`,
+          is_change_order: false,
+          change_order_approved: null,
+          change_order_type: null,
+        }))
+      : estimate.line_items.filter((item: any) => !item.is_change_order || item.change_order_type !== 'deleted');
 
   const displayTotal = showingOriginal && hasOriginalEstimate
     ? estimate.original_total!
-    : estimate.total;
+    : activeVersionSnapshot
+      ? activeVersionSnapshot.total
+      : estimate.total;
+  const displaySubtotal = activeVersionSnapshot ? activeVersionSnapshot.subtotal : estimate.subtotal;
+  const displayTaxRate = activeVersionSnapshot ? activeVersionSnapshot.tax_rate : estimate.tax_rate;
+  const displayTax = activeVersionSnapshot ? activeVersionSnapshot.tax : estimate.tax;
+  const displayDiscount = activeVersionSnapshot ? activeVersionSnapshot.discount : estimate.discount;
+  const displayProfitMargin = activeVersionSnapshot
+    ? Number(activeVersionSnapshot.profit_margin) || 0
+    : Number(estimate.profit_margin) || 0;
+  const displayNotes = activeVersionSnapshot ? activeVersionSnapshot.notes : estimate.notes;
+  const editModalEstimate = activeVersionSnapshot
+    ? {
+        ...estimate,
+        line_items: (activeVersionSnapshot.line_items || []).map((item, index) => ({
+          id: `version-item-${activeVersionSnapshot.id}-${index}`,
+          name: item.name,
+          description: item.description || "",
+          quantity: Number(item.quantity) || 0,
+          unit: item.unit || "each",
+          unit_price: Number(item.unit_price) || 0,
+          total: Number(item.total) || 0,
+          sort_order: Number(item.sort_order ?? index),
+          category: item.category || "other",
+          is_change_order: false,
+          change_order_type: null,
+          change_order_approved: null,
+        })),
+        subtotal: Number(activeVersionSnapshot.subtotal) || 0,
+        tax_rate: Number(activeVersionSnapshot.tax_rate) || 0,
+        tax: Number(activeVersionSnapshot.tax) || 0,
+        discount: Number(activeVersionSnapshot.discount) || 0,
+        total: Number(activeVersionSnapshot.total) || 0,
+        profit_margin: Number(activeVersionSnapshot.profit_margin) || 0,
+        surcharge: Number(activeVersionSnapshot.surcharge) || 0,
+        notes: activeVersionSnapshot.notes || null,
+      }
+    : estimate;
 
   const groupedLineItems = [...displayLineItems]
     .sort((a, b) => {
@@ -368,6 +673,45 @@ export default function EstimateDetail() {
         if (changeOrderError) throw changeOrderError;
       }
 
+      if (!isApprovingPendingChanges && selectedVersion) {
+        const { error: deleteItemsError } = await supabase
+          .from("estimate_line_items")
+          .delete()
+          .eq("estimate_id", id);
+
+        if (deleteItemsError) throw deleteItemsError;
+
+        const versionLineItems = Array.isArray(selectedVersion.line_items)
+          ? selectedVersion.line_items
+          : [];
+
+        if (versionLineItems.length > 0) {
+          const { error: insertItemsError } = await supabase
+            .from("estimate_line_items")
+            .insert(
+              versionLineItems.map((item, index) => ({
+                estimate_id: id,
+                account_id: estimate.account_id,
+                name: item.name,
+                description: item.description || null,
+                quantity: Number(item.quantity) || 0,
+                unit: item.unit || "item",
+                unit_price: Number(item.unit_price) || 0,
+                total: Number(item.total) || 0,
+                sort_order: Number(item.sort_order ?? index),
+                category: normalizeCategory(item.category),
+                is_change_order: false,
+                change_order_type: null,
+                change_order_approved: null,
+                changed_at: null,
+                original_line_item_id: null,
+              })),
+            );
+
+          if (insertItemsError) throw insertItemsError;
+        }
+      }
+
       const estimateApprovalUpdate: Record<string, unknown> = {
         approved_via: "manual",
         updated_at: new Date().toISOString(),
@@ -375,6 +719,16 @@ export default function EstimateDetail() {
 
       if (!isApprovingPendingChanges) {
         estimateApprovalUpdate.status = "accepted";
+        if (selectedVersion) {
+          estimateApprovalUpdate.subtotal = Number(selectedVersion.subtotal) || 0;
+          estimateApprovalUpdate.tax_rate = Number(selectedVersion.tax_rate) || 0;
+          estimateApprovalUpdate.tax = Number(selectedVersion.tax) || 0;
+          estimateApprovalUpdate.discount = Number(selectedVersion.discount) || 0;
+          estimateApprovalUpdate.total = Number(selectedVersion.total) || 0;
+          estimateApprovalUpdate.profit_margin = Number(selectedVersion.profit_margin) || 0;
+          estimateApprovalUpdate.surcharge = Number(selectedVersion.surcharge) || 0;
+          estimateApprovalUpdate.notes = selectedVersion.notes || null;
+        }
       }
 
       estimateApprovalUpdate.accepted_at = new Date().toISOString();
@@ -423,6 +777,7 @@ export default function EstimateDetail() {
       await queryClient.invalidateQueries({ queryKey: ["estimates"] });
       await queryClient.invalidateQueries({ queryKey: ["leads"] });
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await fetchEstimateVersions();
       setShowApproveDialog(false);
       resetManualApprovalPhoto();
       const approvalSubject = isApprovingPendingChanges ? "Changes" : "Estimate";
@@ -447,6 +802,7 @@ export default function EstimateDetail() {
   const handleEstimateSuccess = async () => {
     await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
     await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+    await fetchEstimateVersions();
   };
 
   const handleGeneratePortalLink = async () => {
@@ -924,6 +1280,165 @@ export default function EstimateDetail() {
           <div className="space-y-4" data-testid="estimate-details-left-column">
             <div className="card-elevated rounded-lg overflow-hidden">
               <div className="p-4">
+                {canManageEstimateVersions && (
+                  <div className="mb-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Estimate Versions</h3>
+                    </div>
+                    {loadingVersions ? (
+                      <p className="text-sm text-muted-foreground">Loading versions...</p>
+                    ) : hasEstimateVersions ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 min-w-0">
+                          <Tabs
+                            value={selectedVersionId || estimateVersions[0]?.id}
+                            onValueChange={(value) => {
+                              setSelectedVersionId(value);
+                              setRenamingVersionId(null);
+                            }}
+                            className="mt-0 min-w-0 max-w-full"
+                          >
+                            <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden">
+                              <TabsList className="inline-flex w-max justify-start rounded-none bg-transparent p-0">
+                                {estimateVersions.map((version) => (
+                                  <TabsTrigger
+                                    key={version.id}
+                                    value={version.id}
+                                    className="h-auto min-h-[56px] shrink-0 rounded-none border-b-2 border-transparent px-4 py-2 text-left font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                                  >
+                                    <span className="flex min-w-0 flex-col items-start leading-tight">
+                                      <span className="truncate text-sm font-medium">{version.name}</span>
+                                      <span className="mt-1 text-[11px] font-normal text-muted-foreground/70">
+                                        ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                      </span>
+                                    </span>
+                                  </TabsTrigger>
+                                ))}
+                              </TabsList>
+                            </div>
+                          </Tabs>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-9 shrink-0 p-0"
+                                aria-label="Version actions"
+                              >
+                                <EllipsisVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  beginCreateEstimateVersion();
+                                }}
+                                disabled={creatingVersion || isCreatingVersionDraft}
+                              >
+                                Add
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (!selectedVersion) return;
+                                  setIsCreatingVersionDraft(false);
+                                  setRenamingVersionId(selectedVersion.id);
+                                }}
+                                disabled={!selectedVersion}
+                              >
+                                Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (!selectedVersion) return;
+                                  const confirmed = window.confirm(`Delete "${selectedVersion.name}"?`);
+                                  if (!confirmed) return;
+                                  void deleteEstimateVersion(selectedVersion.id);
+                                }}
+                                disabled={!selectedVersion}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+
+                        {isCreatingVersionDraft ? (
+                          <div className="pb-1 space-y-2">
+                                <input
+                                  value={newVersionNameDraft}
+                                  onChange={(event) => setNewVersionNameDraft(event.target.value)}
+                              className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+                              placeholder="Version name"
+                            />
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={cancelCreateEstimateVersion}
+                                aria-label="Cancel version creation"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={confirmCreateEstimateVersion}
+                                disabled={creatingVersion}
+                                aria-label="Confirm version creation"
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : selectedVersion ? (
+                          <div className="pb-1">
+                            {renamingVersionId === selectedVersion.id ? (
+                              <div className="space-y-2">
+                                <input
+                                  value={versionNameDrafts[selectedVersion.id] || ""}
+                                  onChange={(event) =>
+                                    setVersionNameDrafts((previous) => ({
+                                      ...previous,
+                                      [selectedVersion.id]: event.target.value,
+                                    }))
+                                  }
+                                  className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+                                />
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => saveVersionName(selectedVersion.id)}
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setVersionNameDrafts((previous) => ({
+                                        ...previous,
+                                        [selectedVersion.id]: selectedVersion.name,
+                                      }));
+                                      setRenamingVersionId(null);
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-1" />
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
                 {hasOriginalEstimate && (
                   <>
                     <div className="mb-2 flex items-center gap-2">
@@ -940,7 +1455,7 @@ export default function EstimateDetail() {
                           value="modified"
                           className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                         >
-                          Modified
+                          Current
                         </TabsTrigger>
                         <TabsTrigger
                           value="original"
@@ -994,161 +1509,167 @@ export default function EstimateDetail() {
                     )}
                   </div>
                 )}
-                <div data-testid="line-items-header-row" className="mt-3 flex items-center justify-between">
-                  <h4 className="text-lg font-semibold text-foreground">Line Items</h4>
-                  <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
-                    <Edit2 className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                </div>
+                {showNoVersionFullState ? (
+                  <div className="mt-3 flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-6 py-10 text-center">
+                    <h4 className="text-lg font-semibold text-foreground">No estimate versions yet</h4>
+                    <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                      Create your first version to build and present pricing options.
+                    </p>
+                    <Button
+                      className="mt-5 gap-2"
+                      onClick={createEstimateVersion}
+                      disabled={creatingVersion}
+                    >
+                      <Plus className="h-4 w-4" />
+                      {creatingVersion ? "Creating..." : "Create Version"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div data-testid="line-items-header-row" className="mt-3 flex items-center justify-between">
+                    <h4 className="text-lg font-semibold text-foreground">Line Items</h4>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
+                        <Edit2 className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {groupedLineItems.length > 0 ? (
-                groupedLineItems.map((group, groupIndex) => (
-                  <div key={group.category}>
-                    <div
-                      className="px-4 py-2 text-muted-foreground"
-                    >
-                      <p
-                        className="text-xs uppercase tracking-wide"
-                        data-testid="line-item-category-heading"
-                      >
-                        {CATEGORY_LABELS[group.category]}
-                      </p>
-                    </div>
-                    {group.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="px-4 py-2"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="font-medium text-foreground">{item.name}</p>
-                              {item.is_change_order && item.changed_at && (() => {
-                                const changedDate = new Date(item.changed_at);
-                                const hoursSinceChange = (Date.now() - changedDate.getTime()) / (1000 * 60 * 60);
-                                return hoursSinceChange < 24;
-                              })() && (
-                                <Badge
-                                  variant={
-                                    item.change_order_type === 'added' ? 'default' :
-                                    item.change_order_type === 'edited' ? 'secondary' :
-                                    'outline'
-                                  }
-
-                                >
-                                  {item.change_order_type === 'added' && 'New'}
-                                  {item.change_order_type === 'edited' && 'Modified'}
-                                </Badge>
-                              )}
-                              {item.is_change_order && item.change_order_approved === false && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border-amber-200"
-                                >
-                                  Pending Approval
-                                </Badge>
-                              )}
-                              {item.is_change_order && item.change_order_approved === true && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border-emerald-200"
-                                >
-                                  <CheckCheck className="h-3 w-3 mr-1" />
-                                  Approved
-                                </Badge>
-                              )}
-                            </div>
-                            {item.description && (() => {
-                              const descriptionId = item.id || `line-item-${groupIndex}-${itemIndex}`;
-                              const hasLongDescription = item.description.trim().length > 180;
-                              const isDescriptionExpanded = expandedDescriptions.has(descriptionId);
-                              const toggleDescription = () => {
-                                setExpandedDescriptions((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(descriptionId)) {
-                                    next.delete(descriptionId);
-                                  } else {
-                                    next.add(descriptionId);
-                                  }
-                                  return next;
-                                });
-                              };
-
-                              return (
-                                <div className="mt-0.5">
-                                  <p
-                                    className={`text-sm text-muted-foreground break-words ${
-                                      isDescriptionExpanded ? "" : "line-clamp-3"
-                                    }`}
-                                  >
-                                    {item.description}
-                                  </p>
-                                  {hasLongDescription && (
-                                    <button
-                                      type="button"
-                                      className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
-                                      onClick={toggleDescription}
+              {!showNoVersionFullState && (
+                <>
+                  {groupedLineItems.length > 0 ? (
+                    groupedLineItems.map((group, groupIndex) => (
+                      <div key={group.category}>
+                        <div
+                          className="px-4 py-2 text-muted-foreground"
+                        >
+                          <p
+                            className="text-xs uppercase tracking-wide"
+                            data-testid="line-item-category-heading"
+                          >
+                            {CATEGORY_LABELS[group.category]}
+                          </p>
+                        </div>
+                        {group.items.map((item, itemIndex) => (
+                          <div
+                            key={item.id || `${group.category}-${itemIndex}-${item.name}`}
+                            className="px-4 py-2"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <p className="font-medium text-foreground">{item.name}</p>
+                                  {item.is_change_order && item.change_order_approved === false && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border-amber-200"
                                     >
-                                      {isDescriptionExpanded ? "View less" : "View more"}
-                                    </button>
+                                      Pending Approval
+                                    </Badge>
+                                  )}
+                                  {item.is_change_order && item.change_order_approved === true && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border-emerald-200"
+                                    >
+                                      <CheckCheck className="h-3 w-3 mr-1" />
+                                      Approved
+                                    </Badge>
                                   )}
                                 </div>
-                              );
-                            })()}
+                                {item.description && (() => {
+                                  const descriptionId = item.id || `line-item-${groupIndex}-${itemIndex}`;
+                                  const hasLongDescription = item.description.trim().length > 180;
+                                  const isDescriptionExpanded = expandedDescriptions.has(descriptionId);
+                                  const toggleDescription = () => {
+                                    setExpandedDescriptions((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(descriptionId)) {
+                                        next.delete(descriptionId);
+                                      } else {
+                                        next.add(descriptionId);
+                                      }
+                                      return next;
+                                    });
+                                  };
+
+                                  return (
+                                    <div className="mt-0.5">
+                                      <p
+                                        className={`text-sm text-muted-foreground break-words ${
+                                          isDescriptionExpanded ? "" : "line-clamp-3"
+                                        }`}
+                                      >
+                                        {item.description}
+                                      </p>
+                                      {hasLongDescription && (
+                                        <button
+                                          type="button"
+                                          className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                                          onClick={toggleDescription}
+                                        >
+                                          {isDescriptionExpanded ? "View less" : "View more"}
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                              <div className="ml-4 text-right">
+                                <p className="font-semibold text-foreground">
+                                  ${Number(item.total).toLocaleString()}
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {item.quantity} {item.unit} × ${Number(item.unit_price).toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                          <div className="ml-4 text-right">
-                            <p className="font-semibold text-foreground">
-                              ${Number(item.total).toLocaleString()}
-                            </p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {item.quantity} {item.unit} × ${Number(item.unit_price).toFixed(2)}
-                            </p>
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ))
-              ) : (
-                <div className="p-4 text-center text-muted-foreground">
-                  No line items found
-                </div>
-              )}
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No line items found
+                    </div>
+                  )}
 
-              <div className="mx-4 my-4 rounded-lg bg-secondary p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="text-foreground">${Number(estimate.subtotal).toLocaleString()}</span>
-                </div>
-                {Number(estimate.profit_margin) > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Profit Margin ({Number(estimate.profit_margin).toFixed(0)}%)</span>
-                    <span className="text-foreground">${(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString()}</span>
+                  <div className="mx-4 my-4 rounded-lg bg-secondary p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="text-foreground">${Number(displaySubtotal).toLocaleString()}</span>
+                    </div>
+                    {displayProfitMargin > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Profit Margin ({displayProfitMargin.toFixed(0)}%)</span>
+                        <span className="text-foreground">${(Number(displaySubtotal) * (displayProfitMargin / 100)).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Tax ({(Number(displayTaxRate) * 100).toFixed(0)}%)</span>
+                      <span className="text-foreground">${Number(displayTax).toLocaleString()}</span>
+                    </div>
+                    {Number(displayDiscount) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Discount</span>
+                        <span className="text-[hsl(var(--status-confirmed))]">-${Number(displayDiscount).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between pt-2 border-t border-border">
+                      <span className="font-semibold text-foreground">Total</span>
+                      <span className="font-bold text-lg text-foreground">${Number(displayTotal).toLocaleString()}</span>
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tax ({(Number(estimate.tax_rate) * 100).toFixed(0)}%)</span>
-                  <span className="text-foreground">${Number(estimate.tax).toLocaleString()}</span>
-                </div>
-                {Number(estimate.discount) > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Discount</span>
-                    <span className="text-[hsl(var(--status-confirmed))]">-${Number(estimate.discount).toLocaleString()}</span>
-                  </div>
-                )}
-                <div className="flex justify-between pt-2 border-t border-border">
-                  <span className="font-semibold text-foreground">Total</span>
-                  <span className="font-bold text-lg text-foreground">${Number(estimate.total).toLocaleString()}</span>
-                </div>
-              </div>
 
-              {estimate.notes && (
-                <div className="p-4 border-t border-border">
-                  <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Notes</h3>
-                  <p className="text-sm text-muted-foreground mt-2">{estimate.notes}</p>
-                </div>
+                  {displayNotes && (
+                    <div className="p-4 border-t border-border">
+                      <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Notes</h3>
+                      <p className="text-sm text-muted-foreground mt-2">{displayNotes}</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -1267,6 +1788,23 @@ export default function EstimateDetail() {
           </DialogHeader>
 
           <div className="space-y-3 py-1">
+            {canSelectVersionForApproval && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Version to approve</p>
+                <select
+                  value={selectedVersionId || ""}
+                  onChange={(event) => setSelectedVersionId(event.target.value)}
+                  className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+                >
+                  {estimateVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {version.name} - ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="space-y-1">
               <p className="text-sm font-medium text-foreground">Signature photo</p>
               <p className="text-sm text-muted-foreground">
@@ -1336,7 +1874,10 @@ export default function EstimateDetail() {
             <Button variant="outline" onClick={() => handleApproveDialogChange(false)} disabled={manualApproving}>
               Cancel
             </Button>
-            <Button onClick={handleManualApprove} disabled={manualApproving}>
+            <Button
+              onClick={handleManualApprove}
+              disabled={manualApproving || (canSelectVersionForApproval && !selectedVersionId)}
+            >
               {manualApproving
                 ? "Approving..."
                 : estimate.has_pending_changes
@@ -1352,7 +1893,8 @@ export default function EstimateDetail() {
       <EditEstimateModal
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
-        estimate={estimate}
+        estimate={editModalEstimate}
+        versionId={activeVersionSnapshot?.id || null}
         onSuccess={handleEstimateSuccess}
       />
 

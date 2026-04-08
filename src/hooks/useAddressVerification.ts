@@ -59,9 +59,18 @@ export function useAddressVerification() {
 
     try {
       const parsed = parseAddress(addressString);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
 
       const { data, error } = await supabase.functions.invoke("verify-address", {
         body: parsed,
+        headers: accessToken
+          ? {
+              Authorization: `Bearer ${accessToken}`,
+            }
+          : undefined,
       });
 
       if (error) {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 
@@ -35,6 +35,18 @@ interface ClientPortalEstimateProps {
     original_notes?: string | null;
     original_line_items?: LineItem[] | null;
     has_pending_changes?: boolean;
+    estimate_versions?: Array<{
+      id: string;
+      name: string;
+      subtotal: number;
+      tax_rate: number;
+      tax: number;
+      discount: number;
+      total: number;
+      profit_margin?: number;
+      notes?: string | null;
+      line_items: LineItem[];
+    }>;
   };
   token: string;
   apiUrl: string;
@@ -71,14 +83,63 @@ export function ClientPortalEstimate({
 }: ClientPortalEstimateProps) {
   const [submitting, setSubmitting] = useState<"approve" | "decline" | "approve_changes" | "decline_changes" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   const isPending = estimate.status !== "accepted" && estimate.status !== "declined";
   const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
   const hasPendingChanges = estimate.has_pending_changes === true;
+  const availableVersions = useMemo(
+    () => estimate.estimate_versions || [],
+    [estimate.estimate_versions],
+  );
+
+  useEffect(() => {
+    if (availableVersions.length === 0) {
+      setSelectedVersionId(null);
+      return;
+    }
+
+    setSelectedVersionId((previous) => {
+      if (previous && availableVersions.some((version) => version.id === previous)) {
+        return previous;
+      }
+      return availableVersions[availableVersions.length - 1].id;
+    });
+  }, [availableVersions]);
+
+  const selectedVersion = useMemo(
+    () => availableVersions.find((version) => version.id === selectedVersionId) || null,
+    [availableVersions, selectedVersionId],
+  );
 
   const currentLineItems = estimate.line_items.filter((item) =>
     !item.is_change_order || item.change_order_type !== 'deleted'
   );
+
+  const displayLineItems = isPending && !hasPendingChanges && selectedVersion
+    ? selectedVersion.line_items
+    : currentLineItems;
+  const displaySubtotal = isPending && !hasPendingChanges && selectedVersion
+    ? selectedVersion.subtotal
+    : estimate.subtotal;
+  const displayTax = isPending && !hasPendingChanges && selectedVersion
+    ? selectedVersion.tax
+    : estimate.tax;
+  const displayDiscount = isPending && !hasPendingChanges && selectedVersion
+    ? selectedVersion.discount
+    : estimate.discount;
+  const displayTotal = isPending && !hasPendingChanges && selectedVersion
+    ? selectedVersion.total
+    : estimate.total;
+  const displayNotes = isPending && !hasPendingChanges && selectedVersion
+    ? selectedVersion.notes
+    : estimate.notes;
+  const displayProfitMargin = isPending && !hasPendingChanges && selectedVersion
+    ? Number(selectedVersion.profit_margin || 0)
+    : Number(estimate.profit_margin || 0);
+  const displayTaxRate = isPending && !hasPendingChanges && selectedVersion
+    ? Number(selectedVersion.tax_rate || estimate.tax_rate)
+    : Number(estimate.tax_rate);
 
   const handleDownloadPDF = async () => {
     await generateEstimatePDF({
@@ -89,13 +150,13 @@ export function ClientPortalEstimate({
       companyLogoUrl,
       companyEmail,
       companyPhone,
-      lineItems: currentLineItems,
-      subtotal: estimate.subtotal,
-      taxRate: estimate.tax_rate,
-      tax: estimate.tax,
-      discount: estimate.discount,
-      total: estimate.total,
-      notes: estimate.notes,
+      lineItems: displayLineItems,
+      subtotal: displaySubtotal,
+      taxRate: displayTaxRate,
+      tax: displayTax,
+      discount: displayDiscount,
+      total: displayTotal,
+      notes: displayNotes || undefined,
       createdAt,
       expiresAt,
     });
@@ -113,7 +174,8 @@ export function ClientPortalEstimate({
         headers: apiHeaders,
         body: JSON.stringify({
           action,
-          updated_at: estimate.updated_at
+          updated_at: estimate.updated_at,
+          estimate_version_id: action === "approve" ? selectedVersionId : undefined,
         }),
       });
 
@@ -167,12 +229,12 @@ export function ClientPortalEstimate({
     title: string,
     lineItems: LineItem[],
     subtotal: number,
+    taxRate: number,
     profitMargin: number,
     tax: number,
     discount: number,
     total: number,
-    notes?: string | null,
-    isPending?: boolean
+    notes?: string | null
   ) => (
     <div className="bg-white rounded-xl border border-slate-200">
       <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
@@ -188,20 +250,6 @@ export function ClientPortalEstimate({
                   <div className="flex-1 min-w-0 mr-4">
                     <div className="flex items-center gap-2 mb-1">
                       <p className="font-medium text-slate-900 text-sm">{item.name}</p>
-                      {isPending && item.is_change_order && item.change_order_approved === false && (
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            item.change_order_type === 'added'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : item.change_order_type === 'edited'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-800'
-                          }`}
-                        >
-                          {item.change_order_type === 'added' && 'New'}
-                          {item.change_order_type === 'edited' && 'Modified'}
-                        </span>
-                      )}
                     </div>
                     {item.description && (
                       <p className="text-xs text-slate-500 mt-0.5">
@@ -251,9 +299,9 @@ export function ClientPortalEstimate({
             </div>
           )}
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500">
-              Tax ({(Number(estimate.tax_rate) * 100).toFixed(1)}%)
-            </span>
+              <span className="text-slate-500">
+                Tax ({(Number(taxRate) * 100).toFixed(1)}%)
+              </span>
             <span className="text-slate-700">
               $
               {Number(tax).toLocaleString(undefined, {
@@ -327,6 +375,24 @@ export function ClientPortalEstimate({
           <Download className="h-4 w-4" />
           Download PDF
         </button>
+        {isPending && !hasPendingChanges && availableVersions.length > 0 && (
+          <div className="mt-3">
+            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              Choose Option
+            </label>
+            <select
+              value={selectedVersionId || ""}
+              onChange={(event) => setSelectedVersionId(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            >
+              {availableVersions.map((version) => (
+                <option key={version.id} value={version.id}>
+                  {version.name} - ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {hasPendingChanges && hasOriginalEstimate ? (
@@ -348,6 +414,7 @@ export function ClientPortalEstimate({
               "Original Approved Estimate",
               estimate.original_line_items!,
               estimate.original_subtotal!,
+              estimate.tax_rate,
               estimate.profit_margin || 0,
               estimate.original_tax!,
               estimate.original_discount!,
@@ -359,12 +426,12 @@ export function ClientPortalEstimate({
               "Proposed Changes",
               currentLineItems,
               estimate.subtotal,
+              estimate.tax_rate,
               estimate.profit_margin || 0,
               estimate.tax,
               estimate.discount,
               estimate.total,
-              estimate.notes,
-              true
+              estimate.notes
             )}
           </div>
 
@@ -402,10 +469,10 @@ export function ClientPortalEstimate({
         </div>
       ) : (
         <>
-          {currentLineItems.length > 0 && (
+          {displayLineItems.length > 0 && (
             <div className="px-6 sm:px-8 py-5">
               <div className="space-y-0">
-                {currentLineItems.map((item) => (
+                {displayLineItems.map((item) => (
                   <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0 mr-4">
@@ -439,19 +506,19 @@ export function ClientPortalEstimate({
                 <span className="text-slate-500">Subtotal</span>
                 <span className="text-slate-700">
                   $
-                  {Number(estimate.subtotal).toLocaleString(undefined, {
+                  {Number(displaySubtotal).toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                   })}
                 </span>
               </div>
-              {Number(estimate.profit_margin) > 0 && (
+              {displayProfitMargin > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">
-                    Profit Margin ({Number(estimate.profit_margin).toFixed(1)}%)
+                    Profit Margin ({displayProfitMargin.toFixed(1)}%)
                   </span>
                   <span className="text-slate-700">
                     $
-                    {(Number(estimate.subtotal) * (Number(estimate.profit_margin) / 100)).toLocaleString(undefined, {
+                    {(Number(displaySubtotal) * (displayProfitMargin / 100)).toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                     })}
                   </span>
@@ -459,21 +526,21 @@ export function ClientPortalEstimate({
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">
-                  Tax ({(Number(estimate.tax_rate) * 100).toFixed(1)}%)
+                  Tax ({(Number(displayTaxRate) * 100).toFixed(1)}%)
                 </span>
                 <span className="text-slate-700">
                   $
-                  {Number(estimate.tax).toLocaleString(undefined, {
+                  {Number(displayTax).toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                   })}
                 </span>
               </div>
-              {Number(estimate.discount) > 0 && (
+              {Number(displayDiscount) > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Discount</span>
                   <span className="text-emerald-600">
                     -$
-                    {Number(estimate.discount).toLocaleString(undefined, {
+                    {Number(displayDiscount).toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                     })}
                   </span>
@@ -483,7 +550,7 @@ export function ClientPortalEstimate({
                 <span className="text-lg font-bold text-slate-900">Total</span>
                 <span className="text-lg font-bold text-slate-900">
                   $
-                  {Number(estimate.total).toLocaleString(undefined, {
+                  {Number(displayTotal).toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                   })}
                 </span>
@@ -491,13 +558,13 @@ export function ClientPortalEstimate({
             </div>
           </div>
 
-          {estimate.notes && (
+          {displayNotes && (
             <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
                 Notes
               </p>
               <p className="text-sm text-slate-600 whitespace-pre-wrap">
-                {estimate.notes}
+                {displayNotes}
               </p>
             </div>
           )}

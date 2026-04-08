@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
+import { Mic } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { EstimateLineItemsEditor, type EstimateLineItem } from "./EstimateLineItemsEditor";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,6 +14,7 @@ import { LineItemCategory } from "@/hooks/useJobLineItems";
 import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
 import { normalizeVoiceEstimateParsedData } from "@/lib/voiceIntake";
 import type { VoiceEstimateParsedData } from "@/types/voiceIntake";
+import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
 export type EstimateLineItemInit = EstimateLineItem;
 
 interface LineItemsEstimateDialogProps {
@@ -40,6 +44,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
 
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
+  const [estimateName, setEstimateName] = useState("original");
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
@@ -51,6 +56,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
   useEffect(() => {
     if (open) {
       setLineItems(defaultLineItems);
+      setEstimateName("original");
       setPendingDeleteIndices(new Set());
       setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
       setSurcharge(String(currentAccount?.default_surcharge ?? 0));
@@ -131,6 +137,17 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
 
   const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
 
+  const isMissingEstimateNameColumnError = (error: unknown) => {
+    if (!error || typeof error !== "object") return false;
+    const maybeError = error as { message?: string | null; details?: string | null };
+    const combinedMessage = `${maybeError.message ?? ""} ${maybeError.details ?? ""}`.toLowerCase();
+    return (
+      combinedMessage.includes("estimates") &&
+      combinedMessage.includes("name") &&
+      combinedMessage.includes("column")
+    );
+  };
+
   const handleCreate = async () => {
     if (!user || !currentAccount) {
       toast.error("Authentication required");
@@ -175,6 +192,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       const taxRate = taxRatePercent / 100;
       const taxAmount = subtotalAfterAdjustments * taxRate;
       const estimateTotal = subtotalAfterAdjustments + taxAmount;
+      const normalizedEstimateName = estimateName.trim() || "original";
 
       const { error: updateError } = await supabase
         .from("leads")
@@ -186,24 +204,37 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
 
       if (updateError) throw new Error("Failed to attach customer to lead");
 
-      const { data: estimateData, error: estimateError } = await supabase
+      const estimateInsertBase = {
+        customer_id: customerId,
+        job_id: lead.id,
+        subtotal: estimateSubtotal,
+        profit_margin: profitMarginPercent,
+        surcharge: surchargePercent,
+        tax_rate: taxRate,
+        tax: taxAmount,
+        discount: 0,
+        total: estimateTotal,
+        status: "draft",
+        created_by: user.id,
+        account_id: currentAccount.id,
+      };
+
+      let { data: estimateData, error: estimateError } = await supabase
         .from("estimates")
         .insert({
-          customer_id: customerId,
-          job_id: lead.id,
-          subtotal: estimateSubtotal,
-          profit_margin: profitMarginPercent,
-          surcharge: surchargePercent,
-          tax_rate: taxRate,
-          tax: taxAmount,
-          discount: 0,
-          total: estimateTotal,
-          status: "draft",
-          created_by: user.id,
-          account_id: currentAccount.id,
+          ...estimateInsertBase,
+          name: normalizedEstimateName,
         })
         .select()
         .single();
+
+      if (estimateError && isMissingEstimateNameColumnError(estimateError)) {
+        ({ data: estimateData, error: estimateError } = await supabase
+          .from("estimates")
+          .insert(estimateInsertBase)
+          .select()
+          .single());
+      }
 
       if (estimateError) throw new Error("Failed to create estimate");
 
@@ -231,6 +262,30 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         .insert(lineItemsToInsert);
 
       if (lineItemsError) throw new Error("Failed to create line items");
+
+      await createEstimateVersionSnapshot({
+        estimateId: estimateData.id,
+        accountId: currentAccount.id,
+        name: "Version 1",
+        subtotal: estimateSubtotal,
+        taxRate: taxRate,
+        tax: taxAmount,
+        discount: 0,
+        total: estimateTotal,
+        profitMargin: profitMarginPercent,
+        surcharge: surchargePercent,
+        notes: null,
+        lineItems: lineItemsToInsert.map((item) => ({
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total: item.total,
+          sort_order: item.sort_order,
+          category: item.category,
+        })),
+      });
 
       await supabase.from("interactions").insert({
         lead_id: lead.id,
@@ -270,6 +325,16 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="estimate-name">Estimate Name (optional)</Label>
+            <Input
+              id="estimate-name"
+              value={estimateName}
+              onChange={(event) => setEstimateName(event.target.value)}
+              placeholder="original"
+            />
+          </div>
+
           {!showVoiceEstimateIntake ? (
             <>
               <Button
@@ -278,6 +343,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
                 className="w-full"
                 onClick={() => setShowVoiceEstimateIntake(true)}
               >
+                <Mic className="h-4 w-4 mr-2" />
                 Voice Estimate Intake
               </Button>
 

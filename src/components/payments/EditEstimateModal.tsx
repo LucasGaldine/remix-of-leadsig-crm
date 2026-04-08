@@ -38,6 +38,7 @@ interface EditEstimateModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   estimate: any;
+  versionId?: string | null;
   onSuccess: () => void;
 }
 
@@ -338,12 +339,13 @@ function ExpandedLineItem({
   );
 }
 
-export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: EditEstimateModalProps) {
+export function EditEstimateModal({ open, onOpenChange, estimate, versionId = null, onSuccess }: EditEstimateModalProps) {
   const [saving, setSaving] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
+  const isVersionMode = Boolean(versionId);
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
   });
@@ -351,6 +353,25 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
     return (estimate.surcharge || 0).toString();
   });
   const effectiveEstimateLineItems = useMemo(() => {
+    if (isVersionMode) {
+      return (estimate.line_items || [])
+        .map((item: any, index: number) => ({
+          id: item.id || `version-item-${index}`,
+          name: item.name || "",
+          description: item.description || "",
+          quantity: Number(item.quantity) || 0,
+          unit: item.unit || "each",
+          unit_price: Number(item.unit_price) || 0,
+          total: Number(item.total) || 0,
+          sort_order: Number(item.sort_order ?? index),
+          category: item.category || "other",
+          is_change_order: false,
+          change_order_type: null,
+          change_order_approved: null,
+        }))
+        .sort((a: any, b: any) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+    }
+
     const nonDeletedItems = estimate.line_items.filter(
       (item: any) => item.change_order_type !== 'deleted'
     );
@@ -384,7 +405,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
         return item.change_order_approved === true || item.change_order_approved === false;
       })
       .sort((a: any, b: any) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
-  }, [estimate.line_items]);
+  }, [estimate.line_items, isVersionMode]);
 
   const buildLineItemsFromEstimate = () => {
     return effectiveEstimateLineItems.map((item: any) => ({
@@ -649,6 +670,59 @@ export function EditEstimateModal({ open, onOpenChange, estimate, onSuccess }: E
 
     try {
       setSaving(true);
+
+      if (isVersionMode && versionId) {
+        const normalizedLineItems = activeLineItems
+          .map((item, index) => {
+            const quantity = parseFloat(item.quantity) || 0;
+            const unitPrice = parseFloat(item.unit_price) || 0;
+            const total = quantity * unitPrice;
+            return {
+              name: item.name,
+              description: item.description || null,
+              quantity,
+              unit: item.unit,
+              unit_price: unitPrice,
+              total,
+              sort_order: index,
+              category: item.category || "other",
+            };
+          })
+          .filter((item) => item.name?.trim().length > 0);
+
+        const subtotal = normalizedLineItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+        const profitMarginValue = parseFloat(profitMargin || "0");
+        const surchargeValue = parseFloat(surcharge || "0");
+        const profitAmount = subtotal * (profitMarginValue / 100);
+        const surchargeAmount = subtotal * (surchargeValue / 100);
+        const subtotalWithAdjustments = subtotal + profitAmount + surchargeAmount;
+        const taxRate = parseFloat(estimate.tax_rate?.toString() || "0");
+        const tax = subtotalWithAdjustments * taxRate;
+        const discount = parseFloat(estimate.discount?.toString() || "0");
+        const total = subtotalWithAdjustments + tax - discount;
+
+        const { error } = await supabase
+          .from("estimate_versions")
+          .update({
+            line_items: normalizedLineItems,
+            subtotal,
+            tax_rate: taxRate,
+            tax,
+            discount,
+            total,
+            profit_margin: profitMarginValue,
+            surcharge: surchargeValue,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", versionId);
+
+        if (error) throw error;
+
+        toast.success("Version updated successfully");
+        onSuccess();
+        onOpenChange(false);
+        return;
+      }
 
       const shouldTrackChanges = estimate.status === 'accepted';
 

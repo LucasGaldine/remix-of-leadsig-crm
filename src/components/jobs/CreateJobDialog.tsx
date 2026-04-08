@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Upload } from "lucide-react";
+import { Mic, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,8 @@ import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifi
 import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
 import { matchServiceType, normalizeVoiceJobParsedData } from "@/lib/voiceIntake";
 import type { VoiceJobParsedData } from "@/types/voiceIntake";
+import { useAddressVerification } from "@/hooks/useAddressVerification";
+import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -74,6 +76,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const deleteJob = useDeleteJob();
   const { scheduleJob } = useScheduleJob();
   const { data: crewMembers = [] } = useTeamMembers();
+  const { verify, verifying, result: addressResult, reset: resetAddressVerification } = useAddressVerification();
 
   const [showCSVImport, setShowCSVImport] = useState(false);
   const [showVoiceJobIntake, setShowVoiceJobIntake] = useState(false);
@@ -308,6 +311,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setSnapshots({});
     setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
     setSurcharge(String(currentAccount?.default_surcharge ?? 0));
+    resetAddressVerification();
   };
 
   const createManualJob = async () => {
@@ -772,9 +776,15 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setJobName((current) => parsed.jobName || current);
     setServiceType((current) => matchServiceType(parsed.serviceType, SERVICE_TYPES) || current);
     setJobAddress((current) => parsed.jobAddress || current);
+    resetAddressVerification();
     setDescription((current) => parsed.description || current);
     setShowVoiceJobIntake(false);
   };
+
+  const addressToVerify = resolveCreateJobAddress({
+    jobAddress,
+    customerAddress: selectedCustomer?.address,
+  });
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -840,6 +850,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                       className="w-full"
                       onClick={() => setShowVoiceJobIntake(true)}
                     >
+                      <Mic className="h-4 w-4 mr-2" />
                       Voice Job Intake
                     </Button>
 
@@ -908,8 +919,20 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                   <Input
                     id="jobAddress"
                     value={jobAddress}
-                    onChange={(e) => setJobAddress(e.target.value)}
+                    onChange={(e) => {
+                      setJobAddress(e.target.value);
+                      resetAddressVerification();
+                    }}
                     placeholder={selectedCustomer?.address ? `Default: ${selectedCustomer.address}` : "123 Main St, Austin, TX"}
+                  />
+                  <AddressVerificationBadge
+                    verifying={verifying}
+                    result={addressResult}
+                    onVerify={() => {
+                      if (!addressToVerify) return;
+                      void verify(addressToVerify);
+                    }}
+                    onAccept={(formatted) => setJobAddress(formatted)}
                   />
                   {selectedCustomer?.address && !jobAddress && (
                     <p className="text-xs text-muted-foreground">

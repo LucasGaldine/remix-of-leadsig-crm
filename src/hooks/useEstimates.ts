@@ -8,6 +8,30 @@ type Estimate = Database["public"]["Tables"]["estimates"]["Row"];
 type EstimateStatus = Database["public"]["Enums"]["estimate_status"];
 
 export interface EstimateWithDetails extends Estimate {
+  versions?: {
+    id: string;
+    name: string;
+    subtotal: number;
+    tax_rate: number;
+    tax: number;
+    discount: number;
+    total: number;
+    profit_margin?: number;
+    surcharge?: number;
+    notes?: string | null;
+    line_items: Array<{
+      name: string;
+      description?: string | null;
+      quantity: number;
+      unit: string;
+      unit_price: number;
+      total: number;
+      sort_order?: number;
+      category?: "equipment" | "materials" | "labor" | "other";
+    }>;
+    created_at: string;
+    updated_at: string;
+  }[];
   customer: {
     id: string;
     name: string;
@@ -220,6 +244,28 @@ export function useEstimate(id: string | undefined) {
 
         estimate.original_line_items = originalLineItems || null;
       }
+
+      const { data: versions } = await supabase
+        .from("estimate_versions")
+        .select(`
+          id,
+          name,
+          subtotal,
+          tax_rate,
+          tax,
+          discount,
+          total,
+          profit_margin,
+          surcharge,
+          notes,
+          line_items,
+          created_at,
+          updated_at
+        `)
+        .eq("estimate_id", id)
+        .order("created_at", { ascending: true });
+
+      estimate.versions = (versions || []) as EstimateWithDetails["versions"];
 
       return estimate;
     },

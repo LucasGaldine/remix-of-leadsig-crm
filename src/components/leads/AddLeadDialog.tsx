@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader as Loader2, Upload } from "lucide-react";
+import { Loader as Loader2, Mic, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -248,6 +248,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
                   className="w-full"
                   onClick={() => setShowVoiceLeadIntake(true)}
                 >
+                  <Mic className="h-4 w-4 mr-2" />
                   Voice Lead Intake
                 </Button>
 

@@ -103,6 +103,18 @@ interface EstimateData {
   original_notes?: string | null;
   original_line_items?: LineItem[] | null;
   has_pending_changes?: boolean;
+  estimate_versions?: Array<{
+    id: string;
+    name: string;
+    subtotal: number;
+    tax_rate: number;
+    tax: number;
+    discount: number;
+    total: number;
+    profit_margin?: number;
+    notes?: string | null;
+    line_items: LineItem[];
+  }>;
 }
 
 interface PhotoItem {
