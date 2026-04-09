@@ -44,7 +44,7 @@ export function QuickAddLineItem({ templates, onApply }: QuickAddLineItemProps) 
         onClick={() => setOpen(true)}
       >
         <PlusCircle className="h-3.5 w-3.5" />
-        Quick Add
+        Use Template
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>

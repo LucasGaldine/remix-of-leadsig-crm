@@ -58,7 +58,7 @@ vi.mock("@/components/leads/QuickAddLineItem", () => ({
         })
       }
     >
-      Quick Add
+      Use Template
     </button>
   ),
 }));
@@ -135,7 +135,7 @@ describe("EditEstimateModal responsive width", () => {
       target: { value: "Keep this description" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /quick add/i }));
+    fireEvent.click(screen.getByRole("button", { name: /use template/i }));
 
     expect(screen.getByLabelText(/title/i)).toHaveValue("Concrete Service");
     expect(screen.getByLabelText(/description/i)).toHaveValue("Keep this description");

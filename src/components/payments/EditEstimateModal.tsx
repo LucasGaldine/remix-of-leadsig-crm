@@ -60,11 +60,8 @@ function normalizeLineItemForComparison(item: Partial<LineItemForm> & { sort_ord
   };
 }
 
-const LINE_ITEM_TEMPLATE_STORAGE_PREFIX = "leadsig_line_item_templates_";
-
-function buildTemplateStorageKey(accountId: string | null | undefined) {
-  return `${LINE_ITEM_TEMPLATE_STORAGE_PREFIX}${accountId ?? "default"}`;
-}
+const LINE_ITEM_TEMPLATE_STORAGE_KEY = "leadsig_line_item_templates_global";
+const LEGACY_LINE_ITEM_TEMPLATE_STORAGE_PREFIX = "leadsig_line_item_templates_";
 
 function buildTemplateFingerprint(item: Pick<LineItemForm, "name" | "description" | "unit" | "unit_price" | "category">) {
   return [
@@ -192,9 +189,35 @@ function ExpandedLineItem({
     item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""
   );
   const [isFocused, setIsFocused] = useState(false);
+  const [isTitleFocused, setIsTitleFocused] = useState(false);
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
   const lineTotal = qty * price;
+  const normalizedTitleQuery = item.name.trim().toLowerCase();
+
+  const matchingTemplates = useMemo(() => {
+    if (!normalizedTitleQuery) return [];
+    return templates
+      .filter((template) => template.name.trim().toLowerCase().includes(normalizedTitleQuery))
+      .slice(0, 3);
+  }, [templates, normalizedTitleQuery]);
+
+  const applyTemplateToLineItem = (template: LineItemTemplate) => {
+    onUpdate("name", template.name);
+    if (template.quantity.trim().length > 0) {
+      onUpdate("quantity", template.quantity);
+    }
+    if (template.unit.trim().length > 0) {
+      onUpdate("unit", template.unit);
+    }
+    onUpdate("unit_price", template.unit_price);
+    if (template.description.trim().length > 0) {
+      onUpdate("description", template.description);
+    }
+    if (template.category.trim().length > 0) {
+      onUpdate("category", template.category);
+    }
+  };
 
   useEffect(() => {
     if (!isFocused) {
@@ -212,22 +235,7 @@ function ExpandedLineItem({
         <div className="flex items-center gap-1">
           <QuickAddLineItem
             templates={templates}
-            onApply={(template) => {
-              onUpdate("name", template.name);
-              if (template.quantity.trim().length > 0) {
-                onUpdate("quantity", template.quantity);
-              }
-              if (template.unit.trim().length > 0) {
-                onUpdate("unit", template.unit);
-              }
-              onUpdate("unit_price", template.unit_price);
-              if (template.description.trim().length > 0) {
-                onUpdate("description", template.description);
-              }
-              if (template.category.trim().length > 0) {
-                onUpdate("category", template.category);
-              }
-            }}
+            onApply={applyTemplateToLineItem}
           />
           <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onRemove}>
             <Trash2 className="h-3.5 w-3.5" />
@@ -237,12 +245,44 @@ function ExpandedLineItem({
 
       <div className="space-y-2">
         <Label htmlFor={`edit-item-name-${index}`}>Title *</Label>
-        <Input
-          id={`edit-item-name-${index}`}
-          value={item.name}
-          onChange={(e) => onUpdate("name", e.target.value)}
-          placeholder="e.g., Paver Installation"
-        />
+        <div className="relative">
+          <Input
+            id={`edit-item-name-${index}`}
+            value={item.name}
+            onChange={(e) => onUpdate("name", e.target.value)}
+            onFocus={() => setIsTitleFocused(true)}
+            onBlur={() => setIsTitleFocused(false)}
+            placeholder="e.g., Paver Installation"
+          />
+          {isTitleFocused && normalizedTitleQuery.length > 0 ? (
+            matchingTemplates.length > 0 ? (
+              <div className="absolute top-full left-0 right-0 z-30 mt-1 border border-border rounded-md bg-background p-1 space-y-1 shadow-md">
+                {matchingTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      applyTemplateToLineItem(template);
+                    }}
+                    className="w-full text-left px-2 py-1.5 rounded-sm hover:bg-accent transition-colors"
+                  >
+                    <div className="text-sm font-medium">{template.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      ${formatDollar(parseFloat(template.unit_price || "0"))} / {template.unit || "each"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="absolute top-full left-0 right-0 z-30 mt-1 border border-border rounded-md bg-background p-2 shadow-md">
+                <p className="text-xs text-muted-foreground">
+                  No template match. Click <span className="font-medium text-foreground">Save as template</span> to reuse this item later.
+                </p>
+              </div>
+            )
+          ) : null}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -364,6 +404,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
   const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
+  const [templatesHydrated, setTemplatesHydrated] = useState(false);
   const isVersionMode = Boolean(versionId);
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
@@ -450,18 +491,24 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
     setDragIndex(null);
     setProfitMargin((estimate.profit_margin || 0).toString());
     setSurcharge((estimate.surcharge || 0).toString());
+    setTemplatesHydrated(false);
 
-    const storageKey = buildTemplateStorageKey(estimate.account_id);
-    const storedRaw = window.localStorage.getItem(storageKey);
-    if (!storedRaw) {
+    const storedRaw = window.localStorage.getItem(LINE_ITEM_TEMPLATE_STORAGE_KEY);
+    const legacyStorageKey = `${LEGACY_LINE_ITEM_TEMPLATE_STORAGE_PREFIX}${estimate.account_id ?? "default"}`;
+    const legacyRaw = window.localStorage.getItem(legacyStorageKey);
+    const sourceRaw = storedRaw || legacyRaw;
+
+    if (!sourceRaw) {
       setLineItemTemplates([]);
+      setTemplatesHydrated(true);
       return;
     }
 
     try {
-      const parsed = JSON.parse(storedRaw);
+      const parsed = JSON.parse(sourceRaw);
       if (!Array.isArray(parsed)) {
         setLineItemTemplates([]);
+        setTemplatesHydrated(true);
         return;
       }
 
@@ -480,16 +527,21 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setLineItemTemplates(sanitizedTemplates);
+      setTemplatesHydrated(true);
+
+      if (!storedRaw && legacyRaw) {
+        window.localStorage.setItem(LINE_ITEM_TEMPLATE_STORAGE_KEY, JSON.stringify(sanitizedTemplates));
+      }
     } catch {
       setLineItemTemplates([]);
+      setTemplatesHydrated(true);
     }
   }, [open, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge]);
 
   useEffect(() => {
-    if (!open) return;
-    const storageKey = buildTemplateStorageKey(estimate.account_id);
-    window.localStorage.setItem(storageKey, JSON.stringify(lineItemTemplates));
-  }, [lineItemTemplates, open, estimate.account_id]);
+    if (!open || !templatesHydrated) return;
+    window.localStorage.setItem(LINE_ITEM_TEMPLATE_STORAGE_KEY, JSON.stringify(lineItemTemplates));
+  }, [lineItemTemplates, open, templatesHydrated]);
 
   const addLineItem = () => {
     const newItems = [
