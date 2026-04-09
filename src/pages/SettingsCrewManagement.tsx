@@ -33,13 +33,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,6 +46,8 @@ import {
   fetchAccountMembersWithDescriptionFallback,
   updateAccountMemberWithDescriptionFallback,
 } from "@/lib/accountMembers";
+import { CrewRoleSelect } from "@/components/crew/CrewRoleSelect";
+import { crewOnlyRoles, roleBadgeColors, roleLabels } from "@/lib/crewRoles";
 
 interface AccountMember {
   id: string;
@@ -73,22 +68,6 @@ interface MockCrewProfile {
   role: "crew_lead" | "crew_member";
   created_at: string;
 }
-
-const roleLabels: Record<AppRole, string> = {
-  owner: 'Owner',
-  admin: 'Admin',
-  sales: 'Sales',
-  crew_lead: 'Crew Lead',
-  crew_member: 'Crew Member',
-};
-
-const roleBadgeColors: Record<AppRole, string> = {
-  owner: 'bg-purple-500',
-  admin: 'bg-blue-500',
-  sales: 'bg-green-500',
-  crew_lead: 'bg-orange-500',
-  crew_member: 'bg-gray-500',
-};
 
 export default function SettingsCrewManagement() {
   const navigate = useNavigate();
@@ -638,41 +617,11 @@ export default function SettingsCrewManagement() {
             {isOwner && (
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
-                <Select
+                <CrewRoleSelect
+                  id="role"
                   value={newRole}
                   onValueChange={(value) => setNewRole(value as AppRole)}
-                >
-                  <SelectTrigger id="role">
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="owner">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-purple-500 text-white">Owner</Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="admin">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-blue-500 text-white">Admin</Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="sales">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-green-500 text-white">Sales</Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="crew_lead">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-orange-500 text-white">Crew Lead</Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="crew_member">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-gray-500 text-white">Crew Member</Badge>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                />
               </div>
             )}
             <div className="space-y-2">
@@ -793,18 +742,12 @@ export default function SettingsCrewManagement() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="mock-profile-role">Role</Label>
-              <Select
+              <CrewRoleSelect
+                id="mock-profile-role"
                 value={mockProfileRole}
+                roles={crewOnlyRoles}
                 onValueChange={(value) => setMockProfileRole(value as "crew_lead" | "crew_member")}
-              >
-                <SelectTrigger id="mock-profile-role">
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="crew_lead">Crew Lead</SelectItem>
-                  <SelectItem value="crew_member">Crew Member</SelectItem>
-                </SelectContent>
-              </Select>
+              />
             </div>
           </div>
           <DialogFooter>
