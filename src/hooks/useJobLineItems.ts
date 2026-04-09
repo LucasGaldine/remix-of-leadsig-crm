@@ -4,6 +4,9 @@ import { useAuth } from "./useAuth";
 import { toast } from "sonner";
 
 export type LineItemCategory = 'equipment' | 'materials' | 'labor' | 'other';
+export type EstimateUpdateMode = "add_to" | "replace";
+export type EstimateUpdateTarget = LineItemCategory | "entire_estimate";
+export type EstimateSyncSource = "current" | "original";
 
 export interface JobLineItem {
   id: string;
@@ -24,6 +27,26 @@ export interface JobLineItem {
 export const useJobLineItems = (jobId: string | undefined) => {
   const { currentAccount } = useAuth();
   const queryClient = useQueryClient();
+
+  const fetchCurrentAcceptedEstimate = async () => {
+    if (!jobId || !currentAccount?.id) throw new Error("No job or account selected");
+
+    const { data: estimate, error: estimateError } = await supabase
+      .from("estimates")
+      .select("id, tax_rate, discount, profit_margin, surcharge")
+      .eq("job_id", jobId)
+      .eq("account_id", currentAccount.id)
+      .eq("status", "accepted")
+      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (estimateError) throw estimateError;
+    if (!estimate) throw new Error("No accepted estimate found for this job");
+
+    return estimate;
+  };
 
   const { data: lineItems, isLoading } = useQuery({
     queryKey: ["job-line-items", jobId, currentAccount?.id],
@@ -131,30 +154,80 @@ export const useJobLineItems = (jobId: string | undefined) => {
   });
 
   const resyncFromEstimate = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (source: EstimateSyncSource = "current") => {
       if (!jobId || !currentAccount?.id) throw new Error("No job or account selected");
 
-      const { data: estimate, error: estimateError } = await supabase
-        .from("estimates")
-        .select("id")
-        .eq("job_id", jobId)
-        .eq("account_id", currentAccount.id)
-        .eq("status", "accepted")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const estimate = await fetchCurrentAcceptedEstimate();
 
-      if (estimateError) throw estimateError;
-      if (!estimate) throw new Error("No accepted estimate found for this job");
+      let estimateLineItems: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        quantity: number;
+        unit: string;
+        unit_price: number;
+        total: number;
+        sort_order: number;
+        category: LineItemCategory;
+      }> = [];
 
-      const { data: estimateLineItems, error: lineItemsError } = await supabase
-        .from("estimate_line_items")
-        .select("*")
-        .eq("estimate_id", estimate.id)
-        .eq("is_change_order", false)
-        .order("sort_order", { ascending: true });
+      if (source === "original") {
+        const { data: originalLineItems, error: originalLineItemsError } = await supabase
+          .from("estimate_line_items_original")
+          .select("original_line_item_id, name, description, quantity, unit, unit_price, total, sort_order")
+          .eq("estimate_id", estimate.id)
+          .eq("account_id", currentAccount.id)
+          .order("sort_order", { ascending: true });
 
-      if (lineItemsError) throw lineItemsError;
+        if (originalLineItemsError) throw originalLineItemsError;
+
+        const { data: estimateLineItemCategories, error: estimateLineItemCategoriesError } = await supabase
+          .from("estimate_line_items")
+          .select("id, category")
+          .eq("estimate_id", estimate.id)
+          .eq("account_id", currentAccount.id);
+
+        if (estimateLineItemCategoriesError) throw estimateLineItemCategoriesError;
+
+        const categoryByLineItemId = new Map(
+          (estimateLineItemCategories ?? []).map((item) => [item.id, (item.category as LineItemCategory) || "other"]),
+        );
+
+        estimateLineItems = (originalLineItems ?? []).map((item) => ({
+          id: item.original_line_item_id,
+          name: item.name,
+          description: item.description,
+          quantity: Number(item.quantity) || 0,
+          unit: item.unit,
+          unit_price: Number(item.unit_price) || 0,
+          total: Number(item.total) || 0,
+          sort_order: item.sort_order || 0,
+          category: categoryByLineItemId.get(item.original_line_item_id) || "other",
+        }));
+      } else {
+        const { data: currentLineItems, error: currentLineItemsError } = await supabase
+          .from("estimate_line_items")
+          .select("id, name, description, quantity, unit, unit_price, total, sort_order, category")
+          .eq("estimate_id", estimate.id)
+          .eq("account_id", currentAccount.id)
+          .or("is_change_order.is.null,and(is_change_order.eq.false),and(is_change_order.eq.true,change_order_type.neq.deleted)")
+          .order("sort_order", { ascending: true });
+
+        if (currentLineItemsError) throw currentLineItemsError;
+
+        estimateLineItems = (currentLineItems ?? []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          quantity: Number(item.quantity) || 0,
+          unit: item.unit,
+          unit_price: Number(item.unit_price) || 0,
+          total: Number(item.total) || 0,
+          sort_order: item.sort_order || 0,
+          category: (item.category as LineItemCategory) || "other",
+        }));
+      }
+
       if (!estimateLineItems || estimateLineItems.length === 0) {
         throw new Error("No line items found in estimate");
       }
@@ -197,6 +270,152 @@ export const useJobLineItems = (jobId: string | undefined) => {
     },
   });
 
+  const updateEstimateFromJobCosts = useMutation({
+    mutationFn: async ({
+      mode,
+      target,
+    }: {
+      mode: EstimateUpdateMode;
+      target: EstimateUpdateTarget;
+    }) => {
+      if (!jobId || !currentAccount?.id) throw new Error("No job or account selected");
+      const estimate = await fetchCurrentAcceptedEstimate();
+
+      const { data: jobCostItems, error: jobCostItemsError } = await supabase
+        .from("job_line_items")
+        .select("name, description, quantity, unit, unit_price, total, category")
+        .eq("lead_id", jobId)
+        .eq("account_id", currentAccount.id)
+        .order("sort_order", { ascending: true });
+
+      if (jobCostItemsError) throw jobCostItemsError;
+
+      const selectedJobItems =
+        target === "entire_estimate"
+          ? jobCostItems ?? []
+          : (jobCostItems ?? []).filter((item) => item.category === target);
+
+      if (mode === "replace") {
+        const existingBaseItemsQuery = supabase
+          .from("estimate_line_items")
+          .select("id")
+          .eq("estimate_id", estimate.id)
+          .eq("account_id", currentAccount.id)
+          .eq("is_change_order", false);
+
+        if (target !== "entire_estimate") {
+          existingBaseItemsQuery.eq("category", target);
+        }
+
+        const { data: existingBaseItems, error: existingBaseItemsError } = await existingBaseItemsQuery;
+        if (existingBaseItemsError) throw existingBaseItemsError;
+
+        const existingBaseItemIds = (existingBaseItems ?? []).map((item) => item.id);
+
+        if (existingBaseItemIds.length > 0) {
+          const { error: markDeletedError } = await supabase
+            .from("estimate_line_items")
+            .update({
+              is_change_order: true,
+              change_order_type: "deleted",
+              change_order_approved: false,
+              changed_at: new Date().toISOString(),
+            })
+            .in("id", existingBaseItemIds);
+
+          if (markDeletedError) throw markDeletedError;
+        }
+      }
+
+      if (mode === "add_to" && selectedJobItems.length === 0) {
+        throw new Error("No matching job cost line items found to update the estimate");
+      }
+
+      if (selectedJobItems.length > 0) {
+        const { data: existingEstimateItems, error: existingEstimateItemsError } = await supabase
+          .from("estimate_line_items")
+          .select("sort_order")
+          .eq("estimate_id", estimate.id)
+          .eq("account_id", currentAccount.id)
+          .order("sort_order", { ascending: false })
+          .limit(1);
+
+        if (existingEstimateItemsError) throw existingEstimateItemsError;
+        const maxSortOrder = existingEstimateItems?.[0]?.sort_order ?? 0;
+
+        const lineItemsToInsert = selectedJobItems.map((item, index) => ({
+          estimate_id: estimate.id,
+          account_id: currentAccount.id,
+          name: item.name,
+          description: item.description,
+          quantity: Number(item.quantity) || 0,
+          unit: item.unit,
+          unit_price: Number(item.unit_price) || 0,
+          total: Number(item.total) || 0,
+          sort_order: maxSortOrder + index + 1,
+          category: item.category || "other",
+          is_change_order: true,
+          change_order_type: "added",
+          change_order_approved: false,
+          changed_at: new Date().toISOString(),
+        }));
+
+        const { error: insertError } = await supabase
+          .from("estimate_line_items")
+          .insert(lineItemsToInsert);
+
+        if (insertError) throw insertError;
+      }
+
+      const { data: estimateTotalsItems, error: estimateTotalsItemsError } = await supabase
+        .from("estimate_line_items")
+        .select("total")
+        .eq("estimate_id", estimate.id)
+        .eq("account_id", currentAccount.id)
+        .or("is_change_order.is.null,and(is_change_order.eq.false),and(is_change_order.eq.true,change_order_type.neq.deleted)");
+
+      if (estimateTotalsItemsError) throw estimateTotalsItemsError;
+
+      const subtotal = (estimateTotalsItems ?? []).reduce(
+        (sum, item) => sum + Number(item.total || 0),
+        0,
+      );
+      const profitMarginRate = Number((estimate as any).profit_margin || 0) / 100;
+      const surchargeRate = Number((estimate as any).surcharge || 0) / 100;
+      const taxRate = Number(estimate.tax_rate || 0);
+      const discount = Number(estimate.discount || 0);
+      const adjustedSubtotal = subtotal + subtotal * profitMarginRate + subtotal * surchargeRate;
+      const tax = adjustedSubtotal * taxRate;
+      const total = adjustedSubtotal + tax - discount;
+
+      const { error: updateEstimateError } = await supabase
+        .from("estimates")
+        .update({
+          subtotal,
+          tax,
+          total,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", estimate.id)
+        .eq("account_id", currentAccount.id);
+
+      if (updateEstimateError) throw updateEstimateError;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["job-line-items", jobId] });
+      queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+
+      const targetLabel = variables.target === "entire_estimate" ? "entire estimate" : variables.target;
+      const modeLabel = variables.mode === "replace" ? "replaced" : "added";
+      toast.success(`Estimate updated: ${modeLabel} ${targetLabel}`);
+    },
+    onError: (error) => {
+      console.error("Error updating estimate from job costs:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update estimate");
+    },
+  });
+
   const totalCost = lineItems?.reduce((sum, item) => sum + Number(item.total), 0) || 0;
 
   return {
@@ -208,5 +427,6 @@ export const useJobLineItems = (jobId: string | undefined) => {
     updateLineItem,
     deleteLineItem,
     resyncFromEstimate,
+    updateEstimateFromJobCosts,
   };
 };

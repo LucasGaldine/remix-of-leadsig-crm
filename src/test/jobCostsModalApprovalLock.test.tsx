@@ -22,6 +22,7 @@ vi.mock("@/hooks/useJobLineItems", () => ({
     totalCost: 120,
     hasApprovedEstimate: false,
     resyncFromEstimate: { mutate: vi.fn(), isPending: false },
+    updateEstimateFromJobCosts: { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false },
     addLineItem: { mutate: vi.fn(), mutateAsync: vi.fn() },
     updateLineItem: { mutate: vi.fn() },
     deleteLineItem: { mutate: vi.fn() },
@@ -34,7 +35,7 @@ describe("JobCostsModal approval lock", () => {
 
     expect(screen.getByText(/estimate must be approved before you can edit or resync job costs/i)).toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: /resync from estimate/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /estimate sync actions/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /scan receipt/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /add line item/i })).toBeDisabled();
 

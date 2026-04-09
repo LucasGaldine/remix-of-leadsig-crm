@@ -88,4 +88,21 @@ describe("Dashboard Add Job quick action", () => {
 
     expect(screen.getByText("new-create-job-dialog")).toBeInTheDocument();
   });
+
+  it("prioritizes keeping the heading on one row before quick actions wrap", () => {
+    render(
+      <MemoryRouter>
+        <Index />
+      </MemoryRouter>,
+    );
+
+    const heading = screen.getByRole("heading", { name: /good (morning|afternoon|evening), owner/i });
+    const headingBlock = heading.closest("div");
+    const quickActions = screen.getByRole("button", { name: /add lead/i }).closest("div");
+    const heroRow = headingBlock?.parentElement;
+
+    expect(heroRow).toHaveClass("flex-wrap");
+    expect(headingBlock).toHaveClass("min-w-[16rem]");
+    expect(quickActions).toHaveClass("shrink-0");
+  });
 });

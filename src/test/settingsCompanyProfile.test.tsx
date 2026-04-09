@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsCompanyProfile from "@/pages/SettingsCompanyProfile";
 
@@ -24,24 +24,30 @@ vi.mock("@/hooks/useUnsavedChanges", () => ({
   useUnsavedChanges: () => null,
 }));
 
+const mockCurrentAccount = {
+  id: "acct_1",
+  company_name: "LeadSig Landscaping",
+  company_email: "hello@example.com",
+  company_phone: "555-1234",
+  company_address: "1 Main St",
+  billing_email: "billing@example.com",
+  website: "https://example.com",
+  invite_code: "TEAM123",
+  logo_url: null as string | null,
+};
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    currentAccount: {
-      id: "acct_1",
-      company_name: "LeadSig Landscaping",
-      company_email: "hello@example.com",
-      company_phone: "555-1234",
-      company_address: "1 Main St",
-      billing_email: "billing@example.com",
-      website: "https://example.com",
-      invite_code: "TEAM123",
-      logo_url: null,
-    },
+    currentAccount: mockCurrentAccount,
     refreshProfile: vi.fn(),
   }),
 }));
 
 describe("SettingsCompanyProfile logo uploader", () => {
+  beforeEach(() => {
+    mockCurrentAccount.logo_url = null;
+  });
+
   it("renders a custom upload control instead of the native full-width file input", () => {
     render(
       <MemoryRouter>
@@ -55,5 +61,39 @@ describe("SettingsCompanyProfile logo uploader", () => {
     const fileInput = screen.getByLabelText(/Company Logo/i);
     expect(fileInput).toHaveAttribute("type", "file");
     expect(fileInput).toHaveClass("sr-only");
+  });
+
+  it("shows the company logo inside the client portal preview when a logo is configured", () => {
+    mockCurrentAccount.logo_url = "https://example.com/logo.png";
+
+    render(
+      <MemoryRouter>
+        <SettingsCompanyProfile />
+      </MemoryRouter>,
+    );
+
+    const previewCard = screen.getByRole("heading", { name: "Client Portal Preview" }).closest("div");
+    expect(previewCard).not.toBeNull();
+
+    const previewLogo = screen.getAllByRole("img", { name: "LeadSig Landscaping" })
+      .find((image) => image.className.includes("h-10"));
+
+    expect(previewLogo).toBeDefined();
+    expect(previewLogo).toHaveAttribute("src", "https://example.com/logo.png");
+  });
+
+  it("uses the portal text color on the preview pay invoice button", () => {
+    render(
+      <MemoryRouter>
+        <SettingsCompanyProfile />
+      </MemoryRouter>,
+    );
+
+    const payInvoiceButton = screen.getByRole("button", { name: "Pay Invoice" });
+
+    expect(payInvoiceButton).toHaveStyle({
+      backgroundColor: "#334155",
+      color: "#0f172a",
+    });
   });
 });

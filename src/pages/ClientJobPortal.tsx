@@ -10,6 +10,12 @@ import { ClientPortalSchedule } from "@/components/client-portal/ClientPortalSch
 import { ClientPortalActivity } from "@/components/client-portal/ClientPortalActivity";
 import { ClientPortalReviewRequestCard } from "@/components/client-portal/ClientPortalReviewRequestCard";
 import { shouldShowReviewRequestCard } from "@/lib/jobCompletionReview";
+import {
+  darkenHexColor,
+  hexToRgba,
+  normalizeClientPortalColor,
+  normalizeClientPortalTextColor,
+} from "@/lib/clientPortalTheme";
 
 interface JobData {
   name: string;
@@ -63,6 +69,14 @@ interface CompanyData {
   company_email?: string;
   company_phone?: string;
   logo_url?: string;
+  portal_color?: string | null;
+  portal_text_color?: string | null;
+  client_portal_color?: string | null;
+  client_portal_text_color?: string | null;
+  settings?: {
+    client_portal_color?: string | null;
+    client_portal_text_color?: string | null;
+  } | null;
 }
 
 interface ScheduleItem {
@@ -199,6 +213,7 @@ export default function ClientJobPortal() {
         : `${apiUrl}?token=${token}`;
 
       const response = await fetch(url, {
+        cache: "no-store",
         headers: apiHeaders,
       });
 
@@ -260,11 +275,37 @@ export default function ClientJobPortal() {
   }
 
   if (viewMode === "job-list" && customerData) {
+    const customerPortalColor = normalizeClientPortalColor(
+      customerData.company.portal_color ??
+        customerData.company.client_portal_color ??
+        customerData.company.settings?.client_portal_color,
+    );
+    const customerPortalTextColor = normalizeClientPortalTextColor(
+      customerData.company.portal_text_color ??
+        customerData.company.client_portal_text_color ??
+        customerData.company.settings?.client_portal_text_color,
+    );
+    const customerPortalThemeStyle = {
+      "--client-portal-color": customerPortalColor,
+      "--client-portal-color-dark": darkenHexColor(customerPortalColor, 0.16),
+      "--client-portal-text-color": customerPortalTextColor,
+      "--client-portal-text-muted": hexToRgba(customerPortalTextColor, 0.72),
+      "--client-portal-text-subtle": hexToRgba(customerPortalTextColor, 0.56),
+    } as React.CSSProperties;
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-        <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="px-6 sm:px-8 py-6">
+        <div className="client-portal-themed w-full px-4 py-8 sm:px-8 sm:py-12 space-y-6" style={customerPortalThemeStyle}>
+          <div
+            className="bg-white rounded-2xl shadow-lg overflow-hidden border"
+            style={{ borderColor: hexToRgba(customerPortalTextColor, 0.8) }}
+          >
+            <div
+              className="px-6 sm:px-8 py-6"
+              style={{
+                backgroundColor: customerPortalColor,
+              }}
+            >
               {customerData.company.logo_url && (
                 <img
                   src={customerData.company.logo_url}
@@ -273,14 +314,16 @@ export default function ClientJobPortal() {
                 />
               )}
               {customerData.company.company_name && (
-                <p className="text-sm font-medium text-slate-600 mb-3">
+                <p className="text-sm font-medium mb-3" style={{ color: hexToRgba(customerPortalTextColor, 0.78) }}>
                   {customerData.company.company_name}
                 </p>
               )}
-              <h1 className="text-2xl font-bold text-slate-900">
+              <h1 className="text-2xl font-bold" style={{ color: customerPortalTextColor }}>
                 Welcome, {customerData.customer.name}
               </h1>
-              <p className="text-slate-600 mt-1">View your jobs and project details</p>
+              <p className="mt-1" style={{ color: hexToRgba(customerPortalTextColor, 0.78) }}>
+                View your jobs and project details
+              </p>
             </div>
           </div>
 
@@ -316,7 +359,8 @@ export default function ClientJobPortal() {
                         href={invoice.stripe_invoice_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white font-medium text-sm hover:bg-slate-900 transition-colors flex-shrink-0"
+                        className="flex flex-shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
+                        style={{ backgroundColor: customerPortalColor, color: customerPortalTextColor }}
                       >
                         <DollarSign className="h-4 w-4" />
                         {invoice.status === "paid" ? "View" : "Pay"}
@@ -431,14 +475,28 @@ export default function ClientJobPortal() {
   const shouldRenderReviewRequestCard = shouldShowReviewRequestCard(statusLabel, reviewCardDismissed);
 
   const showBackButton = customerData || data?.portal_metadata?.has_portal;
+  const portalColor = normalizeClientPortalColor(
+    company.portal_color ?? company.client_portal_color ?? company.settings?.client_portal_color,
+  );
+  const portalColorDark = darkenHexColor(portalColor, 0.16);
+  const portalTextColor = normalizeClientPortalTextColor(
+    company.portal_text_color ?? company.client_portal_text_color ?? company.settings?.client_portal_text_color,
+  );
+  const portalThemeStyle = {
+    "--client-portal-color": portalColor,
+    "--client-portal-color-dark": portalColorDark,
+    "--client-portal-text-color": portalTextColor,
+    "--client-portal-text-muted": hexToRgba(portalTextColor, 0.72),
+    "--client-portal-text-subtle": hexToRgba(portalTextColor, 0.56),
+  } as React.CSSProperties;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
+      <div className="client-portal-themed w-full px-4 py-8 sm:px-8 sm:py-12 space-y-6" style={portalThemeStyle}>
         {showBackButton && (
           <button
             onClick={handleBackToList}
-            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors mb-4"
+            className="mb-4 flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
           >
             <ChevronRight className="h-4 w-4 rotate-180" />
             Back to all jobs
@@ -451,6 +509,8 @@ export default function ClientJobPortal() {
           estimate={estimate}
           statusLabel={statusLabel}
           statusColor={statusColor}
+          portalColor={portalColor}
+          portalTextColor={portalTextColor}
         />
 
         {shouldRenderReviewRequestCard && (
@@ -483,6 +543,8 @@ export default function ClientJobPortal() {
             companyEmail={company.company_email}
             companyPhone={company.company_phone}
             createdAt={job.created_at}
+            portalColor={portalColor}
+            portalTextColor={portalTextColor}
           />
         )}
 
@@ -508,7 +570,8 @@ export default function ClientJobPortal() {
                 href={invoice.stripe_invoice_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full px-4 py-3.5 rounded-xl bg-slate-800 text-white font-medium text-sm hover:bg-slate-900 transition-colors"
+                className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-medium text-white transition-colors"
+                style={{ backgroundColor: portalColor, color: portalTextColor }}
               >
                 <DollarSign className="h-4 w-4" />
                 {invoice.status === "paid" ? "View Receipt" : "Pay Invoice"}

@@ -233,6 +233,7 @@ input[type="number"] {
   .levitate {
     @apply active:scale-[0.98] hover:shadow-md transition-all;
   }
+
 }
 
 @media (prefers-reduced-motion: no-preference) {

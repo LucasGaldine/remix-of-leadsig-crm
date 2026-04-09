@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
 import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { ClientPortalHeader } from "@/components/client-portal/ClientPortalHeader";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,14 @@ import {
   getCompanyLogoValidationError,
   loadImageDimensions,
 } from "@/lib/companyLogo";
+import {
+  darkenHexColor,
+  DEFAULT_CLIENT_PORTAL_COLOR,
+  DEFAULT_CLIENT_PORTAL_TEXT_COLOR,
+  hexToRgba,
+  normalizeClientPortalColor,
+  normalizeClientPortalTextColor,
+} from "@/lib/clientPortalTheme";
 import { toast } from "sonner";
 
 export default function SettingsCompanyProfile() {
@@ -41,6 +50,8 @@ export default function SettingsCompanyProfile() {
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [portalColor, setPortalColor] = useState(DEFAULT_CLIENT_PORTAL_COLOR);
+  const [portalTextColor, setPortalTextColor] = useState(DEFAULT_CLIENT_PORTAL_TEXT_COLOR);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -54,6 +65,8 @@ export default function SettingsCompanyProfile() {
       setInviteCode(currentAccount.invite_code || "");
       setLogoUrl(currentAccount.logo_url || "");
       setLogoPreviewUrl(currentAccount.logo_url || "");
+      setPortalColor(normalizeClientPortalColor(currentAccount.settings?.client_portal_color));
+      setPortalTextColor(normalizeClientPortalTextColor(currentAccount.settings?.client_portal_text_color));
       setSelectedLogoFile(null);
     }
   }, [currentAccount]);
@@ -134,6 +147,11 @@ export default function SettingsCompanyProfile() {
         billing_email: billingEmail.trim() || null,
         website: website.trim() || null,
         logo_url: uploadedLogoUrl,
+        settings: {
+          ...(currentAccount.settings || {}),
+          client_portal_color: normalizeClientPortalColor(portalColor),
+          client_portal_text_color: normalizeClientPortalTextColor(portalTextColor),
+        },
         updated_at: new Date().toISOString(),
       })
       .eq("id", currentAccount.id);
@@ -194,6 +212,28 @@ export default function SettingsCompanyProfile() {
     e.preventDefault();
     handleSave(e);
   };
+
+  const normalizedPortalColor = normalizeClientPortalColor(portalColor);
+  const normalizedPortalTextColor = normalizeClientPortalTextColor(portalTextColor);
+  const previewJob = {
+    name: "Spring Cleanup",
+    address: "123 Main St",
+    service_type: "Lawn Care",
+    customer: { name: "Sarah" },
+  };
+  const previewCompany = {
+    company_name: companyName || "Your Company",
+    logo_url: logoPreviewUrl || undefined,
+  };
+  const previewEstimate = { total: 350 };
+  const previewPortalColorDark = darkenHexColor(normalizedPortalColor, 0.16);
+  const previewPortalThemeStyle = {
+    "--client-portal-color": normalizedPortalColor,
+    "--client-portal-color-dark": previewPortalColorDark,
+    "--client-portal-text-color": normalizedPortalTextColor,
+    "--client-portal-text-muted": hexToRgba(normalizedPortalTextColor, 0.72),
+    "--client-portal-text-subtle": hexToRgba(normalizedPortalTextColor, 0.56),
+  } as React.CSSProperties;
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -389,6 +429,106 @@ export default function SettingsCompanyProfile() {
                   placeholder="https://www.company.com"
                   disabled={isSaving}
                 />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Client Portal Preview</CardTitle>
+            <CardDescription>
+              Choose a brand color for your client portal header and action buttons.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="client-portal-color-picker">Portal Color</Label>
+                <Input
+                  id="client-portal-color-picker"
+                  type="color"
+                  value={normalizedPortalColor}
+                  onChange={(e) => {
+                    setPortalColor(normalizeClientPortalColor(e.target.value));
+                    setIsDirty(true);
+                  }}
+                  disabled={isSaving}
+                  className="h-11 w-16 cursor-pointer rounded-md p-1"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-portal-color-hex">Hex Value</Label>
+                <Input
+                  id="client-portal-color-hex"
+                  value={portalColor}
+                  onChange={(e) => {
+                    setPortalColor(e.target.value);
+                    setIsDirty(true);
+                  }}
+                  onBlur={() => setPortalColor(normalizeClientPortalColor(portalColor))}
+                  placeholder="#334155"
+                  disabled={isSaving}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use a hex color like #1e3a8a. Invalid values reset to the default portal color.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-portal-text-color-picker">Portal Text Color</Label>
+                <Input
+                  id="client-portal-text-color-picker"
+                  type="color"
+                  value={normalizedPortalTextColor}
+                  onChange={(e) => {
+                    setPortalTextColor(normalizeClientPortalTextColor(e.target.value));
+                    setIsDirty(true);
+                  }}
+                  disabled={isSaving}
+                  className="h-11 w-16 cursor-pointer rounded-md p-1"
+                />
+                <Label htmlFor="client-portal-text-color-hex">Hex Value</Label>
+                <Input
+                  id="client-portal-text-color-hex"
+                  value={portalTextColor}
+                  onChange={(e) => {
+                    setPortalTextColor(e.target.value);
+                    setIsDirty(true);
+                  }}
+                  onBlur={() => setPortalTextColor(normalizeClientPortalTextColor(portalTextColor))}
+                  placeholder="#0f172a"
+                  disabled={isSaving}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use a hex color like #0f172a. Invalid values reset to the default text color.
+                </p>
+              </div>
+            </div>
+
+            <div className="relative left-1/2 right-1/2 w-screen -translate-x-1/2 px-4 sm:px-6 lg:px-8">
+              <div className="client-portal-themed space-y-4" style={previewPortalThemeStyle}>
+                <ClientPortalHeader
+                  job={previewJob}
+                  company={previewCompany}
+                  estimate={previewEstimate}
+                  statusLabel="In Progress"
+                  statusColor="bg-blue-100 text-blue-800"
+                  portalColor={normalizedPortalColor}
+                  portalTextColor={normalizedPortalTextColor}
+                />
+                <div className="overflow-hidden rounded-xl border border-border bg-white p-5">
+                  <p className="text-sm text-slate-600 mb-4">
+                    Scheduled for Monday, 9:00 AM to 11:00 AM
+                  </p>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-4 py-2.5 text-sm font-medium text-white"
+                    style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
+                    disabled
+                  >
+                    Pay Invoice
+                  </button>
+                </div>
               </div>
             </div>
           </CardContent>

@@ -10,7 +10,13 @@ const corsHeaders = {
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    },
   });
 }
 
@@ -151,7 +157,7 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name, company_email, company_phone, logo_url")
+      .select("company_name, company_email, company_phone, logo_url, settings")
       .eq("id", customer.account_id)
       .maybeSingle();
 
@@ -180,7 +186,19 @@ async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer
         email: customer.email,
         phone: customer.phone,
       },
-      company: account || {},
+      company: account
+        ? {
+            company_name: account.company_name,
+            company_email: account.company_email,
+            company_phone: account.company_phone,
+            logo_url: account.logo_url,
+            portal_color: account.settings?.client_portal_color ?? null,
+            portal_text_color: account.settings?.client_portal_text_color ?? null,
+            client_portal_color: account.settings?.client_portal_color ?? null,
+            client_portal_text_color: account.settings?.client_portal_text_color ?? null,
+            settings: account.settings ?? null,
+          }
+        : {},
       jobs: displayJobs.map((j: any) => ({
         id: j.id,
         name: j.name,
@@ -323,7 +341,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
   ] = await Promise.all([
     supabase
       .from("accounts")
-      .select("company_name, company_email, company_phone, logo_url")
+      .select("company_name, company_email, company_phone, logo_url, settings")
       .eq("id", recurringJob.account_id)
       .maybeSingle(),
 
@@ -433,7 +451,19 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       is_recurring: true,
       frequency: recurringJob.frequency,
     },
-    company: account || {},
+    company: account
+      ? {
+          company_name: account.company_name,
+          company_email: account.company_email,
+          company_phone: account.company_phone,
+          logo_url: account.logo_url,
+          portal_color: account.settings?.client_portal_color ?? null,
+          portal_text_color: account.settings?.client_portal_text_color ?? null,
+          client_portal_color: account.settings?.client_portal_color ?? null,
+          client_portal_text_color: account.settings?.client_portal_text_color ?? null,
+          settings: account.settings ?? null,
+        }
+      : {},
     schedules: schedulesWithVisit,
     estimate: estimate
       ? {
@@ -524,7 +554,7 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
   ] = await Promise.all([
     supabase
       .from("accounts")
-      .select("company_name, company_email, company_phone, logo_url")
+      .select("company_name, company_email, company_phone, logo_url, settings")
       .eq("id", job.account_id)
       .maybeSingle(),
 
@@ -663,7 +693,19 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
       created_at: job.created_at,
       customer: job.customer,
     },
-    company: account || {},
+    company: account
+      ? {
+          company_name: account.company_name,
+          company_email: account.company_email,
+          company_phone: account.company_phone,
+          logo_url: account.logo_url,
+          portal_color: account.settings?.client_portal_color ?? null,
+          portal_text_color: account.settings?.client_portal_text_color ?? null,
+          client_portal_color: account.settings?.client_portal_color ?? null,
+          client_portal_text_color: account.settings?.client_portal_text_color ?? null,
+          settings: account.settings ?? null,
+        }
+      : {},
     schedules: (schedules || []).map((s: any) => ({
       scheduled_date: s.scheduled_date,
       scheduled_time_start: s.scheduled_time_start,

@@ -1,6 +1,12 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useJobLineItems, LineItemCategory } from "@/hooks/useJobLineItems";
-import { RefreshCw, Plus, Pencil, Trash2, Check, X, ScanLine } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  useJobLineItems,
+  LineItemCategory,
+  EstimateSyncSource,
+  EstimateUpdateMode,
+  EstimateUpdateTarget,
+} from "@/hooks/useJobLineItems";
+import { RefreshCw, Plus, Pencil, Trash2, Check, X, ScanLine, Zap, ChevronDown } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -8,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +49,14 @@ const CATEGORY_OPTIONS: { value: LineItemCategory; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+const UPDATE_ESTIMATE_TARGET_OPTIONS: { value: EstimateUpdateTarget; label: string }[] = [
+  { value: "materials", label: "materials" },
+  { value: "labor", label: "labor" },
+  { value: "equipment", label: "equipment" },
+  { value: "other", label: "other" },
+  { value: "entire_estimate", label: "entire estimate" },
+];
+
 export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps) => {
   const {
     lineItems,
@@ -52,6 +67,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     addLineItem,
     updateLineItem,
     deleteLineItem,
+    updateEstimateFromJobCosts,
   } = useJobLineItems(jobId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<EditingLineItem | null>(null);
@@ -67,6 +83,11 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isScanningReceipt, setIsScanningReceipt] = useState(false);
   const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
+  const [confirmResyncOpen, setConfirmResyncOpen] = useState(false);
+  const [resyncSource, setResyncSource] = useState<EstimateSyncSource>("current");
+  const [updateEstimateDialogOpen, setUpdateEstimateDialogOpen] = useState(false);
+  const [updateEstimateMode, setUpdateEstimateMode] = useState<EstimateUpdateMode>("replace");
+  const [updateEstimateTarget, setUpdateEstimateTarget] = useState<EstimateUpdateTarget>("materials");
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const MAX_COLLAPSED_DESCRIPTION_LENGTH = 140;
   const editingLocked = !hasApprovedEstimate;
@@ -214,6 +235,30 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     if (deleteId) {
       deleteLineItem.mutate(deleteId);
       setDeleteId(null);
+    }
+  };
+
+  const handleConfirmResync = () => {
+    if (editingLocked) {
+      setConfirmResyncOpen(false);
+      return;
+    }
+
+    resyncFromEstimate.mutate(resyncSource);
+    setConfirmResyncOpen(false);
+  };
+
+  const handleUpdateEstimate = async () => {
+    if (editingLocked) return;
+
+    try {
+      await updateEstimateFromJobCosts.mutateAsync({
+        mode: updateEstimateMode,
+        target: updateEstimateTarget,
+      });
+      setUpdateEstimateDialogOpen(false);
+    } catch {
+      // toast is handled in the mutation
     }
   };
 
@@ -409,39 +454,55 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           <div className="flex flex-wrap items-center justify-between gap-4">
             <DialogTitle>Job Costs</DialogTitle>
 
-            <div className="flex gap-2 pr-4 flex-wrap">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => resyncFromEstimate.mutate()}
-              disabled={editingLocked || resyncFromEstimate.isPending}
-              className="shrink-0"
+            <div
+              data-testid="job-costs-modal-quick-actions"
+              className="flex max-w-full flex-nowrap items-center justify-end gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:pb-0 sm:pr-4"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${resyncFromEstimate.isPending ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Resync from Estimate</span>
-              <span className="sm:hidden">Resync</span>
-            </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={editingLocked || resyncFromEstimate.isPending || updateEstimateFromJobCosts.isPending}
+                    className="shrink-0 px-2"
+                    aria-label="Estimate sync actions"
+                  >
+                    <Zap className="h-4 w-4" />
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setConfirmResyncOpen(true)}>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Resync from estimate
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setUpdateEstimateDialogOpen(true)}>
+                    <Zap className="mr-2 h-4 w-4" />
+                    Update Estimate
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => receiptInputRef.current?.click()}
-              disabled={editingLocked || isScanningReceipt}
-              className="shrink-0"
-            >
-              <ScanLine className={`h-4 w-4 mr-2 ${isScanningReceipt ? 'animate-pulse' : ''}`} />
-              {isScanningReceipt ? "Scanning..." : "Scan Receipt"}
-            </Button>
-            <input
-              ref={receiptInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              disabled={editingLocked}
-              onChange={handleScanReceipt}
-            />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => receiptInputRef.current?.click()}
+                disabled={editingLocked || isScanningReceipt}
+                className="shrink-0"
+              >
+                <ScanLine className={`h-4 w-4 mr-2 ${isScanningReceipt ? "animate-pulse" : ""}`} />
+                {isScanningReceipt ? "Scanning..." : "Scan Receipt"}
+              </Button>
+              <input
+                ref={receiptInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={editingLocked}
+                onChange={handleScanReceipt}
+              />
 
-            <Button
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAdding(true)}
@@ -450,7 +511,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                 <Plus className="h-4 w-4 mr-2" />
                 Add Line Item
               </Button>
-              </div>
+            </div>
           </div>
         </DialogHeader>
 
@@ -768,6 +829,97 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={confirmResyncOpen} onOpenChange={setConfirmResyncOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resync from estimate?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove your current cost line items and replace them with line items from the approved estimate.
+            </AlertDialogDescription>
+            <div className="mt-3 space-y-2">
+              <label className="text-sm text-muted-foreground" htmlFor="resync-estimate-source">
+                Resync from
+              </label>
+              <Select
+                value={resyncSource}
+                onValueChange={(value) => setResyncSource(value as EstimateSyncSource)}
+              >
+                <SelectTrigger id="resync-estimate-source" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="current">Current estimate</SelectItem>
+                  <SelectItem value="original">Original estimate</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmResync}>Resync</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={updateEstimateDialogOpen} onOpenChange={setUpdateEstimateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Estimate</DialogTitle>
+            <DialogDescription>
+              Choose how job cost items should update the approved estimate.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <span className="shrink-0 text-sm text-muted-foreground">I want to</span>
+              <Select
+                value={updateEstimateMode}
+                onValueChange={(value) => setUpdateEstimateMode(value as EstimateUpdateMode)}
+              >
+                <SelectTrigger className="w-[120px] shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="add_to">add to</SelectItem>
+                  <SelectItem value="replace">replace</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="shrink-0 text-sm text-muted-foreground">the</span>
+              <Select
+                value={updateEstimateTarget}
+                onValueChange={(value) => setUpdateEstimateTarget(value as EstimateUpdateTarget)}
+              >
+                <SelectTrigger className="w-[170px] shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UPDATE_ESTIMATE_TARGET_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="shrink-0 text-sm text-muted-foreground">.</span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setUpdateEstimateDialogOpen(false)}
+              disabled={updateEstimateFromJobCosts.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateEstimate} disabled={updateEstimateFromJobCosts.isPending}>
+              {updateEstimateFromJobCosts.isPending ? "Sending..." : "Send Change Order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
+import { normalizeClientPortalColor, normalizeClientPortalTextColor } from "@/lib/clientPortalTheme";
 
 interface LineItem {
   id: string;
@@ -62,6 +63,8 @@ interface ClientPortalEstimateProps {
   companyPhone?: string;
   createdAt?: string;
   expiresAt?: string;
+  portalColor?: string;
+  portalTextColor?: string;
 }
 
 export function ClientPortalEstimate({
@@ -80,6 +83,8 @@ export function ClientPortalEstimate({
   companyPhone = "",
   createdAt,
   expiresAt,
+  portalColor = "",
+  portalTextColor = "",
 }: ClientPortalEstimateProps) {
   const [submitting, setSubmitting] = useState<"approve" | "decline" | "approve_changes" | "decline_changes" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +145,8 @@ export function ClientPortalEstimate({
   const displayTaxRate = isPending && !hasPendingChanges && selectedVersion
     ? Number(selectedVersion.tax_rate || estimate.tax_rate)
     : Number(estimate.tax_rate);
+  const normalizedPortalColor = normalizeClientPortalColor(portalColor);
+  const normalizedPortalTextColor = normalizeClientPortalTextColor(portalTextColor);
 
   const handleDownloadPDF = async () => {
     await generateEstimatePDF({
@@ -455,10 +462,11 @@ export function ClientPortalEstimate({
               <button
                 onClick={() => handleChangeOrderAction("approve_changes")}
                 disabled={submitting !== null}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
               >
                 {submitting === "approve_changes" ? (
-                  <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                  <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
                 ) : (
                   <Check className="h-4 w-4" />
                 )}
@@ -592,10 +600,11 @@ export function ClientPortalEstimate({
             <button
               onClick={() => handleAction("approve")}
               disabled={submitting !== null}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
             >
               {submitting === "approve" ? (
-                <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
               ) : (
                 <Check className="h-4 w-4" />
               )}

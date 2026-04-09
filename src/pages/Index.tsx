@@ -120,12 +120,12 @@ export default function Index() {
         {/* Email Verification Banner */}
         {user?.email && <EmailVerificationBanner email={user.email} isEmailConfirmed={isEmailConfirmed} />}
 
-        <div className="flex items-start justify-between gap-3 pt-8">
-          <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-start gap-3 pt-8">
+          <div className="min-w-[16rem] flex-1 flex flex-col gap-2">
             <h1 className="text-4xl font-semibold tracking-tight">{getGreeting()}{firstName ? `, ${firstName}` : ""}</h1>
             <p className=" text-muted-foreground">{format(new Date(), "EEEE, MMMM d")}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <Button onClick={() => setAddLeadOpen(true)} size="sm" className="gap-2">
               <PlusCircle className="h-4 w-4" />
               Add Lead

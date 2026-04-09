@@ -1,5 +1,6 @@
 import { Building2, MapPin, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { hexToRgba } from "@/lib/clientPortalTheme";
 
 interface ClientPortalHeaderProps {
   job: {
@@ -16,6 +17,8 @@ interface ClientPortalHeaderProps {
   estimate: { total: number } | null;
   statusLabel: string;
   statusColor: string;
+  portalColor: string;
+  portalTextColor: string;
 }
 
 export function ClientPortalHeader({
@@ -24,37 +27,47 @@ export function ClientPortalHeader({
   estimate,
   statusLabel,
   statusColor,
+  portalColor,
+  portalTextColor,
 }: ClientPortalHeaderProps) {
+  const secondaryTextColor = hexToRgba(portalTextColor, 0.78);
+
   return (
-    <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-6 py-8 sm:px-8">
+    <div
+      className="bg-white rounded-2xl shadow-lg overflow-hidden border"
+      style={{ borderColor: hexToRgba(portalTextColor, 0.8) }}
+    >
+      <div
+        className="px-6 py-8 sm:px-8"
+        style={{ backgroundColor: portalColor }}
+      >
         <div className="flex items-start justify-between">
           <div>
             {company.logo_url ? (
               <img
                 src={company.logo_url}
                 alt={company.company_name || "Company"}
-                className="h-10 mb-3 brightness-0 invert"
+                className="h-10 w-auto max-w-[220px] object-contain mb-3"
               />
             ) : company.company_name ? (
               <div className="flex items-center gap-2 mb-3">
-                <Building2 className="h-5 w-5 text-slate-300" />
-                <span className="text-lg font-semibold text-white">
+                <Building2 className="h-5 w-5" style={{ color: secondaryTextColor }} />
+                <span className="text-lg font-semibold" style={{ color: portalTextColor }}>
                   {company.company_name}
                 </span>
               </div>
             ) : null}
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">
+            <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: portalTextColor }}>
               {job.name || job.customer?.name || "Unnamed Job"}
             </h1>
             {job.service_type && (
-              <div className="flex items-center gap-1.5 mt-2 text-slate-300">
+              <div className="flex items-center gap-1.5 mt-2" style={{ color: secondaryTextColor }}>
                 <Wrench className="h-4 w-4" />
                 <span className="text-sm">{job.service_type}</span>
               </div>
             )}
             {job.address && (
-              <div className="flex items-center gap-1.5 mt-1 text-slate-300">
+              <div className="flex items-center gap-1.5 mt-1" style={{ color: secondaryTextColor }}>
                 <MapPin className="h-4 w-4" />
                 <span className="text-sm">{job.address}</span>
               </div>
@@ -70,7 +83,7 @@ export function ClientPortalHeader({
               {statusLabel}
             </span>
             {estimate && (
-              <p className="text-3xl font-bold text-white mt-3">
+              <p className="text-3xl font-bold mt-3" style={{ color: portalTextColor }}>
                 ${Number(estimate.total).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                 })}

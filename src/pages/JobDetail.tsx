@@ -368,6 +368,17 @@ export default function JobDetail() {
         return query;
       };
 
+      const fetchPreferredEstimate = async (buildQuery: () => any) => {
+        const acceptedQuery = buildQuery().eq("status", "accepted");
+        const { data: acceptedEstimate, error: acceptedError } = await latestOnly(acceptedQuery).maybeSingle();
+        if (acceptedError) throw acceptedError;
+        if (acceptedEstimate) return acceptedEstimate;
+
+        const { data: latestEstimate, error: latestError } = await latestOnly(buildQuery()).maybeSingle();
+        if (latestError) throw latestError;
+        return latestEstimate;
+      };
+
       const { data: currentJob } = await supabase
         .from("leads")
         .select("recurring_job_id")
@@ -375,29 +386,23 @@ export default function JobDetail() {
         .maybeSingle();
 
       if (currentJob?.recurring_job_id) {
-        const recurringEstimateQuery = supabase
-          .from("estimates")
-          .select("id, total, status, notes, line_items:estimate_line_items(id)")
-          .eq("recurring_job_id", currentJob.recurring_job_id);
-
-        const { data: masterQuote, error: quoteError } = await latestOnly(recurringEstimateQuery)
-          .maybeSingle();
-
-        if (quoteError) throw quoteError;
+        const masterQuote = await fetchPreferredEstimate(() =>
+          supabase
+            .from("estimates")
+            .select("id, total, status, notes, line_items:estimate_line_items(id)")
+            .eq("recurring_job_id", currentJob.recurring_job_id),
+        );
         setEstimate(masterQuote);
         setEstimateLoading(false);
         return;
       }
 
-      const estimateQuery = supabase
-        .from("estimates")
-        .select("id, total, status, notes, line_items:estimate_line_items(id)")
-        .eq("job_id", id);
-
-      let { data, error } = await latestOnly(estimateQuery)
-        .maybeSingle();
-
-      if (error) throw error;
+      let data = await fetchPreferredEstimate(() =>
+        supabase
+          .from("estimates")
+          .select("id, total, status, notes, line_items:estimate_line_items(id)")
+          .eq("job_id", id),
+      );
 
       if (!data) {
         const { data: parentLead } = await supabase
@@ -407,16 +412,12 @@ export default function JobDetail() {
           .maybeSingle();
 
         if (parentLead) {
-          const parentEstimateQuery = supabase
-            .from("estimates")
-            .select("id, total, status, notes, line_items:estimate_line_items(id)")
-            .eq("job_id", parentLead.id);
-
-          const { data: parentEstimate, error: parentError } = await latestOnly(parentEstimateQuery)
-            .maybeSingle();
-
-          if (parentError) throw parentError;
-          data = parentEstimate;
+          data = await fetchPreferredEstimate(() =>
+            supabase
+              .from("estimates")
+              .select("id, total, status, notes, line_items:estimate_line_items(id)")
+              .eq("job_id", parentLead.id),
+          );
         }
       }
 
