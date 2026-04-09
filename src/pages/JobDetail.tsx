@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { MapPin, User, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, Calendar, Clock, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation, ChevronDown, Mail, Share2, AlertTriangle, Copy, Check } from "lucide-react";
+import { MapPin, User, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, Calendar, Clock, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Briefcase, Navigation, ChevronDown, Mail, Share2, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -49,6 +49,7 @@ import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallb
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
+import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
 import { Separator } from "@/components/ui/separator";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 
@@ -1836,41 +1837,13 @@ export default function JobDetail() {
         />
       )}
 
-      <Dialog open={portalDialogOpen} onOpenChange={setPortalDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Client Portal Link</DialogTitle>
-            <DialogDescription>
-              Share this link with your client so they can view their jobs, estimates, and invoices.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-2">
-            <Input
-              value={portalLink}
-              readOnly
-              className="flex-1"
-              onClick={(e) => e.currentTarget.select()}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={handleCopyPortalLink}
-            >
-              {portalCopied ? (
-                <Check className="h-4 w-4 text-emerald-600" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPortalDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ClientPortalLinkDialog
+        open={portalDialogOpen}
+        onOpenChange={setPortalDialogOpen}
+        portalLink={portalLink}
+        copied={portalCopied}
+        onCopy={handleCopyPortalLink}
+      />
 
       <Dialog open={statusGuidanceOpen} onOpenChange={setStatusGuidanceOpen}>
         <DialogContent className="max-h-[80vh] overflow-y-auto">

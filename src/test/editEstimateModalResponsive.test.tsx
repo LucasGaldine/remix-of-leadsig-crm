@@ -38,24 +38,27 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/leads/QuickEstimateLineItem", () => ({
-  QuickEstimateLineItem: ({
+vi.mock("@/components/leads/QuickAddLineItem", () => ({
+  QuickAddLineItem: ({
     onApply,
   }: {
-    leadId: string;
-    onApply: (
-      name: string,
-      quantity: string,
-      unit: string,
-      unitPrice: string,
-      description: string,
-    ) => void;
+    templates: any[];
+    onApply: (template: any) => void;
   }) => (
     <button
       type="button"
-      onClick={() => onApply("Concrete Service", "", "sq ft", "125.50", "")}
+      onClick={() =>
+        onApply({
+          name: "Concrete Service",
+          description: "",
+          quantity: "",
+          unit: "sq ft",
+          unit_price: "125.50",
+          category: "other",
+        })
+      }
     >
-      Quick Estimate
+      Quick Add
     </button>
   ),
 }));
@@ -96,7 +99,7 @@ describe("EditEstimateModal responsive width", () => {
     expect(content).toHaveClass("sm:max-w-2xl");
   });
 
-  it("applies quick estimate values without wiping an existing description", () => {
+  it("applies quick add values without wiping an existing description", () => {
     render(
       <EditEstimateModal
         open
@@ -132,7 +135,7 @@ describe("EditEstimateModal responsive width", () => {
       target: { value: "Keep this description" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /quick estimate/i }));
+    fireEvent.click(screen.getByRole("button", { name: /quick add/i }));
 
     expect(screen.getByLabelText(/title/i)).toHaveValue("Concrete Service");
     expect(screen.getByLabelText(/description/i)).toHaveValue("Keep this description");

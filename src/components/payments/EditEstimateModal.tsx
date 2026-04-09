@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import type { DragEvent } from "react";
-import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2 } from "lucide-react";
+import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2, BookmarkPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { QuickEstimateLineItem } from "@/components/leads/QuickEstimateLineItem";
+import { QuickAddLineItem, type LineItemTemplate } from "@/components/leads/QuickAddLineItem";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
 
 function formatDollar(value: number): string {
@@ -58,6 +58,22 @@ function normalizeLineItemForComparison(item: Partial<LineItemForm> & { sort_ord
     sort_order: Number(item.sort_order ?? 0),
     isNew: Boolean(item.isNew),
   };
+}
+
+const LINE_ITEM_TEMPLATE_STORAGE_PREFIX = "leadsig_line_item_templates_";
+
+function buildTemplateStorageKey(accountId: string | null | undefined) {
+  return `${LINE_ITEM_TEMPLATE_STORAGE_PREFIX}${accountId ?? "default"}`;
+}
+
+function buildTemplateFingerprint(item: Pick<LineItemForm, "name" | "description" | "unit" | "unit_price" | "category">) {
+  return [
+    item.name.trim().toLowerCase(),
+    (item.description || "").trim().toLowerCase(),
+    (item.unit || "").trim().toLowerCase(),
+    parseFloat(item.unit_price || "0").toFixed(2),
+    item.category,
+  ].join("|");
 }
 
 function CompactLineItem({
@@ -156,19 +172,21 @@ function CompactLineItem({
 function ExpandedLineItem({
   item,
   index,
-  jobId,
+  templates,
   onUpdate,
   onCollapse,
   onRevert,
   onRemove,
+  onSaveTemplate,
 }: {
   item: LineItemForm;
   index: number;
-  jobId: string;
+  templates: LineItemTemplate[];
   onUpdate: (field: keyof LineItemForm, value: string) => void;
   onCollapse: () => void;
   onRevert: () => void;
   onRemove: () => void;
+  onSaveTemplate: () => void;
 }) {
   const [priceDisplay, setPriceDisplay] = useState(
     item.unit_price ? formatDollar(parseFloat(item.unit_price)) : ""
@@ -187,27 +205,27 @@ function ExpandedLineItem({
   return (
     <div className="p-4 border border-border rounded-lg space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div
-            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
-            aria-label={`Drag item ${index + 1}`}
-          >
-            <GripVertical className="h-4 w-4" />
-          </div>
-          <span className="text-sm font-medium text-muted-foreground">Item {index + 1}</span>
-        </div>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 gap-1.5 text-xs text-muted-foreground" onClick={onSaveTemplate}>
+          <BookmarkPlus className="h-3.5 w-3.5" />
+          Save as template
+        </Button>
         <div className="flex items-center gap-1">
-          <QuickEstimateLineItem
-            leadId={jobId}
-            onApply={(name, quantity, unit, unitPrice, description) => {
-              onUpdate("name", name);
-              if (quantity.trim().length > 0) {
-                onUpdate("quantity", quantity);
+          <QuickAddLineItem
+            templates={templates}
+            onApply={(template) => {
+              onUpdate("name", template.name);
+              if (template.quantity.trim().length > 0) {
+                onUpdate("quantity", template.quantity);
               }
-              onUpdate("unit", unit);
-              onUpdate("unit_price", unitPrice);
-              if (description.trim().length > 0) {
-                onUpdate("description", description);
+              if (template.unit.trim().length > 0) {
+                onUpdate("unit", template.unit);
+              }
+              onUpdate("unit_price", template.unit_price);
+              if (template.description.trim().length > 0) {
+                onUpdate("description", template.description);
+              }
+              if (template.category.trim().length > 0) {
+                onUpdate("category", template.category);
               }
             }}
           />
@@ -345,6 +363,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
+  const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
   const isVersionMode = Boolean(versionId);
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
@@ -431,7 +450,46 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
     setDragIndex(null);
     setProfitMargin((estimate.profit_margin || 0).toString());
     setSurcharge((estimate.surcharge || 0).toString());
+
+    const storageKey = buildTemplateStorageKey(estimate.account_id);
+    const storedRaw = window.localStorage.getItem(storageKey);
+    if (!storedRaw) {
+      setLineItemTemplates([]);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedRaw);
+      if (!Array.isArray(parsed)) {
+        setLineItemTemplates([]);
+        return;
+      }
+
+      const sanitizedTemplates: LineItemTemplate[] = parsed
+        .map((template: any) => ({
+          id: String(template.id || crypto.randomUUID()),
+          name: String(template.name || ""),
+          description: String(template.description || ""),
+          quantity: String(template.quantity || "1"),
+          unit: String(template.unit || "each"),
+          unit_price: String(template.unit_price || "0"),
+          category: String(template.category || "other"),
+          created_at: String(template.created_at || new Date().toISOString()),
+        }))
+        .filter((template) => template.name.trim().length > 0)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setLineItemTemplates(sanitizedTemplates);
+    } catch {
+      setLineItemTemplates([]);
+    }
   }, [open, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge]);
+
+  useEffect(() => {
+    if (!open) return;
+    const storageKey = buildTemplateStorageKey(estimate.account_id);
+    window.localStorage.setItem(storageKey, JSON.stringify(lineItemTemplates));
+  }, [lineItemTemplates, open, estimate.account_id]);
 
   const addLineItem = () => {
     const newItems = [
@@ -473,6 +531,43 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
       updated[index] = { ...updated[index], [field]: value };
       return updated;
     });
+  };
+
+  const saveLineItemAsTemplate = (index: number) => {
+    const item = lineItems[index];
+    if (!item || item.name.trim().length === 0) {
+      toast.error("Add a title before saving as a template");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const templateToSave: LineItemTemplate = {
+      id: crypto.randomUUID(),
+      name: item.name.trim(),
+      description: item.description || "",
+      quantity: item.quantity || "1",
+      unit: item.unit || "each",
+      unit_price: item.unit_price || "0",
+      category: item.category || "other",
+      created_at: now,
+    };
+
+    const fingerprint = buildTemplateFingerprint(item);
+    setLineItemTemplates((previous) => {
+      const withoutDuplicate = previous.filter((template) => {
+        return buildTemplateFingerprint({
+          name: template.name,
+          description: template.description,
+          unit: template.unit,
+          unit_price: template.unit_price,
+          category: template.category as LineItemCategory,
+        }) !== fingerprint;
+      });
+
+      return [templateToSave, ...withoutDuplicate];
+    });
+
+    toast.success("Template saved");
   };
 
   const reorderLineItems = (fromIndex: number, toIndex: number) => {
@@ -935,11 +1030,12 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
                 <ExpandedLineItem
                   item={item}
                   index={index}
-                  jobId={estimate.job_id}
+                  templates={lineItemTemplates}
                   onUpdate={(field, value) => updateLineItem(index, field, value)}
                   onCollapse={() => setExpandedIndex(null)}
                   onRevert={() => revertLineItem(index)}
                   onRemove={() => markForDelete(index)}
+                  onSaveTemplate={() => saveLineItemAsTemplate(index)}
                 />
                 </div>
               ) : (

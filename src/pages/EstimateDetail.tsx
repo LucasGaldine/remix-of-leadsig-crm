@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, Copy, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical } from "lucide-react";
+import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
 import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
+import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
 import { prepareLeadPhotoForUpload } from "@/lib/photoCompression";
 import { createEstimateVersionSnapshot, isEstimateVersionsUnavailableError } from "@/lib/estimateVersions";
 
@@ -109,9 +110,10 @@ export default function EstimateDetail() {
   const { data: estimate, isLoading } = useEstimate(id);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [generatingLink, setGeneratingLink] = useState(false);
+  const [portalDialogOpen, setPortalDialogOpen] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const [portalLink, setPortalLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [portalCopied, setPortalCopied] = useState(false);
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
@@ -805,47 +807,55 @@ export default function EstimateDetail() {
     await fetchEstimateVersions();
   };
 
-  const handleGeneratePortalLink = async () => {
-    setGeneratingLink(true);
-    try {
-      if (!estimate.customer?.id) {
-        toast.error("No customer associated with this estimate");
-        return;
-      }
+  const resolveCustomerPortalLink = async () => {
+    const customerId = estimate?.customer?.id;
+    if (!customerId) {
+      throw new Error("No customer associated with this estimate");
+    }
 
-      const { data: customer } = await supabase
+    const { data: customer, error: fetchError } = await supabase
+      .from("customers")
+      .select("client_portal_token")
+      .eq("id", customerId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    let token = customer?.client_portal_token || null;
+    if (!token) {
+      token = crypto.randomUUID();
+      const { error: updateError } = await supabase
         .from("customers")
-        .select("client_portal_token")
-        .eq("id", estimate.customer.id)
-        .maybeSingle();
+        .update({ client_portal_token: token })
+        .eq("id", customerId);
 
-      let token = customer?.client_portal_token || null;
+      if (updateError) throw updateError;
+    }
 
-      if (!token) {
-        token = crypto.randomUUID();
-        const { error } = await supabase
-          .from("customers")
-          .update({ client_portal_token: token })
-          .eq("id", estimate.customer.id);
-        if (error) throw error;
-      }
+    return `${window.location.origin}/client/job?token=${token}`;
+  };
 
-      const link = `${window.location.origin}/client/job?token=${token}`;
+  const handleOpenClientPortal = async () => {
+    if (portalLoading) return;
+    setPortalLoading(true);
+    try {
+      const link = await resolveCustomerPortalLink();
       setPortalLink(link);
+      setPortalDialogOpen(true);
     } catch {
-      toast.error("Failed to generate client portal link");
+      toast.error("Failed to generate portal link");
     } finally {
-      setGeneratingLink(false);
+      setPortalLoading(false);
     }
   };
 
-  const handleCopyLink = async () => {
+  const handleCopyPortalLink = async () => {
     if (!portalLink) return;
     try {
       await navigator.clipboard.writeText(portalLink);
-      setCopied(true);
-      toast.success("Link copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
+      setPortalCopied(true);
+      toast.success("Portal link copied to clipboard");
+      setTimeout(() => setPortalCopied(false), 2000);
     } catch {
       toast.error("Failed to copy link");
     }
@@ -1216,28 +1226,6 @@ export default function EstimateDetail() {
             className="flex flex-nowrap items-center justify-start gap-2"
             data-testid="estimate-header-quick-actions"
           >
-              {portalLink && (
-                <div className="hidden md:flex items-center gap-2 bg-card border border-border rounded-full px-3 py-2 shadow-sm">
-                  <input
-                    type="text"
-                    readOnly
-                    value={portalLink}
-                    className="flex-1 bg-transparent text-sm text-foreground outline-none truncate"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyLink}
-                    className="shrink-0"
-                  >
-                    {copied ? (
-                      <CheckCheck className="h-4 w-4 text-emerald-600" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              )}
               <Button
                 variant="secondary"
                 size="sm"
@@ -1256,11 +1244,11 @@ export default function EstimateDetail() {
                 variant="secondary"
                 size="sm"
                 className="gap-2 flex-1 sm:flex-none"
-                onClick={handleGeneratePortalLink}
-                disabled={generatingLink}
+                onClick={handleOpenClientPortal}
+                disabled={portalLoading}
               >
                 <Link2 className="h-4 w-4" />
-                {generatingLink ? "Generating..." : "Client Portal"}
+                {portalLoading ? "Generating..." : "Client Portal"}
               </Button>
               <Button
                 variant="secondary"
@@ -1889,6 +1877,14 @@ export default function EstimateDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ClientPortalLinkDialog
+        open={portalDialogOpen}
+        onOpenChange={setPortalDialogOpen}
+        portalLink={portalLink || ""}
+        copied={portalCopied}
+        onCopy={handleCopyPortalLink}
+      />
 
       <EditEstimateModal
         open={editModalOpen}
