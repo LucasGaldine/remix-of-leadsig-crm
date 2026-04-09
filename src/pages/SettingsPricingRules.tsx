@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calculator, RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X } from "lucide-react";
+import { Calculator, RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X, Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -25,6 +25,7 @@ import {
   updateLineItemTemplate,
   type LineItemTemplate,
 } from "@/lib/lineItemTemplates";
+import { LineItemTemplateCSVImportModal } from "@/components/settings/LineItemTemplateCSVImportModal";
 
 interface PricingRule {
   id?: string;
@@ -54,6 +55,7 @@ export default function SettingsPricingRules() {
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
   const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
+  const [showTemplateImportModal, setShowTemplateImportModal] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [templateDraft, setTemplateDraft] = useState({
     name: "",
@@ -94,6 +96,12 @@ export default function SettingsPricingRules() {
       isCancelled = true;
     };
   }, [currentAccount?.id]);
+
+  const refreshTemplates = async () => {
+    if (!currentAccount?.id) return;
+    const templates = await getLineItemTemplates(currentAccount.id);
+    setLineItemTemplates(templates);
+  };
 
   const resetTemplateDraft = () => {
     setTemplateDraft({
@@ -150,8 +158,7 @@ export default function SettingsPricingRules() {
         toast.error("Failed to update template");
         return;
       }
-      const refreshed = await getLineItemTemplates(currentAccount.id);
-      setLineItemTemplates(refreshed);
+      await refreshTemplates();
       toast.success("Template updated");
       resetTemplateDraft();
       return;
@@ -162,8 +169,7 @@ export default function SettingsPricingRules() {
       toast.error("Failed to add template");
       return;
     }
-    const refreshed = await getLineItemTemplates(currentAccount.id);
-    setLineItemTemplates(refreshed);
+    await refreshTemplates();
     toast.success("Template added");
     resetTemplateDraft();
   };
@@ -175,8 +181,7 @@ export default function SettingsPricingRules() {
       return;
     }
     if (currentAccount?.id) {
-      const refreshed = await getLineItemTemplates(currentAccount.id);
-      setLineItemTemplates(refreshed);
+      await refreshTemplates();
     } else {
       setLineItemTemplates((prev) => prev.filter((template) => template.id !== id));
     }
@@ -437,10 +442,16 @@ export default function SettingsPricingRules() {
                     Manage reusable templates shown in Quick Add.
                   </p>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={startCreateTemplate}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Template
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowTemplateImportModal(true)}>
+                    <Upload className="h-4 w-4 mr-1" />
+                    Import CSV
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={startCreateTemplate}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Template
+                  </Button>
+                </div>
               </div>
 
               {(editingTemplateId !== null || templateDraft.name || templateDraft.description) && (
@@ -746,6 +757,13 @@ export default function SettingsPricingRules() {
 
       <MobileNav />
       <UnsavedChangesDialog blocker={blocker} />
+      <LineItemTemplateCSVImportModal
+        open={showTemplateImportModal}
+        onOpenChange={setShowTemplateImportModal}
+        onImportComplete={() => {
+          void refreshTemplates();
+        }}
+      />
     </div>
   );
 }
