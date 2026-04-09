@@ -15,7 +15,8 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { QuickAddLineItem, type LineItemTemplate } from "@/components/leads/QuickAddLineItem";
+import { QuickAddLineItem } from "@/components/leads/QuickAddLineItem";
+import { loadGlobalLineItemTemplates, saveGlobalLineItemTemplates, type LineItemTemplate } from "@/lib/lineItemTemplates";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
 
 function formatDollar(value: number): string {
@@ -59,9 +60,6 @@ function normalizeLineItemForComparison(item: Partial<LineItemForm> & { sort_ord
     isNew: Boolean(item.isNew),
   };
 }
-
-const LINE_ITEM_TEMPLATE_STORAGE_KEY = "leadsig_line_item_templates_global";
-const LEGACY_LINE_ITEM_TEMPLATE_STORAGE_PREFIX = "leadsig_line_item_templates_";
 
 function buildTemplateFingerprint(item: Pick<LineItemForm, "name" | "description" | "unit" | "unit_price" | "category">) {
   return [
@@ -493,54 +491,13 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
     setSurcharge((estimate.surcharge || 0).toString());
     setTemplatesHydrated(false);
 
-    const storedRaw = window.localStorage.getItem(LINE_ITEM_TEMPLATE_STORAGE_KEY);
-    const legacyStorageKey = `${LEGACY_LINE_ITEM_TEMPLATE_STORAGE_PREFIX}${estimate.account_id ?? "default"}`;
-    const legacyRaw = window.localStorage.getItem(legacyStorageKey);
-    const sourceRaw = storedRaw || legacyRaw;
-
-    if (!sourceRaw) {
-      setLineItemTemplates([]);
-      setTemplatesHydrated(true);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(sourceRaw);
-      if (!Array.isArray(parsed)) {
-        setLineItemTemplates([]);
-        setTemplatesHydrated(true);
-        return;
-      }
-
-      const sanitizedTemplates: LineItemTemplate[] = parsed
-        .map((template: any) => ({
-          id: String(template.id || crypto.randomUUID()),
-          name: String(template.name || ""),
-          description: String(template.description || ""),
-          quantity: String(template.quantity || "1"),
-          unit: String(template.unit || "each"),
-          unit_price: String(template.unit_price || "0"),
-          category: String(template.category || "other"),
-          created_at: String(template.created_at || new Date().toISOString()),
-        }))
-        .filter((template) => template.name.trim().length > 0)
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setLineItemTemplates(sanitizedTemplates);
-      setTemplatesHydrated(true);
-
-      if (!storedRaw && legacyRaw) {
-        window.localStorage.setItem(LINE_ITEM_TEMPLATE_STORAGE_KEY, JSON.stringify(sanitizedTemplates));
-      }
-    } catch {
-      setLineItemTemplates([]);
-      setTemplatesHydrated(true);
-    }
+    setLineItemTemplates(loadGlobalLineItemTemplates(estimate.account_id));
+    setTemplatesHydrated(true);
   }, [open, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge]);
 
   useEffect(() => {
     if (!open || !templatesHydrated) return;
-    window.localStorage.setItem(LINE_ITEM_TEMPLATE_STORAGE_KEY, JSON.stringify(lineItemTemplates));
+    saveGlobalLineItemTemplates(lineItemTemplates);
   }, [lineItemTemplates, open, templatesHydrated]);
 
   const addLineItem = () => {

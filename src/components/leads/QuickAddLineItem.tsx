@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Settings } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -8,17 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-export interface LineItemTemplate {
-  id: string;
-  name: string;
-  description: string;
-  quantity: string;
-  unit: string;
-  unit_price: string;
-  category: string;
-  created_at: string;
-}
+import type { LineItemTemplate } from "@/lib/lineItemTemplates";
 
 interface QuickAddLineItemProps {
   templates: LineItemTemplate[];
@@ -33,6 +24,7 @@ function formatTemplatePrice(value: string): string {
 
 export function QuickAddLineItem({ templates, onApply }: QuickAddLineItemProps) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <>
@@ -48,9 +40,24 @@ export function QuickAddLineItem({ templates, onApply }: QuickAddLineItemProps) 
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md [&>button]:hidden">
           <DialogHeader>
-            <DialogTitle>Quick Add</DialogTitle>
+            <div className="flex items-center justify-between gap-2">
+              <DialogTitle>Use Template</DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground"
+                aria-label="Manage templates"
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/settings/pricing-rules");
+                }}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
             <DialogDescription>
               Pick a line item template to autofill this row.
             </DialogDescription>
@@ -61,7 +68,7 @@ export function QuickAddLineItem({ templates, onApply }: QuickAddLineItemProps) 
               No templates yet. Use <span className="font-medium text-foreground">Save as template</span> on any line item first.
             </div>
           ) : (
-            <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[252px] overflow-y-auto pr-1">
               {templates.map((template) => (
                 <button
                   key={template.id}
@@ -88,6 +95,12 @@ export function QuickAddLineItem({ templates, onApply }: QuickAddLineItemProps) 
               ))}
             </div>
           )}
+
+          <div className="border-t border-border pt-3">
+            <p className="text-xs text-muted-foreground">
+              Tip: Open any line item and click <span className="font-medium text-foreground">Save as template</span> to add reusable templates.
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
     </>

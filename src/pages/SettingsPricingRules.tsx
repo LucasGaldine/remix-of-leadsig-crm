@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Calculator, RotateCcw, Loader as Loader2 } from "lucide-react";
+import { Calculator, RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -18,6 +17,7 @@ import {
   SERVICE_LABELS, 
   ServiceType 
 } from "@/hooks/useQuickEstimate";
+import { loadGlobalLineItemTemplates, saveGlobalLineItemTemplates, type LineItemTemplate } from "@/lib/lineItemTemplates";
 
 interface PricingRule {
   id?: string;
@@ -34,7 +34,6 @@ interface PricingRule {
 }
 
 export default function SettingsPricingRules() {
-  const navigate = useNavigate();
   const { user, currentAccount, refreshProfile } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -47,6 +46,16 @@ export default function SettingsPricingRules() {
   const [taxRate, setTaxRate] = useState<string>("");
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
+  const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [templateDraft, setTemplateDraft] = useState({
+    name: "",
+    description: "",
+    quantity: "1",
+    unit: "each",
+    unit_price: "0",
+    category: "other",
+  });
 
   useEffect(() => {
     fetchRules();
@@ -57,8 +66,96 @@ export default function SettingsPricingRules() {
       setTaxRate(String(currentAccount.default_tax_rate ?? 8));
       setProfitMargin(String(currentAccount.default_profit_margin ?? 0));
       setSurcharge(String(currentAccount.default_surcharge ?? 0));
+      setLineItemTemplates(loadGlobalLineItemTemplates(currentAccount.id));
     }
-  }, [currentAccount?.default_tax_rate, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
+  }, [currentAccount?.id, currentAccount?.default_tax_rate, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
+
+  const resetTemplateDraft = () => {
+    setTemplateDraft({
+      name: "",
+      description: "",
+      quantity: "1",
+      unit: "each",
+      unit_price: "0",
+      category: "other",
+    });
+    setEditingTemplateId(null);
+  };
+
+  const startCreateTemplate = () => {
+    resetTemplateDraft();
+  };
+
+  const startEditTemplate = (template: LineItemTemplate) => {
+    setEditingTemplateId(template.id);
+    setTemplateDraft({
+      name: template.name,
+      description: template.description || "",
+      quantity: template.quantity || "1",
+      unit: template.unit || "each",
+      unit_price: template.unit_price || "0",
+      category: template.category || "other",
+    });
+  };
+
+  const persistTemplates = (nextTemplates: LineItemTemplate[]) => {
+    setLineItemTemplates(nextTemplates);
+    saveGlobalLineItemTemplates(nextTemplates);
+  };
+
+  const saveTemplateDraft = () => {
+    const name = templateDraft.name.trim();
+    if (!name) {
+      toast.error("Template title is required");
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    if (editingTemplateId) {
+      const updatedTemplates = lineItemTemplates.map((template) => {
+        if (template.id !== editingTemplateId) return template;
+        return {
+          ...template,
+          name,
+          description: templateDraft.description,
+          quantity: templateDraft.quantity || "1",
+          unit: templateDraft.unit || "each",
+          unit_price: templateDraft.unit_price || "0",
+          category: templateDraft.category || "other",
+          created_at: now,
+        };
+      });
+      persistTemplates(updatedTemplates);
+      toast.success("Template updated");
+      resetTemplateDraft();
+      return;
+    }
+
+    const newTemplate: LineItemTemplate = {
+      id: crypto.randomUUID(),
+      name,
+      description: templateDraft.description,
+      quantity: templateDraft.quantity || "1",
+      unit: templateDraft.unit || "each",
+      unit_price: templateDraft.unit_price || "0",
+      category: templateDraft.category || "other",
+      created_at: now,
+    };
+
+    persistTemplates([newTemplate, ...lineItemTemplates]);
+    toast.success("Template added");
+    resetTemplateDraft();
+  };
+
+  const deleteTemplate = (id: string) => {
+    const nextTemplates = lineItemTemplates.filter((template) => template.id !== id);
+    persistTemplates(nextTemplates);
+    if (editingTemplateId === id) {
+      resetTemplateDraft();
+    }
+    toast.success("Template deleted");
+  };
 
   const fetchRules = async () => {
     if (!user?.id || !currentAccount?.id) return;
@@ -204,12 +301,13 @@ export default function SettingsPricingRules() {
       />
 
       <main className="px-4 py-4">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="space-y-4">
+        <div className="mx-auto max-w-4xl">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-4">
             {/* Info Card */}
             <div className="card-elevated rounded-lg p-4 flex items-start gap-3">
               <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -300,6 +398,153 @@ export default function SettingsPricingRules() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                 </div>
               </div>
+            </div>
+
+            <div className="card-elevated rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">Line Item Templates</h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Manage reusable templates shown in Quick Add.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={startCreateTemplate}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Template
+                </Button>
+              </div>
+
+              {(editingTemplateId !== null || templateDraft.name || templateDraft.description) && (
+                <div className="rounded-lg border border-border p-3 space-y-3 bg-background">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="template-name">Title *</Label>
+                      <Input
+                        id="template-name"
+                        value={templateDraft.name}
+                        onChange={(event) =>
+                          setTemplateDraft((prev) => ({ ...prev, name: event.target.value }))
+                        }
+                        placeholder="e.g., Black Mulch"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="template-description">Description</Label>
+                      <Input
+                        id="template-description"
+                        value={templateDraft.description}
+                        onChange={(event) =>
+                          setTemplateDraft((prev) => ({ ...prev, description: event.target.value }))
+                        }
+                        placeholder="Optional description"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="template-quantity">Quantity</Label>
+                      <Input
+                        id="template-quantity"
+                        type="number"
+                        step="0.01"
+                        value={templateDraft.quantity}
+                        onChange={(event) =>
+                          setTemplateDraft((prev) => ({ ...prev, quantity: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="template-price">Unit Price</Label>
+                      <Input
+                        id="template-price"
+                        type="number"
+                        step="0.01"
+                        value={templateDraft.unit_price}
+                        onChange={(event) =>
+                          setTemplateDraft((prev) => ({ ...prev, unit_price: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="template-unit">Unit</Label>
+                      <Select
+                        value={templateDraft.unit}
+                        onValueChange={(value) =>
+                          setTemplateDraft((prev) => ({ ...prev, unit: value }))
+                        }
+                      >
+                        <SelectTrigger id="template-unit">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="each">Each</SelectItem>
+                          <SelectItem value="item">Item</SelectItem>
+                          <SelectItem value="sq ft">Sq Ft</SelectItem>
+                          <SelectItem value="linear ft">Linear Ft</SelectItem>
+                          <SelectItem value="hour">Hour</SelectItem>
+                          <SelectItem value="day">Day</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="template-category">Category</Label>
+                      <Select
+                        value={templateDraft.category}
+                        onValueChange={(value) =>
+                          setTemplateDraft((prev) => ({ ...prev, category: value }))
+                        }
+                      >
+                        <SelectTrigger id="template-category">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="equipment">Equipment</SelectItem>
+                          <SelectItem value="materials">Materials</SelectItem>
+                          <SelectItem value="labor">Labor</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button type="button" size="sm" onClick={saveTemplateDraft}>
+                      <Save className="h-4 w-4 mr-1" />
+                      {editingTemplateId ? "Update Template" : "Save Template"}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={resetTemplateDraft}>
+                      <X className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {lineItemTemplates.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No templates yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {lineItemTemplates.map((template) => (
+                    <div key={template.id} className="rounded-lg border border-border p-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{template.name}</p>
+                        {template.description ? (
+                          <p className="text-sm text-muted-foreground mt-0.5">{template.description}</p>
+                        ) : null}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {template.quantity} x ${Number(template.unit_price || 0).toFixed(2)} / {template.unit}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button type="button" variant="ghost" size="icon" onClick={() => startEditTemplate(template)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => deleteTemplate(template.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Service Type Picker */}
@@ -463,10 +708,11 @@ export default function SettingsPricingRules() {
                 </>
               )}
             </div>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
-        <StickyActionBar onSave={saveRules} isSaving={saving} />
+        <StickyActionBar onSave={saveRules} isSaving={saving} contentClassName="mx-auto max-w-4xl" />
       </main>
 
       <MobileNav />
