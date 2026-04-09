@@ -17,7 +17,14 @@ import {
   SERVICE_LABELS, 
   ServiceType 
 } from "@/hooks/useQuickEstimate";
-import { loadGlobalLineItemTemplates, saveGlobalLineItemTemplates, type LineItemTemplate } from "@/lib/lineItemTemplates";
+import {
+  createLineItemTemplate,
+  deleteLineItemTemplate,
+  getLineItemTemplates,
+  migrateLegacyTemplatesToDatabase,
+  updateLineItemTemplate,
+  type LineItemTemplate,
+} from "@/lib/lineItemTemplates";
 
 interface PricingRule {
   id?: string;
@@ -66,9 +73,27 @@ export default function SettingsPricingRules() {
       setTaxRate(String(currentAccount.default_tax_rate ?? 8));
       setProfitMargin(String(currentAccount.default_profit_margin ?? 0));
       setSurcharge(String(currentAccount.default_surcharge ?? 0));
-      setLineItemTemplates(loadGlobalLineItemTemplates(currentAccount.id));
     }
   }, [currentAccount?.id, currentAccount?.default_tax_rate, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
+
+  useEffect(() => {
+    if (!currentAccount?.id) return;
+    let isCancelled = false;
+
+    const loadTemplates = async () => {
+      await migrateLegacyTemplatesToDatabase(currentAccount.id);
+      const templates = await getLineItemTemplates(currentAccount.id);
+      if (!isCancelled) {
+        setLineItemTemplates(templates);
+      }
+    };
+
+    void loadTemplates();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentAccount?.id]);
 
   const resetTemplateDraft = () => {
     setTemplateDraft({
@@ -98,59 +123,63 @@ export default function SettingsPricingRules() {
     });
   };
 
-  const persistTemplates = (nextTemplates: LineItemTemplate[]) => {
-    setLineItemTemplates(nextTemplates);
-    saveGlobalLineItemTemplates(nextTemplates);
-  };
-
-  const saveTemplateDraft = () => {
+  const saveTemplateDraft = async () => {
     const name = templateDraft.name.trim();
     if (!name) {
       toast.error("Template title is required");
       return;
     }
 
-    const now = new Date().toISOString();
-
-    if (editingTemplateId) {
-      const updatedTemplates = lineItemTemplates.map((template) => {
-        if (template.id !== editingTemplateId) return template;
-        return {
-          ...template,
-          name,
-          description: templateDraft.description,
-          quantity: templateDraft.quantity || "1",
-          unit: templateDraft.unit || "each",
-          unit_price: templateDraft.unit_price || "0",
-          category: templateDraft.category || "other",
-          created_at: now,
-        };
-      });
-      persistTemplates(updatedTemplates);
-      toast.success("Template updated");
-      resetTemplateDraft();
+    if (!currentAccount?.id) {
+      toast.error("No account selected");
       return;
     }
 
-    const newTemplate: LineItemTemplate = {
-      id: crypto.randomUUID(),
+    const payload = {
       name,
       description: templateDraft.description,
       quantity: templateDraft.quantity || "1",
       unit: templateDraft.unit || "each",
       unit_price: templateDraft.unit_price || "0",
       category: templateDraft.category || "other",
-      created_at: now,
     };
 
-    persistTemplates([newTemplate, ...lineItemTemplates]);
+    if (editingTemplateId) {
+      const updated = await updateLineItemTemplate(editingTemplateId, payload);
+      if (!updated) {
+        toast.error("Failed to update template");
+        return;
+      }
+      const refreshed = await getLineItemTemplates(currentAccount.id);
+      setLineItemTemplates(refreshed);
+      toast.success("Template updated");
+      resetTemplateDraft();
+      return;
+    }
+
+    const created = await createLineItemTemplate(currentAccount.id, payload);
+    if (!created) {
+      toast.error("Failed to add template");
+      return;
+    }
+    const refreshed = await getLineItemTemplates(currentAccount.id);
+    setLineItemTemplates(refreshed);
     toast.success("Template added");
     resetTemplateDraft();
   };
 
-  const deleteTemplate = (id: string) => {
-    const nextTemplates = lineItemTemplates.filter((template) => template.id !== id);
-    persistTemplates(nextTemplates);
+  const deleteTemplate = async (id: string) => {
+    const deleted = await deleteLineItemTemplate(id);
+    if (!deleted) {
+      toast.error("Failed to delete template");
+      return;
+    }
+    if (currentAccount?.id) {
+      const refreshed = await getLineItemTemplates(currentAccount.id);
+      setLineItemTemplates(refreshed);
+    } else {
+      setLineItemTemplates((prev) => prev.filter((template) => template.id !== id));
+    }
     if (editingTemplateId === id) {
       resetTemplateDraft();
     }

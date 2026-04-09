@@ -16,7 +16,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { QuickAddLineItem } from "@/components/leads/QuickAddLineItem";
-import { loadGlobalLineItemTemplates, saveGlobalLineItemTemplates, type LineItemTemplate } from "@/lib/lineItemTemplates";
+import {
+  getLineItemTemplates,
+  migrateLegacyTemplatesToDatabase,
+  upsertDedupedLineItemTemplate,
+  type LineItemTemplate,
+} from "@/lib/lineItemTemplates";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
 
 function formatDollar(value: number): string {
@@ -59,16 +64,6 @@ function normalizeLineItemForComparison(item: Partial<LineItemForm> & { sort_ord
     sort_order: Number(item.sort_order ?? 0),
     isNew: Boolean(item.isNew),
   };
-}
-
-function buildTemplateFingerprint(item: Pick<LineItemForm, "name" | "description" | "unit" | "unit_price" | "category">) {
-  return [
-    item.name.trim().toLowerCase(),
-    (item.description || "").trim().toLowerCase(),
-    (item.unit || "").trim().toLowerCase(),
-    parseFloat(item.unit_price || "0").toFixed(2),
-    item.category,
-  ].join("|");
 }
 
 function CompactLineItem({
@@ -402,7 +397,6 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
   const [snapshots, setSnapshots] = useState<Record<number, LineItemForm>>({});
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
-  const [templatesHydrated, setTemplatesHydrated] = useState(false);
   const isVersionMode = Boolean(versionId);
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
@@ -481,6 +475,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
 
   useEffect(() => {
     if (!open) return;
+    let isCancelled = false;
 
     setLineItems(buildLineItemsFromEstimate());
     setPendingDeleteIndices(new Set());
@@ -489,16 +484,28 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
     setDragIndex(null);
     setProfitMargin((estimate.profit_margin || 0).toString());
     setSurcharge((estimate.surcharge || 0).toString());
-    setTemplatesHydrated(false);
 
-    setLineItemTemplates(loadGlobalLineItemTemplates(estimate.account_id));
-    setTemplatesHydrated(true);
-  }, [open, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge]);
+    const loadTemplates = async () => {
+      if (!estimate.account_id) {
+        if (!isCancelled) {
+          setLineItemTemplates([]);
+        }
+        return;
+      }
 
-  useEffect(() => {
-    if (!open || !templatesHydrated) return;
-    saveGlobalLineItemTemplates(lineItemTemplates);
-  }, [lineItemTemplates, open, templatesHydrated]);
+      await migrateLegacyTemplatesToDatabase(estimate.account_id);
+      const templates = await getLineItemTemplates(estimate.account_id);
+      if (!isCancelled) {
+        setLineItemTemplates(templates);
+      }
+    };
+
+    void loadTemplates();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [open, effectiveEstimateLineItems, estimate.account_id, estimate.profit_margin, estimate.surcharge]);
 
   const addLineItem = () => {
     const newItems = [
@@ -542,40 +549,38 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
     });
   };
 
-  const saveLineItemAsTemplate = (index: number) => {
+  const saveLineItemAsTemplate = async (index: number) => {
     const item = lineItems[index];
     if (!item || item.name.trim().length === 0) {
       toast.error("Add a title before saving as a template");
       return;
     }
 
-    const now = new Date().toISOString();
-    const templateToSave: LineItemTemplate = {
-      id: crypto.randomUUID(),
-      name: item.name.trim(),
-      description: item.description || "",
-      quantity: item.quantity || "1",
-      unit: item.unit || "each",
-      unit_price: item.unit_price || "0",
-      category: item.category || "other",
-      created_at: now,
-    };
+    if (!estimate.account_id) {
+      toast.error("Missing account for template save");
+      return;
+    }
 
-    const fingerprint = buildTemplateFingerprint(item);
-    setLineItemTemplates((previous) => {
-      const withoutDuplicate = previous.filter((template) => {
-        return buildTemplateFingerprint({
-          name: template.name,
-          description: template.description,
-          unit: template.unit,
-          unit_price: template.unit_price,
-          category: template.category as LineItemCategory,
-        }) !== fingerprint;
-      });
+    const saved = await upsertDedupedLineItemTemplate(
+      estimate.account_id,
+      {
+        name: item.name.trim(),
+        description: item.description || "",
+        quantity: item.quantity || "1",
+        unit: item.unit || "each",
+        unit_price: item.unit_price || "0",
+        category: item.category || "other",
+      },
+      lineItemTemplates,
+    );
 
-      return [templateToSave, ...withoutDuplicate];
-    });
+    if (!saved) {
+      toast.error("Failed to save template");
+      return;
+    }
 
+    const refreshed = await getLineItemTemplates(estimate.account_id);
+    setLineItemTemplates(refreshed);
     toast.success("Template saved");
   };
 
