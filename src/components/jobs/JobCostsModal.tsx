@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useJobLineItems, LineItemCategory } from "@/hooks/useJobLineItems";
 import { RefreshCw, Plus, Pencil, Trash2, Check, X, ScanLine } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,7 +43,16 @@ const CATEGORY_OPTIONS: { value: LineItemCategory; label: string }[] = [
 ];
 
 export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps) => {
-  const { lineItems, isLoading, totalCost, resyncFromEstimate, addLineItem, updateLineItem, deleteLineItem } = useJobLineItems(jobId);
+  const {
+    lineItems,
+    isLoading,
+    totalCost,
+    hasApprovedEstimate,
+    resyncFromEstimate,
+    addLineItem,
+    updateLineItem,
+    deleteLineItem,
+  } = useJobLineItems(jobId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<EditingLineItem | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -60,8 +69,11 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const MAX_COLLAPSED_DESCRIPTION_LENGTH = 140;
+  const editingLocked = !hasApprovedEstimate;
 
   const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (editingLocked) return;
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -123,6 +135,8 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   };
 
   const startEdit = (item: any) => {
+    if (editingLocked) return;
+
     setEditingId(item.id);
     setEditingData({
       id: item.id,
@@ -141,7 +155,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   };
 
   const saveEdit = () => {
-    if (!editingData) return;
+    if (editingLocked || !editingData) return;
 
     const quantity = parseFloat(editingData.quantity) || 0;
     const unitPrice = parseFloat(editingData.unit_price) || 0;
@@ -161,6 +175,8 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   };
 
   const handleAdd = () => {
+    if (editingLocked) return;
+
     const quantity = parseFloat(newItem.quantity) || 0;
     const unitPrice = parseFloat(newItem.unit_price) || 0;
     const maxSortOrder = Math.max(...lineItems.map(item => item.sort_order), 0);
@@ -190,6 +206,11 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   };
 
   const handleDelete = () => {
+    if (editingLocked) {
+      setDeleteId(null);
+      return;
+    }
+
     if (deleteId) {
       deleteLineItem.mutate(deleteId);
       setDeleteId(null);
@@ -217,6 +238,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     onSave: () => void,
     onCancel: () => void,
     saveDisabled?: boolean,
+    isDisabled?: boolean,
   ) => (
     <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
       <div className="grid grid-cols-2 gap-2">
@@ -226,6 +248,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
             placeholder="Item name"
             value={data.name}
             onChange={(e) => setData({ ...data, name: e.target.value })}
+            disabled={isDisabled}
             className="h-8 text-sm"
           />
         </div>
@@ -234,6 +257,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           <Select
             value={data.category}
             onValueChange={(value) => setData({ ...data, category: value as LineItemCategory })}
+            disabled={isDisabled}
           >
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
@@ -252,6 +276,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           placeholder="Description"
           value={data.description}
           onChange={(e) => setData({ ...data, description: e.target.value })}
+          disabled={isDisabled}
           className="h-8 text-sm"
         />
       </div>
@@ -262,6 +287,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
             type="number"
             value={data.quantity}
             onChange={(e) => setData({ ...data, quantity: e.target.value })}
+            disabled={isDisabled}
             className="h-8 text-sm"
           />
         </div>
@@ -270,6 +296,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           <Input
             value={data.unit}
             onChange={(e) => setData({ ...data, unit: e.target.value })}
+            disabled={isDisabled}
             className="h-8 text-sm"
           />
         </div>
@@ -280,6 +307,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
             step="0.01"
             value={data.unit_price}
             onChange={(e) => setData({ ...data, unit_price: e.target.value })}
+            disabled={isDisabled}
             className="h-8 text-sm"
           />
         </div>
@@ -292,7 +320,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           <Button size="sm" variant="outline" onClick={onCancel} className="h-8">
             Cancel
           </Button>
-          <Button size="sm" onClick={onSave} disabled={saveDisabled} className="h-8">
+          <Button size="sm" onClick={onSave} disabled={isDisabled || saveDisabled} className="h-8">
             Save
           </Button>
         </div>
@@ -309,6 +337,8 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
             (d: EditingLineItem) => setEditingData(d),
             saveEdit,
             cancelEdit,
+            undefined,
+            editingLocked,
           )}
         </div>
       );
@@ -348,6 +378,8 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                 size="sm"
                 variant="ghost"
                 onClick={() => startEdit(item)}
+                aria-label={`Edit ${item.name}`}
+                disabled={editingLocked}
                 className="h-7 w-7 p-0"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -356,6 +388,8 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                 size="sm"
                 variant="ghost"
                 onClick={() => setDeleteId(item.id)}
+                aria-label={`Delete ${item.name}`}
+                disabled={editingLocked}
                 className="h-7 w-7 p-0 text-destructive"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -371,6 +405,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
+          <DialogDescription className="sr-only">View and manage job costs for this job.</DialogDescription>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <DialogTitle>Job Costs</DialogTitle>
 
@@ -379,7 +414,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               variant="outline"
               size="sm"
               onClick={() => resyncFromEstimate.mutate()}
-              disabled={resyncFromEstimate.isPending}
+              disabled={editingLocked || resyncFromEstimate.isPending}
               className="shrink-0"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${resyncFromEstimate.isPending ? 'animate-spin' : ''}`} />
@@ -391,7 +426,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               variant="outline"
               size="sm"
               onClick={() => receiptInputRef.current?.click()}
-              disabled={isScanningReceipt}
+              disabled={editingLocked || isScanningReceipt}
               className="shrink-0"
             >
               <ScanLine className={`h-4 w-4 mr-2 ${isScanningReceipt ? 'animate-pulse' : ''}`} />
@@ -402,6 +437,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
               type="file"
               accept="image/*"
               className="hidden"
+              disabled={editingLocked}
               onChange={handleScanReceipt}
             />
 
@@ -409,7 +445,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAdding(true)}
-                disabled={isAdding}
+                disabled={editingLocked || isAdding}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Line Item
@@ -424,6 +460,11 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
           </div>
         ) : (
           <div className="space-y-4">
+            {editingLocked && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Estimate must be approved before you can edit or resync job costs.
+              </div>
+            )}
 
             {/* Mobile card layout */}
             <div className="md:hidden">
@@ -438,6 +479,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                       setNewItem({ name: "", description: "", quantity: "1", unit: "each", unit_price: "0", category: "other" as LineItemCategory });
                     },
                     !newItem.name.trim(),
+                    editingLocked,
                   )}
                   {lineItems.map(renderMobileCard)}
                   {lineItems.length === 0 && !isAdding && (
@@ -467,23 +509,26 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                       editingId === item.id && editingData ? (
                         <TableRow key={item.id}>
                           <TableCell>
-                            <Input
-                              value={editingData.name}
-                              onChange={(e) => setEditingData({ ...editingData, name: e.target.value })}
-                              className="h-8"
-                            />
+                              <Input
+                                value={editingData.name}
+                                onChange={(e) => setEditingData({ ...editingData, name: e.target.value })}
+                                disabled={editingLocked}
+                                className="h-8"
+                              />
                           </TableCell>
                           <TableCell>
-                            <Input
-                              value={editingData.description}
-                              onChange={(e) => setEditingData({ ...editingData, description: e.target.value })}
-                              className="h-8"
-                            />
+                              <Input
+                                value={editingData.description}
+                                onChange={(e) => setEditingData({ ...editingData, description: e.target.value })}
+                                disabled={editingLocked}
+                                className="h-8"
+                              />
                           </TableCell>
                           <TableCell>
                             <Select
                               value={editingData.category}
                               onValueChange={(value) => setEditingData({ ...editingData, category: value as LineItemCategory })}
+                              disabled={editingLocked}
                             >
                               <SelectTrigger className="h-8">
                                 <SelectValue />
@@ -501,11 +546,13 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                                 type="number"
                                 value={editingData.quantity}
                                 onChange={(e) => setEditingData({ ...editingData, quantity: e.target.value })}
+                                disabled={editingLocked}
                                 className="h-8 w-16"
                               />
                               <Input
                                 value={editingData.unit}
                                 onChange={(e) => setEditingData({ ...editingData, unit: e.target.value })}
+                                disabled={editingLocked}
                                 className="h-8 w-20"
                               />
                             </div>
@@ -516,6 +563,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                               step="0.01"
                               value={editingData.unit_price}
                               onChange={(e) => setEditingData({ ...editingData, unit_price: e.target.value })}
+                              disabled={editingLocked}
                               className="h-8"
                             />
                           </TableCell>
@@ -524,7 +572,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" onClick={saveEdit} className="h-8 w-8 p-0">
+                              <Button size="sm" variant="ghost" onClick={saveEdit} disabled={editingLocked} className="h-8 w-8 p-0">
                                 <Check className="h-4 w-4" />
                               </Button>
                               <Button size="sm" variant="ghost" onClick={cancelEdit} className="h-8 w-8 p-0">
@@ -568,13 +616,22 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" onClick={() => startEdit(item)} className="h-8 w-8 p-0">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => startEdit(item)}
+                                aria-label={`Edit ${item.name}`}
+                                disabled={editingLocked}
+                                className="h-8 w-8 p-0"
+                              >
                                 <Pencil className="h-4 w-4" />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setDeleteId(item.id)}
+                                aria-label={`Delete ${item.name}`}
+                                disabled={editingLocked}
                                 className="h-8 w-8 p-0 text-destructive"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -592,6 +649,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                             placeholder="Item name"
                             value={newItem.name}
                             onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                            disabled={editingLocked}
                             className="h-8"
                           />
                         </TableCell>
@@ -600,6 +658,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                             placeholder="Description"
                             value={newItem.description}
                             onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                            disabled={editingLocked}
                             className="h-8"
                           />
                         </TableCell>
@@ -607,6 +666,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                           <Select
                             value={newItem.category}
                             onValueChange={(value) => setNewItem({ ...newItem, category: value as LineItemCategory })}
+                            disabled={editingLocked}
                           >
                             <SelectTrigger className="h-8">
                               <SelectValue />
@@ -624,11 +684,13 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                               type="number"
                               value={newItem.quantity}
                               onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+                              disabled={editingLocked}
                               className="h-8 w-16"
                             />
                             <Input
                               value={newItem.unit}
                               onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                              disabled={editingLocked}
                               className="h-8 w-20"
                             />
                           </div>
@@ -639,6 +701,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                             step="0.01"
                             value={newItem.unit_price}
                             onChange={(e) => setNewItem({ ...newItem, unit_price: e.target.value })}
+                            disabled={editingLocked}
                             className="h-8"
                           />
                         </TableCell>
@@ -651,7 +714,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                               size="sm"
                               variant="ghost"
                               onClick={handleAdd}
-                              disabled={!newItem.name.trim()}
+                              disabled={editingLocked || !newItem.name.trim()}
                               className="h-8 w-8 p-0"
                             >
                               <Check className="h-4 w-4" />

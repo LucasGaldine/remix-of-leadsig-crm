@@ -43,6 +43,26 @@ export const useJobLineItems = (jobId: string | undefined) => {
     enabled: !!jobId && !!currentAccount?.id,
   });
 
+  const { data: hasApprovedEstimate = false } = useQuery({
+    queryKey: ["job-costs-approved-estimate", jobId, currentAccount?.id],
+    queryFn: async () => {
+      if (!jobId || !currentAccount?.id) return false;
+
+      const { data, error } = await supabase
+        .from("estimates")
+        .select("id")
+        .eq("job_id", jobId)
+        .eq("account_id", currentAccount.id)
+        .eq("status", "accepted")
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return !!data;
+    },
+    enabled: !!jobId && !!currentAccount?.id,
+  });
+
   const addLineItem = useMutation({
     mutationFn: async (item: Omit<JobLineItem, "id" | "created_at" | "account_id">) => {
       if (!currentAccount?.id) throw new Error("No account selected");
@@ -183,6 +203,7 @@ export const useJobLineItems = (jobId: string | undefined) => {
     lineItems: lineItems || [],
     isLoading,
     totalCost,
+    hasApprovedEstimate,
     addLineItem,
     updateLineItem,
     deleteLineItem,

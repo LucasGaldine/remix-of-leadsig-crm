@@ -11,6 +11,7 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
   const { lineItems, isLoading, totalCost } = useJobLineItems(jobId);
   const [modalOpen, setModalOpen] = useState(false);
   const shellClassName = "rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm";
+  const hasLineItems = (lineItems?.length ?? 0) > 0;
 
   if (isLoading) {
     return (
@@ -33,32 +34,6 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
     );
   }
 
-  if (!lineItems || lineItems.length === 0) {
-    return (
-      <div className={shellClassName}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-2 items-center">
-            <ChevronsDown className="w-3 h-3"/>
-          <p className="text-xs uppercase text-muted-foreground tracking-wide">Costs</p>
-          </div>
-          <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Pending
-          </span>
-        </div>
-        <div className="mt-2 flex items-start gap-3">
-          <div className="flex-1">
-            <p className="text-sm text-muted-foreground">
-              No cost items yet
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Costs will be copied from estimate when approved
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <button
@@ -69,20 +44,30 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
           <div className="flex gap-2 items-center">
             <ChevronsDown className="w-3 h-3"/>
           <p className="text-xs uppercase text-muted-foreground tracking-wide">Costs</p>
-          
           </div>
-          <span className=" inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              View 
-            </span>
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {hasLineItems ? "View" : "Pending"}
+          </span>
         </div>
-        <div className="mt-2 mb-2 flex items-start gap-3">
+        <div className={`mt-2 ${hasLineItems ? "mb-2" : ""} flex items-start gap-3`}>
           <div className="flex-1">
-            <p className="text-xl font-semibold leading-tight text-foreground">
-              -${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {lineItems.length} line {lineItems.length === 1 ? 'item' : 'items'}
-            </p>
+            {hasLineItems ? (
+              <>
+                <p className="text-xl font-semibold leading-tight text-foreground">
+                  -${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {lineItems.length} line {lineItems.length === 1 ? "item" : "items"}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">No cost items yet</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Costs will be copied from estimate when approved
+                </p>
+              </>
+            )}
           </div>
         </div>
       </button>

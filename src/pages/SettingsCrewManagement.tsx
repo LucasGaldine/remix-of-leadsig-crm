@@ -42,17 +42,24 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { isMissingRelationError } from "@/lib/supabaseErrors";
+import { CREW_DESCRIPTION_MAX_LENGTH, normalizeCrewDescription } from "@/lib/crewDescription";
+import {
+  fetchAccountMembersWithDescriptionFallback,
+  updateAccountMemberWithDescriptionFallback,
+} from "@/lib/accountMembers";
 
 interface AccountMember {
   id: string;
   user_id: string;
   role: AppRole;
   joined_at: string;
+  description: string | null;
   full_name: string | null;
   email: string | null;
   phone: string | null;
@@ -62,6 +69,7 @@ interface MockCrewProfile {
   id: string;
   full_name: string;
   phone: string | null;
+  description: string | null;
   role: "crew_lead" | "crew_member";
   created_at: string;
 }
@@ -90,10 +98,12 @@ export default function SettingsCrewManagement() {
   const [memberToRemove, setMemberToRemove] = useState<AccountMember | null>(null);
   const [memberToEdit, setMemberToEdit] = useState<AccountMember | null>(null);
   const [newRole, setNewRole] = useState<AppRole | "">("");
+  const [memberDescription, setMemberDescription] = useState("");
   const [mockProfileToEdit, setMockProfileToEdit] = useState<MockCrewProfile | { id?: string } | null>(null);
   const [mockProfileToRemove, setMockProfileToRemove] = useState<MockCrewProfile | null>(null);
   const [mockProfileName, setMockProfileName] = useState("");
   const [mockProfilePhone, setMockProfilePhone] = useState("");
+  const [mockProfileDescription, setMockProfileDescription] = useState("");
   const [mockProfileRole, setMockProfileRole] = useState<"crew_lead" | "crew_member">("crew_member");
 
   const { data: members, isLoading } = useQuery({
@@ -101,14 +111,19 @@ export default function SettingsCrewManagement() {
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data: membersData, error: membersError } = await supabase
-        .from('account_members')
-        .select('id, user_id, role, joined_at')
-        .eq('account_id', currentAccount.id)
-        .eq('is_active', true)
-        .order('joined_at', { ascending: false });
+      const membersData = await fetchAccountMembersWithDescriptionFallback(async (includeDescription) => {
+        const columns = includeDescription
+          ? "id, user_id, role, joined_at, description"
+          : "id, user_id, role, joined_at";
 
-      if (membersError) throw membersError;
+        return supabase
+          .from('account_members')
+          .select(columns)
+          .eq('account_id', currentAccount.id)
+          .eq('is_active', true)
+          .order('joined_at', { ascending: false });
+      });
+
       if (!membersData || membersData.length === 0) return [];
 
       const userIds = membersData.map(m => m.user_id);
@@ -128,6 +143,7 @@ export default function SettingsCrewManagement() {
         user_id: member.user_id,
         role: member.role,
         joined_at: member.joined_at,
+        description: member.description || null,
         full_name: profilesMap.get(member.user_id)?.full_name || null,
         email: profilesMap.get(member.user_id)?.email || null,
         phone: profilesMap.get(member.user_id)?.phone || null,
@@ -162,7 +178,7 @@ export default function SettingsCrewManagement() {
 
       const { data, error } = await supabase
         .from("mock_crew_profiles")
-        .select("id, full_name, phone, role, created_at")
+        .select("id, full_name, phone, description, role, created_at")
         .eq("account_id", currentAccount.id)
         .order("created_at", { ascending: false });
 
@@ -185,6 +201,7 @@ export default function SettingsCrewManagement() {
           .update({
             full_name: mockProfileName.trim(),
             phone: mockProfilePhone.trim() || null,
+            description: normalizeCrewDescription(mockProfileDescription),
             role: mockProfileRole,
           })
           .eq("id", mockProfileToEdit.id)
@@ -199,6 +216,7 @@ export default function SettingsCrewManagement() {
           account_id: currentAccount.id,
           full_name: mockProfileName.trim(),
           phone: mockProfilePhone.trim() || null,
+          description: normalizeCrewDescription(mockProfileDescription),
           role: mockProfileRole,
         });
       if (error) {
@@ -215,6 +233,7 @@ export default function SettingsCrewManagement() {
       setMockProfileToEdit(null);
       setMockProfileName("");
       setMockProfilePhone("");
+      setMockProfileDescription("");
       setMockProfileRole("crew_member");
     },
     onError: (error: Error) => {
@@ -241,23 +260,33 @@ export default function SettingsCrewManagement() {
     },
   });
 
-  const updateRoleMutation = useMutation({
-    mutationFn: async ({ memberId, role }: { memberId: string; role: AppRole }) => {
-      const { error } = await supabase
-        .from('account_members')
-        .update({ role })
-        .eq('id', memberId);
-
-      if (error) throw error;
+  const updateMemberMutation = useMutation({
+    mutationFn: async ({
+      memberId,
+      updates,
+    }: {
+      memberId: string;
+      updates: { role?: AppRole; description?: string | null };
+    }) => {
+      if (Object.keys(updates).length > 0) {
+        await updateAccountMemberWithDescriptionFallback(async (updatePayload) => {
+          const { error } = await supabase
+            .from('account_members')
+            .update(updatePayload)
+            .eq('id', memberId);
+          return { error };
+        }, updates);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['account-members'] });
-      toast.success('Member role updated');
+      toast.success('Member updated');
       setMemberToEdit(null);
       setNewRole("");
+      setMemberDescription("");
     },
     onError: (error: Error) => {
-      toast.error('Failed to update role: ' + error.message);
+      toast.error('Failed to update member: ' + error.message);
     },
   });
 
@@ -279,21 +308,40 @@ export default function SettingsCrewManagement() {
   const handleEditRole = (member: AccountMember) => {
     setMemberToEdit(member);
     setNewRole(member.role);
+    setMemberDescription(member.description || "");
   };
 
-  const handleUpdateRole = () => {
-    if (memberToEdit && newRole && newRole !== memberToEdit.role) {
-      updateRoleMutation.mutate({ memberId: memberToEdit.id, role: newRole as AppRole });
-    } else {
+  const handleUpdateMember = () => {
+    if (!memberToEdit) return;
+
+    const updates: { role?: AppRole; description?: string | null } = {};
+
+    if (isOwner && newRole && newRole !== memberToEdit.role) {
+      updates.role = newRole as AppRole;
+    }
+
+    if (normalizeCrewDescription(memberDescription) !== normalizeCrewDescription(memberToEdit.description)) {
+      updates.description = normalizeCrewDescription(memberDescription);
+    }
+
+    if (Object.keys(updates).length === 0) {
       setMemberToEdit(null);
       setNewRole("");
+      setMemberDescription("");
+      return;
     }
+
+    updateMemberMutation.mutate({
+      memberId: memberToEdit.id,
+      updates,
+    });
   };
 
   const openCreateMockProfile = () => {
     setMockProfileToEdit({});
     setMockProfileName("");
     setMockProfilePhone("");
+    setMockProfileDescription("");
     setMockProfileRole("crew_member");
   };
 
@@ -301,6 +349,7 @@ export default function SettingsCrewManagement() {
     setMockProfileToEdit(profile);
     setMockProfileName(profile.full_name || "");
     setMockProfilePhone(profile.phone || "");
+    setMockProfileDescription(profile.description || "");
     setMockProfileRole(profile.role || "crew_member");
   };
 
@@ -315,6 +364,11 @@ export default function SettingsCrewManagement() {
 
   const canManageMembers = currentAccount && user;
   const isOwner = currentUserRole === 'owner';
+  const canEditMemberDetails = currentUserRole === 'owner' || currentUserRole === 'admin';
+  const hasMemberRoleChange = Boolean(memberToEdit && newRole && newRole !== memberToEdit.role);
+  const hasMemberDescriptionChange =
+    Boolean(memberToEdit) &&
+    normalizeCrewDescription(memberDescription) !== normalizeCrewDescription(memberToEdit?.description);
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -395,42 +449,46 @@ export default function SettingsCrewManagement() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="table-fixed min-w-[1100px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Joined</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="w-[180px]">Name</TableHead>
+                      <TableHead className="w-[280px]">Email</TableHead>
+                      <TableHead className="w-[180px]">Phone</TableHead>
+                      <TableHead className="w-[280px]">Description</TableHead>
+                      <TableHead className="w-[140px]">Role</TableHead>
+                      <TableHead className="w-[140px]">Joined</TableHead>
+                      <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {members.map((member) => (
                       <TableRow key={member.id}>
-                        <TableCell className="font-medium">
+                        <TableCell className="font-medium whitespace-nowrap">
                           {member.full_name || 'Unknown'}
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
+                        <TableCell className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
                             <Mail className="h-4 w-4 text-muted-foreground" />
-                            {member.email || 'No email'}
+                            <span className="truncate">{member.email || 'No email'}</span>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="min-w-0">
                           {member.phone ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
                               <Phone className="h-4 w-4 text-muted-foreground" />
-                              {member.phone}
+                              <span className="truncate">{member.phone}</span>
                             </div>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
+                        <TableCell className="text-muted-foreground max-w-[280px] truncate">
+                          {member.description || "-"}
+                        </TableCell>
                         <TableCell>
                           <Badge
-                            className={`${roleBadgeColors[member.role]} text-white`}
+                            className={`${roleBadgeColors[member.role]} whitespace-nowrap text-white`}
                           >
                             {roleLabels[member.role]}
                           </Badge>
@@ -440,7 +498,7 @@ export default function SettingsCrewManagement() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {isOwner && member.user_id !== user?.id && (
+                            {canEditMemberDetails && member.user_id !== user?.id && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -496,32 +554,36 @@ export default function SettingsCrewManagement() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="table-fixed min-w-[920px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="w-[220px]">Name</TableHead>
+                      <TableHead className="w-[180px]">Phone</TableHead>
+                      <TableHead className="w-[280px]">Description</TableHead>
+                      <TableHead className="w-[140px]">Role</TableHead>
+                      <TableHead className="w-[140px]">Created</TableHead>
+                      <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {mockProfiles.map((profile) => (
                       <TableRow key={profile.id}>
-                        <TableCell className="font-medium">{profile.full_name}</TableCell>
-                        <TableCell>
+                        <TableCell className="font-medium whitespace-nowrap">{profile.full_name}</TableCell>
+                        <TableCell className="min-w-0">
                           {profile.phone ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
                               <Phone className="h-4 w-4 text-muted-foreground" />
-                              {profile.phone}
+                              <span className="truncate">{profile.phone}</span>
                             </div>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
+                        <TableCell className="text-muted-foreground max-w-[280px] truncate">
+                          {profile.description || "-"}
+                        </TableCell>
                         <TableCell>
-                          <Badge className={`${roleBadgeColors[profile.role]} text-white`}>
+                          <Badge className={`${roleBadgeColors[profile.role]} whitespace-nowrap text-white`}>
                             {roleLabels[profile.role]}
                           </Badge>
                         </TableCell>
@@ -562,55 +624,70 @@ export default function SettingsCrewManagement() {
         if (!open) {
           setMemberToEdit(null);
           setNewRole("");
+          setMemberDescription("");
         }
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Member Role</DialogTitle>
+            <DialogTitle>Edit Team Member</DialogTitle>
             <DialogDescription>
-              Change the role for {memberToEdit?.full_name}
+              Update details for {memberToEdit?.full_name}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {isOwner && (
+              <div className="space-y-2">
+                <Label htmlFor="role">Role</Label>
+                <Select
+                  value={newRole}
+                  onValueChange={(value) => setNewRole(value as AppRole)}
+                >
+                  <SelectTrigger id="role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="owner">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-purple-500 text-white">Owner</Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-blue-500 text-white">Admin</Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="sales">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-green-500 text-white">Sales</Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="crew_lead">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-orange-500 text-white">Crew Lead</Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="crew_member">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-gray-500 text-white">Crew Member</Badge>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select
-                value={newRole}
-                onValueChange={(value) => setNewRole(value as AppRole)}
-              >
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="owner">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-purple-500 text-white">Owner</Badge>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-blue-500 text-white">Admin</Badge>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="sales">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-green-500 text-white">Sales</Badge>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="crew_lead">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-orange-500 text-white">Crew Lead</Badge>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="crew_member">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-gray-500 text-white">Crew Member</Badge>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="member-description">Short Description (optional)</Label>
+              <Textarea
+                id="member-description"
+                value={memberDescription}
+                onChange={(event) => setMemberDescription(event.target.value.slice(0, CREW_DESCRIPTION_MAX_LENGTH))}
+                placeholder="e.g. Handles detail finishing and shrub shaping"
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {memberDescription.length}/{CREW_DESCRIPTION_MAX_LENGTH}
+              </p>
             </div>
-            {memberToEdit?.role === 'owner' && newRole !== 'owner' && (
+            {isOwner && memberToEdit?.role === 'owner' && newRole !== 'owner' && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
@@ -628,15 +705,16 @@ export default function SettingsCrewManagement() {
               onClick={() => {
                 setMemberToEdit(null);
                 setNewRole("");
+                setMemberDescription("");
               }}
             >
               Cancel
             </Button>
             <Button
-              onClick={handleUpdateRole}
-              disabled={!newRole || newRole === memberToEdit?.role || updateRoleMutation.isPending}
+              onClick={handleUpdateMember}
+              disabled={(!hasMemberRoleChange && !hasMemberDescriptionChange) || updateMemberMutation.isPending}
             >
-              {updateRoleMutation.isPending ? "Updating..." : "Update Role"}
+              {updateMemberMutation.isPending ? "Updating..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -670,6 +748,7 @@ export default function SettingsCrewManagement() {
             setMockProfileToEdit(null);
             setMockProfileName("");
             setMockProfilePhone("");
+            setMockProfileDescription("");
             setMockProfileRole("crew_member");
           }
         }}
@@ -701,6 +780,18 @@ export default function SettingsCrewManagement() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="mock-profile-description">Short Description (optional)</Label>
+              <Textarea
+                id="mock-profile-description"
+                value={mockProfileDescription}
+                onChange={(event) => setMockProfileDescription(event.target.value.slice(0, CREW_DESCRIPTION_MAX_LENGTH))}
+                placeholder="e.g. Seasonal cleanup and mulch installs"
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {mockProfileDescription.length}/{CREW_DESCRIPTION_MAX_LENGTH}
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="mock-profile-role">Role</Label>
               <Select
                 value={mockProfileRole}
@@ -723,6 +814,7 @@ export default function SettingsCrewManagement() {
                 setMockProfileToEdit(null);
                 setMockProfileName("");
                 setMockProfilePhone("");
+                setMockProfileDescription("");
                 setMockProfileRole("crew_member");
               }}
             >

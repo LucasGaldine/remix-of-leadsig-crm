@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isMissingRelationError } from "@/lib/supabaseErrors";
+import { isMissingColumnError, isMissingRelationError } from "@/lib/supabaseErrors";
 
 describe("isMissingRelationError", () => {
   it("matches Postgres missing relation code for a specific table", () => {
@@ -43,6 +43,46 @@ describe("isMissingRelationError", () => {
           message: "new row violates row-level security policy",
         },
         "mock_crew_profiles",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("isMissingColumnError", () => {
+  it("matches undefined column code for a specific column and table", () => {
+    expect(
+      isMissingColumnError(
+        {
+          code: "42703",
+          message: 'column "description" of relation "account_members" does not exist',
+        },
+        "description",
+        "account_members",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches schema cache missing column errors", () => {
+    expect(
+      isMissingColumnError(
+        {
+          message: 'Could not find the column "description" of "account_members" in the schema cache',
+        },
+        "description",
+        "account_members",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match unrelated errors", () => {
+    expect(
+      isMissingColumnError(
+        {
+          code: "42501",
+          message: "new row violates row-level security policy",
+        },
+        "description",
+        "account_members",
       ),
     ).toBe(false);
   });

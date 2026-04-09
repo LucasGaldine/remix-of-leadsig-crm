@@ -4,12 +4,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { getTeamMemberDisplayName } from "@/lib/teamMembers";
 import { buildMockCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { isMissingRelationError } from "@/lib/supabaseErrors";
+import { fetchAccountMembersWithDescriptionFallback } from "@/lib/accountMembers";
 
 export interface TeamMember {
   user_id: string;
   full_name: string;
   email: string;
   role: string;
+  description?: string | null;
   invited_at?: string | null;
   is_mock_profile: boolean;
   mock_profile_id?: string | null;
@@ -24,13 +26,18 @@ export function useTeamMembers() {
     queryFn: async () => {
       if (!currentAccount?.id) return [];
 
-      const { data: members, error: membersError } = await supabase
-        .from("account_members")
-        .select("user_id, role, invited_at")
-        .eq("account_id", currentAccount.id)
-        .eq("is_active", true);
+      const members = await fetchAccountMembersWithDescriptionFallback(async (includeDescription) => {
+        const columns = includeDescription
+          ? "user_id, role, invited_at, description"
+          : "user_id, role, invited_at";
 
-      if (membersError) throw membersError;
+        return supabase
+          .from("account_members")
+          .select(columns)
+          .eq("account_id", currentAccount.id)
+          .eq("is_active", true);
+      });
+
       if (!members || members.length === 0) return [];
 
       const userIds = members.map(m => m.user_id);
@@ -43,7 +50,7 @@ export function useTeamMembers() {
 
       const { data: mockProfiles, error: mockProfilesError } = await supabase
         .from("mock_crew_profiles")
-        .select("id, full_name, phone, role")
+        .select("id, full_name, phone, role, description")
         .eq("account_id", currentAccount.id)
         .order("full_name", { ascending: true });
 
@@ -71,6 +78,7 @@ export function useTeamMembers() {
             }),
             email: profile?.email || "",
             role: member.role,
+            description: member.description || null,
             invited_at: member.invited_at,
             is_mock_profile: !profile?.full_name,
             mock_profile_id: null,
@@ -88,6 +96,7 @@ export function useTeamMembers() {
         }),
         email: "",
         role: mockProfile.role,
+        description: mockProfile.description || null,
         invited_at: null,
         is_mock_profile: true,
         mock_profile_id: mockProfile.id,

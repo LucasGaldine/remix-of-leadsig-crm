@@ -266,7 +266,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       await createEstimateVersionSnapshot({
         estimateId: estimateData.id,
         accountId: currentAccount.id,
-        name: "Version 1",
+        name: normalizedEstimateName,
         subtotal: estimateSubtotal,
         taxRate: taxRate,
         tax: taxAmount,

@@ -6,6 +6,7 @@ import { LineItemsEstimateDialog } from "@/components/leads/LineItemsEstimateDia
 const {
   supabaseFromMock,
   estimatesInsertMock,
+  estimateVersionsInsertMock,
   findOrCreateCustomerMock,
   invalidateQueriesMock,
   onOpenChangeMock,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
   supabaseFromMock: vi.fn(),
   estimatesInsertMock: vi.fn(),
+  estimateVersionsInsertMock: vi.fn().mockResolvedValue({ error: null }),
   findOrCreateCustomerMock: vi.fn().mockResolvedValue({ id: "cust_1" }),
   invalidateQueriesMock: vi.fn(),
   onOpenChangeMock: vi.fn(),
@@ -89,7 +91,7 @@ describe("LineItemsEstimateDialog estimate naming", () => {
 
       if (table === "estimate_versions") {
         return {
-          insert: vi.fn().mockResolvedValue({ error: null }),
+          insert: estimateVersionsInsertMock,
         };
       }
 
@@ -131,10 +133,16 @@ describe("LineItemsEstimateDialog estimate naming", () => {
         name: "original",
       }),
     );
+    expect(estimateVersionsInsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "original",
+      }),
+    );
   });
 
   it("retries estimate creation without name when the column is unavailable", async () => {
     estimatesInsertMock.mockClear();
+    estimateVersionsInsertMock.mockClear();
     onSuccessMock.mockClear();
 
     estimatesInsertMock.mockImplementation((values: Record<string, unknown>) => ({
@@ -177,7 +185,7 @@ describe("LineItemsEstimateDialog estimate naming", () => {
 
       if (table === "estimate_versions") {
         return {
-          insert: vi.fn().mockResolvedValue({ error: null }),
+          insert: estimateVersionsInsertMock,
         };
       }
 
@@ -219,5 +227,10 @@ describe("LineItemsEstimateDialog estimate naming", () => {
       expect.objectContaining({ name: "original" }),
     );
     expect(estimatesInsertMock.mock.calls[1][0]).not.toHaveProperty("name");
+    expect(estimateVersionsInsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "original",
+      }),
+    );
   });
 });

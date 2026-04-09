@@ -221,15 +221,28 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
 
 
 
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full gap-2 mt-2"
-            onClick={() => { onOpenChange(false); setShowCSVImport(true); }}
-          >
-            <Upload className="h-4 w-4" />
-            Import from CSV
-          </Button>
+          <div className={`mt-2 grid gap-2 ${showVoiceLeadIntake ? "grid-cols-1" : "grid-cols-2"}`}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2"
+              onClick={() => { onOpenChange(false); setShowCSVImport(true); }}
+            >
+              <Upload className="h-4 w-4" />
+              Import from CSV
+            </Button>
+            {!showVoiceLeadIntake && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowVoiceLeadIntake(true)}
+              >
+                <Mic className="h-4 w-4 mr-2" />
+                Voice Lead Intake
+              </Button>
+            )}
+          </div>
 
           <div className="flex items-center gap-3">
             <div className="h-px bg-border flex-1" />
@@ -242,16 +255,6 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           <form onSubmit={handleSubmit} className="space-y-4">
             {!showVoiceLeadIntake ? (
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setShowVoiceLeadIntake(true)}
-                >
-                  <Mic className="h-4 w-4 mr-2" />
-                  Voice Lead Intake
-                </Button>
-
                 <ClientSelector
                   selectedCustomer={selectedCustomer}
                   onSelect={setSelectedCustomer}

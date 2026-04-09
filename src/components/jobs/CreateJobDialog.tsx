@@ -820,19 +820,32 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           <div className="flex-1 min-h-0 overflow-y-auto pr-1">
             {manualStep === "client" && (
               <div className="space-y-6">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full gap-2 mt-2"
-                  onClick={() => {
-                    resetForm();
-                    onOpenChange(false);
-                    setShowCSVImport(true);
-                  }}
-                >
-                  <Upload className="h-4 w-4" />
-                  Import from CSV
-                </Button>
+                <div className={`mt-2 grid gap-2 ${showVoiceJobIntake ? "grid-cols-1" : "grid-cols-2"}`}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={() => {
+                      resetForm();
+                      onOpenChange(false);
+                      setShowCSVImport(true);
+                    }}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Import from CSV
+                  </Button>
+                  {!showVoiceJobIntake && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setShowVoiceJobIntake(true)}
+                    >
+                      <Mic className="h-4 w-4 mr-2" />
+                      Voice Job Intake
+                    </Button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-3">
                   <div className="h-px bg-border flex-1" />
@@ -844,16 +857,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
                 {!showVoiceJobIntake ? (
                   <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => setShowVoiceJobIntake(true)}
-                    >
-                      <Mic className="h-4 w-4 mr-2" />
-                      Voice Job Intake
-                    </Button>
-
                     <ClientSelector
                       selectedCustomer={selectedCustomer}
                       onSelect={setSelectedCustomer}
