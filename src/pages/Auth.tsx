@@ -247,8 +247,12 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/50 p-4">
-      <div className="w-full max-w-md flex flex-col">
-      <Card className="w-full h-[calc(100dvh-2rem)] max-h-[820px] flex flex-col overflow-hidden">
+      <Card
+        className={cn(
+          "w-full max-w-md",
+          activeTab === "signup" && "max-h-[90vh] flex flex-col overflow-hidden",
+        )}
+      >
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <div className="p-2 bg-primary/10 rounded-lg">
@@ -262,7 +266,11 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <CardContent
+          className={cn(
+            activeTab === "signup" && "flex-1 min-h-0 flex flex-col overflow-hidden",
+          )}
+        >
           <Tabs value={activeTab} onValueChange={(v) => {
             const nextTab = v as 'signin' | 'signup';
             setActiveTab(nextTab);
@@ -270,14 +278,14 @@ export default function Auth() {
               resetSignupFlow();
               setErrors({});
             }
-          }} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
+          }} className={cn("w-full", activeTab === "signup" && "flex-1 min-h-0 flex flex-col overflow-hidden")}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Log In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="signin" className="flex-1 min-h-0 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
-              <form onSubmit={handleSignIn} className="space-y-4 pt-4 flex-1 min-h-0 overflow-y-auto pr-1">
+            <TabsContent value="signin">
+              <form onSubmit={handleSignIn} className="space-y-4 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="signin-email" >Email</Label>
                   <Input
@@ -624,16 +632,14 @@ export default function Auth() {
               </form>
             </TabsContent>
           </Tabs>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Want to earn referral commissions?{" "}
+            <Link to="/affiliate" className="font-medium text-primary hover:underline">
+              Become an affiliate
+            </Link>
+          </p>
         </CardContent>
       </Card>
-
-      <p className="mt-3 text-center text-xs text-muted-foreground">
-        Want to earn referral commissions?{" "}
-        <Link to="/affiliate" className="font-medium text-primary hover:underline">
-          Become an affiliate
-        </Link>
-      </p>
-      </div>
 
       <ForgotPasswordDialog
         open={showForgotPassword}
