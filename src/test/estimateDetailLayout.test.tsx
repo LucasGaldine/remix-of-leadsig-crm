@@ -338,6 +338,36 @@ describe("EstimateDetail layout", () => {
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
   });
 
+  it("shows scheduled status on the job card when schedules exist for a raw job status", async () => {
+    mockEstimate = buildEstimate({
+      job: {
+        id: "job_1",
+        name: "Front Yard Renovation",
+        status: "job",
+        scheduled_date: null,
+        job_schedules: [
+          {
+            scheduled_date: "2099-01-10",
+            scheduled_time_start: "09:00:00",
+            scheduled_time_end: "11:00:00",
+          },
+        ],
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/payments/estimates/est_1"]}>
+        <Routes>
+          <Route path="/payments/estimates/:id" element={<EstimateDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const rightColumn = await screen.findByTestId("estimate-details-right-column");
+    expect(within(rightColumn).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(rightColumn).queryByText("Unscheduled")).not.toBeInTheDocument();
+  });
+
   it("allows manual approval without a photo", async () => {
     mockEstimate = buildEstimate({
       has_pending_changes: false,

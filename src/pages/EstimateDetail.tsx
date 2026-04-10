@@ -450,15 +450,40 @@ export default function EstimateDetail() {
       return directStatus || "unscheduled";
     }
 
-    // Raw "job" is ambiguous on lead records; infer a meaningful stage.
-    const scheduledDate = estimate.job?.scheduled_date;
+    // Raw "job" is ambiguous on lead records; infer a meaningful stage from schedules when available.
+    const scheduleRows = ((estimate.job as any)?.job_schedules || []) as Array<{
+      scheduled_date?: string | null;
+      scheduled_time_start?: string | null;
+      scheduled_time_end?: string | null;
+    }>;
+    const sortedSchedules = scheduleRows
+      .filter((schedule) => Boolean(schedule?.scheduled_date))
+      .sort((a, b) => {
+        const dateCompare = (a.scheduled_date || "").localeCompare(b.scheduled_date || "");
+        if (dateCompare !== 0) return dateCompare;
+        if (!a.scheduled_time_start) return 1;
+        if (!b.scheduled_time_start) return -1;
+        return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
+      });
+
+    const scheduledDate = estimate.job?.scheduled_date || sortedSchedules[0]?.scheduled_date;
     if (!scheduledDate) return "unscheduled";
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const scheduled = new Date(`${scheduledDate}T00:00:00`);
+    const scheduleStart = sortedSchedules[0]
+      ? new Date(
+          `${sortedSchedules[0].scheduled_date}T${sortedSchedules[0].scheduled_time_start || "00:00:00"}`,
+        )
+      : new Date(`${scheduledDate}T00:00:00`);
+    const scheduleEnd = sortedSchedules[sortedSchedules.length - 1]
+      ? new Date(
+          `${sortedSchedules[sortedSchedules.length - 1].scheduled_date}T${sortedSchedules[sortedSchedules.length - 1].scheduled_time_end || "23:59:59"}`,
+        )
+      : new Date(`${scheduledDate}T23:59:59`);
+    const now = new Date();
 
-    return scheduled > today ? "scheduled" : "in_progress";
+    if (now > scheduleEnd) return "completed";
+    if (now >= scheduleStart && now <= scheduleEnd) return "in_progress";
+    return "scheduled";
   };
   const rawJobStatus = deriveJobStatus();
   const jobStatusLabel = jobStatusLabelMap[rawJobStatus] || rawJobStatus;

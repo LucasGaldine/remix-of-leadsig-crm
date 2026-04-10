@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/types/database";
 import { useAuth } from "./useAuth";
+import { toDisplayStatus } from "@/lib/jobLifecycle";
 
 type Estimate = Database["public"]["Tables"]["estimates"]["Row"];
 type EstimateStatus = Database["public"]["Enums"]["estimate_status"];
@@ -41,6 +42,16 @@ export interface EstimateWithDetails extends Estimate {
     name: string;
     status: string;
     address?: string;
+    scheduled_date?: string | null;
+    scheduled_time_start?: string | null;
+    scheduled_time_end?: string | null;
+    last_scheduled_date?: string | null;
+    display_status?: "unscheduled" | "scheduled" | "in_progress" | "completed";
+    job_schedules?: Array<{
+      scheduled_date?: string | null;
+      scheduled_time_start?: string | null;
+      scheduled_time_end?: string | null;
+    }>;
     estimate_job_id?: string | null;
     is_estimate_visit?: boolean;
   } | null;
@@ -208,7 +219,15 @@ export function useEstimate(id: string | undefined) {
         .select(`
           *,
           customer:customers(id, name, email, phone, address),
-          job:leads!estimates_job_id_fkey(id, name, status, scheduled_date, address, service_type),
+          job:leads!estimates_job_id_fkey(
+            id,
+            name,
+            status,
+            scheduled_date,
+            address,
+            service_type,
+            job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
+          ),
           recurring_job:recurring_jobs(id, name, client_share_token),
           account:accounts(company_name, company_email, company_phone, logo_url),
           line_items:estimate_line_items(
@@ -234,6 +253,36 @@ export function useEstimate(id: string | undefined) {
       if (error) throw error;
 
       const estimate = data as EstimateWithDetails;
+      if (estimate.job) {
+        const schedules = ((estimate.job as any).job_schedules || []) as Array<{
+          scheduled_date?: string | null;
+          scheduled_time_start?: string | null;
+          scheduled_time_end?: string | null;
+        }>;
+        const sortedSchedules = schedules
+          .filter((schedule) => Boolean(schedule?.scheduled_date))
+          .sort((a, b) => {
+            const dateCompare = (a.scheduled_date || "").localeCompare(b.scheduled_date || "");
+            if (dateCompare !== 0) return dateCompare;
+            if (!a.scheduled_time_start) return 1;
+            if (!b.scheduled_time_start) return -1;
+            return a.scheduled_time_start.localeCompare(b.scheduled_time_start);
+          });
+        const earliestSchedule = sortedSchedules[0] || null;
+        const latestSchedule = sortedSchedules[sortedSchedules.length - 1] || null;
+
+        (estimate.job as any).scheduled_date =
+          (estimate.job as any).scheduled_date || earliestSchedule?.scheduled_date || null;
+        (estimate.job as any).scheduled_time_start =
+          (estimate.job as any).scheduled_time_start || earliestSchedule?.scheduled_time_start || null;
+        (estimate.job as any).scheduled_time_end =
+          (estimate.job as any).scheduled_time_end || earliestSchedule?.scheduled_time_end || null;
+        (estimate.job as any).last_scheduled_date = latestSchedule?.scheduled_date || null;
+        (estimate.job as any).display_status = toDisplayStatus(
+          estimate.job.status,
+          sortedSchedules,
+        );
+      }
 
       if (estimate.original_total) {
         const { data: originalLineItems } = await supabase
