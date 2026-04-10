@@ -1891,6 +1891,7 @@ export default function EstimateDetail() {
         onOpenChange={setEditModalOpen}
         estimate={editModalEstimate}
         versionId={activeVersionSnapshot?.id || null}
+        versionName={activeVersionSnapshot?.name || null}
         onSuccess={handleEstimateSuccess}
       />
 

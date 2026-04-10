@@ -63,6 +63,12 @@ vi.mock("@/components/leads/QuickAddLineItem", () => ({
   ),
 }));
 
+vi.mock("@/lib/lineItemTemplates", () => ({
+  migrateLegacyTemplatesToDatabase: vi.fn().mockResolvedValue(undefined),
+  getLineItemTemplates: vi.fn().mockResolvedValue([]),
+  upsertDedupedLineItemTemplate: vi.fn().mockResolvedValue(null),
+}));
+
 describe("EditEstimateModal responsive width", () => {
   it("applies a mobile-safe max width with desktop override", () => {
     render(
@@ -139,5 +145,28 @@ describe("EditEstimateModal responsive width", () => {
 
     expect(screen.getByLabelText(/title/i)).toHaveValue("Concrete Service");
     expect(screen.getByLabelText(/description/i)).toHaveValue("Keep this description");
+  });
+
+  it("shows version name input when explicitly enabled outside version mode", () => {
+    render(
+      <EditEstimateModal
+        open
+        onOpenChange={() => {}}
+        onSuccess={() => {}}
+        showVersionNameField
+        versionName="Version 1"
+        estimate={{
+          id: "est_1",
+          account_id: "acct_1",
+          job_id: "job_1",
+          tax_rate: 0.08,
+          discount: 0,
+          status: "draft",
+          line_items: [],
+        }}
+      />
+    );
+
+    expect(screen.getByLabelText(/version name/i)).toHaveValue("Version 1");
   });
 });

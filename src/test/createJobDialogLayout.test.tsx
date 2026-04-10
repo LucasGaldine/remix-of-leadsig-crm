@@ -94,8 +94,8 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-vi.mock("@/components/leads/EstimateLineItemsEditor", () => ({
-  EstimateLineItemsEditor: () => <div>Estimate Line Items Editor</div>,
+vi.mock("@/components/payments/EditEstimateModal", () => ({
+  EditEstimateModal: () => null,
 }));
 
 vi.mock("@/components/ui/switch", () => ({

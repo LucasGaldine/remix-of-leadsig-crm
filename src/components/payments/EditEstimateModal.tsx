@@ -45,7 +45,35 @@ interface EditEstimateModalProps {
   onOpenChange: (open: boolean) => void;
   estimate: any;
   versionId?: string | null;
+  versionName?: string | null;
+  showVersionNameField?: boolean;
+  onVersionNameChange?: (name: string) => void;
   onSuccess: () => void;
+  embedded?: boolean;
+  onDraftSave?: (payload: {
+    lineItems: Array<{
+      name: string;
+      description: string;
+      quantity: string;
+      unit: string;
+      unit_price: string;
+      category: LineItemCategory;
+    }>;
+    profitMargin: string;
+    surcharge: string;
+  }) => void;
+  onDraftChange?: (payload: {
+    lineItems: Array<{
+      name: string;
+      description: string;
+      quantity: string;
+      unit: string;
+      unit_price: string;
+      category: LineItemCategory;
+    }>;
+    profitMargin: string;
+    surcharge: string;
+  }) => void;
 }
 
 function normalizeTextValue(value: string | null | undefined) {
@@ -390,7 +418,19 @@ function ExpandedLineItem({
   );
 }
 
-export function EditEstimateModal({ open, onOpenChange, estimate, versionId = null, onSuccess }: EditEstimateModalProps) {
+export function EditEstimateModal({
+  open,
+  onOpenChange,
+  estimate,
+  versionId = null,
+  versionName = null,
+  showVersionNameField = false,
+  onVersionNameChange,
+  onSuccess,
+  embedded = false,
+  onDraftSave,
+  onDraftChange,
+}: EditEstimateModalProps) {
   const [saving, setSaving] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -398,6 +438,8 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
   const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
   const isVersionMode = Boolean(versionId);
+  const shouldShowVersionNameField = isVersionMode || showVersionNameField;
+  const [versionNameDraft, setVersionNameDraft] = useState<string>(() => (versionName || "").trim());
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
   });
@@ -473,39 +515,51 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
 
   const [lineItems, setLineItems] = useState<LineItemForm[]>(buildLineItemsFromEstimate);
 
-  useEffect(() => {
-    if (!open) return;
-    let isCancelled = false;
-
+  const initializeEditorState = () => {
     setLineItems(buildLineItemsFromEstimate());
     setPendingDeleteIndices(new Set());
     setSnapshots({});
     setExpandedIndex(null);
     setDragIndex(null);
+    setVersionNameDraft((versionName || "").trim());
     setProfitMargin((estimate.profit_margin || 0).toString());
     setSurcharge((estimate.surcharge || 0).toString());
+  };
 
-    const loadTemplates = async () => {
-      if (!estimate.account_id) {
-        if (!isCancelled) {
-          setLineItemTemplates([]);
-        }
-        return;
+  const loadTemplates = async (isCancelledRef: { value: boolean }) => {
+    if (!estimate.account_id) {
+      if (!isCancelledRef.value) {
+        setLineItemTemplates([]);
       }
+      return;
+    }
 
-      await migrateLegacyTemplatesToDatabase(estimate.account_id);
-      const templates = await getLineItemTemplates(estimate.account_id);
-      if (!isCancelled) {
-        setLineItemTemplates(templates);
-      }
-    };
+    await migrateLegacyTemplatesToDatabase(estimate.account_id);
+    const templates = await getLineItemTemplates(estimate.account_id);
+    if (!isCancelledRef.value) {
+      setLineItemTemplates(templates);
+    }
+  };
 
-    void loadTemplates();
-
+  useEffect(() => {
+    if (!open || !embedded) return;
+    const isCancelledRef = { value: false };
+    initializeEditorState();
+    void loadTemplates(isCancelledRef);
     return () => {
-      isCancelled = true;
+      isCancelledRef.value = true;
     };
-  }, [open, effectiveEstimateLineItems, estimate.account_id, estimate.profit_margin, estimate.surcharge]);
+  }, [open, embedded]);
+
+  useEffect(() => {
+    if (!open || embedded) return;
+    const isCancelledRef = { value: false };
+    initializeEditorState();
+    void loadTemplates(isCancelledRef);
+    return () => {
+      isCancelledRef.value = true;
+    };
+  }, [open, embedded, effectiveEstimateLineItems, estimate.account_id, estimate.profit_margin, estimate.surcharge]);
 
   const addLineItem = () => {
     const newItems = [
@@ -674,6 +728,8 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
   };
 
   const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
+  const normalizedVersionName = (versionName || "").trim();
+  const normalizedVersionNameDraft = versionNameDraft.trim();
 
   const changeSummary = useMemo(() => {
     const existingItems = effectiveEstimateLineItems;
@@ -748,12 +804,28 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
       hasSubstantiveChanges = true;
     }
 
+    if (shouldShowVersionNameField && normalizedVersionNameDraft !== normalizedVersionName) {
+      hasAnyChanges = true;
+      hasSubstantiveChanges = true;
+    }
+
     return {
       hasAnyChanges,
       hasSubstantiveChanges,
       hasSortOnlyChanges: hasSortOnlyChanges && !hasSubstantiveChanges,
     };
-  }, [activeLineItems, effectiveEstimateLineItems, estimate.profit_margin, estimate.surcharge, profitMargin, surcharge]);
+  }, [
+    activeLineItems,
+    effectiveEstimateLineItems,
+    estimate.profit_margin,
+    estimate.surcharge,
+    isVersionMode,
+    normalizedVersionName,
+    normalizedVersionNameDraft,
+    shouldShowVersionNameField,
+    profitMargin,
+    surcharge,
+  ]);
 
   const calculateTotals = () => {
     const subtotal = activeLineItems.reduce((sum, item) => {
@@ -780,7 +852,33 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
     try {
       setSaving(true);
 
+      if (onDraftSave) {
+        const normalizedLineItems = activeLineItems
+          .map((item) => ({
+            name: item.name.trim(),
+            description: item.description || "",
+            quantity: item.quantity || "1",
+            unit: item.unit || "item",
+            unit_price: item.unit_price || "0",
+            category: item.category || "other",
+          }))
+          .filter((item) => item.name.length > 0);
+
+        onDraftSave({
+          lineItems: normalizedLineItems,
+          profitMargin,
+          surcharge,
+        });
+        onOpenChange(false);
+        return;
+      }
+
       if (isVersionMode && versionId) {
+        if (!normalizedVersionNameDraft) {
+          toast.error("Version name is required");
+          return;
+        }
+
         const normalizedLineItems = activeLineItems
           .map((item, index) => {
             const quantity = parseFloat(item.quantity) || 0;
@@ -813,6 +911,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
         const { error } = await supabase
           .from("estimate_versions")
           .update({
+            name: normalizedVersionNameDraft,
             line_items: normalizedLineItems,
             subtotal,
             tax_rate: taxRate,
@@ -1017,6 +1116,178 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
 
   const { subtotal, profitAmount, surchargeAmount, taxAmount, discountAmount, total } = calculateTotals();
 
+  useEffect(() => {
+    if (!onDraftChange) return;
+    const normalizedLineItems = activeLineItems
+      .map((item) => ({
+        name: item.name.trim(),
+        description: item.description || "",
+        quantity: item.quantity || "1",
+        unit: item.unit || "item",
+        unit_price: item.unit_price || "0",
+        category: item.category || "other",
+      }))
+      .filter((item) => item.name.length > 0);
+
+    onDraftChange({
+      lineItems: normalizedLineItems,
+      profitMargin,
+      surcharge,
+    });
+  }, [activeLineItems, onDraftChange, profitMargin, surcharge]);
+
+  const editorBody = (
+    <div className="space-y-4 py-4">
+      <div className="space-y-3">
+        {shouldShowVersionNameField ? (
+          <div className="space-y-2">
+            <Label htmlFor="estimate-version-name">Version Name *</Label>
+            <Input
+              id="estimate-version-name"
+              value={versionNameDraft}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setVersionNameDraft(nextValue);
+                onVersionNameChange?.(nextValue);
+              }}
+              placeholder="Version name"
+            />
+          </div>
+        ) : null}
+
+        {!embedded ? <Label className="text-base font-semibold">Line Items *</Label> : null}
+
+        {lineItems.map((item, index) =>
+          expandedIndex === index && !pendingDeleteIndices.has(index) ? (
+            <div
+              key={index}
+              draggable
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={(event) => handleDragOver(event, index)}
+              onDragEnd={handleDragEnd}
+              className={dragIndex === index ? "opacity-50" : undefined}
+            >
+            <ExpandedLineItem
+              item={item}
+              index={index}
+              templates={lineItemTemplates}
+              onUpdate={(field, value) => updateLineItem(index, field, value)}
+              onCollapse={() => setExpandedIndex(null)}
+              onRevert={() => revertLineItem(index)}
+              onRemove={() => markForDelete(index)}
+              onSaveTemplate={() => saveLineItemAsTemplate(index)}
+            />
+            </div>
+          ) : (
+            <div
+              key={index}
+              draggable
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={(event) => handleDragOver(event, index)}
+              onDragEnd={handleDragEnd}
+              className={dragIndex === index ? "opacity-50" : undefined}
+            >
+            <CompactLineItem
+              item={item}
+              index={index}
+              pendingDelete={pendingDeleteIndices.has(index)}
+              onExpand={() => expandLineItem(index)}
+              onRemove={() => markForDelete(index)}
+              onUndoRemove={() => undoDelete(index)}
+            />
+            </div>
+          )
+        )}
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addLineItem}
+          className="w-full"
+        >
+          <Plus className="h-4 w-4 mr-1" />
+          Add Item
+        </Button>
+
+        <div className="bg-secondary p-4 rounded-lg space-y-2">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-muted-foreground">Subtotal:</span>
+            <span className="font-medium">
+              ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-sm gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Profit Margin:</span>
+              <div className="relative w-20">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={profitMargin}
+                  onChange={(e) => setProfitMargin(e.target.value)}
+                  className="h-7 text-xs pr-6"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
+            <span className="font-medium">
+              ${profitAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-sm gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Surcharge:</span>
+              <div className="relative w-20">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={surcharge}
+                  onChange={(e) => setSurcharge(e.target.value)}
+                  className="h-7 text-xs pr-6"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
+            <span className="font-medium">
+              ${surchargeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-muted-foreground">
+              Tax ({(parseFloat(estimate.tax_rate.toString()) * 100).toFixed(0)}%):
+            </span>
+            <span className="font-medium">
+              ${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Discount:</span>
+              <span className="font-medium">
+                -${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-2 border-t border-border">
+            <span className="font-semibold">Total:</span>
+            <span className="text-xl font-bold">
+              ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return editorBody;
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[calc(100dvw-1rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -1027,135 +1298,7 @@ export function EditEstimateModal({ open, onOpenChange, estimate, versionId = nu
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-3">
-            <Label className="text-base font-semibold">Line Items *</Label>
-
-            {lineItems.map((item, index) =>
-              expandedIndex === index && !pendingDeleteIndices.has(index) ? (
-                <div
-                  key={index}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={(event) => handleDragOver(event, index)}
-                  onDragEnd={handleDragEnd}
-                  className={dragIndex === index ? "opacity-50" : undefined}
-                >
-                <ExpandedLineItem
-                  item={item}
-                  index={index}
-                  templates={lineItemTemplates}
-                  onUpdate={(field, value) => updateLineItem(index, field, value)}
-                  onCollapse={() => setExpandedIndex(null)}
-                  onRevert={() => revertLineItem(index)}
-                  onRemove={() => markForDelete(index)}
-                  onSaveTemplate={() => saveLineItemAsTemplate(index)}
-                />
-                </div>
-              ) : (
-                <div
-                  key={index}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={(event) => handleDragOver(event, index)}
-                  onDragEnd={handleDragEnd}
-                  className={dragIndex === index ? "opacity-50" : undefined}
-                >
-                <CompactLineItem
-                  item={item}
-                  index={index}
-                  pendingDelete={pendingDeleteIndices.has(index)}
-                  onExpand={() => expandLineItem(index)}
-                  onRemove={() => markForDelete(index)}
-                  onUndoRemove={() => undoDelete(index)}
-                />
-                </div>
-              )
-            )}
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={addLineItem}
-              className="w-full"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add Item
-            </Button>
-
-            <div className="bg-secondary p-4 rounded-lg space-y-2">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-muted-foreground">Subtotal:</span>
-                <span className="font-medium">
-                  ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-sm gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Profit Margin:</span>
-                  <div className="relative w-20">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      value={profitMargin}
-                      onChange={(e) => setProfitMargin(e.target.value)}
-                      className="h-7 text-xs pr-6"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                  </div>
-                </div>
-                <span className="font-medium">
-                  ${profitAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-sm gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Surcharge:</span>
-                  <div className="relative w-20">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      value={surcharge}
-                      onChange={(e) => setSurcharge(e.target.value)}
-                      className="h-7 text-xs pr-6"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                  </div>
-                </div>
-                <span className="font-medium">
-                  ${surchargeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-muted-foreground">
-                  Tax ({(parseFloat(estimate.tax_rate.toString()) * 100).toFixed(0)}%):
-                </span>
-                <span className="font-medium">
-                  ${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Discount:</span>
-                  <span className="font-medium">
-                    -${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between items-center pt-2 border-t border-border">
-                <span className="font-semibold">Total:</span>
-                <span className="text-xl font-bold">
-                  ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        {editorBody}
 
         <DialogFooter>
           <Button

@@ -78,6 +78,16 @@ vi.mock("@/components/leads/QuickEstimateLineItem", () => ({
   QuickEstimateLineItem: () => null,
 }));
 
+vi.mock("@/components/leads/QuickAddLineItem", () => ({
+  QuickAddLineItem: () => null,
+}));
+
+vi.mock("@/lib/lineItemTemplates", () => ({
+  migrateLegacyTemplatesToDatabase: vi.fn().mockResolvedValue(undefined),
+  getLineItemTemplates: vi.fn().mockResolvedValue([]),
+  upsertDedupedLineItemTemplate: vi.fn().mockResolvedValue(null),
+}));
+
 const baseEstimate = {
   id: "est_1",
   account_id: "acct_1",
@@ -253,5 +263,32 @@ describe("EditEstimateModal change detection", () => {
     );
     expect(substantiveUpdates).toHaveLength(1);
     expect(substantiveUpdates[0].values.name).toBe("Item One Updated");
+  });
+
+  it("allows renaming the active estimate version from the editor header", async () => {
+    render(
+      <EditEstimateModal
+        open
+        onOpenChange={() => {}}
+        onSuccess={() => {}}
+        estimate={{ ...baseEstimate, status: "draft" }}
+        versionId="ver_1"
+        versionName="Version 1"
+      />,
+    );
+
+    const saveButton = screen.getByRole("button", { name: /save changes/i });
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/version name/i), {
+      target: { value: "Final Client Version" },
+    });
+
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    const versionUpdate = updateCalls.find((call) => call.table === "estimate_versions");
+    expect(versionUpdate).toBeDefined();
+    expect(versionUpdate?.values.name).toBe("Final Client Version");
   });
 });

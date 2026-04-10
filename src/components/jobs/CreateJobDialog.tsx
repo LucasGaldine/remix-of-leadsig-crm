@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Mic, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,7 @@ import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { EstimateLineItemsEditor, type EstimateLineItem } from "@/components/leads/EstimateLineItemsEditor";
+import { type EstimateLineItem } from "@/components/leads/EstimateLineItemsEditor";
 import { ScheduleDateBuilder, type ScheduleEntry } from "@/components/scheduling/ScheduleDateBuilder";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,6 +35,8 @@ import { matchServiceType, normalizeVoiceJobParsedData } from "@/lib/voiceIntake
 import type { VoiceJobParsedData } from "@/types/voiceIntake";
 import { useAddressVerification } from "@/hooks/useAddressVerification";
 import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
+import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
+import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -97,9 +99,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const [activeCrewId, setActiveCrewId] = useState<string>("");
   const [isLoadingCrewConflicts, setIsLoadingCrewConflicts] = useState(false);
   const [lineItems, setLineItems] = useState<EstimateLineItem[]>([{ ...INITIAL_LINE_ITEM }]);
-  const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
-  const [snapshots, setSnapshots] = useState<Record<number, EstimateLineItem>>({});
+  const [estimateVersionName, setEstimateVersionName] = useState("Version 1");
   const [profitMargin, setProfitMargin] = useState<string>("0");
   const [surcharge, setSurcharge] = useState<string>("0");
   const [isLoading, setIsLoading] = useState(false);
@@ -306,9 +306,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setActiveCrewId("");
     setShowVoiceJobIntake(false);
     setLineItems([{ ...INITIAL_LINE_ITEM }]);
-    setPendingDeleteIndices(new Set());
-    setExpandedIndex(0);
-    setSnapshots({});
+    setEstimateVersionName("Version 1");
     setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
     setSurcharge(String(currentAccount?.default_surcharge ?? 0));
     resetAddressVerification();
@@ -336,8 +334,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         customerAddress: customer.address,
       });
 
-      const activeLineItems = lineItems.filter((_, index) => !pendingDeleteIndices.has(index));
-      const sanitizedItems = activeLineItems
+      const sanitizedItems = lineItems
         .map((item) => {
           const quantity = Number.parseFloat(item.quantity || "0");
           const unitPrice = Number.parseFloat(item.unit_price || "0");
@@ -614,6 +611,31 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             );
 
           if (estimateLineItemsError) throw estimateLineItemsError;
+
+          const initialVersionName = estimateVersionName.trim() || "Version 1";
+          await createEstimateVersionSnapshot({
+            estimateId,
+            accountId: currentAccount.id,
+            name: initialVersionName,
+            subtotal: estimateSubtotal,
+            taxRate: taxRate,
+            tax: taxAmount,
+            discount: 0,
+            total: estimateTotal,
+            profitMargin: profitMarginPercent,
+            surcharge: surchargePercent,
+            notes: null,
+            lineItems: sanitizedItems.map((item, index) => ({
+              name: item.name,
+              description: item.description,
+              quantity: item.quantity,
+              unit: item.unit,
+              unit_price: item.unitPrice,
+              total: Number((item.quantity * item.unitPrice).toFixed(2)),
+              sort_order: index,
+              category: item.category,
+            })),
+          });
         }
       }
 
@@ -718,48 +740,6 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     return (crewByScheduleIndex[scheduleIndex] || []).includes(crewId);
   };
 
-  const addLineItem = () => {
-    const newItems = [...lineItems, { ...INITIAL_LINE_ITEM }];
-    const newIndex = newItems.length - 1;
-    setLineItems(newItems);
-    setSnapshots((prev) => ({ ...prev, [newIndex]: { ...newItems[newIndex] } }));
-    setExpandedIndex(newIndex);
-  };
-
-  const expandLineItem = (index: number) => {
-    setSnapshots((prev) => ({ ...prev, [index]: { ...lineItems[index] } }));
-    setExpandedIndex(index);
-  };
-
-  const revertLineItem = (index: number) => {
-    const snapshot = snapshots[index];
-    if (snapshot) {
-      const updated = [...lineItems];
-      updated[index] = { ...snapshot };
-      setLineItems(updated);
-    }
-    setExpandedIndex(null);
-  };
-
-  const markLineItemForDelete = (index: number) => {
-    setPendingDeleteIndices((prev) => new Set(prev).add(index));
-    if (expandedIndex === index) setExpandedIndex(null);
-  };
-
-  const undoDeleteLineItem = (index: number) => {
-    setPendingDeleteIndices((prev) => {
-      const next = new Set(prev);
-      next.delete(index);
-      return next;
-    });
-  };
-
-  const updateLineItem = (index: number, field: keyof EstimateLineItem, value: string) => {
-    const updated = [...lineItems];
-    updated[index][field] = value;
-    setLineItems(updated);
-  };
-
   const applyVoiceJobIntake = (parsedData: VoiceJobParsedData) => {
     const parsed = normalizeVoiceJobParsedData(parsedData);
 
@@ -800,6 +780,50 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     if (manualStep === "crew-assignment") return "Assign Crew";
     return "Estimate Line Items";
   })();
+
+  const estimateEditorDraft = useMemo(() => {
+    const taxRate = (currentAccount?.default_tax_rate ?? 0) / 100;
+    const normalizedLineItems = lineItems
+      .map((item, index) => {
+        const quantity = Number.parseFloat(item.quantity || "0") || 0;
+        const unitPrice = Number.parseFloat(item.unit_price || "0") || 0;
+        return {
+          id: `draft-item-${index}`,
+          name: item.name,
+          description: item.description || "",
+          quantity,
+          unit: item.unit || "item",
+          unit_price: unitPrice,
+          total: Number((quantity * unitPrice).toFixed(2)),
+          sort_order: index,
+          category: item.category || "other",
+          is_change_order: false,
+          change_order_type: null,
+          change_order_approved: null,
+        };
+      })
+      .filter((item) => item.name.trim().length > 0);
+
+    const subtotal = normalizedLineItems.reduce((sum, item) => sum + item.total, 0);
+    const profitMarginValue = (Number.parseFloat(profitMargin || "0") || 0) / 100;
+    const surchargeValue = (Number.parseFloat(surcharge || "0") || 0) / 100;
+    const adjustedSubtotal = subtotal + (subtotal * profitMarginValue) + (subtotal * surchargeValue);
+    const tax = adjustedSubtotal * taxRate;
+    const total = adjustedSubtotal + tax;
+
+    return {
+      account_id: currentAccount?.id,
+      status: "draft",
+      line_items: normalizedLineItems,
+      tax_rate: taxRate,
+      discount: 0,
+      subtotal: Number(subtotal.toFixed(2)),
+      tax: Number(tax.toFixed(2)),
+      total: Number(total.toFixed(2)),
+      profit_margin: Number.parseFloat(profitMargin || "0") || 0,
+      surcharge: Number.parseFloat(surcharge || "0") || 0,
+    };
+  }, [currentAccount?.default_tax_rate, currentAccount?.id, lineItems, profitMargin, surcharge]);
 
   return (
     <>
@@ -1100,23 +1124,29 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
             {manualStep === "estimate-line-items" && (
               <div className="space-y-4">
-                <EstimateLineItemsEditor
-                  leadId="create-job-draft"
-                  lineItems={lineItems}
-                  pendingDeleteIndices={pendingDeleteIndices}
-                  expandedIndex={expandedIndex}
-                  profitMargin={profitMargin}
-                  surcharge={surcharge}
-                  defaultTaxRate={currentAccount?.default_tax_rate ?? 0}
-                  onExpandLineItem={expandLineItem}
-                  onCollapseExpandedLineItem={() => setExpandedIndex(null)}
-                  onRevertLineItem={revertLineItem}
-                  onMarkForDelete={markLineItemForDelete}
-                  onUndoDelete={undoDeleteLineItem}
-                  onUpdateLineItem={updateLineItem}
-                  onAddLineItem={addLineItem}
-                  onProfitMarginChange={setProfitMargin}
-                  onSurchargeChange={setSurcharge}
+                <EditEstimateModal
+                  open={open && manualStep === "estimate-line-items"}
+                  onOpenChange={() => {}}
+                  estimate={estimateEditorDraft}
+                  versionName={estimateVersionName}
+                  showVersionNameField
+                  onVersionNameChange={setEstimateVersionName}
+                  onSuccess={() => {}}
+                  embedded
+                  onDraftChange={({ lineItems: updatedLineItems, profitMargin: updatedProfitMargin, surcharge: updatedSurcharge }) => {
+                    setLineItems(
+                      updatedLineItems.map((item) => ({
+                        name: item.name,
+                        description: item.description || "",
+                        quantity: item.quantity || "1",
+                        unit: item.unit || "item",
+                        unit_price: item.unit_price || "0",
+                        category: item.category || "other",
+                      })),
+                    );
+                    setProfitMargin(updatedProfitMargin);
+                    setSurcharge(updatedSurcharge);
+                  }}
                 />
               </div>
             )}
@@ -1171,6 +1201,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
               </div>
             </div>
           </DialogFooter>
+
         </DialogContent>
       </Dialog>
     </>

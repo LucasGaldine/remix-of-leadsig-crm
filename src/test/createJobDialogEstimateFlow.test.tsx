@@ -13,6 +13,7 @@ const {
   estimateSelectMock,
   estimateLineItemsInsertMock,
   estimateLineItemsDeleteMock,
+  estimateVersionsInsertMock,
   scheduleJobMock,
   toastSuccessMock,
   toastErrorMock,
@@ -29,6 +30,7 @@ const {
   estimateSelectMock: vi.fn(),
   estimateLineItemsInsertMock: vi.fn().mockResolvedValue({ error: null }),
   estimateLineItemsDeleteMock: vi.fn().mockResolvedValue({ error: null }),
+  estimateVersionsInsertMock: vi.fn().mockResolvedValue({ error: null }),
   scheduleJobMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -124,19 +126,59 @@ vi.mock("@/components/scheduling/ScheduleDateBuilder", () => ({
   ),
 }));
 
-vi.mock("@/components/leads/EstimateLineItemsEditor", () => ({
-  EstimateLineItemsEditor: (props: { onUpdateLineItem: (index: number, field: string, value: string) => void }) => (
+vi.mock("@/components/payments/EditEstimateModal", () => ({
+  EditEstimateModal: (props: {
+    open?: boolean;
+    embedded?: boolean;
+    onDraftSave?: (payload: {
+      lineItems: Array<{
+        name: string;
+        description: string;
+        quantity: string;
+        unit: string;
+        unit_price: string;
+        category: "equipment" | "materials" | "labor" | "other";
+      }>;
+      profitMargin: string;
+      surcharge: string;
+    }) => void;
+    onDraftChange?: (payload: {
+      lineItems: Array<{
+        name: string;
+        description: string;
+        quantity: string;
+        unit: string;
+        unit_price: string;
+        category: "equipment" | "materials" | "labor" | "other";
+      }>;
+      profitMargin: string;
+      surcharge: string;
+    }) => void;
+  }) => ((props.open || props.embedded) ? (
     <button
       type="button"
       onClick={() => {
-        props.onUpdateLineItem(0, "name", "Mulch");
-        props.onUpdateLineItem(0, "quantity", "2");
-        props.onUpdateLineItem(0, "unit_price", "100");
+        const payload = {
+          lineItems: [
+            {
+              name: "Mulch",
+              description: "",
+              quantity: "2",
+              unit: "item",
+              unit_price: "100",
+              category: "other",
+            },
+          ],
+          profitMargin: "20",
+          surcharge: "10",
+        };
+        props.onDraftSave?.(payload);
+        props.onDraftChange?.(payload);
       }}
     >
       Fill Line Item
     </button>
-  ),
+  ) : null),
 }));
 
 vi.mock("@/integrations/supabase/client", () => ({
@@ -186,6 +228,7 @@ describe("CreateJobDialog estimate flow", () => {
     estimateSelectMock.mockReset();
     estimateLineItemsInsertMock.mockClear();
     estimateLineItemsDeleteMock.mockClear();
+    estimateVersionsInsertMock.mockClear();
     scheduleJobMock.mockReset();
     toastSuccessMock.mockClear();
     toastErrorMock.mockClear();
@@ -218,6 +261,9 @@ describe("CreateJobDialog estimate flow", () => {
       }
       if (table === "estimate_line_items") {
         return { insert: estimateLineItemsInsertMock };
+      }
+      if (table === "estimate_versions") {
+        return { insert: estimateVersionsInsertMock };
       }
       throw new Error(`Unexpected table: ${table}`);
     });
@@ -268,6 +314,9 @@ describe("CreateJobDialog estimate flow", () => {
       }
       if (table === "estimate_line_items") {
         return { insert: estimateLineItemsInsertMock };
+      }
+      if (table === "estimate_versions") {
+        return { insert: estimateVersionsInsertMock };
       }
       if (table === "job_assignments") {
         return buildJobAssignmentsTableMock();
@@ -321,6 +370,9 @@ describe("CreateJobDialog estimate flow", () => {
           insert: estimateLineItemsInsertMock,
         };
       }
+      if (table === "estimate_versions") {
+        return { insert: estimateVersionsInsertMock };
+      }
       if (table === "job_assignments") return buildJobAssignmentsTableMock();
       throw new Error(`Unexpected table: ${table}`);
     });
@@ -368,6 +420,9 @@ describe("CreateJobDialog estimate flow", () => {
       if (table === "estimate_line_items") {
         return { insert: estimateLineItemsInsertMock };
       }
+      if (table === "estimate_versions") {
+        return { insert: estimateVersionsInsertMock };
+      }
       if (table === "job_assignments") {
         return buildJobAssignmentsTableMock();
       }
@@ -391,6 +446,7 @@ describe("CreateJobDialog estimate flow", () => {
 
     expect(estimateInsertMock).toHaveBeenCalled();
     expect(estimateLineItemsInsertMock).toHaveBeenCalled();
+    expect(estimateVersionsInsertMock).toHaveBeenCalled();
     expect(jobLineItemsInsertMock).not.toHaveBeenCalled();
   });
 
@@ -419,6 +475,9 @@ describe("CreateJobDialog estimate flow", () => {
       }
       if (table === "estimate_line_items") {
         return { insert: estimateLineItemsInsertMock };
+      }
+      if (table === "estimate_versions") {
+        return { insert: estimateVersionsInsertMock };
       }
       throw new Error(`Unexpected table: ${table}`);
     });

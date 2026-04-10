@@ -240,6 +240,77 @@ describe("JobDetail status guidance", () => {
     deleteScheduleMutateAsyncMock.mockResolvedValue(undefined);
   });
 
+  it("does not call the send-sms edge function on initial render", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: vi.fn().mockResolvedValue({ error: "event_type and account_id are required" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+        if (table === "leads") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+              })),
+            })),
+          };
+        }
+
+        if (table === "estimates") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn(() => ({
+                  limit: vi.fn(() => ({
+                    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                  })),
+                })),
+              })),
+            })),
+          };
+        }
+
+        if (table === "lead_photos" || table === "invoices") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+              })),
+            })),
+          };
+        }
+
+        if (table === "interactions") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn().mockResolvedValue({ data: [], error: null }),
+                })),
+              })),
+            })),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      });
+
+      renderJobDetail();
+
+      await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+      expect(
+        fetchMock.mock.calls.some((call) => String(call[0]).includes("/functions/v1/send-sms")),
+      ).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("opens a job-only status guidance dialog from the header badge", async () => {
     vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
       if (table === "leads") {
