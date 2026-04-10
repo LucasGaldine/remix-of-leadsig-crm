@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calculator, RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X, Upload } from "lucide-react";
+import { RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X, Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -342,25 +342,17 @@ export default function SettingsPricingRules() {
             </div>
           ) : (
             <div className="space-y-4">
-            {/* Info Card */}
-            <div className="card-elevated rounded-lg p-4 flex items-start gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Calculator className="h-5 w-5 text-primary" />
-              </div>
+            <div className="card-elevated rounded-lg p-4 space-y-4">
               <div>
-                <h3 className="font-medium">How Quick Estimates Work</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Set your labor and material rates per unit. Quick Estimate will automatically 
-                  calculate ranges including waste, overhead, and profit margin.
+                <h3 className="font-medium">Estimate Defaults</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Applied automatically to new estimates (editable per estimate)
                 </p>
               </div>
-            </div>
 
-            {/* Tax Rate */}
-            <div className="card-elevated rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-medium">Default Tax Rate</h3>
+                  <h4 className="font-medium">Default Tax Rate</h4>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     Applied automatically to new estimates
                   </p>
@@ -380,13 +372,10 @@ export default function SettingsPricingRules() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                 </div>
               </div>
-            </div>
 
-            {/* Profit Margin */}
-            <div className="card-elevated rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-medium">Default Profit Margin</h3>
+                  <h4 className="font-medium">Default Profit Margin</h4>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     Applied automatically to new estimates (editable per estimate)
                   </p>
@@ -406,13 +395,10 @@ export default function SettingsPricingRules() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                 </div>
               </div>
-            </div>
 
-            {/* Default Surcharge */}
-            <div className="card-elevated rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-medium">Default Surcharge</h3>
+                  <h4 className="font-medium">Default Surcharge</h4>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     Applied automatically to new estimates (editable per estimate)
                   </p>

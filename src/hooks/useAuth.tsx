@@ -3,6 +3,14 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 export type AppRole = 'owner' | 'admin' | 'sales' | 'crew_lead' | 'crew_member';
+export type SmsConsentStatus = 'opted_in' | 'opted_out';
+
+export interface SmsConsentPayload {
+  status: SmsConsentStatus;
+  capturedAt: string;
+  source: 'signup_form' | 'profile_settings';
+  textVersion: string;
+}
 
 interface Profile {
   id: string;
@@ -14,6 +22,11 @@ interface Profile {
   timezone: string | null;
   notification_preferences: Record<string, any> | null;
   dashboard_preferences: { cards: string[] } | null;
+  mention_notifications_enabled: boolean;
+  sms_consent_status: 'unknown' | SmsConsentStatus;
+  sms_consent_captured_at: string | null;
+  sms_consent_source: string | null;
+  sms_consent_text_version: string | null;
 }
 
 interface Account {
@@ -56,6 +69,7 @@ interface AuthContextType {
     fullName: string,
     role: AppRole,
     companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
+    smsConsent: SmsConsentPayload,
     phone?: string,
     affiliateReferralCode?: string | null
   ) => Promise<{ error: Error | null }>;
@@ -196,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fullName: string,
     selectedRole: AppRole,
     companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
+    smsConsent: SmsConsentPayload,
     phone?: string,
     affiliateReferralCode?: string | null
   ) => {
@@ -229,6 +244,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             company_address: companyInfo.companyAddress || null,
             target_account_id: targetAccountId,
             affiliate_referral_code: affiliateReferralCode || null,
+            sms_consent_status: smsConsent.status,
+            sms_consent_captured_at: smsConsent.capturedAt,
+            sms_consent_source: smsConsent.source,
+            sms_consent_text_version: smsConsent.textVersion,
           },
         },
       });

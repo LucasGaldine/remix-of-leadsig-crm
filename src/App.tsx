@@ -50,6 +50,7 @@ import EstimateApproval from "./pages/EstimateApproval";
 import ClientJobPortal from "./pages/ClientJobPortal";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
+import SmsConsent from "./pages/SmsConsent";
 import DataDeletion from "./pages/DataDeletion";
 import Customers from "./pages/Customers";
 import CustomerDetail from "./pages/CustomerDetail";
@@ -167,7 +168,9 @@ const router = createBrowserRouter([
       { path: "/approve-estimate", element: <EstimateApproval /> },
       { path: "/client/job", element: <ClientJobPortal /> },
       { path: "/privacy", element: <PrivacyPolicy /> },
+      { path: "/privacy-policy", element: <PrivacyPolicy /> },
       { path: "/terms", element: <TermsOfService /> },
+      { path: "/sms-consent", element: <SmsConsent /> },
       { path: "/data-deletion", element: <DataDeletion /> },
       { path: "/affiliate", element: <AffiliateSignup /> },
       { path: "/onboarding/source", element: <Protected><OnboardingSource /></Protected> },

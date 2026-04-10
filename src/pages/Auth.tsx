@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
+const SMS_CONSENT_TEXT_VERSION = '2026-04-09-v1';
 
 const roleLabels: Record<AppRole, string> = {
   owner: 'Owner',
@@ -44,6 +45,7 @@ export default function Auth() {
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
   const [phone, setPhone] = useState('');
+  const [smsConsentEnabled, setSmsConsentEnabled] = useState(false);
   const [signupStep, setSignupStep] = useState<1 | 2 | 3>(1);
   const [signupCompanyMode, setSignupCompanyMode] = useState<'create' | 'join' | null>(null);
 
@@ -79,6 +81,7 @@ export default function Auth() {
     setSignupStep(1);
     setSignupCompanyMode(null);
     setSelectedRole('sales');
+    setSmsConsentEnabled(false);
   };
 
   const validateForm = (isSignUp: boolean): boolean => {
@@ -157,6 +160,7 @@ export default function Auth() {
       if (!fullName.trim()) {
         newErrors.fullName = 'Full name is required';
       }
+
     }
 
     if (step === 2 && !signupCompanyMode) {
@@ -207,6 +211,12 @@ export default function Auth() {
       isCreatingCompany
         ? { companyName, companyPhone, companyAddress }
         : { companyCode },
+      {
+        status: smsConsentEnabled ? 'opted_in' : 'opted_out',
+        capturedAt: new Date().toISOString(),
+        source: 'signup_form',
+        textVersion: SMS_CONSENT_TEXT_VERSION,
+      },
       phone,
       affiliateReferralCode
     );
@@ -237,7 +247,8 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/50 p-4">
-      <Card className="w-full max-w-md">
+      <div className="w-full max-w-md flex flex-col">
+      <Card className="w-full h-[calc(100dvh-2rem)] max-h-[820px] flex flex-col overflow-hidden">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <div className="p-2 bg-primary/10 rounded-lg">
@@ -251,7 +262,7 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden">
           <Tabs value={activeTab} onValueChange={(v) => {
             const nextTab = v as 'signin' | 'signup';
             setActiveTab(nextTab);
@@ -259,14 +270,14 @@ export default function Auth() {
               resetSignupFlow();
               setErrors({});
             }
-          }} className="w-full">
+          }} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Log In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="signin">
-              <form onSubmit={handleSignIn} className="space-y-4 mt-4">
+            <TabsContent value="signin" className="flex-1 min-h-0 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
+              <form onSubmit={handleSignIn} className="space-y-4 pt-4 flex-1 min-h-0 overflow-y-auto pr-1">
                 <div className="space-y-2">
                   <Label htmlFor="signin-email" >Email</Label>
                   <Input
@@ -330,217 +341,249 @@ export default function Auth() {
               </form>
             </TabsContent>
             
-            <TabsContent value="signup">
-              <form onSubmit={handleSignUp} className="space-y-4 mt-4">
-                {affiliateReferralCode && (
-                  <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
-                    Referral code applied: <span className="font-semibold">{affiliateReferralCode}</span>
+            <TabsContent value="signup" className="flex-1 min-h-0 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
+              <form onSubmit={handleSignUp} className="pt-4 flex flex-1 min-h-0 flex-col">
+                <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                  {affiliateReferralCode && (
+                    <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
+                      Referral code applied: <span className="font-semibold">{affiliateReferralCode}</span>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      Step {signupStep} of 3
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {signupStep === 1 && 'Tell us about yourself'}
+                      {signupStep === 2 && 'Choose how you want to start'}
+                      {signupStep === 3 && (isCreatingCompany ? 'Set up your company details' : 'Enter your company invite code')}
+                    </p>
                   </div>
-                )}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Step {signupStep} of 3
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {signupStep === 1 && 'Tell us about yourself'}
-                    {signupStep === 2 && 'Choose how you want to start'}
-                    {signupStep === 3 && (isCreatingCompany ? 'Set up your company details' : 'Enter your company invite code')}
-                  </p>
-                </div>
 
-                {signupStep === 1 && (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-name">Full Name</Label>
-                      <Input
-                        id="signup-name"
-                        type="text"
-                        placeholder="John Smith"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        disabled={isLoading}
-                      />
-                      {errors.fullName && (
-                        <p className="text-sm text-destructive">{errors.fullName}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-email">Email</Label>
-                      <Input
-                        id="signup-email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        disabled={isLoading}
-                      />
-                      {errors.email && (
-                        <p className="text-sm text-destructive">{errors.email}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-password">Password</Label>
-                      <Input
-                        id="signup-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        disabled={isLoading}
-                      />
-                      {password.length > 0 && (
-                        <PasswordStrengthIndicator validation={passwordValidation} />
-                      )}
-                      {errors.password && (
-                        <p className="text-sm text-destructive">{errors.password}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-phone">Phone Number (Optional)</Label>
-                      <Input
-                        id="signup-phone"
-                        type="tel"
-                        placeholder="(555) 123-4567"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        disabled={isLoading}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {signupStep === 2 && (
-                  <div className="grid gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSignupCompanyMode('create');
-                        setCompanyCode('');
-                        setErrors({});
-                      }}
-                      className={cn(
-                        'rounded-lg border p-4 text-left transition-colors',
-                        signupCompanyMode === 'create' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
-                      )}
-                      disabled={isLoading}
-                    >
-                      <p className="font-medium text-foreground">Create a new company</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Set up a new LeadSig company and become the owner.</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSignupCompanyMode('join');
-                        setCompanyName('');
-                        setCompanyPhone('');
-                        setCompanyAddress('');
-                        setErrors({});
-                      }}
-                      className={cn(
-                        'rounded-lg border p-4 text-left transition-colors',
-                        signupCompanyMode === 'join' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
-                      )}
-                      disabled={isLoading}
-                    >
-                      <p className="font-medium text-foreground">Join an existing company</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Use a company invite code to join your team.</p>
-                    </button>
-                  </div>
-                )}
-
-                {signupStep === 3 && (
-                  <>
-                    {isCreatingCompany ? (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="company-name">Company Name</Label>
-                          <Input
-                            id="company-name"
-                            type="text"
-                            placeholder="Your Company Name"
-                            value={companyName}
-                            onChange={(e) => setCompanyName(e.target.value)}
-                            disabled={isLoading}
-                          />
-                          {errors.companyName && (
-                            <p className="text-sm text-destructive">{errors.companyName}</p>
-                          )}
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="company-phone">Business Phone (Optional)</Label>
-                          <Input
-                            id="company-phone"
-                            type="tel"
-                            placeholder="(555) 123-4567"
-                            value={companyPhone}
-                            onChange={(e) => setCompanyPhone(e.target.value)}
-                            disabled={isLoading}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="company-address">Business Address (Optional)</Label>
-                          <Input
-                            id="company-address"
-                            type="text"
-                            placeholder="123 Main St, City, State 12345"
-                            value={companyAddress}
-                            onChange={(e) => setCompanyAddress(e.target.value)}
-                            disabled={isLoading}
-                          />
-                        </div>
-                      </>
-                    ) : (
+                  {signupStep === 1 && (
+                    <>
                       <div className="space-y-2">
-                        <Label htmlFor="company-code">Company Code</Label>
+                        <Label htmlFor="signup-name">Full Name</Label>
                         <Input
-                          id="company-code"
+                          id="signup-name"
                           type="text"
-                          placeholder="Enter your company code"
-                          value={companyCode}
-                          onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
+                          placeholder="John Smith"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
                           disabled={isLoading}
-                          className="uppercase"
                         />
-                        {errors.companyCode && (
-                          <p className="text-sm text-destructive">{errors.companyCode}</p>
+                        {errors.fullName && (
+                          <p className="text-sm text-destructive">{errors.fullName}</p>
                         )}
                       </div>
-                    )}
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-email">Email</Label>
+                        <Input
+                          id="signup-email"
+                          type="email"
+                          placeholder="you@example.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          disabled={isLoading}
+                        />
+                        {errors.email && (
+                          <p className="text-sm text-destructive">{errors.email}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-password">Password</Label>
+                        <Input
+                          id="signup-password"
+                          type="password"
+                          placeholder="••••••••"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          disabled={isLoading}
+                        />
+                        {password.length > 0 && (
+                          <PasswordStrengthIndicator validation={passwordValidation} />
+                        )}
+                        {errors.password && (
+                          <p className="text-sm text-destructive">{errors.password}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-phone">Phone Number (Optional)</Label>
+                        <Input
+                          id="signup-phone"
+                          type="tel"
+                          placeholder="(555) 123-4567"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={smsConsentEnabled}
+                            onChange={(e) => {
+                              setSmsConsentEnabled(e.target.checked);
+                            }}
+                            disabled={isLoading}
+                          />
+                          <span>I agree to receive SMS messages from LeadSig</span>
+                        </label>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          By providing your mobile number and opting in, you agree to receive SMS messages from LeadSig regarding appointments, estimates, service updates, and account notifications. Message frequency varies. Message and data rates may apply. Reply STOP to opt out and HELP for help.
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          SMS opt-in data and consent will not be sold or shared with third parties or affiliates for marketing purposes.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          View our{" "}
+                          <Link to="/privacy-policy" className="text-primary hover:underline">
+                            Privacy Policy
+                          </Link>{" "}
+                          and{" "}
+                          <Link to="/terms" className="text-primary hover:underline">
+                            Terms of Service
+                          </Link>
+                          .
+                        </p>
+                      </div>
+                    </>
+                  )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-role">Your Role</Label>
-                      <Select
-                        value={selectedRole}
-                        onValueChange={(value) => setSelectedRole(value as AppRole)}
+                  {signupStep === 2 && (
+                    <div className="grid gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSignupCompanyMode('create');
+                          setCompanyCode('');
+                          setErrors({});
+                        }}
+                        className={cn(
+                          'rounded-lg border p-4 text-left transition-colors',
+                          signupCompanyMode === 'create' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
+                        )}
                         disabled={isLoading}
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select your role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {isCreatingCompany ? (
-                            <SelectItem value="owner">Owner</SelectItem>
-                          ) : (
-                            <>
-                              {(['sales', 'crew_lead', 'crew_member'] as AppRole[]).map((role) => (
-                                <SelectItem key={role} value={role}>
-                                  {roleLabels[role]}
-                                </SelectItem>
-                              ))}
-                            </>
-                          )}
-                        </SelectContent>
-                      </Select>
-                      {!isCreatingCompany && (
-                        <p className="text-xs text-muted-foreground">
-                          Owner and Admin roles require an invitation from an existing administrator.
-                        </p>
-                      )}
+                        <p className="font-medium text-foreground">Create a new company</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Set up a new LeadSig company and become the owner.</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSignupCompanyMode('join');
+                          setCompanyName('');
+                          setCompanyPhone('');
+                          setCompanyAddress('');
+                          setErrors({});
+                        }}
+                        className={cn(
+                          'rounded-lg border p-4 text-left transition-colors',
+                          signupCompanyMode === 'join' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
+                        )}
+                        disabled={isLoading}
+                      >
+                        <p className="font-medium text-foreground">Join an existing company</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Use a company invite code to join your team.</p>
+                      </button>
                     </div>
-                  </>
-                )}
+                  )}
 
-                <div className="flex gap-3 pt-2">
+                  {signupStep === 3 && (
+                    <>
+                      {isCreatingCompany ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="company-name">Company Name</Label>
+                            <Input
+                              id="company-name"
+                              type="text"
+                              placeholder="Your Company Name"
+                              value={companyName}
+                              onChange={(e) => setCompanyName(e.target.value)}
+                              disabled={isLoading}
+                            />
+                            {errors.companyName && (
+                              <p className="text-sm text-destructive">{errors.companyName}</p>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="company-phone">Business Phone (Optional)</Label>
+                            <Input
+                              id="company-phone"
+                              type="tel"
+                              placeholder="(555) 123-4567"
+                              value={companyPhone}
+                              onChange={(e) => setCompanyPhone(e.target.value)}
+                              disabled={isLoading}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="company-address">Business Address (Optional)</Label>
+                            <Input
+                              id="company-address"
+                              type="text"
+                              placeholder="123 Main St, City, State 12345"
+                              value={companyAddress}
+                              onChange={(e) => setCompanyAddress(e.target.value)}
+                              disabled={isLoading}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label htmlFor="company-code">Company Code</Label>
+                          <Input
+                            id="company-code"
+                            type="text"
+                            placeholder="Enter your company code"
+                            value={companyCode}
+                            onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
+                            disabled={isLoading}
+                            className="uppercase"
+                          />
+                          {errors.companyCode && (
+                            <p className="text-sm text-destructive">{errors.companyCode}</p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-role">Your Role</Label>
+                        <Select
+                          value={selectedRole}
+                          onValueChange={(value) => setSelectedRole(value as AppRole)}
+                          disabled={isLoading}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select your role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {isCreatingCompany ? (
+                              <SelectItem value="owner">Owner</SelectItem>
+                            ) : (
+                              <>
+                                {(['sales', 'crew_lead', 'crew_member'] as AppRole[]).map((role) => (
+                                  <SelectItem key={role} value={role}>
+                                    {roleLabels[role]}
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {!isCreatingCompany && (
+                          <p className="text-xs text-muted-foreground">
+                            Owner and Admin roles require an invitation from an existing administrator.
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex gap-3 py-3 shrink-0 bg-card">
                   {signupStep > 1 && (
                     <Button
                       type="button"
@@ -581,14 +624,16 @@ export default function Auth() {
               </form>
             </TabsContent>
           </Tabs>
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Want to earn referral commissions?{" "}
-            <Link to="/affiliate" className="font-medium text-primary hover:underline">
-              Become an affiliate
-            </Link>
-          </p>
         </CardContent>
       </Card>
+
+      <p className="mt-3 text-center text-xs text-muted-foreground">
+        Want to earn referral commissions?{" "}
+        <Link to="/affiliate" className="font-medium text-primary hover:underline">
+          Become an affiliate
+        </Link>
+      </p>
+      </div>
 
       <ForgotPasswordDialog
         open={showForgotPassword}

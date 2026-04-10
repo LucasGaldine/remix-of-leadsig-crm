@@ -151,6 +151,7 @@ describe("Auth signup flow", () => {
     fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
     fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /I agree to receive SMS messages from LeadSig/i }));
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument();
@@ -186,6 +187,7 @@ describe("Auth signup flow", () => {
     fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
     fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /I agree to receive SMS messages from LeadSig/i }));
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /Create a new company/i }));
@@ -217,6 +219,7 @@ describe("Auth signup flow", () => {
     fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
     fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /I agree to receive SMS messages from LeadSig/i }));
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /Join an existing company/i }));
@@ -244,6 +247,7 @@ describe("Auth signup flow", () => {
     fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
     fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /I agree to receive SMS messages from LeadSig/i }));
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /Create a new company/i }));
@@ -258,8 +262,70 @@ describe("Auth signup flow", () => {
         "Taylor Smith",
         "owner",
         expect.objectContaining({ companyName: "LeadSig Landscaping" }),
+        expect.objectContaining({
+          status: "opted_in",
+          source: "signup_form",
+          textVersion: "2026-04-09-v1",
+          capturedAt: expect.any(String),
+        }),
         "",
         "PARTNER777",
+      );
+    });
+  });
+
+  it("allows step 1 continue without opting in to SMS", () => {
+    render(
+      <MemoryRouter>
+        <Auth />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Sign Up/i }));
+    fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument();
+  });
+
+  it("submits opted-out SMS consent metadata when user leaves SMS unchecked", async () => {
+    signUpMock.mockResolvedValue({ error: null });
+
+    render(
+      <MemoryRouter>
+        <Auth />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Sign Up/i }));
+    fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "taylor@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Join an existing company/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+    fireEvent.change(screen.getByLabelText(/Company Code/i), { target: { value: "ABC123" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Join Company$/i }));
+
+    await waitFor(() => {
+      expect(signUpMock).toHaveBeenCalledWith(
+        "taylor@example.com",
+        "StrongPassword123!",
+        "Taylor Smith",
+        "sales",
+        expect.objectContaining({ companyCode: "ABC123" }),
+        expect.objectContaining({
+          status: "opted_out",
+          source: "signup_form",
+          textVersion: "2026-04-09-v1",
+          capturedAt: expect.any(String),
+        }),
+        "",
+        null,
       );
     });
   });

@@ -210,7 +210,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("user_id, phone, notification_preferences")
+      .select("user_id, phone, notification_preferences, sms_consent_status")
       .in("user_id", userIds);
 
     if (!profiles?.length) {
@@ -240,6 +240,15 @@ Deno.serve(async (req: Request) => {
           user_id: profile.user_id,
           sent: false,
           reason: "No phone number",
+        });
+        continue;
+      }
+
+      if (profile.sms_consent_status !== "opted_in") {
+        results.push({
+          user_id: profile.user_id,
+          sent: false,
+          reason: "SMS consent not opted in",
         });
         continue;
       }

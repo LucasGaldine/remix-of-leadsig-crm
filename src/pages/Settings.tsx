@@ -148,14 +148,6 @@ export default function Settings() {
           requiredPlan: "premium",
           searchTerms: ["auto response", "automatic", "missed call", "follow up", "sms", "text message"],
         },
-        {
-          icon: <Bell className="h-5 w-5" />,
-          label: "Notifications",
-          description: "Push and SMS settings",
-          onClick: () => navigate("/settings/notifications"),
-          requiredPlan: "basic",
-          searchTerms: ["notifications", "alerts", "sms", "text", "push", "email digest", "mentions", "new leads", "lead updates", "payments", "schedule changes", "tasks", "reminders", "job assignments", "same day reminders", "quiet hours", "daily digest", "weekly digest", "test sms", "mention notifications"],
-        },
       ],
     },
     {
@@ -200,6 +192,14 @@ export default function Settings() {
           description: profile?.full_name || profile?.email || "Your account settings",
           onClick: () => navigate("/settings/profile"),
           searchTerms: ["profile", "account", "name", "email", "password", "avatar", "personal info", "full name", "phone", "timezone", "change password", "current password", "new password", "profile picture", "photo", "delete account", "role"],
+        },
+        {
+          icon: <Bell className="h-5 w-5" />,
+          label: "Notifications",
+          description: "Push and SMS settings",
+          onClick: () => navigate("/settings/notifications"),
+          requiredPlan: "basic",
+          searchTerms: ["notifications", "alerts", "sms", "text", "push", "email digest", "mentions", "new leads", "lead updates", "payments", "schedule changes", "tasks", "reminders", "job assignments", "same day reminders", "quiet hours", "daily digest", "weekly digest", "test sms", "mention notifications"],
         },
         ...(role === "owner" ? [{
           icon: <Crown className="h-5 w-5" />,

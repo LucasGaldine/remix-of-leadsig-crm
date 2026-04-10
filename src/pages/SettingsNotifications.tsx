@@ -22,6 +22,7 @@ import { PlanGate } from "@/components/features/PlanGate";
 
 type Channel = "push" | "email" | "sms";
 type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks" | "job_assignments" | "same_day_reminders";
+const SMS_CONSENT_TEXT_VERSION = "2026-04-09-v1";
 
 type NotificationPreferences = {
   channels: Record<Channel, boolean>;
@@ -95,6 +96,8 @@ export default function SettingsNotifications() {
 
   const hasEmail = Boolean(profile?.email || user?.email);
   const hasPhone = Boolean(profile?.phone);
+  const [smsConsentEnabled, setSmsConsentEnabled] = useState(profile?.sms_consent_status === "opted_in");
+  const hasSmsConsent = smsConsentEnabled;
   const [mentionNotificationsEnabled, setMentionNotificationsEnabled] = useState(profile?.mention_notifications_enabled ?? true);
 
   const defaultPrefs: NotificationPreferences = useMemo(
@@ -132,13 +135,21 @@ export default function SettingsNotifications() {
     setQuietStart(prefs.quiet_hours?.start ?? defaultPrefs.quiet_hours.start);
     setQuietEnd(prefs.quiet_hours?.end ?? defaultPrefs.quiet_hours.end);
     setDigestFrequency(prefs.digest?.frequency ?? defaultPrefs.digest.frequency);
+    setSmsConsentEnabled(profile?.sms_consent_status === "opted_in");
     setMentionNotificationsEnabled(profile?.mention_notifications_enabled ?? true);
-  }, [profile?.notification_preferences, profile?.mention_notifications_enabled, defaultPrefs]);
+  }, [profile?.notification_preferences, profile?.mention_notifications_enabled, profile?.sms_consent_status, defaultPrefs]);
 
   const channelAvailability: Record<Channel, { available: boolean; reason?: string }> = {
     push: { available: false, reason: "Coming soon" },
     email: { available: hasEmail, reason: hasEmail ? undefined : "Add an email to your profile" },
-    sms: { available: hasPhone, reason: hasPhone ? undefined : "Add a phone number to your profile" },
+    sms: {
+      available: hasPhone && hasSmsConsent,
+      reason: !hasPhone
+        ? "Add a phone number to your profile"
+        : hasSmsConsent
+          ? undefined
+          : "Opt in to SMS below",
+    },
   };
 
   const toggleChannel = (key: Channel, value: boolean) => {
@@ -274,17 +285,32 @@ export default function SettingsNotifications() {
       quiet_hours: { enabled: quietHoursEnabled, start: quietStart, end: quietEnd },
       digest: { frequency: digestFrequency },
     };
+    const consentStatus = smsConsentEnabled ? "opted_in" : "opted_out";
+    const consentChanged = profile?.sms_consent_status !== consentStatus;
+    const payloadWithConsent: NotificationPreferences = !smsConsentEnabled
+      ? {
+          ...payload,
+          channels: { ...payload.channels, sms: false },
+        }
+      : payload;
+    const profileUpdate: Record<string, unknown> = {
+      notification_preferences: payloadWithConsent,
+      mention_notifications_enabled: mentionNotificationsEnabled,
+    };
+    if (consentChanged) {
+      profileUpdate.sms_consent_status = consentStatus;
+      profileUpdate.sms_consent_captured_at = new Date().toISOString();
+      profileUpdate.sms_consent_source = "profile_settings";
+      profileUpdate.sms_consent_text_version = SMS_CONSENT_TEXT_VERSION;
+    }
 
     setIsSaving(true);
     // Try update first
     let { data, error } = await supabase
       .from("profiles")
-      .update({
-        notification_preferences: payload,
-        mention_notifications_enabled: mentionNotificationsEnabled
-      })
+      .update(profileUpdate)
       .eq("user_id", user.id)
-      .select("notification_preferences, mention_notifications_enabled")
+      .select("notification_preferences, mention_notifications_enabled, sms_consent_status")
       .maybeSingle();
 
     // If no row was updated, try insert (profile may not exist yet)
@@ -293,10 +319,9 @@ export default function SettingsNotifications() {
         .from("profiles")
         .insert({
           user_id: user.id,
-          notification_preferences: payload,
-          mention_notifications_enabled: mentionNotificationsEnabled
+          ...profileUpdate,
         })
-        .select("notification_preferences, mention_notifications_enabled")
+        .select("notification_preferences, mention_notifications_enabled, sms_consent_status")
         .maybeSingle();
 
       data = insertResult.data;
@@ -314,13 +339,14 @@ export default function SettingsNotifications() {
     }
 
     // Keep UI in sync immediately using the saved response
-    const saved = (data?.notification_preferences || payload) as NotificationPreferences;
+    const saved = (data?.notification_preferences || payloadWithConsent) as NotificationPreferences;
     setChannels(saved.channels);
     setAlerts(saved.alerts);
     setQuietHoursEnabled(saved.quiet_hours.enabled);
     setQuietStart(saved.quiet_hours.start);
     setQuietEnd(saved.quiet_hours.end);
     setDigestFrequency(saved.digest.frequency);
+    setSmsConsentEnabled(data?.sms_consent_status === "opted_in");
 
     setIsDirty(false);
     toast.success("Notification preferences saved");
@@ -371,6 +397,44 @@ export default function SettingsNotifications() {
       <PageHeader title="Notification Settings" showBack backTo="/settings" />
 
       <main className="px-4 py-4 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              SMS Consent
+            </CardTitle>
+            <CardDescription>Manage your SMS opt-in preference for text notifications.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              By opting in, you agree to receive SMS messages from LeadSig regarding appointments, estimates, service updates, and account notifications. Message frequency varies. Message and data rates may apply. Reply STOP to opt out and HELP for help.
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              SMS opt-in data and consent will not be sold or shared with third parties or affiliates for marketing purposes.
+            </p>
+            <div className="space-y-2 pt-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={smsConsentEnabled}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setSmsConsentEnabled(enabled);
+                    if (!enabled) {
+                      setChannels((prev) => ({ ...prev, sms: false }));
+                    }
+                    setIsDirty(true);
+                  }}
+                />
+                <span>I agree to receive SMS messages from LeadSig</span>
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              You can change this at any time. Opting out disables SMS notifications.
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

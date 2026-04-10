@@ -11,7 +11,7 @@ export default function PrivacyPolicy() {
 
       <main className="px-4 py-6 max-w-3xl mx-auto">
         <div className="prose prose-sm dark:prose-invert max-w-none space-y-6">
-          <p className="text-muted-foreground text-sm">Last updated: February 9, 2026</p>
+          <p className="text-muted-foreground text-sm">Last updated: April 9, 2026</p>
 
           <section className="space-y-3">
             <h2 className="text-lg font-semibold">1. Introduction</h2>
@@ -59,24 +59,37 @@ export default function PrivacyPolicy() {
               <li>Third-party integrations you explicitly connect (Facebook, Stripe, etc.)</li>
               <li>Law enforcement when required by law</li>
             </ul>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              SMS opt-in data and consent will not be sold or shared with third parties or affiliates for marketing purposes.
+            </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">5. Data Security</h2>
+            <h2 className="text-lg font-semibold">5. SMS Messaging and Consent</h2>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              If you provide a mobile number and opt in, we may send SMS messages related to appointments, estimates, service updates, and account notifications. Message frequency varies. Message and data rates may apply. You may opt out by replying STOP and get help by replying HELP.
+            </p>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              We store SMS consent status and related audit information (such as capture time and source) to honor consent choices and compliance requirements.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">6. Data Security</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               We implement industry-standard security measures including encryption in transit and at rest, access controls, and regular security audits. However, no method of transmission over the Internet is 100% secure.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">6. Data Retention</h2>
+            <h2 className="text-lg font-semibold">7. Data Retention</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               We retain your data for as long as your account is active or as needed to provide services. You can request deletion of your account and associated data at any time through the Data Deletion page or by contacting support.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">7. Your Rights</h2>
+            <h2 className="text-lg font-semibold">8. Your Rights</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               Depending on your jurisdiction, you may have the right to:
             </p>
@@ -90,28 +103,28 @@ export default function PrivacyPolicy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">8. Cookies</h2>
+            <h2 className="text-lg font-semibold">9. Cookies</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               We use essential cookies and local storage to maintain your session and preferences. We do not use third-party tracking cookies for advertising purposes.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">9. Children's Privacy</h2>
+            <h2 className="text-lg font-semibold">10. Children's Privacy</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               Our service is not directed to individuals under the age of 18. We do not knowingly collect personal information from children.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">10. Changes to This Policy</h2>
+            <h2 className="text-lg font-semibold">11. Changes to This Policy</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               We may update this Privacy Policy from time to time. We will notify you of any material changes by posting the new policy on this page and updating the "Last updated" date.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">11. Contact Us</h2>
+            <h2 className="text-lg font-semibold">12. Contact Us</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               If you have questions about this Privacy Policy, please contact us at{" "}
               <a href="mailto:support@leadsig.ai" className="text-primary hover:underline">

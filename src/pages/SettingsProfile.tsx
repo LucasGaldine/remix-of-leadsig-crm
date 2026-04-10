@@ -96,15 +96,17 @@ export default function SettingsProfile() {
 
     setLoading(true);
     try {
+      const updates: Record<string, unknown> = {
+        full_name: formData.full_name,
+        email: formData.email,
+        phone: formData.phone,
+        timezone: formData.timezone,
+        updated_at: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from("profiles")
-        .update({
-          full_name: formData.full_name,
-          email: formData.email,
-          phone: formData.phone,
-          timezone: formData.timezone,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updates)
         .eq("user_id", user.id);
 
       if (error) throw error;
@@ -193,6 +195,7 @@ export default function SettingsProfile() {
       try {
         await supabase.auth.signOut();
       } catch {
+        // Best effort sign-out after server-side account deletion.
       }
 
       toast.success("Account deleted successfully");

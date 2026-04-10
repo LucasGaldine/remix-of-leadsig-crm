@@ -11,7 +11,7 @@ export default function TermsOfService() {
 
       <main className="px-4 py-6 max-w-3xl mx-auto">
         <div className="prose prose-sm dark:prose-invert max-w-none space-y-6">
-          <p className="text-muted-foreground text-sm">Last updated: February 9, 2026</p>
+          <p className="text-muted-foreground text-sm">Last updated: April 9, 2026</p>
 
           <section className="space-y-3">
             <h2 className="text-lg font-semibold">1. Acceptance of Terms</h2>
@@ -76,42 +76,52 @@ export default function TermsOfService() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">9. Limitation of Liability</h2>
+            <h2 className="text-lg font-semibold">9. SMS Terms</h2>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              By providing your mobile number and opting in, you agree to receive SMS messages from LeadSig regarding appointments, estimates, service updates, and account notifications. Message frequency varies. Message and data rates may apply. Reply STOP to opt out and HELP for help.
+            </p>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              SMS consent is specific to LeadSig, is revocable at any time, and is not transferable. SMS opt-in data and consent will not be sold or shared with third parties or affiliates for marketing purposes.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">10. Limitation of Liability</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               To the maximum extent permitted by law, LeadSig shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or business opportunities, arising from your use of the Service.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">10. Disclaimer of Warranties</h2>
+            <h2 className="text-lg font-semibold">11. Disclaimer of Warranties</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               The Service is provided "as is" and "as available" without warranties of any kind, either express or implied, including but not limited to implied warranties of merchantability, fitness for a particular purpose, and non-infringement.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">11. Termination</h2>
+            <h2 className="text-lg font-semibold">12. Termination</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               We reserve the right to suspend or terminate your account if you violate these Terms. Upon termination, your right to use the Service ceases immediately. You may request export of your data within 30 days of termination.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">12. Changes to Terms</h2>
+            <h2 className="text-lg font-semibold">13. Changes to Terms</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               We may modify these Terms at any time. Material changes will be communicated via email or through the Service. Continued use of the Service after changes constitutes acceptance of the updated Terms.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">13. Governing Law</h2>
+            <h2 className="text-lg font-semibold">14. Governing Law</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               These Terms shall be governed by and construed in accordance with the laws of the United States, without regard to conflict of law provisions.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">14. Contact</h2>
+            <h2 className="text-lg font-semibold">15. Contact</h2>
             <p className="text-sm text-foreground/90 leading-relaxed">
               For questions about these Terms, contact us at{" "}
               <a href="mailto:support@leadsig.ai" className="text-primary hover:underline">
