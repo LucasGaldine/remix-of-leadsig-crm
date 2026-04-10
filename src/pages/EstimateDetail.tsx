@@ -768,6 +768,22 @@ export default function EstimateDetail() {
         throw error;
       }
 
+      if (!isApprovingPendingChanges) {
+        let deleteVersionsQuery = supabase
+          .from("estimate_versions")
+          .delete()
+          .eq("estimate_id", id);
+
+        if (selectedVersion?.id) {
+          deleteVersionsQuery = deleteVersionsQuery.neq("id", selectedVersion.id);
+        }
+
+        const { error: deleteVersionsError } = await deleteVersionsQuery;
+        if (deleteVersionsError) {
+          console.error("Failed to remove unused estimate versions after manual approval:", deleteVersionsError);
+        }
+      }
+
       if (photoPersistenceFailed && uploadedPhoto?.filePath) {
         const { error: removePhotoError } = await supabase.storage.from("lead-photos").remove([uploadedPhoto.filePath]);
         if (removePhotoError) {

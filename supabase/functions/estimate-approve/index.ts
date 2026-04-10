@@ -281,6 +281,17 @@ Deno.serve(async (req: Request) => {
           );
         }
 
+        if (action === "approve") {
+          const pruneResult = await pruneEstimateVersionsAfterApproval(
+            supabase,
+            estimate.id,
+            estimateVersionId,
+          );
+          if (!pruneResult.ok) {
+            console.error("Failed to prune estimate versions after approval:", pruneResult.error);
+          }
+        }
+
         return new Response(
           JSON.stringify({ success: true, message: `Estimate ${action === "approve" ? "approved" : "declined"}` }),
           {
@@ -386,6 +397,28 @@ async function applyEstimateVersionBeforeApproval(
 
   if (updateEstimateError) {
     return { ok: false, error: "Failed to apply selected estimate version", statusCode: 500 };
+  }
+
+  return { ok: true };
+}
+
+async function pruneEstimateVersionsAfterApproval(
+  supabase: any,
+  estimateId: string,
+  keepVersionId: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let deleteQuery = supabase
+    .from("estimate_versions")
+    .delete()
+    .eq("estimate_id", estimateId);
+
+  if (keepVersionId) {
+    deleteQuery = deleteQuery.neq("id", keepVersionId);
+  }
+
+  const { error } = await deleteQuery;
+  if (error) {
+    return { ok: false, error: "Failed to remove unused estimate versions" };
   }
 
   return { ok: true };

@@ -195,10 +195,12 @@ export default function LeadDetail() {
   const [estimate, setEstimate] = useState<any>(null);
   const estimateVersions = Array.isArray(estimate?.versions) ? estimate.versions : [];
   const hasMultipleEstimateVersions = estimateVersions.length > 1;
+  const isAcceptedEstimate = String(estimate?.status || "") === "accepted";
   const estimateVersionTotals = estimateVersions
     .map((version: any) => Number(version?.total))
     .filter((value: number) => Number.isFinite(value));
   const estimateCardTotal = (() => {
+    if (isAcceptedEstimate) return Number(estimate?.total || 0);
     if (!hasMultipleEstimateVersions) return Number(estimate?.total || 0);
     const candidates = [
       ...estimateVersionTotals,
@@ -1615,7 +1617,7 @@ export default function LeadDetail() {
                   status={String(estimate.status || "draft")}
                   total={estimateCardTotal}
                   lineItemCount={estimate.line_items?.length || 0}
-                  showStartingAt={hasMultipleEstimateVersions}
+                  showStartingAt={hasMultipleEstimateVersions && !isAcceptedEstimate}
                   onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
                 />
               )}
