@@ -193,6 +193,19 @@ export default function LeadDetail() {
   const [statusGuidanceOpen, setStatusGuidanceOpen] = useState(false);
   const [hasEstimate, setHasEstimate] = useState(false);
   const [estimate, setEstimate] = useState<any>(null);
+  const estimateVersions = Array.isArray(estimate?.versions) ? estimate.versions : [];
+  const hasMultipleEstimateVersions = estimateVersions.length > 1;
+  const estimateVersionTotals = estimateVersions
+    .map((version: any) => Number(version?.total))
+    .filter((value: number) => Number.isFinite(value));
+  const estimateCardTotal = (() => {
+    if (!hasMultipleEstimateVersions) return Number(estimate?.total || 0);
+    const candidates = [
+      ...estimateVersionTotals,
+      Number.isFinite(Number(estimate?.total)) ? Number(estimate?.total) : null,
+    ].filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    return candidates.length > 0 ? Math.min(...candidates) : Number(estimate?.total || 0);
+  })();
 
   // New note state
   const [newNote, setNewNote] = useState("");
@@ -315,14 +328,59 @@ export default function LeadDetail() {
   };
 
   const checkEstimate = async () => {
-    const { data } = await supabase
-      .from("estimates")
-      .select("id, total, status, line_items:estimate_line_items(id)")
-      .eq("job_id", id)
-      .maybeSingle();
+    if (!id) return;
 
-    setHasEstimate(!!data);
-    setEstimate(data);
+    const latestOnly = <T,>(query: T): T => {
+      const candidate = query as T & { order?: (column: string, opts: { ascending: boolean }) => any; limit?: (count: number) => any };
+      if (typeof candidate.order === "function") {
+        const updatedOrder = candidate.order("updated_at", { ascending: false });
+        if (updatedOrder && typeof updatedOrder.order === "function") {
+          const createdOrder = updatedOrder.order("created_at", { ascending: false });
+          if (createdOrder && typeof createdOrder.limit === "function") {
+            return createdOrder.limit(1) as T;
+          }
+          return createdOrder as T;
+        }
+
+        if (updatedOrder && typeof updatedOrder.limit === "function") {
+          return updatedOrder.limit(1) as T;
+        }
+        return updatedOrder as T;
+      }
+      return query;
+    };
+
+    const buildEstimateQuery = () =>
+      supabase
+        .from("estimates")
+        .select("id, total, status, line_items:estimate_line_items(id), versions:estimate_versions(id, total)")
+        .eq("job_id", id);
+
+    const acceptedQuery = buildEstimateQuery().eq("status", "accepted");
+    const { data: acceptedEstimate, error: acceptedError } = await latestOnly(acceptedQuery).maybeSingle();
+    if (acceptedError) {
+      console.error("Failed to load accepted estimate:", acceptedError);
+      setHasEstimate(false);
+      setEstimate(null);
+      return;
+    }
+
+    if (acceptedEstimate) {
+      setHasEstimate(true);
+      setEstimate(acceptedEstimate);
+      return;
+    }
+
+    const { data: latestEstimate, error: latestError } = await latestOnly(buildEstimateQuery()).maybeSingle();
+    if (latestError) {
+      console.error("Failed to load latest estimate:", latestError);
+      setHasEstimate(false);
+      setEstimate(null);
+      return;
+    }
+
+    setHasEstimate(!!latestEstimate);
+    setEstimate(latestEstimate ?? null);
   };
 
   const updateLeadStatus = async (newStatus: string) => {
@@ -1555,8 +1613,9 @@ export default function LeadDetail() {
                 <DetailEstimateCard
                   label="Estimate"
                   status={String(estimate.status || "draft")}
-                  total={Number(estimate.total)}
+                  total={estimateCardTotal}
                   lineItemCount={estimate.line_items?.length || 0}
+                  showStartingAt={hasMultipleEstimateVersions}
                   onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
                 />
               )}

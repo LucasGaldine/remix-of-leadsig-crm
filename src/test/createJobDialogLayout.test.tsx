@@ -98,6 +98,10 @@ vi.mock("@/components/payments/EditEstimateModal", () => ({
   EditEstimateModal: () => null,
 }));
 
+vi.mock("@/components/voice/VoiceIntakePanel", () => ({
+  VoiceIntakePanel: () => <div>Mock Voice Intake Panel</div>,
+}));
+
 vi.mock("@/components/ui/switch", () => ({
   Switch: (props: { checked?: boolean; onCheckedChange?: (checked: boolean) => void }) => (
     <input
@@ -156,6 +160,21 @@ describe("CreateJobDialog layout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     expect(screen.getByText(/step 5 of 5/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /voice estimate intake/i })).toBeInTheDocument();
+  });
+
+  it("toggles to voice estimate intake on step 5", () => {
+    render(<CreateJobDialog open onOpenChange={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /mock select client/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /voice estimate intake/i }));
+    expect(screen.getByText(/mock voice intake panel/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /back to manual form/i })).toBeInTheDocument();
   });
 
   it("can create immediately from job info via Skip & Create", () => {

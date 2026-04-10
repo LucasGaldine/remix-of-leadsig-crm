@@ -58,8 +58,8 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/components/leads/EstimateLineItemsEditor", () => ({
-  EstimateLineItemsEditor: () => <div data-testid="estimate-line-items-editor" />,
+vi.mock("@/components/jobs/CreateJobEstimateStepContent", () => ({
+  CreateJobEstimateStepContent: () => <div data-testid="estimate-step-content" />,
 }));
 
 describe("LineItemsEstimateDialog estimate naming", () => {

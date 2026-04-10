@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import type { DragEvent } from "react";
-import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2, BookmarkPlus } from "lucide-react";
+import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2, BookmarkPlus, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +48,8 @@ interface EditEstimateModalProps {
   versionName?: string | null;
   showVersionNameField?: boolean;
   onVersionNameChange?: (name: string) => void;
+  showVoiceEstimateIntakeButton?: boolean;
+  onVoiceEstimateIntakeClick?: () => void;
   onSuccess: () => void;
   embedded?: boolean;
   onDraftSave?: (payload: {
@@ -426,6 +428,8 @@ export function EditEstimateModal({
   versionName = null,
   showVersionNameField = false,
   onVersionNameChange,
+  showVoiceEstimateIntakeButton = false,
+  onVoiceEstimateIntakeClick,
   onSuccess,
   embedded = false,
   onDraftSave,
@@ -1153,6 +1157,18 @@ export function EditEstimateModal({
               placeholder="Version name"
             />
           </div>
+        ) : null}
+
+        {showVoiceEstimateIntakeButton ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={onVoiceEstimateIntakeClick}
+          >
+            <Mic className="h-4 w-4 mr-2" />
+            Voice Estimate Intake
+          </Button>
         ) : null}
 
         {!embedded ? <Label className="text-base font-semibold">Line Items *</Label> : null}

@@ -437,8 +437,9 @@ describe("JobDetail status guidance", () => {
     expect(screen.getByText("Job Status Stages")).toBeInTheDocument();
   });
 
-  it("fetches the latest estimate using created_at ordering", async () => {
-    const estimateOrderMock = vi.fn();
+  it("fetches the latest estimate using updated_at then created_at ordering", async () => {
+    const firstEstimateOrderMock = vi.fn();
+    const secondEstimateOrderMock = vi.fn();
     const estimateLimitMock = vi.fn();
 
     vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
@@ -455,11 +456,12 @@ describe("JobDetail status guidance", () => {
       if (table === "estimates") {
         const maybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null });
         estimateLimitMock.mockReturnValue({ maybeSingle: maybeSingleMock });
-        estimateOrderMock.mockReturnValue({ limit: estimateLimitMock });
+        secondEstimateOrderMock.mockReturnValue({ limit: estimateLimitMock });
+        firstEstimateOrderMock.mockReturnValue({ order: secondEstimateOrderMock });
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              order: estimateOrderMock,
+              order: firstEstimateOrderMock,
             })),
           })),
         };
@@ -493,7 +495,8 @@ describe("JobDetail status guidance", () => {
     renderJobDetail();
 
     await waitFor(() => {
-      expect(estimateOrderMock).toHaveBeenCalledWith("created_at", { ascending: false });
+      expect(firstEstimateOrderMock).toHaveBeenCalledWith("updated_at", { ascending: false });
+      expect(secondEstimateOrderMock).toHaveBeenCalledWith("created_at", { ascending: false });
       expect(estimateLimitMock).toHaveBeenCalledWith(1);
     });
   });

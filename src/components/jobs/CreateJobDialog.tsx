@@ -31,11 +31,11 @@ import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
-import { matchServiceType, normalizeVoiceJobParsedData } from "@/lib/voiceIntake";
-import type { VoiceJobParsedData } from "@/types/voiceIntake";
+import { matchServiceType, normalizeVoiceEstimateParsedData, normalizeVoiceJobParsedData } from "@/lib/voiceIntake";
+import type { VoiceEstimateParsedData, VoiceJobParsedData } from "@/types/voiceIntake";
 import { useAddressVerification } from "@/hooks/useAddressVerification";
 import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
-import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
+import { CreateJobEstimateStepContent } from "@/components/jobs/CreateJobEstimateStepContent";
 import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
 
 interface CreateJobDialogProps {
@@ -82,6 +82,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
   const [showCSVImport, setShowCSVImport] = useState(false);
   const [showVoiceJobIntake, setShowVoiceJobIntake] = useState(false);
+  const [showVoiceEstimateIntake, setShowVoiceEstimateIntake] = useState(false);
   const [manualStep, setManualStep] = useState<ManualStep>("client");
 
   const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
@@ -305,6 +306,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setCrewSearchQuery("");
     setActiveCrewId("");
     setShowVoiceJobIntake(false);
+    setShowVoiceEstimateIntake(false);
     setLineItems([{ ...INITIAL_LINE_ITEM }]);
     setEstimateVersionName("Version 1");
     setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
@@ -761,6 +763,28 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setShowVoiceJobIntake(false);
   };
 
+  const applyVoiceEstimateIntake = (parsedData: VoiceEstimateParsedData) => {
+    const parsed = normalizeVoiceEstimateParsedData(parsedData);
+    const parsedLineItems = (parsed.lineItems || [])
+      .map((item) => {
+        const name = (item.name || "").trim();
+        if (!name) return null;
+        return {
+          name,
+          description: item.description || "",
+          quantity: String(item.quantity ?? 1),
+          unit: item.unit || "item",
+          unit_price: String(item.unitPrice ?? 0),
+          category: "other" as const,
+        };
+      })
+      .filter((item): item is EstimateLineItem => item !== null);
+
+    if (parsedLineItems.length > 0) {
+      setLineItems(parsedLineItems);
+    }
+  };
+
   const addressToVerify = resolveCreateJobAddress({
     jobAddress,
     customerAddress: selectedCustomer?.address,
@@ -1123,32 +1147,30 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             )}
 
             {manualStep === "estimate-line-items" && (
-              <div className="space-y-4">
-                <EditEstimateModal
-                  open={open && manualStep === "estimate-line-items"}
-                  onOpenChange={() => {}}
-                  estimate={estimateEditorDraft}
-                  versionName={estimateVersionName}
-                  showVersionNameField
-                  onVersionNameChange={setEstimateVersionName}
-                  onSuccess={() => {}}
-                  embedded
-                  onDraftChange={({ lineItems: updatedLineItems, profitMargin: updatedProfitMargin, surcharge: updatedSurcharge }) => {
-                    setLineItems(
-                      updatedLineItems.map((item) => ({
-                        name: item.name,
-                        description: item.description || "",
-                        quantity: item.quantity || "1",
-                        unit: item.unit || "item",
-                        unit_price: item.unit_price || "0",
-                        category: item.category || "other",
-                      })),
-                    );
-                    setProfitMargin(updatedProfitMargin);
-                    setSurcharge(updatedSurcharge);
-                  }}
-                />
-              </div>
+              <CreateJobEstimateStepContent
+                open={open && manualStep === "estimate-line-items"}
+                showVoiceEstimateIntake={showVoiceEstimateIntake}
+                estimateEditorDraft={estimateEditorDraft}
+                estimateVersionName={estimateVersionName}
+                onShowVoiceEstimateIntake={() => setShowVoiceEstimateIntake(true)}
+                onHideVoiceEstimateIntake={() => setShowVoiceEstimateIntake(false)}
+                onEstimateVersionNameChange={setEstimateVersionName}
+                onDraftChange={({ lineItems: updatedLineItems, profitMargin: updatedProfitMargin, surcharge: updatedSurcharge }) => {
+                  setLineItems(
+                    updatedLineItems.map((item) => ({
+                      name: item.name,
+                      description: item.description || "",
+                      quantity: item.quantity || "1",
+                      unit: item.unit || "item",
+                      unit_price: item.unit_price || "0",
+                      category: item.category || "other",
+                    })),
+                  );
+                  setProfitMargin(updatedProfitMargin);
+                  setSurcharge(updatedSurcharge);
+                }}
+                onApplyVoiceEstimateIntake={applyVoiceEstimateIntake}
+              />
             )}
           </div>
 
@@ -1193,7 +1215,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                     type="button"
                     size="lg"
                     onClick={createManualJob}
-                    disabled={isLoading}
+                    disabled={isLoading || showVoiceEstimateIntake}
                   >
                     {isLoading ? "Creating..." : "Create Job"}
                   </Button>

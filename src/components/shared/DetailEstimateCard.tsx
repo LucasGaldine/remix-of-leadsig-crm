@@ -5,6 +5,7 @@ interface DetailEstimateCardProps {
   status: string;
   total: number;
   lineItemCount: number;
+  showStartingAt?: boolean;
   onClick: () => void;
 }
 
@@ -13,6 +14,7 @@ export function DetailEstimateCard({
   status,
   total,
   lineItemCount,
+  showStartingAt = false,
   onClick,
 }: DetailEstimateCardProps) {
   return (
@@ -34,6 +36,9 @@ export function DetailEstimateCard({
       </div>
 
       <div className="mt-2">
+        {showStartingAt ? (
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Starting at</p>
+        ) : null}
         <p className="text-xl font-semibold leading-tight text-foreground">
           {Number(total).toLocaleString("en-US", {
             style: "currency",

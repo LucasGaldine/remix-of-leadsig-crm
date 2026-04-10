@@ -1,20 +1,16 @@
-import { useState, useEffect } from "react";
-import { Mic } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { EstimateLineItemsEditor, type EstimateLineItem } from "./EstimateLineItemsEditor";
+import { type EstimateLineItem } from "./EstimateLineItemsEditor";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
-import { LineItemCategory } from "@/hooks/useJobLineItems";
-import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
 import { normalizeVoiceEstimateParsedData } from "@/lib/voiceIntake";
 import type { VoiceEstimateParsedData } from "@/types/voiceIntake";
 import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
+import { CreateJobEstimateStepContent } from "@/components/jobs/CreateJobEstimateStepContent";
 export type EstimateLineItemInit = EstimateLineItem;
 
 interface LineItemsEstimateDialogProps {
@@ -45,23 +41,17 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
 
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
   const [estimateName, setEstimateName] = useState("original");
-  const [pendingDeleteIndices, setPendingDeleteIndices] = useState<Set<number>>(new Set());
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
   const [creating, setCreating] = useState(false);
   const [showVoiceEstimateIntake, setShowVoiceEstimateIntake] = useState(false);
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
-  const [snapshots, setSnapshots] = useState<Record<number, EstimateLineItemInit>>({});
 
   useEffect(() => {
     if (open) {
       setLineItems(defaultLineItems);
       setEstimateName("original");
-      setPendingDeleteIndices(new Set());
       setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
       setSurcharge(String(currentAccount?.default_surcharge ?? 0));
-      setExpandedIndex(0);
-      setSnapshots({});
       setShowVoiceEstimateIntake(false);
     }
   }, [open, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
@@ -80,62 +70,61 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           quantity: String(quantity),
           unit: lineItem.unit || "item",
           unit_price: unitPrice > 0 ? String(unitPrice) : "",
-          category: "other" as LineItemCategory,
+          category: "other",
         };
       });
 
       setLineItems(parsedLineItems);
-      setPendingDeleteIndices(new Set());
-      setExpandedIndex(parsedLineItems.length > 0 ? 0 : null);
-      setSnapshots({});
     }
 
     setShowVoiceEstimateIntake(false);
   };
 
-  const addLineItem = () => {
-    const newItems = [...lineItems, { name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" as LineItemCategory }];
-    const newIndex = newItems.length - 1;
-    setLineItems(newItems);
-    setSnapshots(prev => ({ ...prev, [newIndex]: { ...newItems[newIndex] } }));
-    setExpandedIndex(newIndex);
-  };
+  const activeLineItems = lineItems.filter((item) => item.name && item.unit_price);
 
-  const expandLineItem = (index: number) => {
-    setSnapshots(prev => ({ ...prev, [index]: { ...lineItems[index] } }));
-    setExpandedIndex(index);
-  };
+  const estimateEditorDraft = useMemo(() => {
+    const taxRate = (currentAccount?.default_tax_rate ?? 0) / 100;
+    const normalizedLineItems = lineItems
+      .map((item, index) => {
+        const quantity = Number.parseFloat(item.quantity || "0") || 0;
+        const unitPrice = Number.parseFloat(item.unit_price || "0") || 0;
+        return {
+          id: `draft-item-${index}`,
+          name: item.name,
+          description: item.description || "",
+          quantity,
+          unit: item.unit || "item",
+          unit_price: unitPrice,
+          total: Number((quantity * unitPrice).toFixed(2)),
+          sort_order: index,
+          category: item.category || "other",
+          is_change_order: false,
+          change_order_type: null,
+          change_order_approved: null,
+        };
+      })
+      .filter((item) => item.name.trim().length > 0);
 
-  const revertLineItem = (index: number) => {
-    const snapshot = snapshots[index];
-    if (snapshot) {
-      const updated = [...lineItems];
-      updated[index] = { ...snapshot };
-      setLineItems(updated);
-    }
-    setExpandedIndex(null);
-  };
+    const subtotal = normalizedLineItems.reduce((sum, item) => sum + item.total, 0);
+    const profitMarginValue = (Number.parseFloat(profitMargin || "0") || 0) / 100;
+    const surchargeValue = (Number.parseFloat(surcharge || "0") || 0) / 100;
+    const adjustedSubtotal = subtotal + (subtotal * profitMarginValue) + (subtotal * surchargeValue);
+    const tax = adjustedSubtotal * taxRate;
+    const total = adjustedSubtotal + tax;
 
-  const markForDelete = (index: number) => {
-    setPendingDeleteIndices(prev => new Set(prev).add(index));
-    if (expandedIndex === index) setExpandedIndex(null);
-  };
-
-  const undoDelete = (index: number) => {
-    setPendingDeleteIndices(prev => {
-      const next = new Set(prev);
-      next.delete(index);
-      return next;
-    });
-  };
-
-  const updateLineItem = (index: number, field: keyof EstimateLineItemInit, value: string) => {
-    const updated = [...lineItems];
-    updated[index][field] = value;
-    setLineItems(updated);
-  };
-
-  const activeLineItems = lineItems.filter((_, i) => !pendingDeleteIndices.has(i));
+    return {
+      account_id: currentAccount?.id,
+      status: "draft",
+      line_items: normalizedLineItems,
+      tax_rate: taxRate,
+      discount: 0,
+      subtotal: Number(subtotal.toFixed(2)),
+      tax: Number(tax.toFixed(2)),
+      total: Number(total.toFixed(2)),
+      profit_margin: Number.parseFloat(profitMargin || "0") || 0,
+      surcharge: Number.parseFloat(surcharge || "0") || 0,
+    };
+  }, [currentAccount?.default_tax_rate, currentAccount?.id, lineItems, profitMargin, surcharge]);
 
   const isMissingEstimateNameColumnError = (error: unknown) => {
     if (!error || typeof error !== "object") return false;
@@ -324,68 +313,31 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="estimate-name">Estimate Name (optional)</Label>
-            <Input
-              id="estimate-name"
-              value={estimateName}
-              onChange={(event) => setEstimateName(event.target.value)}
-              placeholder="original"
-            />
-          </div>
-
-          {!showVoiceEstimateIntake ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => setShowVoiceEstimateIntake(true)}
-              >
-                <Mic className="h-4 w-4 mr-2" />
-                Voice Estimate Intake
-              </Button>
-
-              <EstimateLineItemsEditor
-                leadId={lead.id}
-                lineItems={lineItems}
-                pendingDeleteIndices={pendingDeleteIndices}
-                expandedIndex={expandedIndex}
-                profitMargin={profitMargin}
-                surcharge={surcharge}
-                defaultTaxRate={currentAccount?.default_tax_rate ?? 0}
-                onExpandLineItem={expandLineItem}
-                onCollapseExpandedLineItem={() => setExpandedIndex(null)}
-                onRevertLineItem={revertLineItem}
-                onMarkForDelete={markForDelete}
-                onUndoDelete={undoDelete}
-                onUpdateLineItem={updateLineItem}
-                onAddLineItem={addLineItem}
-                onProfitMarginChange={setProfitMargin}
-                onSurchargeChange={setSurcharge}
-              />
-            </>
-          ) : (
-            <div className="space-y-3">
-              <VoiceIntakePanel
-                entityType="estimate"
-                title="Voice Estimate Intake"
-                description="Dictate estimate details. Required fields will trigger follow-up questions before values are applied."
-                transcriptPlaceholder="Example: Estimate for roof wash, add line items roof wash 1 each 900 and gutter flush 1 each 250..."
-                variant="plain"
-                onApply={(parsed) => applyVoiceEstimateIntake(parsed as VoiceEstimateParsedData)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => setShowVoiceEstimateIntake(false)}
-              >
-                Back to Manual Form
-              </Button>
-            </div>
-          )}
+        <div className="py-4">
+          <CreateJobEstimateStepContent
+            open={open}
+            showVoiceEstimateIntake={showVoiceEstimateIntake}
+            estimateEditorDraft={estimateEditorDraft}
+            estimateVersionName={estimateName}
+            onShowVoiceEstimateIntake={() => setShowVoiceEstimateIntake(true)}
+            onHideVoiceEstimateIntake={() => setShowVoiceEstimateIntake(false)}
+            onEstimateVersionNameChange={setEstimateName}
+            onDraftChange={({ lineItems: updatedLineItems, profitMargin: updatedProfitMargin, surcharge: updatedSurcharge }) => {
+              setLineItems(
+                updatedLineItems.map((item) => ({
+                  name: item.name,
+                  description: item.description || "",
+                  quantity: item.quantity || "1",
+                  unit: item.unit || "item",
+                  unit_price: item.unit_price || "0",
+                  category: item.category || "other",
+                })),
+              );
+              setProfitMargin(updatedProfitMargin);
+              setSurcharge(updatedSurcharge);
+            }}
+            onApplyVoiceEstimateIntake={applyVoiceEstimateIntake}
+          />
         </div>
 
         <DialogFooter>

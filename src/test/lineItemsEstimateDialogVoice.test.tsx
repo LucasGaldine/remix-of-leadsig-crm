@@ -7,12 +7,12 @@ const {
   invalidateQueriesMock,
   onOpenChangeMock,
   onSuccessMock,
-  editorPropsRef,
+  stepPropsRef,
 } = vi.hoisted(() => ({
   invalidateQueriesMock: vi.fn(),
   onOpenChangeMock: vi.fn(),
   onSuccessMock: vi.fn(),
-  editorPropsRef: { current: null as any },
+  stepPropsRef: { current: null as any },
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -52,43 +52,38 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/components/leads/EstimateLineItemsEditor", () => ({
-  EstimateLineItemsEditor: (props: any) => {
-    editorPropsRef.current = props;
-
+vi.mock("@/components/jobs/CreateJobEstimateStepContent", () => ({
+  CreateJobEstimateStepContent: (props: any) => {
+    stepPropsRef.current = props;
+    const firstLineItem = props.estimateEditorDraft?.line_items?.[0];
     return (
       <div>
-        <div data-testid="line-item-name">{props.lineItems?.[0]?.name || ""}</div>
-        <div data-testid="profit-margin">{props.profitMargin}</div>
-        <div data-testid="surcharge">{props.surcharge}</div>
+        <div data-testid="line-item-name">{firstLineItem?.name || ""}</div>
+        <div data-testid="profit-margin">{String(props.estimateEditorDraft?.profit_margin ?? "")}</div>
+        <div data-testid="surcharge">{String(props.estimateEditorDraft?.surcharge ?? "")}</div>
+        <button
+          type="button"
+          onClick={() =>
+            props.onApplyVoiceEstimateIntake({
+              lineItems: [
+                {
+                  name: "Roof Wash",
+                  description: "Full roof wash",
+                  quantity: 1,
+                  unit: "each",
+                  unitPrice: 900,
+                },
+              ],
+              taxRate: 9,
+              discount: 100,
+            })
+          }
+        >
+          Apply Mock Voice
+        </button>
       </div>
     );
   },
-}));
-
-vi.mock("@/components/voice/VoiceIntakePanel", () => ({
-  VoiceIntakePanel: ({ onApply }: { onApply: (parsed: any) => void }) => (
-    <button
-      type="button"
-      onClick={() =>
-        onApply({
-          lineItems: [
-            {
-              name: "Roof Wash",
-              description: "Full roof wash",
-              quantity: 1,
-              unit: "each",
-              unitPrice: 900,
-            },
-          ],
-          taxRate: 9,
-          discount: 100,
-        })
-      }
-    >
-      Apply Mock Voice
-    </button>
-  ),
 }));
 
 describe("LineItemsEstimateDialog voice estimate intake", () => {
@@ -113,19 +108,18 @@ describe("LineItemsEstimateDialog voice estimate intake", () => {
 
     expect(screen.getByTestId("line-item-name").textContent).toBe("");
 
-    fireEvent.click(screen.getByRole("button", { name: /voice estimate intake/i }));
     fireEvent.click(screen.getByRole("button", { name: /apply mock voice/i }));
 
     expect(screen.getByTestId("line-item-name").textContent).toBe("Roof Wash");
     expect(screen.getByTestId("profit-margin").textContent).toBe("20");
     expect(screen.getByTestId("surcharge").textContent).toBe("5");
 
-    expect(editorPropsRef.current.lineItems[0]).toMatchObject({
+    expect(stepPropsRef.current.estimateEditorDraft.line_items[0]).toMatchObject({
       name: "Roof Wash",
       description: "Full roof wash",
-      quantity: "1",
+      quantity: 1,
       unit: "each",
-      unit_price: "900",
+      unit_price: 900,
       category: "other",
     });
   });
