@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, X, UserPlus, FileText, Briefcase, Package, DollarSign, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -17,6 +17,21 @@ interface FloatingActionButtonProps {
 
 export function FloatingActionButton({ actions, className }: FloatingActionButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const positionClasses =
+    "right-4 md:right-6 bottom-[calc(5.5rem+env(safe-area-inset-bottom)+0.75rem)] md:bottom-6";
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   if (actions.length === 0) return null;
 
@@ -27,7 +42,8 @@ export function FloatingActionButton({ actions, className }: FloatingActionButto
       <button
         onClick={action.onClick}
         className={cn(
-          "fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg",
+          "fixed z-[40] h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg",
+          positionClasses,
           "flex items-center justify-center",
           "hover:bg-primary/90 active:scale-95 transition-all",
           className
@@ -42,33 +58,45 @@ export function FloatingActionButton({ actions, className }: FloatingActionButto
   return (
     <>
       {/* Backdrop */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+      <div
+        className={cn(
+          "fixed inset-0 z-[35] bg-background/80 backdrop-blur-sm transition-opacity duration-200",
+          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        )}
+        onClick={() => setIsOpen(false)}
+        aria-hidden={!isOpen}
+      />
 
       {/* Action buttons */}
-      <div className={cn(
-        "fixed bottom-20 right-4 z-50 flex flex-col-reverse items-end gap-3",
-        className
-      )}>
-        {isOpen && actions.map((action, index) => (
+      <div
+        className={cn(
+          "fixed z-[40] flex flex-col items-end gap-3",
+          positionClasses,
+          className
+        )}
+      >
+        {actions.map((action, index) => (
           <button
-            key={index}
+            key={action.label}
             onClick={() => {
               action.onClick();
               setIsOpen(false);
             }}
+            aria-hidden={!isOpen}
+            tabIndex={isOpen ? 0 : -1}
             className={cn(
               "flex items-center gap-3 pl-4 pr-3 py-3 rounded-full shadow-lg",
-              "animate-in fade-in slide-in-from-bottom-2 duration-200",
+              "transition-[opacity,transform] duration-200 ease-out will-change-transform",
+              isOpen
+                ? "opacity-100 translate-y-0 scale-100 pointer-events-auto"
+                : "opacity-0 translate-y-2 scale-95 pointer-events-none",
               action.primary 
                 ? "bg-primary text-primary-foreground"
                 : "bg-card text-foreground border border-border"
             )}
-            style={{ animationDelay: `${index * 50}ms` }}
+            style={{
+              transitionDelay: isOpen ? `${index * 40}ms` : "0ms",
+            }}
           >
             <span className="text-sm font-medium whitespace-nowrap">{action.label}</span>
             <div className="h-10 w-10 rounded-full bg-secondary/20 flex items-center justify-center">
@@ -83,12 +111,25 @@ export function FloatingActionButton({ actions, className }: FloatingActionButto
           className={cn(
             "h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg",
             "flex items-center justify-center",
-            "hover:bg-primary/90 active:scale-95 transition-all",
-            isOpen && "rotate-45"
+            "hover:bg-primary/90 active:scale-95 transition-[transform,background-color] duration-300 ease-out"
           )}
           aria-label={isOpen ? "Close menu" : "Open menu"}
+          aria-expanded={isOpen}
         >
-          {isOpen ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+          <span className="relative h-6 w-6">
+            <Plus
+              className={cn(
+                "absolute inset-0 h-6 w-6 transition-all duration-200 ease-out",
+                isOpen ? "opacity-0 rotate-90 scale-75" : "opacity-100 rotate-0 scale-100"
+              )}
+            />
+            <X
+              className={cn(
+                "absolute inset-0 h-6 w-6 transition-all duration-200 ease-out",
+                isOpen ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-75"
+              )}
+            />
+          </span>
         </button>
       </div>
     </>

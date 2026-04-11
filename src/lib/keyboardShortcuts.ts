@@ -53,6 +53,7 @@ export function resolvePrefixedShortcut(
     if (normalizedKey === "c") return { type: "navigate", path: "/schedule" };
     if (normalizedKey === "u") return { type: "navigate", path: "/customers" };
     if (normalizedKey === "s") return { type: "navigate", path: "/settings" };
+    if (normalizedKey === "i" && isManager) return { type: "navigate", path: "/inbox" };
     if (normalizedKey === "l" && isManager) return { type: "navigate", path: "/leads" };
     if (normalizedKey === "p" && isManager) return { type: "navigate", path: "/payments" };
     return null;
@@ -79,7 +80,7 @@ export function getKeyboardShortcutHelp(isManager: boolean): string[] {
   ];
 
   if (isManager) {
-    shortcuts.push("G then L: Leads", "G then P: Payments", "N then E: New estimate", "N then I: New invoice");
+    shortcuts.push("G then I: Inbox", "G then L: Leads", "G then P: Payments", "N then E: New estimate", "N then I: New invoice");
   }
 
   return shortcuts;

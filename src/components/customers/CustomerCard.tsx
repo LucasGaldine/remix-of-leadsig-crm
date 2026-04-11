@@ -1,4 +1,5 @@
-import { Phone, MapPin, ChevronRight } from "lucide-react";
+import { User } from "lucide-react";
+import { UnifiedActivityCard } from "@/components/activity/UnifiedActivityCard";
 
 export interface CustomerCardData {
   id: string;
@@ -12,36 +13,22 @@ export interface CustomerCardData {
 interface CustomerCardProps {
   customer: CustomerCardData;
   onClick: () => void;
+  className?: string;
 }
 
-export function CustomerCard({ customer, onClick }: CustomerCardProps) {
+export function CustomerCard({ customer, onClick, className }: CustomerCardProps) {
   const location = [customer.address, customer.city].filter(Boolean).join(", ");
+  const subtitle = `${customer.phone || "No phone"} | ${location || "No address"}`;
 
   return (
-    <button
+    <UnifiedActivityCard
+      icon={<User className="h-5 w-5 text-sky-600" />}
+      title={customer.name}
+      subtitle={subtitle}
+      statusLabel="Client"
+      tone="neutral"
       onClick={onClick}
-      className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
-    >
-      <div className="flex items-center justify-between">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-foreground truncate">{customer.name}</h3>
-          <div className="mt-1 space-y-0.5">
-            {customer.phone && (
-              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5 shrink-0" />
-                {customer.phone}
-              </p>
-            )}
-            {location && (
-              <p className="text-sm text-muted-foreground flex items-center gap-1.5 truncate">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                {location}
-              </p>
-            )}
-          </div>
-        </div>
-        <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 ml-2" />
-      </div>
-    </button>
+      className={className}
+    />
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -12,16 +12,13 @@ import { useQualifiedLeads, usePendingApprovalEstimates, useActiveJobs } from "@
 import { useDashboardPreferences } from "@/hooks/useDashboardPreferences";
 import { format } from "date-fns";
 import { formatDistanceToNow } from "date-fns";
-import { Loader as Loader2, ChevronRight, Briefcase, PlusCircle } from "lucide-react";
+import { Loader as Loader2, ChevronRight } from "lucide-react";
 import { DashboardVisuals } from "@/components/dashboard/DashboardVisuals";
 import CrewDashboard from "./CrewDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useCustomersNeedingAttention } from "@/hooks/useCustomersNeedingAttention";
-import { CustomerCard } from "@/components/customers/CustomerCard";
-import { Button } from "@/components/ui/button";
-import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
-import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
+import { openMapsWithAddress } from "@/lib/openMaps";
+import { MainPageQuickActions } from "@/components/layout/MainPageQuickActions";
 
 
 function getGreeting(): string {
@@ -39,9 +36,6 @@ export default function Index() {
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading, refetch: refetchLeads } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
-  const { data: customersData = [], isLoading: customersLoading } = useCustomersNeedingAttention();
-  const [addLeadOpen, setAddLeadOpen] = useState(false);
-  const [addJobOpen, setAddJobOpen] = useState(false);
 
   const SECTION_LIMIT = 3;
 
@@ -80,6 +74,16 @@ export default function Index() {
     } else {
       navigate(`/leads/${leadId}`);
     }
+  };
+
+  const openPhoneCall = (phone?: string | null) => {
+    if (!phone) return;
+    window.open(`tel:${phone}`);
+  };
+
+  const openTextMessage = (phone?: string | null) => {
+    if (!phone) return;
+    window.open(`sms:${phone}`);
   };
 
   const formatLeadForCard = (lead: any): Lead => ({
@@ -124,16 +128,6 @@ export default function Index() {
           <div className="min-w-[16rem] flex-1 flex flex-col gap-2">
             <h1 className="text-4xl font-semibold tracking-tight">{getGreeting()}{firstName ? `, ${firstName}` : ""}</h1>
             <p className=" text-muted-foreground">{format(new Date(), "EEEE, MMMM d")}</p>
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <Button onClick={() => setAddLeadOpen(true)} size="sm" className="gap-2">
-              <PlusCircle className="h-4 w-4" />
-              Add Lead
-            </Button>
-            <Button onClick={() => setAddJobOpen(true)} size="sm" variant="outline" className="gap-2">
-              <Briefcase className="h-4 w-4" />
-              Add Job
-            </Button>
           </div>
         </div>
 
@@ -190,148 +184,127 @@ export default function Index() {
         <div className="flex flex-wrap gap-8">
 
         {sections.includes("todays_jobs") && (
-          <section className="flex-1">
-            <SectionHeader
-              title="Today's Jobs"
-              count={activeJobsData.length}
-              action={{ label: "View all", onClick: () => navigate("/jobs") }}
-              className="mb-3"
-            />
-            {activeJobsLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <section className="flex-1 min-w-[320px]">
+            <div className="card-elevated rounded-lg overflow-hidden">
+              <div className="border-b border-border p-4">
+                <SectionHeader
+                  title="Today's Jobs"
+                  count={activeJobsData.length}
+                  action={{ label: "View all", onClick: () => navigate("/jobs") }}
+                />
               </div>
-            ) : activeJobsData.length === 0 ? (
-              <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-4">No jobs today</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {activeJobsData.slice(0, SECTION_LIMIT).map((job) => (
-                    <JobCard
-                      key={job.id}
-                      job={job}
-                      onClick={() => navigate(`/jobs/${job.id}`)}
-                    />
-                  ))}
+              {activeJobsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-                {activeJobsData.length > SECTION_LIMIT && (
-                  <button
-                    onClick={() => navigate("/jobs")}
-                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                  >
-                    View {activeJobsData.length - SECTION_LIMIT} more
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                )}
-              </>
-            )}
+              ) : activeJobsData.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className="text-4">No jobs today</p>
+                </div>
+              ) : (
+                <>
+                  <div className="divide-y divide-border">
+                    {activeJobsData.slice(0, SECTION_LIMIT).map((job) => (
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        onClick={() => navigate(`/jobs/${job.id}`)}
+                        onCall={job.phone || job.customer?.phone ? () => openPhoneCall(job.phone || job.customer?.phone) : undefined}
+                        onMessage={job.phone || job.customer?.phone ? () => openTextMessage(job.phone || job.customer?.phone) : undefined}
+                        onNavigate={
+                          [job.address, job.city, job.state, job.customer?.address].filter(Boolean).length > 0
+                            ? () =>
+                                openMapsWithAddress(
+                                  [job.address, job.city, job.state, job.customer?.address]
+                                    .filter(Boolean)
+                                    .join(", "),
+                                )
+                            : undefined
+                        }
+                        showQuickActions
+                        className="rounded-none border-0 bg-transparent shadow-none hover:bg-accent/40"
+                      />
+                    ))}
+                  </div>
+                  {activeJobsData.length > SECTION_LIMIT && (
+                    <button
+                      onClick={() => navigate("/jobs")}
+                      className="w-full border-t border-border flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                      View {activeJobsData.length - SECTION_LIMIT} more
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </section>
         )}
 
         {sections.includes("qualified_leads") && (
-          <section className="flex-1">
-            <SectionHeader
-              title="Qualified Leads"
-              count={qualifiedLeads.length}
-              action={{ label: "View all", onClick: () => navigate("/leads") }}
-              className="mb-3"
-            />
-            {leadsLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <section className="flex-1 min-w-[320px]">
+            <div className="card-elevated rounded-lg overflow-hidden">
+              <div className="border-b border-border p-4">
+                <SectionHeader
+                  title="Qualified Leads"
+                  count={qualifiedLeads.length}
+                  action={{ label: "View all", onClick: () => navigate("/leads") }}
+                />
               </div>
-            ) : qualifiedLeads.length === 0 ? (
-              <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No qualified leads at the moment</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {qualifiedLeads.slice(0, SECTION_LIMIT).map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      onClick={() => handleLeadClick(lead.id)}
-                      onCall={() => window.open(`tel:${lead.phone}`)}
-                      onMessage={() => window.open(`sms:${lead.phone}`)}
-                      onQualify={() => handleQualify(lead.id)}
-                      onViewEstimate={() => handleViewEstimate(lead.id)}
-                    />
-                  ))}
+              {leadsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-                {qualifiedLeads.length > SECTION_LIMIT && (
-                  <button
-                    onClick={() => navigate("/leads")}
-                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                  >
-                    View {qualifiedLeads.length - SECTION_LIMIT} more
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                )}
-              </>
-            )}
+              ) : qualifiedLeads.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className="text-muted-foreground">No qualified leads at the moment</p>
+                </div>
+              ) : (
+                <>
+                  <div className="divide-y divide-border">
+                    {qualifiedLeads.slice(0, SECTION_LIMIT).map((lead) => (
+                      <LeadCard
+                        key={lead.id}
+                        lead={lead}
+                        onClick={() => handleLeadClick(lead.id)}
+                        onCall={lead.phone ? () => openPhoneCall(lead.phone) : undefined}
+                        onMessage={lead.phone ? () => openTextMessage(lead.phone) : undefined}
+                        onNavigate={lead.location && lead.location !== "Unknown" ? () => openMapsWithAddress(lead.location) : undefined}
+                        showQuickActions
+                        onQualify={() => handleQualify(lead.id)}
+                        onViewEstimate={() => handleViewEstimate(lead.id)}
+                        className="rounded-none border-0 bg-transparent shadow-none hover:bg-accent/40"
+                      />
+                    ))}
+                  </div>
+                  {qualifiedLeads.length > SECTION_LIMIT && (
+                    <button
+                      onClick={() => navigate("/leads")}
+                      className="w-full border-t border-border flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                      View {qualifiedLeads.length - SECTION_LIMIT} more
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </section>
         )}
 
         </div>
 
-        {sections.includes("customers") && (
-          <section>
-            <SectionHeader
-              title="Clients"
-              count={customersData.length}
-              action={{ label: "View all", onClick: () => navigate("/customers") }}
-              className="mb-3"
-            />
-            {customersLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : customersData.length === 0 ? (
-              <div className="card-elevated rounded-lg p-6 text-center">
-                <p className="text-muted-foreground">No clients yet</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {customersData.slice(0, SECTION_LIMIT).map((customer) => (
-                    <CustomerCard
-                      key={customer.id}
-                      customer={customer}
-                      onClick={() => navigate(`/customers/${customer.id}`)}
-                    />
-                  ))}
-                </div>
-                {customersData.length > SECTION_LIMIT && (
-                  <button
-                    onClick={() => navigate("/customers")}
-                    className="w-full flex items-center justify-center gap-1 py-3 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                  >
-                    View {customersData.length - SECTION_LIMIT} more
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                )}
-              </>
-            )}
-          </section>
-        )}
         </div>
 
         {/* Analytics Visuals */}
         <DashboardVisuals />
       </main>
 
-      <AddLeadDialog
-        open={addLeadOpen}
-        onOpenChange={setAddLeadOpen}
+      <MainPageQuickActions
         onLeadCreated={(leadId) => {
           if (leadId) navigate(`/leads/${leadId}`);
         }}
       />
-
-      <CreateJobDialog open={addJobOpen} onOpenChange={setAddJobOpen} />
 
       <MobileNav />
     </div>

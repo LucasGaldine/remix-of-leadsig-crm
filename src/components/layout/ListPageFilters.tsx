@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ interface ListPageFiltersProps {
   tabs: FilterTab[];
   activeTab: string;
   onTabChange: (value: string) => void;
+  searchActions?: ReactNode;
   className?: string;
 }
 
@@ -26,20 +28,24 @@ export function ListPageFilters({
   tabs,
   activeTab,
   onTabChange,
+  searchActions,
   className,
 }: ListPageFiltersProps) {
   return (
     <div className={cn("", className)}>
       <div className="px-4 py-3">
-        <div className="relative shadow-sm rounded-lg">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder={searchPlaceholder}
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-10"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 shadow-sm rounded-lg">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder={searchPlaceholder}
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          {searchActions ? <div className="shrink-0">{searchActions}</div> : null}
         </div>
       </div>
 

@@ -6,13 +6,14 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Users, X, Search } from "lucide-react";
+import { FileText, Users, X, Search, Repeat } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { LineItemsEstimateDialog } from "./LineItemsEstimateDialog";
+import { MakeRecurringDialog } from "@/components/jobs/MakeRecurringDialog";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 import { buildDefaultJobName } from "@/lib/defaultJobName";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -66,6 +67,8 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
   const [selectedSchedulesForCrew, setSelectedSchedulesForCrew] = useState<number[]>([]);
   const [crewSearchQuery, setCrewSearchQuery] = useState("");
   const [createAsRegularJob, setCreateAsRegularJob] = useState(false);
+  const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
+  const [preparingRecurring, setPreparingRecurring] = useState(false);
 
   const { data: crewMembers = [] } = useTeamMembers();
 
@@ -246,6 +249,83 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
     onSuccess();
   };
 
+  const handleMakeRecurringInstead = async () => {
+    if (!user || !currentAccount) {
+      toast.error("Authentication required");
+      return;
+    }
+
+    if (preparingRecurring) {
+      return;
+    }
+
+    setPreparingRecurring(true);
+
+    try {
+      const { data: currentLead, error: currentLeadError } = await supabase
+        .from("leads")
+        .select("status")
+        .eq("id", lead.id)
+        .maybeSingle();
+
+      if (currentLeadError) {
+        throw new Error(`Failed to prepare recurring job: ${currentLeadError.message}`);
+      }
+
+      const { id: customerId } = await findOrCreateCustomer({
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email,
+        address: lead.address || lead.city,
+        city: lead.city,
+        created_by: user.id,
+        account_id: currentAccount.id,
+      });
+
+      const updatePayload =
+        currentLead?.status === "job"
+          ? {
+              customer_id: customerId,
+              is_estimate_visit: false,
+              approval_status: "approved",
+            }
+          : {
+              customer_id: customerId,
+              status: "job",
+              is_estimate_visit: false,
+              name: buildDefaultJobName({
+                customerName: lead.name,
+                serviceType: lead.service_type,
+                isEstimateVisit: false,
+              }),
+              approval_status: "approved",
+            };
+
+      const { error: convertError } = await supabase
+        .from("leads")
+        .update(updatePayload)
+        .eq("id", lead.id);
+
+      if (convertError) {
+        if (convertError.message.includes("row-level security") || convertError.message.includes("policy")) {
+          throw new Error("Unable to prepare recurring job. Please check your permissions or contact support.");
+        }
+        throw new Error(`Failed to prepare recurring job: ${convertError.message}`);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
+
+      onOpenChange(false);
+      setMakeRecurringOpen(true);
+    } catch (error) {
+      console.error("Error preparing recurring job:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to prepare recurring job");
+    } finally {
+      setPreparingRecurring(false);
+    }
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -262,6 +342,18 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
               schedules={addedSchedules}
               onSchedulesChange={setAddedSchedules}
             />
+
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                onClick={handleMakeRecurringInstead}
+                disabled={scheduling || preparingRecurring}
+                className="gap-1.5"
+              >
+                <Repeat className="h-4 w-4" />
+                {preparingRecurring ? "Preparing..." : "Make Recurring Instead"}
+              </Button>
+            </div>
 
             {!hasEstimate && (
               <div className="pt-2 border-t border-border">
@@ -302,6 +394,18 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
         lead={lead}
         onSuccess={handleLineItemsSuccess}
       />
+
+      {makeRecurringOpen && (
+        <MakeRecurringDialog
+          open={makeRecurringOpen}
+          onOpenChange={setMakeRecurringOpen}
+          jobId={lead.id}
+          jobSchedules={addedSchedules.map((schedule) => ({
+            scheduled_time_start: schedule.timeStart || null,
+            scheduled_time_end: schedule.timeEnd || null,
+          }))}
+        />
+      )}
 
       <AlertDialog open={confirmNoCrewOpen} onOpenChange={setConfirmNoCrewOpen}>
         <AlertDialogContent>

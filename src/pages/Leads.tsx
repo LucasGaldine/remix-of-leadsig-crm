@@ -1,10 +1,8 @@
-import { useState } from "react";
-import { Clock, Circle as XCircle, UserPlus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowUpDown, Check, Clock, Circle as XCircle, Magnet, Search, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
-import { ListPageFilters } from "@/components/layout/ListPageFilters";
-import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
+import { MainPageQuickActions } from "@/components/layout/MainPageQuickActions";
 import { LeadCard, Lead, LeadStatus } from "@/components/leads/LeadCard";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -15,18 +13,21 @@ import { useRejectedLeads } from "@/hooks/useRejectedLeads";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { sortLeadItems, type LeadSortOption } from "@/lib/pageSorting";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 type FilterStatus = "all" | "archive" | LeadStatus;
+type LeadListItem = Lead & { createdAtRaw: string };
 
 export default function Leads() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
-  const [showAddLead, setShowAddLead] = useState(false);
+  const [sortBy, setSortBy] = useState<LeadSortOption>("newest");
 
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const { data: leadsData, isLoading, refetch } = useLeads();
   const { data: counts, refetch: refetchCounts } = useLeadCounts();
   const { data: pendingCount = 0 } = usePendingLeadsCount();
@@ -64,7 +65,7 @@ export default function Leads() {
     }
   };
 
-  const mapLead = (lead: any): Lead => {
+  const mapLead = (lead: any): LeadListItem => {
     // Archived rows can include both legacy leads and jobs from the unified table.
     // Treat cancelled/archived (and estimate-linked rows) as job records for routing and labels.
     const hasJobSignals =
@@ -94,6 +95,7 @@ export default function Leads() {
       location: [lead.address, lead.city].filter(Boolean).join(", ") || "Unknown",
       source: lead.source || "Unknown",
       createdAt: formatDistanceToNow(new Date(lead.created_at), { addSuffix: true }),
+      createdAtRaw: lead.created_at,
       status,
       qualificationScore: lead.qualification_score || undefined,
       customer: lead.customer ? {
@@ -103,29 +105,37 @@ export default function Leads() {
     };
   };
 
-  const allLeads: Lead[] = (leadsData || []).map(mapLead);
-  const archivedLeads: Lead[] = (archivedLeadsData || []).map(mapLead);
+  const allLeads: LeadListItem[] = (leadsData || []).map(mapLead);
+  const archivedLeads: LeadListItem[] = (archivedLeadsData || []).map(mapLead);
 
-  const filteredLeads = allLeads.filter((lead) => {
-    const matchesSearch =
-      lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.serviceType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.location.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredLeads = useMemo(() => {
+    const matchingLeads = allLeads.filter((lead) => {
+      const matchesSearch =
+        lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.serviceType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.location.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesFilter =
-      activeFilter === "all" || lead.status === activeFilter;
+      const matchesFilter =
+        activeFilter === "all" || lead.status === activeFilter;
 
-    return matchesSearch && matchesFilter;
-  });
+      return matchesSearch && matchesFilter;
+    });
 
-  const filteredArchivedLeads = archivedLeads.filter((lead) => {
-    if (!searchQuery) return true;
-    return (
-      lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.serviceType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.location.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  });
+    return sortLeadItems(matchingLeads, sortBy);
+  }, [allLeads, searchQuery, activeFilter, sortBy]);
+
+  const filteredArchivedLeads = useMemo(() => {
+    const matchingArchivedLeads = archivedLeads.filter((lead) => {
+      if (!searchQuery) return true;
+      return (
+        lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.serviceType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.location.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    });
+
+    return sortLeadItems(matchingArchivedLeads, sortBy);
+  }, [archivedLeads, searchQuery, sortBy]);
 
   const handleUnarchive = async (leadId: string, currentStatus: LeadStatus) => {
     const newStatus = currentStatus === "archived" ? "completed" : "new";
@@ -176,12 +186,28 @@ export default function Leads() {
   const totalCount = counts?.all || 0;
   const isArchiveTab = activeFilter === "archive";
   const detailPathForLead = (lead: Lead) => (lead.isJob ? `/jobs/${lead.id}` : `/leads/${lead.id}`);
+  const leadSortOptions: Array<{ value: LeadSortOption; label: string }> = [
+    { value: "newest", label: "Newest first" },
+    { value: "oldest", label: "Oldest first" },
+    { value: "name_asc", label: "Name A-Z" },
+    { value: "name_desc", label: "Name Z-A" },
+    { value: "value_desc", label: "Value high-low" },
+    { value: "value_asc", label: "Value low-high" },
+  ];
+  const leadTabs: Array<{ value: FilterStatus; label: string; count: number; alignRight?: boolean }> = [
+    { value: "all", label: "All", count: counts?.all || 0 },
+    { value: "new", label: "New", count: counts?.new || 0 },
+    { value: "contacted", label: "Contacted", count: counts?.contacted || 0 },
+    { value: "qualified", label: "Qualified", count: counts?.qualified || 0 },
+    { value: "archive", label: "Archive", count: counts?.archive || 0, alignRight: true },
+  ];
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
         title="Leads"
         subtitle={`${qualifiedCount} qualified, ${totalCount} total`}
+        hideTitle
       />
 
       {/* Quick Access Buttons */}
@@ -217,107 +243,148 @@ export default function Leads() {
         </div>
       )}
 
-      <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
-
-  
-      <ListPageFilters
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        searchPlaceholder="Search leads..."
-        className="rounded-lg"
-        tabs={[
-          { value: "all", label: "All", count: counts?.all || 0 },
-          { value: "new", label: "New", count: counts?.new || 0 },
-          { value: "contacted", label: "Contacted", count: counts?.contacted || 0 },
-          { value: "qualified", label: "Qualified", count: counts?.qualified || 0 },
-          { value: "archive", label: "Archive", count: counts?.archive || 0, location:"right" },
-        ]}
-        activeTab={activeFilter}
-        onTabChange={(v) => setActiveFilter(v as FilterStatus)}
-      />
-
-
-      </div>
-
-      <main className="p-4 max-w-[var(--content-max-width)] m-auto">
-        {isArchiveTab ? (
-          <>
-            {archiveLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      <div className="max-w-[var(--content-max-width)] m-auto p-4">
+        <section className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="px-4 pt-4 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search leads..."
+                  className="pl-10"
+                />
               </div>
-            ) : (
-              <>
-                {filteredArchivedLeads.length > 0 && (
-                  <div className="flex justify-end mb-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                      onClick={() => setDeleteAllDialogOpen(true)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete All
-                    </Button>
-                  </div>
-                )}
-                <div className="space-y-3">
-                  {filteredArchivedLeads.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      archiveMode
-                      onClick={() => navigate(detailPathForLead(lead))}
-                      onUnarchive={() => handleUnarchive(lead.id, lead.status)}
-                      onDelete={() => handleDeleteArchived(lead.id)}
-                    />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="Sort leads">
+                    <ArrowUpDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {leadSortOptions.map((option) => (
+                    <DropdownMenuItem key={option.value} onSelect={() => setSortBy(option.value)}>
+                      <span className="mr-2 inline-flex h-4 w-4 items-center justify-center">
+                        {sortBy === option.value ? <Check className="h-4 w-4" /> : null}
+                      </span>
+                      {option.label}
+                    </DropdownMenuItem>
                   ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          <div className="px-4 pt-2 pb-3 overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-2 min-w-max">
+              {leadTabs.map((tab) => {
+                const isActive = activeFilter === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setActiveFilter(tab.value)}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+                      tab.alignRight && "ml-auto",
+                    )}
+                  >
+                    <span>{tab.label}</span>
+                    <span className={cn("rounded-full px-1.5 py-0.5 text-xs", isActive ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground")}>{tab.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="px-4 pt-5 pb-3 border-t border-border">
+            <div className="flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-2">
+                <Magnet className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Leads</p>
+              </div>
+              {isArchiveTab && filteredArchivedLeads.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={() => setDeleteAllDialogOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete All
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {isArchiveTab ? (
+            archiveLoading ? (
+              <div className="px-4 pb-6">
+                <div className="flex items-center justify-center py-10">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                 </div>
-                {filteredArchivedLeads.length === 0 && (
-                  <div className="text-center py-12">
-                    <p className="text-muted-foreground">No archived leads or jobs</p>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+              </div>
+            ) : filteredArchivedLeads.length === 0 ? (
+              <div className="px-4 pb-6">
+                <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  No archived leads or jobs.
+                </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {filteredLeads.map((lead) => (
+              <div>
+                {filteredArchivedLeads.map((lead, index) => (
                   <LeadCard
                     key={lead.id}
                     lead={lead}
-                    onClick={() => navigate(`/leads/${lead.id}`)}
-                    onCall={() => window.open(`tel:${lead.phone}`)}
-                    onMessage={() => window.open(`sms:${lead.phone}`)}
-                    onQualify={() => handleQualify(lead.id)}
-                    onViewEstimate={() => handleViewEstimate(lead.id)}
+                    archiveMode
+                    onClick={() => navigate(detailPathForLead(lead))}
+                    onUnarchive={() => handleUnarchive(lead.id, lead.status)}
+                    onDelete={() => handleDeleteArchived(lead.id)}
+                    className={cn(
+                      "rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-accent/40",
+                      index > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border",
+                    )}
                   />
                 ))}
               </div>
-            )}
-
-            {!isLoading && filteredLeads.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">
-                  {allLeads.length === 0 ? "No leads yet" : "No leads found"}
-                </p>
-                {allLeads.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Leads will appear here when they come in via API or are created manually.
-                  </p>
-                )}
+            )
+          ) : isLoading ? (
+            <div className="px-4 pb-6">
+              <div className="flex items-center justify-center py-10">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
               </div>
-            )}
-          </>
-        )}
-      </main>
+            </div>
+          ) : filteredLeads.length === 0 ? (
+            <div className="px-4 pb-6">
+              <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                {allLeads.length === 0 ? "No leads yet. Leads will appear here when they come in via API or are created manually." : "No leads found."}
+              </div>
+            </div>
+          ) : (
+            <div>
+              {filteredLeads.map((lead, index) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onClick={() => navigate(detailPathForLead(lead))}
+                  onCall={() => window.open(`tel:${lead.phone}`)}
+                  onMessage={() => window.open(`sms:${lead.phone}`)}
+                  onQualify={() => handleQualify(lead.id)}
+                  onViewEstimate={() => handleViewEstimate(lead.id)}
+                  className={cn(
+                    "rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-accent/40",
+                    index > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border",
+                  )}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       <AlertDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
         <AlertDialogContent>
@@ -340,24 +407,13 @@ export default function Leads() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <FloatingActionButton
-        actions={[
-          {
-            icon: <UserPlus className="h-5 w-5" />,
-            label: "Add Lead",
-            onClick: () => setShowAddLead(true),
-            primary: true,
-          },
-        ]}
-      />
-
-      <AddLeadDialog
-        open={showAddLead}
-        onOpenChange={setShowAddLead}
+      <MainPageQuickActions
         onLeadCreated={(leadId) => {
           refetch();
           refetchCounts();
-          navigate(`/leads/${leadId}`);
+          if (leadId) {
+            navigate(`/leads/${leadId}`);
+          }
         }}
       />
 

@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import EstimateDetail from "@/pages/EstimateDetail";
 
+const { generateEstimatePDF } = vi.hoisted(() => ({
+  generateEstimatePDF: vi.fn().mockResolvedValue(undefined),
+}));
+
 const buildEstimate = (overrides: Record<string, unknown> = {}) => ({
   id: "est_1",
   status: "sent",
@@ -145,6 +149,27 @@ vi.mock("@/components/layout/MobileNav", () => ({
   MobileNav: () => <nav aria-label="mobile navigation" />,
 }));
 
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: any }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: any }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: any }) => <div>{children}</div>,
+  DropdownMenuItem: ({
+    children,
+    onClick,
+    className,
+    disabled,
+  }: {
+    children: any;
+    onClick?: () => void;
+    className?: string;
+    disabled?: boolean;
+  }) => (
+    <button type="button" onClick={onClick} className={className} disabled={disabled}>
+      {children}
+    </button>
+  ),
+}));
+
 vi.mock("@/components/payments/EditEstimateModal", () => ({
   EditEstimateModal: () => null,
 }));
@@ -158,7 +183,7 @@ vi.mock("@/components/jobs/JobInvoiceCard", () => ({
 }));
 
 vi.mock("@/lib/pdfGenerator", () => ({
-  generateEstimatePDF: vi.fn().mockResolvedValue(undefined),
+  generateEstimatePDF,
 }));
 
 vi.mock("@/lib/photoCompression", () => ({
@@ -262,6 +287,7 @@ describe("EstimateDetail layout", () => {
     estimateVersionsOrderMock.mockClear();
     estimateVersionsEqMock.mockClear();
     estimateVersionsSelectMock.mockClear();
+    generateEstimatePDF.mockClear();
     storageUploadMock.mockClear();
     storageGetPublicUrlMock.mockClear();
     storageRemoveMock.mockClear();
@@ -332,7 +358,11 @@ describe("EstimateDetail layout", () => {
     expect(headerActions).toHaveClass("flex-nowrap");
     expect(within(headerActions).getByRole("button", { name: /^Approve$/i })).toBeInTheDocument();
     expect(within(headerActions).getByRole("button", { name: /^Client Portal$/i })).toBeInTheDocument();
-    expect(within(headerActions).getByRole("button", { name: /^Download$/i })).toBeInTheDocument();
+    const headerMenuButton = within(headerActions).getByRole("button", {
+      name: /open estimate actions menu/i,
+    });
+    expect(headerMenuButton).toBeInTheDocument();
+    expect(within(headerActions).getByRole("button", { name: /download pdf/i })).toBeInTheDocument();
 
     expect(within(rightColumn).getByText("Client")).toBeInTheDocument();
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
@@ -366,6 +396,136 @@ describe("EstimateDetail layout", () => {
     const rightColumn = await screen.findByTestId("estimate-details-right-column");
     expect(within(rightColumn).getByText("Scheduled")).toBeInTheDocument();
     expect(within(rightColumn).queryByText("Unscheduled")).not.toBeInTheDocument();
+  });
+
+  it("downloads the currently selected estimate version from the actions menu", async () => {
+    mockEstimate = buildEstimate({
+      has_pending_changes: false,
+      original_total: null,
+      original_line_items: null,
+    });
+
+    estimateVersionsOrderMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: "ver_1",
+          name: "Version 1",
+          subtotal: 100,
+          tax_rate: 0.1,
+          tax: 10,
+          discount: 0,
+          total: 110,
+          profit_margin: 0,
+          surcharge: 0,
+          notes: "Version 1 notes",
+          line_items: [
+            {
+              name: "Version 1 item",
+              description: "Version 1 description",
+              quantity: 1,
+              unit: "each",
+              unit_price: 100,
+              total: 100,
+              sort_order: 0,
+              category: "materials",
+            },
+          ],
+          created_at: "2026-04-01T00:00:00.000Z",
+          updated_at: "2026-04-01T00:00:00.000Z",
+        },
+        {
+          id: "ver_2",
+          name: "Version 2",
+          subtotal: 200,
+          tax_rate: 0.1,
+          tax: 20,
+          discount: 5,
+          total: 215,
+          profit_margin: 0,
+          surcharge: 0,
+          notes: "Version 2 notes",
+          line_items: [
+            {
+              name: "Version 2 item",
+              description: "Version 2 description",
+              quantity: 2,
+              unit: "each",
+              unit_price: 100,
+              total: 200,
+              sort_order: 0,
+              category: "labor",
+            },
+          ],
+          created_at: "2026-04-02T00:00:00.000Z",
+          updated_at: "2026-04-02T00:00:00.000Z",
+        },
+      ],
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/payments/estimates/est_1"]}>
+        <Routes>
+          <Route path="/payments/estimates/:id" element={<EstimateDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const versionTwoTab = await screen.findByRole("tab", { name: /version 2/i });
+    fireEvent.mouseDown(versionTwoTab);
+    fireEvent.click(versionTwoTab);
+
+    const headerMenuButton = screen.getByRole("button", { name: /open estimate actions menu/i });
+    expect(headerMenuButton).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /download pdf/i }));
+
+    await waitFor(() => {
+      expect(generateEstimatePDF).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lineItems: [
+            expect.objectContaining({
+              name: "Version 2 item",
+              description: "Version 2 description",
+              quantity: 2,
+              unit: "each",
+              unit_price: 100,
+              total: 200,
+            }),
+          ],
+          subtotal: 200,
+          taxRate: 0.1,
+          tax: 20,
+          discount: 5,
+          total: 215,
+          notes: "Version 2 notes",
+          createdAt: "2026-04-02T00:00:00.000Z",
+        }),
+      );
+    });
+  });
+
+  it("shows approved-estimate actions menu with only download pdf", async () => {
+    mockEstimate = buildEstimate({
+      has_pending_changes: false,
+      status: "accepted",
+      approved_via: "manual",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/payments/estimates/est_1"]}>
+        <Routes>
+          <Route path="/payments/estimates/:id" element={<EstimateDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const approvedMenuButton = await screen.findByRole("button", {
+      name: /open approved estimate actions menu/i,
+    });
+    expect(approvedMenuButton).toBeInTheDocument();
+
+    const downloadPdfButtons = screen.getAllByRole("button", { name: /download pdf/i });
+    expect(downloadPdfButtons).toHaveLength(2);
   });
 
   it("allows manual approval without a photo", async () => {

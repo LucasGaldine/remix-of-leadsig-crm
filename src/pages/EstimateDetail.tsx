@@ -345,10 +345,6 @@ export default function EstimateDetail() {
   const handleDownloadPDF = async () => {
     if (!estimate) return;
 
-    const activeLineItems = estimate.line_items.filter(
-      (item: any) => !item.is_change_order || item.change_order_type !== "deleted"
-    );
-
     await generateEstimatePDF({
       customerName: estimate.customer?.name || "Unknown Customer",
       jobName: estimate.job?.name || "",
@@ -357,7 +353,7 @@ export default function EstimateDetail() {
       companyLogoUrl: estimate.account?.logo_url || "",
       companyEmail: estimate.account?.company_email || "",
       companyPhone: estimate.account?.company_phone || "",
-      lineItems: activeLineItems.map((item: any) => ({
+      lineItems: displayLineItems.map((item: any) => ({
         name: item.name,
         description: item.description,
         quantity: item.quantity,
@@ -365,13 +361,13 @@ export default function EstimateDetail() {
         unit_price: item.unit_price,
         total: item.total,
       })),
-      subtotal: estimate.subtotal,
-      taxRate: estimate.tax_rate,
-      tax: estimate.tax,
-      discount: estimate.discount,
-      total: estimate.total,
-      notes: estimate.notes,
-      createdAt: estimate.created_at,
+      subtotal: displaySubtotal,
+      taxRate: displayTaxRate,
+      tax: displayTax,
+      discount: displayDiscount,
+      total: displayTotal,
+      notes: displayNotes || undefined,
+      createdAt: activeVersionSnapshot?.created_at || estimate.created_at,
       expiresAt: estimate.expires_at,
     });
 
@@ -1291,15 +1287,24 @@ export default function EstimateDetail() {
                 <Link2 className="h-4 w-4" />
                 {portalLoading ? "Generating..." : "Client Portal"}
               </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="gap-2 flex-1 sm:flex-none"
-                onClick={handleDownloadPDF}
-              >
-                <Download className="h-4 w-4" />
-                Download
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    aria-label="Open estimate actions menu"
+                  >
+                    <EllipsisVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => void handleDownloadPDF()}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PDF
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
           </div>
         </div>
       </div>
@@ -1510,9 +1515,29 @@ export default function EstimateDetail() {
                 )}
                 {showApprovedCard && (
                   <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Check className="h-4 w-4 text-emerald-600" />
-                      <h4 className="font-semibold text-foreground">Approved</h4>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-emerald-600" />
+                        <h4 className="font-semibold text-foreground">Approved</h4>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Open approved estimate actions menu"
+                          >
+                            <EllipsisVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => void handleDownloadPDF()}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Download PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {(estimate as any).approved_via === "customer_link"

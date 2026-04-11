@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,14 +24,16 @@ vi.mock("@/hooks/useCustomers", () => ({
 }));
 
 describe("Customers page FAB", () => {
-  it("shows a single add customer FAB without the intermediary action menu", async () => {
+  it("shows the main actions menu with add lead and add job", async () => {
     render(
       <MemoryRouter>
         <Customers />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /add customer/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /open menu/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+
+    expect(screen.getByRole("button", { name: /add lead/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add job/i })).toBeInTheDocument();
   });
 });

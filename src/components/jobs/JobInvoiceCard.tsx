@@ -91,10 +91,23 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   }, [dialogOpen, estimateTotal, invoices]);
 
   const totalInvoiced = roundCurrencyAmount(invoices.reduce((sum, inv) => sum + Number(inv.total), 0));
+  const totalToInvoice = roundCurrencyAmount(estimateTotal ?? 0);
   const remainingAmount = estimateTotal !== null && estimateTotal !== undefined
     ? roundCurrencyAmount(estimateTotal - totalInvoiced)
     : null;
   const sentInvoicesCount = invoices.filter((invoice) => invoice.status !== "draft").length;
+  const formattedTotalInvoiced = totalInvoiced.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const formattedTotalToInvoice = totalToInvoice.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   const handleOpenDialog = () => {
     setTitle("");
@@ -406,13 +419,9 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
           </div>
 
           <div className="mt-2 mb-6">
-            <p className="text-xl font-semibold leading-tight text-foreground">
-              +{totalInvoiced.toLocaleString("en-US", {
-                style: "currency",
-                currency: "USD",
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+            <p className="flex items-baseline gap-1 overflow-hidden whitespace-nowrap text-lg font-semibold leading-tight text-foreground sm:text-xl">
+              <span className="shrink-0">+{formattedTotalInvoiced}</span>
+              <span className="truncate text-xs font-medium text-muted-foreground sm:text-sm">/{formattedTotalToInvoice}</span>
             </p>
             <p className="mt-2 text-muted-foreground text-xs">
               {sentInvoicesCount} {sentInvoicesCount === 1 ? "invoice" : "invoices"} sent

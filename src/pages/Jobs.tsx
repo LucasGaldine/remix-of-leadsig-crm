@@ -1,22 +1,24 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
-import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
+import { MainPageQuickActions } from "@/components/layout/MainPageQuickActions";
 import { JobCard } from "@/components/jobs/JobCard";
-import { ListPageFilters } from "@/components/layout/ListPageFilters";
-import { Briefcase, Users, TriangleAlert as AlertTriangle, DollarSign, Building2, User } from "lucide-react";
+import { ArrowUpDown, Users, TriangleAlert as AlertTriangle, DollarSign, Building2, User, Check, Search, Briefcase } from "lucide-react";
 import { useJobs, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { sortJobItems, type JobSortOption } from "@/lib/pageSorting";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export default function Jobs() {
   const navigate = useNavigate();
   const { isManager, role } = useAuth();
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<JobSortOption>("newest");
   const [showMyJobsOnly, setShowMyJobsOnly] = useState<boolean>(() => {
     const saved = localStorage.getItem('jobs-view-preference');
     return saved === 'my-jobs';
@@ -39,31 +41,40 @@ export default function Jobs() {
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
 
   const jobs = useMemo(() => {
-    if (selectedStatus === "all") return allJobs;
+    let filteredJobs = allJobs;
+
+    if (selectedStatus === "all") {
+      return sortJobItems(filteredJobs, sortBy);
+    }
+
     if (selectedStatus === "unassigned") {
-      return allJobs.filter((job: any) => {
+      filteredJobs = allJobs.filter((job: any) => {
         const ds = job.display_status || job.status;
         return Boolean(job.has_unassigned_schedule) &&
           (ds === "unscheduled" || ds === "scheduled" || ds === "in_progress");
       });
+      return sortJobItems(filteredJobs, sortBy);
     }
     if (selectedStatus === "needs_invoice") {
-      return allJobs.filter((job: any) =>
+      filteredJobs = allJobs.filter((job: any) =>
         job.status === "completed" && !job.has_invoice && !job.is_estimate_visit
       );
+      return sortJobItems(filteredJobs, sortBy);
     }
     if (selectedStatus === "overdue") {
-      return allJobs.filter((job: any) => {
+      filteredJobs = allJobs.filter((job: any) => {
         const lastDate = job.last_scheduled_date || job.scheduled_date;
         const ds = job.display_status || job.status;
         return lastDate && lastDate < today && ds !== "completed";
       });
+      return sortJobItems(filteredJobs, sortBy);
     }
-    return allJobs.filter((job: any) => {
+    filteredJobs = allJobs.filter((job: any) => {
       const displayStatus = job.display_status || job.status;
       return displayStatus === selectedStatus;
     });
-  }, [allJobs, selectedStatus, today]);
+    return sortJobItems(filteredJobs, sortBy);
+  }, [allJobs, selectedStatus, sortBy, today]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {
@@ -104,6 +115,14 @@ export default function Jobs() {
     { value: "in_progress", label: "In Progress", count: statusCounts.in_progress },
     { value: "completed", label: "Completed", count: statusCounts.completed },
   ];
+  const jobSortOptions: Array<{ value: JobSortOption; label: string }> = [
+    { value: "newest", label: "Newest first" },
+    { value: "oldest", label: "Oldest first" },
+    { value: "scheduled_soonest", label: "Scheduled soonest" },
+    { value: "scheduled_latest", label: "Scheduled latest" },
+    { value: "name_asc", label: "Name A-Z" },
+    { value: "name_desc", label: "Name Z-A" },
+  ];
 
   const hasAlertBadges = statusCounts.unassigned > 0 || statusCounts.needs_invoice > 0 || statusCounts.overdue > 0;
 
@@ -112,6 +131,7 @@ export default function Jobs() {
       <PageHeader
         title="Jobs"
         subtitle={`$${revenue.toLocaleString()} collected this month`}
+        hideTitle
       />
 
       {canViewAllJobs && (
@@ -191,57 +211,101 @@ export default function Jobs() {
           </div>
         </div>
       )}
+      <div className="max-w-[var(--content-max-width)] m-auto p-4">
+        <section className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="px-4 pt-4 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search jobs..."
+                  className="pl-10"
+                />
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="Sort jobs">
+                    <ArrowUpDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {jobSortOptions.map((option) => (
+                    <DropdownMenuItem key={option.value} onSelect={() => setSortBy(option.value)}>
+                      <span className="mr-2 inline-flex h-4 w-4 items-center justify-center">
+                        {sortBy === option.value ? <Check className="h-4 w-4" /> : null}
+                      </span>
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
 
+          <div className="px-4 pt-2 pb-3 overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-2 min-w-max">
+              {statusTabs.map((tab) => {
+                const isActive = selectedStatus === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setSelectedStatus(tab.value)}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+                    )}
+                  >
+                    <span>{tab.label}</span>
+                    <span className={cn("rounded-full px-1.5 py-0.5 text-xs", isActive ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground")}>{tab.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      <div className="p-4 pb-0 max-w-[var(--content-max-width)] m-auto">
-      <ListPageFilters
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        searchPlaceholder="Search jobs..."
-        tabs={statusTabs}
-        activeTab={selectedStatus}
-        onTabChange={setSelectedStatus}
-        className="rounded-lg"
-      />
+          <div className="px-4 pt-5 pb-3 border-t border-border">
+            <div className="inline-flex items-center gap-2">
+              <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Jobs</p>
+            </div>
+          </div>
 
-        
-        
+          {isLoading ? (
+            <div className="px-4 pb-6">
+              <div className="flex items-center justify-center py-10">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+              </div>
+            </div>
+          ) : jobs.length === 0 ? (
+            <div className="px-4 pb-6">
+              <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                {searchQuery ? "No jobs match your search." : "No jobs found."}
+              </div>
+            </div>
+          ) : (
+            <div>
+              {jobs.map((job, index) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  onClick={() => navigate(`/jobs/${job.id}`)}
+                  className={cn(
+                    "rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-accent/40",
+                    index > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border",
+                  )}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
-      <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-          </div>
-        ) : jobs.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">
-              {searchQuery ? "No jobs match your search" : "No jobs found"}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {jobs.map((job) => (
-              <JobCard key={job.id} job={job} onClick={() => navigate(`/jobs/${job.id}`)} />
-            ))}
-          </div>
-        )}
-      </main>
-
-      {isManager() && (
-        <FloatingActionButton
-          actions={[
-            {
-              icon: <Briefcase className="h-5 w-5" />,
-              label: "Create Job",
-              onClick: () => setIsCreateJobOpen(true),
-              primary: true,
-            },
-          ]}
-        />
-      )}
-
-      <CreateJobDialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen} />
+      <MainPageQuickActions show={isManager()} />
       <MobileNav />
     </div>
   );

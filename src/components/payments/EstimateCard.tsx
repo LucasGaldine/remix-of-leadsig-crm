@@ -1,90 +1,53 @@
-// @ts-nocheck
-import { FileText, Check, Clock, AlertCircle, Receipt, XCircle, ClipboardCheck, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
+import { FileText, Receipt, Check, Clock, AlertCircle, XCircle } from "lucide-react";
 import { Estimate } from "@/types/payments";
+import { UnifiedActivityCard, type ActivityTone } from "@/components/activity/UnifiedActivityCard";
 
 interface EstimateCardProps {
   estimate: Estimate & { isFinalized?: boolean; needsReview?: boolean };
   onClick?: () => void;
+  className?: string;
 }
 
-function getDisplayConfig(estimate: Estimate & { isFinalized?: boolean }) {
+function getDisplayConfig(estimate: Estimate & { isFinalized?: boolean; needsReview?: boolean }): {
+  label: string;
+  tone: ActivityTone;
+  icon: ReactNode;
+} {
+  if (estimate.needsReview) {
+    return { label: "Visit Complete", tone: "attention", icon: <AlertCircle className="h-5 w-5 text-amber-600" /> };
+  }
   if (estimate.isFinalized) {
-    return { label: "Invoiced", className: "status-paid", icon: <Receipt className="h-3 w-3" /> };
+    return { label: "Invoiced", tone: "confirmed", icon: <Receipt className="h-5 w-5 text-amber-600" /> };
   }
   if (estimate.status === "accepted") {
-    return { label: "Approved", className: "status-confirmed", icon: <Check className="h-3 w-3" /> };
+    return { label: "Approved", tone: "confirmed", icon: <Check className="h-5 w-5 text-amber-600" /> };
   }
   if (estimate.status === "declined") {
-    return { label: "Declined", className: "bg-red-100 text-red-800", icon: <XCircle className="h-3 w-3" /> };
+    return { label: "Declined", tone: "attention", icon: <XCircle className="h-5 w-5 text-amber-600" /> };
   }
   if (estimate.status === "expired") {
-    return { label: "Expired", className: "status-attention", icon: <AlertCircle className="h-3 w-3" /> };
+    return { label: "Expired", tone: "attention", icon: <AlertCircle className="h-5 w-5 text-amber-600" /> };
   }
   if (estimate.status === "sent" || estimate.status === "viewed") {
-    return { label: "Not Approved", className: "status-pending", icon: <Clock className="h-3 w-3" /> };
+    return { label: "Not Approved", tone: "pending", icon: <Clock className="h-5 w-5 text-amber-600" /> };
   }
-  return { label: "Not Approved", className: "bg-secondary text-secondary-foreground", icon: <FileText className="h-3 w-3" /> };
+  return { label: "Draft", tone: "neutral", icon: <FileText className="h-5 w-5 text-amber-600" /> };
 }
 
-export function EstimateCard({ estimate, onClick }: EstimateCardProps) {
+export function EstimateCard({ estimate, onClick, className }: EstimateCardProps) {
   const config = getDisplayConfig(estimate);
+  const subtitle = `${estimate.createdAt} | $${estimate.total.toLocaleString()} | ${estimate.jobName || "No job assigned"}`;
 
   return (
-    <button
+    <UnifiedActivityCard
+      icon={config.icon}
+      title={estimate.customerName || "Estimate"}
+      subtitle={subtitle}
+      statusLabel={config.label}
+      tone={config.tone}
       onClick={onClick}
-      className={cn(
-        "w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all",
-        estimate.needsReview && "ring-1 ring-amber-400/50"
-      )}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className={cn("text-2xs px-2 py-0.5 rounded-full inline-flex items-center gap-1", config.className)}>
-              {config.icon}
-              {config.label}
-            </span>
-            {estimate.needsReview && (
-              <span className="text-2xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-amber-100 text-amber-800">
-                <ClipboardCheck className="h-3 w-3" />
-                Visit Complete
-              </span>
-            )}
-          </div>
-          
-         
-          <p className="text-2">
-            {estimate.jobName || "No job assigned"}
-           </p>
-            
-          <div className="flex flex-col text-5 gap-1 mt-2">
-            <p>
-              {estimate.lineItems.length} item{estimate.lineItems.length !== 1 ? 's' : ''}
-            </p>
-
-            <p>
-              Created {estimate.createdAt}
-            </p>
-          </div>
-
-        </div>
-
-         <div className="flex gap-4 items-center text-right ml-3">
-          <p className="text-2">
-            ${estimate.total.toLocaleString()}
-          </p>
-
-
-          {estimate.expiresAt && (
-            <p className="text-2xs text-muted-foreground">
-              Expires {estimate.expiresAt}
-            </p>
-          )}
-          <ChevronRight className="h-5 w-5 text-muted-foreground" />
-        </div>
-
-      </div>
-    </button>
+      className={className}
+    />
   );
 }

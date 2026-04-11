@@ -8,6 +8,7 @@ import {
   getDashboardDateRange,
   type DashboardVisualsTimeframe,
 } from "./dashboardVisualsDateRange";
+import { getEstimateCardTotal } from "@/lib/estimateCardTotals";
 
 type Timeframe = DashboardVisualsTimeframe;
 type DrilldownJobEntry = { id: string; name: string; amount: number };
@@ -347,26 +348,73 @@ export function useCostVsQuoted(timeframe: Timeframe) {
     queryFn: async () => {
       if (!currentAccount) return [];
 
-      const { data, error } = await supabase
+      const { data: leads, error: leadsError } = await supabase
         .from("leads")
-        .select("id, customer_id, name, estimated_value, actual_value, updated_at")
+        .select(`
+          id,
+          customer_id,
+          name,
+          updated_at,
+          estimates!job_id(
+            id,
+            total,
+            status,
+            updated_at,
+            created_at,
+            versions:estimate_versions(total)
+          )
+        `)
         .eq("account_id", currentAccount.id)
-        .not("estimated_value", "is", null)
         .not("customer_id", "is", null)
         .gte("updated_at", from.toISOString())
         .lte("updated_at", to.toISOString())
         .order("updated_at", { ascending: false })
         .limit(8);
 
-      if (error) throw error;
+      if (leadsError) throw leadsError;
 
-      return (data || []).map((lead: any) => ({
+      const leadIds = (leads || []).map((lead: any) => lead.id).filter(Boolean);
+      const actualTotalsByLead = new Map<string, number>();
+
+      if (leadIds.length > 0) {
+        const { data: lineItems, error: lineItemsError } = await supabase
+          .from("job_line_items")
+          .select("lead_id, total")
+          .eq("account_id", currentAccount.id)
+          .in("lead_id", leadIds);
+
+        if (lineItemsError && !isMissingTable(lineItemsError)) throw lineItemsError;
+
+        (lineItems || []).forEach((item: any) => {
+          if (!item.lead_id) return;
+          const total = Number(item.total) || 0;
+          actualTotalsByLead.set(item.lead_id, (actualTotalsByLead.get(item.lead_id) || 0) + total);
+        });
+      }
+
+      const getPreferredEstimate = (estimates: any[] = []) => {
+        if (estimates.length === 0) return null;
+
+        const sortedEstimates = [...estimates].sort((a, b) => {
+          const aTime = new Date(a?.updated_at || a?.created_at || 0).getTime();
+          const bTime = new Date(b?.updated_at || b?.created_at || 0).getTime();
+          return bTime - aTime;
+        });
+
+        return sortedEstimates.find((estimate) => estimate?.status === "accepted") || sortedEstimates[0];
+      };
+
+      return (leads || []).map((lead: any) => {
+        const preferredEstimate = getPreferredEstimate(lead.estimates || []);
+
+        return {
         id: lead.id,
         customerId: lead.customer_id,
         name: lead.name || "Untitled",
-        quoted: Number(lead.estimated_value) || 0,
-        actual: Number(lead.actual_value) || 0,
-      }));
+        quoted: getEstimateCardTotal(preferredEstimate),
+        actual: actualTotalsByLead.get(lead.id) || 0,
+      };
+      });
     },
     enabled: !!currentAccount,
   });

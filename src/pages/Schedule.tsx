@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Plus, Loader as Loader2, Repeat, MapPin, Clock, Calendar as CalendarIcon, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { MainPageQuickActions } from "@/components/layout/MainPageQuickActions";
 import { JobCard } from "@/components/jobs/JobCard";
 import { cn } from "@/lib/utils";
 import { format, addDays, startOfWeek, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths } from "date-fns";
@@ -18,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { openMapsWithAddress } from "@/lib/openMaps";
 
 type ViewMode = 'week' | 'month';
 
@@ -135,20 +137,29 @@ export default function Schedule() {
     }
   };
 
-  const hasNoContent = todaysJobs.length === 0 && selectedProjected.length === 0;
+  const openPhoneCall = (phone?: string | null) => {
+    if (!phone) return;
+    window.open(`tel:${phone}`);
+  };
+
+  const openTextMessage = (phone?: string | null) => {
+    if (!phone) return;
+    window.open(`sms:${phone}`);
+  };
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <div className="min-h-screen overflow-x-hidden bg-surface-sunken pb-24">
       <PageHeader
         title="Schedule"
         subtitle={format(selectedDate, "MMMM yyyy")}
+        hideTitle
       />
 
       {/* View Controls */}
-      <div className="bg-card border-b border-border px-4 py-3 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+      <div className="bg-card px-4 py-3 space-y-3">
+        <div className="flex items-center justify-start gap-2 overflow-x-auto pb-1 md:justify-between md:overflow-visible md:gap-3 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
           <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-            <SelectTrigger className="w-28 md:hidden">
+            <SelectTrigger className="w-28 shrink-0 md:hidden">
               <CalendarIcon className="h-4 w-4 mr-1" />
               <SelectValue />
             </SelectTrigger>
@@ -174,7 +185,7 @@ export default function Schedule() {
           {canViewCrewHours && (
             <Collapsible>
               <CollapsibleTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button variant="outline" size="sm" className="shrink-0 max-w-full gap-2">
                   <Clock className="h-4 w-4" />
                   <span className="font-semibold">
                     {crewHours.reduce((sum, crew) => sum + crew.total_hours, 0).toFixed(1)}h
@@ -222,7 +233,7 @@ export default function Schedule() {
               value={selectedCrewMember || "all"}
               onValueChange={(v) => setSelectedCrewMember(v === "all" ? null : v)}
             >
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-[150px] shrink-0 sm:w-[180px]">
                 <Users className="h-4 w-4 mr-2" />
                 <SelectValue />
               </SelectTrigger>
@@ -241,102 +252,108 @@ export default function Schedule() {
 
       {/* Week/Month View */}
       <div className="bg-card border-b border-border">
-        <div className="flex items-center justify-between px-4 py-2">
-          <button
-            onClick={viewMode === 'week' ? goToPreviousWeek : goToPreviousMonth}
-            className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <span className="text-sm font-medium text-muted-foreground">
-            {viewMode === 'week'
-              ? `${format(weekStart, "MMM d")} - ${format(addDays(weekStart, 6), "MMM d")}`
-              : format(selectedDate, "MMMM yyyy")
-            }
-          </span>
-          <button
-            onClick={viewMode === 'week' ? goToNextWeek : goToNextMonth}
-            className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
+        {viewMode === 'month' && (
+          <div className="flex items-center justify-between px-4 py-2">
+            <button
+              onClick={goToPreviousMonth}
+              className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
+            >
+              <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+            </button>
+            <span className="text-sm font-medium text-muted-foreground">
+              {format(selectedDate, "MMMM yyyy")}
+            </span>
+            <button
+              onClick={goToNextMonth}
+              className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
+            >
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </button>
+          </div>
+        )}
 
         {viewMode === 'week' ? (
-          <div className="flex px-2 pb-3">
-            {weekDays.map((day) => {
-              const isSelected = isSameDay(day, selectedDate);
-              const isToday = isSameDay(day, new Date());
-              const dayStr = format(day, "yyyy-MM-dd");
-              const hasJobs = jobDates.has(dayStr);
-              const hasProjected = projectedDates.has(dayStr);
-              const isDayOff = daysOffMap.has(dayStr);
+          <div className="mx-auto flex items-center gap-0 px-1 pb-3 md:max-w-4xl md:gap-1">
+            <button
+              onClick={goToPreviousWeek}
+              className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
+              aria-label="Previous week"
+            >
+              <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+            </button>
+            <div className="flex flex-1 -mx-1 md:mx-0">
+              {weekDays.map((day) => {
+                const isSelected = isSameDay(day, selectedDate);
+                const isToday = isSameDay(day, new Date());
+                const dayStr = format(day, "yyyy-MM-dd");
+                const hasJobs = jobDates.has(dayStr);
+                const hasProjected = projectedDates.has(dayStr);
+                const isDayOff = daysOffMap.has(dayStr);
 
-              return (
-                <button
-                  key={day.toISOString()}
-                  onClick={() => setSelectedDate(day)}
-                  className={cn(
-                    "flex-1 flex flex-col items-center py-2 rounded-lg transition-colors",
-                    isSelected
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted active:bg-muted/80"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "text-2xs font-medium uppercase",
-                      isSelected
-                        ? "text-primary-foreground/80"
-                        : "text-muted-foreground"
-                    )}
+                return (
+                  <button
+                    key={day.toISOString()}
+                    onClick={() => setSelectedDate(day)}
+                    className="flex-1 flex flex-col items-center py-2 rounded-lg transition-colors hover:bg-muted active:bg-muted/80 md:py-1"
                   >
-                    {format(day, "EEE")}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-lg font-semibold mt-0.5",
-                      isSelected
-                        ? "text-primary-foreground"
-                        : isToday
-                        ? "text-primary"
-                        : "text-foreground"
-                    )}
-                  >
-                    {format(day, "d")}
-                  </span>
-                  <div className="flex gap-0.5 mt-1 min-h-[6px]">
-                    {hasJobs && (
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          isSelected ? "bg-primary-foreground/60" : "bg-primary"
-                        )}
-                      />
-                    )}
-                    {hasProjected && !hasJobs && (
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          isSelected ? "bg-primary-foreground/40" : "bg-emerald-500"
-                        )}
-                      />
-                    )}
-                    {isDayOff && (
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          isSelected ? "bg-primary-foreground/60" : "bg-destructive"
-                        )}
-                      />
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                    <span
+                      className={cn(
+                        "text-2xs font-medium uppercase text-muted-foreground md:hidden",
+                        isSelected && "text-primary"
+                      )}
+                    >
+                      {format(day, "EEEEE")}
+                    </span>
+                    <span
+                      className={cn(
+                        "hidden text-2xs font-medium uppercase text-muted-foreground md:block",
+                        isSelected && "text-primary"
+                      )}
+                    >
+                      {format(day, "EEE")}
+                    </span>
+                    <span
+                      className={cn(
+                        "mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-lg font-semibold transition-colors",
+                        isSelected
+                          ? "bg-primary text-primary-foreground"
+                          : isToday
+                          ? "text-primary"
+                          : "text-foreground"
+                      )}
+                    >
+                      {format(day, "d")}
+                    </span>
+                    <div className="flex gap-0.5 mt-1 min-h-[6px]">
+                      {hasJobs && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      )}
+                      {hasProjected && !hasJobs && (
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            isSelected ? "bg-emerald-600" : "bg-emerald-500"
+                          )}
+                        />
+                      )}
+                      {isDayOff && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={goToNextWeek}
+              className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
+              aria-label="Next week"
+            >
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </button>
           </div>
         ) : (
-          <div className="px-2 pb-3">
+          <div className="mx-auto px-2 pb-3 md:max-w-4xl md:px-4">
             <div className="grid grid-cols-7 gap-1 mb-2">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                 <div key={day} className="text-center text-2xs font-medium text-muted-foreground py-1">
@@ -407,20 +424,6 @@ export default function Schedule() {
 
       {/* Jobs List */}
       <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto mt-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-foreground">
-            {format(selectedDate, "EEEE, MMMM d")}
-          </h2>
-          <span className="text-sm text-muted-foreground">
-            {todaysJobs.length} {todaysJobs.length === 1 ? "job" : "jobs"}
-            {selectedProjected.length > 0 && (
-              <span className="text-emerald-600">
-                {" "}+ {selectedProjected.length} recurring
-              </span>
-            )}
-          </span>
-        </div>
-
         {selectedDayOff && (
           <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
             <p className="text-sm font-medium text-destructive">Day Off</p>
@@ -436,17 +439,59 @@ export default function Schedule() {
           </div>
         ) : (
           <>
-            {todaysJobs.length > 0 && (
-              <div className="space-y-3">
-                {todaysJobs.map((job) => (
-                  <JobCard
-                    key={job.id}
-                    job={job}
-                    onClick={() => navigate(`/jobs/${job.id}`)}
-                  />
-                ))}
+            <Card className="overflow-hidden border-border/80 shadow-sm">
+              <div className="flex items-center justify-between border-b border-border px-4 py-4">
+                <h2 className="text-lg font-semibold text-foreground">
+                  {format(selectedDate, "EEEE, MMMM d")}
+                </h2>
+                <span className="text-sm text-muted-foreground">
+                  {todaysJobs.length} {todaysJobs.length === 1 ? "job" : "jobs"}
+                  {selectedProjected.length > 0 && (
+                    <span className="text-emerald-600">
+                      {" "}+ {selectedProjected.length} recurring
+                    </span>
+                  )}
+                </span>
               </div>
-            )}
+              {todaysJobs.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {todaysJobs.map((job) => (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      onClick={() => navigate(`/jobs/${job.id}`)}
+                      onCall={job.phone || job.customer?.phone ? () => openPhoneCall(job.phone || job.customer?.phone) : undefined}
+                      onMessage={job.phone || job.customer?.phone ? () => openTextMessage(job.phone || job.customer?.phone) : undefined}
+                      onNavigate={
+                        [job.address, job.city, job.state, job.customer?.address].filter(Boolean).length > 0
+                          ? () =>
+                              openMapsWithAddress(
+                                [job.address, job.city, job.state, job.customer?.address]
+                                  .filter(Boolean)
+                                  .join(", "),
+                              )
+                          : undefined
+                      }
+                      showQuickActions
+                      className="rounded-none border-0 bg-transparent shadow-none hover:bg-accent/40"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="px-4 py-10 text-center">
+                  <p className="text-muted-foreground">No jobs scheduled for this day</p>
+                  {isManager() && selectedProjected.length === 0 && (
+                    <Button
+                      className="mt-4 gap-2"
+                      onClick={() => navigate("/jobs")}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Schedule a Job
+                    </Button>
+                  )}
+                </div>
+              )}
+            </Card>
 
             {selectedProjected.length > 0 && (
               <div className={cn("space-y-3", todaysJobs.length > 0 && "mt-4")}>
@@ -519,24 +564,11 @@ export default function Schedule() {
               </div>
             )}
 
-            {hasNoContent && (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No jobs scheduled for this day</p>
-                {isManager() && (
-                  <Button
-                    className="mt-4 gap-2"
-                    onClick={() => navigate("/jobs")}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Schedule a Job
-                  </Button>
-                )}
-              </div>
-            )}
           </>
         )}
       </main>
 
+      <MainPageQuickActions show={isManager()} />
       <MobileNav />
     </div>
   );

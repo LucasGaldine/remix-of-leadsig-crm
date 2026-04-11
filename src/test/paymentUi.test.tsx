@@ -46,7 +46,7 @@ describe("tap to pay payment UI", () => {
   it("shows tap to pay and terminal processing state in the payment card", () => {
     render(<PaymentCard payment={tapToPayPayment} />);
 
-    expect(screen.getByText("Tap to Pay")).toBeInTheDocument();
+    expect(screen.getByText(/Tap to Pay/)).toBeInTheDocument();
     expect(screen.getByText("Terminal Processing")).toBeInTheDocument();
   });
 

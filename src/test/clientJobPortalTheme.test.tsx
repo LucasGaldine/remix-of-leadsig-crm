@@ -7,6 +7,7 @@ import ClientJobPortal from "@/pages/ClientJobPortal";
 describe("ClientJobPortal theming", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    document.head.querySelectorAll("link[rel='icon'], link[rel='apple-touch-icon']").forEach((link) => link.remove());
   });
 
   it("uses portal color and portal text color on the invoice call to action", async () => {
@@ -129,5 +130,135 @@ describe("ClientJobPortal theming", () => {
     expect(subtext).toHaveStyle({ color: "rgba(0, 42, 255, 0.78)" });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("sets the browser tab title to Client Portal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        customer: {
+          name: "Another import",
+        },
+        company: {
+          company_name: "LG Contracting",
+        },
+        jobs: [],
+        recurring_jobs: [],
+        invoices: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    document.title = "LeadSig";
+
+    render(
+      <MemoryRouter initialEntries={["/portal?token=token_123"]}>
+        <ClientJobPortal />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /Welcome, Another import/i });
+
+    expect(document.title).toBe("Client Portal");
+  });
+
+  it("falls back to Client Portal tab title when company name is unavailable", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        customer: {
+          name: "Another import",
+        },
+        company: {},
+        jobs: [],
+        recurring_jobs: [],
+        invoices: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    document.title = "LeadSig";
+
+    render(
+      <MemoryRouter initialEntries={["/portal?token=token_123"]}>
+        <ClientJobPortal />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /Welcome, Another import/i });
+
+    expect(document.title).toBe("Client Portal");
+  });
+
+  it("uses company logo as portal favicon when logo_url is present", async () => {
+    const logoUrl = "https://cdn.example.com/company-logo.png";
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        job: {
+          name: "Spring Cleanup",
+          status: "job",
+          created_at: "2026-04-01T00:00:00.000Z",
+          customer: { name: "Sarah" },
+        },
+        company: {
+          company_name: "LeadSig",
+          logo_url: logoUrl,
+        },
+        schedules: [],
+        estimate_visit_schedules: [],
+        estimate: null,
+        invoice: null,
+        photos: { before: [], after: [] },
+        activity: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/portal?token=token_123&jobId=job_1"]}>
+        <ClientJobPortal />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /Spring Cleanup/i });
+
+    expect(document.head.querySelector("link[rel='icon']")?.getAttribute("href")).toBe(logoUrl);
+    expect(document.head.querySelector("link[rel='apple-touch-icon']")?.getAttribute("href")).toBe(logoUrl);
+  });
+
+  it("falls back to default favicon when company logo_url is missing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        job: {
+          name: "Spring Cleanup",
+          status: "job",
+          created_at: "2026-04-01T00:00:00.000Z",
+          customer: { name: "Sarah" },
+        },
+        company: {
+          company_name: "LeadSig",
+        },
+        schedules: [],
+        estimate_visit_schedules: [],
+        estimate: null,
+        invoice: null,
+        photos: { before: [], after: [] },
+        activity: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/portal?token=token_123&jobId=job_1"]}>
+        <ClientJobPortal />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /Spring Cleanup/i });
+
+    expect(document.head.querySelector("link[rel='icon']")?.getAttribute("href")).toBe("/logo.png");
+    expect(document.head.querySelector("link[rel='apple-touch-icon']")?.getAttribute("href")).toBe("/logo.png");
   });
 });

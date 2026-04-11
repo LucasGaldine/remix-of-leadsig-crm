@@ -84,25 +84,22 @@ describe("Dashboard Add Job quick action", () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
     fireEvent.click(screen.getByRole("button", { name: /add job/i }));
 
     expect(screen.getByText("new-create-job-dialog")).toBeInTheDocument();
   });
 
-  it("prioritizes keeping the heading on one row before quick actions wrap", () => {
+  it("opens both lead and job actions from the dashboard floating menu", () => {
     render(
       <MemoryRouter>
         <Index />
       </MemoryRouter>,
     );
 
-    const heading = screen.getByRole("heading", { name: /good (morning|afternoon|evening), owner/i });
-    const headingBlock = heading.closest("div");
-    const quickActions = screen.getByRole("button", { name: /add lead/i }).closest("div");
-    const heroRow = headingBlock?.parentElement;
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
 
-    expect(heroRow).toHaveClass("flex-wrap");
-    expect(headingBlock).toHaveClass("min-w-[16rem]");
-    expect(quickActions).toHaveClass("shrink-0");
+    expect(screen.getByRole("button", { name: /add lead/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add job/i })).toBeInTheDocument();
   });
 });

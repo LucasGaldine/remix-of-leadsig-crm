@@ -11,6 +11,7 @@ import { OPEN_GLOBAL_SEARCH_EVENT } from "@/lib/keyboardShortcuts";
 export interface PageHeaderProps {
   title: string;
   subtitle?: string;
+  hideTitle?: boolean;
   showBack?: boolean;
   backTo?: string;
   showNotifications?: boolean;
@@ -24,6 +25,7 @@ export interface PageHeaderProps {
 export function PageHeader({
   title,
   subtitle,
+  hideTitle = false,
   showBack,
   backTo,
   showNotifications = true,
@@ -81,7 +83,7 @@ export function PageHeader({
             <img
               src="/header_logo.png"
               alt="Header logo"
-              className="h-12 w-auto object-cover shrink-0"
+              className="h-12 w-auto object-cover shrink-0 md:hidden"
             />
             {showBack && (
               <button
@@ -91,12 +93,14 @@ export function PageHeader({
                 <ArrowLeft className="h-5 w-5" />
               </button>
             )}
-            <div>
-              <h1 className="text-1">{title}</h1>
-              {subtitle && (
-                <p className="text-5">{subtitle}</p>
-              )}
-            </div>
+            {!hideTitle && (
+              <div>
+                <h1 className="text-1">{title}</h1>
+                {subtitle && (
+                  <p className="text-5">{subtitle}</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

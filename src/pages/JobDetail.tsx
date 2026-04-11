@@ -52,6 +52,7 @@ import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
 import { Separator } from "@/components/ui/separator";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
+import { getEstimateCardTotal } from "@/lib/estimateCardTotals";
 
 const JOB_STATUS_GUIDANCE = [
   {
@@ -173,14 +174,7 @@ export default function JobDetail() {
   const estimateVersions = Array.isArray(displayEstimate?.versions) ? displayEstimate.versions : [];
   const hasMultipleEstimateVersions = estimateVersions.length > 1;
   const isAcceptedEstimate = String(displayEstimate?.status || "") === "accepted";
-  const estimateVersionTotals = estimateVersions
-    .map((version: any) => Number(version?.total))
-    .filter((value: number) => Number.isFinite(value));
-  const estimateCardTotal = isAcceptedEstimate
-    ? Number(displayEstimate?.total || 0)
-    : estimateVersionTotals.length > 0
-    ? Math.min(...estimateVersionTotals)
-    : Number(displayEstimate?.total || 0);
+  const estimateCardTotal = getEstimateCardTotal(displayEstimate);
 
   const formatScheduleTimeLabel = (time?: string | null) => {
     if (!time) return null;

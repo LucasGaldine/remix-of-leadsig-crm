@@ -17,6 +17,7 @@ import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
 import Settings from "./pages/Settings";
 import Payments from "./pages/Payments";
+import Inbox from "./pages/Inbox";
 import EstimateDetail from "./pages/EstimateDetail";
 import InvoiceDetail from "./pages/InvoiceDetail";
 import ChargePayment from "./pages/ChargePayment";
@@ -204,6 +205,7 @@ const router = createBrowserRouter([
       { path: "/settings/dashboard", element: <Protected><SettingsDashboard /></Protected> },
       { path: "/settings/pricing", element: <Protected><SettingsPricing /></Protected> },
       { path: "/payments", element: <Protected><Payments /></Protected> },
+      { path: "/inbox", element: <Protected><Inbox /></Protected> },
       { path: "/payments/estimates/new", element: <Protected><CreateEstimate /></Protected> },
       { path: "/payments/estimates/:id", element: <Protected><EstimateDetail /></Protected> },
       { path: "/payments/invoices/new", element: <Protected><CreateInvoice /></Protected> },

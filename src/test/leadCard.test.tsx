@@ -4,17 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LeadCard } from "@/components/leads/LeadCard";
 
-const { toastErrorMock } = vi.hoisted(() => ({
-  toastErrorMock: vi.fn(),
-}));
-
-vi.mock("sonner", () => ({
-  toast: {
-    error: toastErrorMock,
-  },
-}));
-
-describe("LeadCard actions", () => {
+describe("LeadCard", () => {
   const lead = {
     id: "lead_1",
     name: "Taylor Smith",
@@ -23,45 +13,33 @@ describe("LeadCard actions", () => {
     estimatedBudget: 1200,
     location: "1 Main St, Miami",
     source: "Referral",
-    createdAt: "2026-03-20T00:00:00.000Z",
+    createdAt: "Apr 11",
     status: "new",
     customer: null,
   } as const;
 
-  it("shows a popup message when call or text is tapped with no phone number", () => {
-    const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    toastErrorMock.mockClear();
-
+  it("renders the unified row layout content", () => {
     render(
       <MemoryRouter>
         <LeadCard lead={lead as any} />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getAllByRole("button")[0]);
-    fireEvent.click(screen.getAllByRole("button")[1]);
-
-    expect(toastErrorMock).toHaveBeenCalledTimes(2);
-    expect(toastErrorMock).toHaveBeenCalledWith("No phone number available for this lead.");
-    expect(windowOpenSpy).not.toHaveBeenCalled();
-    windowOpenSpy.mockRestore();
+    expect(screen.getByText("Taylor Smith")).toBeInTheDocument();
+    expect(screen.getByText("Apr 11 | Lawn Care")).toBeInTheDocument();
+    expect(screen.getByText("New")).toBeInTheDocument();
   });
 
-  it("uses the same compact badge layout as the jobs card for estimate value", () => {
-    const { container } = render(
+  it("triggers onClick when selected", () => {
+    const onClick = vi.fn();
+
+    render(
       <MemoryRouter>
-        <LeadCard lead={lead as any} />
+        <LeadCard lead={lead as any} onClick={onClick} />
       </MemoryRouter>,
     );
 
-    const valueLabel = screen.getByText("1,200");
-    expect(valueLabel.className).toContain("whitespace-nowrap");
-
-    const badge = valueLabel.closest("div.inline-flex");
-    expect(badge).not.toBeNull();
-    expect(badge?.className).toContain("shrink-0");
-
-    const icon = container.querySelector("svg.lucide-dollar-sign");
-    expect(icon?.className.baseVal || "").toContain("flex-shrink-0");
+    fireEvent.click(screen.getByRole("button"));
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });

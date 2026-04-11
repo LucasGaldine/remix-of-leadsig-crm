@@ -4,14 +4,13 @@ import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { Calendar as CalendarIcon, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { ScheduleDateTimePicker, type ScheduledDateJob } from "@/components/scheduling/ScheduleDateTimePicker";
 
 export type ScheduleEntry = {
   date: string;
@@ -333,38 +332,6 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
 
       <div className="space-y-4">
         <div className="space-y-3">
-          <div className="flex justify-center max-w-full overflow-x-auto">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={handleDateSelect}
-              onMonthChange={setCalendarMonth}
-              onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
-              onDayMouseLeave={() => setHoveredUnavailableReason(null)}
-              disabled={isDateUnavailable}
-              className={cn("w-fit rounded-md border pointer-events-auto")}
-              modifiers={{
-                busy: (date) => {
-                  const dateStr = format(date, "yyyy-MM-dd");
-                  return allBusyDatesSet.has(dateStr);
-                },
-                fullyBooked: (date) => {
-                  const dateStr = format(date, "yyyy-MM-dd");
-                  return effectiveFullyBookedDatesSet.has(dateStr);
-                },
-                dayOff: (date) => {
-                  const dateStr = format(date, "yyyy-MM-dd");
-                  return dayOffDatesSet.has(dateStr);
-                },
-              }}
-              modifiersClassNames={{
-                busy: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
-                fullyBooked: "opacity-50 line-through",
-                dayOff: "opacity-50 line-through text-destructive",
-              }}
-            />
-          </div>
-
           {(dailyLimit || dayOffDatesSet.size > 0) && (
             <div className="text-xs text-muted-foreground space-y-1">
               {dailyLimit && (
@@ -381,57 +348,46 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
               {hoveredUnavailableReason}
             </p>
           )}
-
-          {selectedDate && selectedDateJobs.length > 0 && (
-            <div className="rounded-lg border border-border p-3 space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                {selectedDateJobs.length} job{selectedDateJobs.length !== 1 ? "s" : ""} on {format(selectedDate, "MMM d")}: 
-              </p>
-              <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                {selectedDateJobs.map((job: any) => (
-                  <div key={job.schedule_id} className="flex items-center justify-between text-sm">
-                    <span className="truncate flex-1">{job.name || "Unnamed job"}</span>
-                    {job.scheduled_time_start && (
-                      <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">
-                        {job.scheduled_time_start}{job.scheduled_time_end ? ` - ${job.scheduled_time_end}` : ""}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="schedule-start">Start Time</Label>
-              <Input
-                id="schedule-start"
-                type="time"
-                value={scheduledTimeStart}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setScheduledTimeStart(value);
-                  updateActiveScheduleTime("timeStart", value);
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schedule-end">End Time</Label>
-              <Input
-                id="schedule-end"
-                type="time"
-                value={scheduledTimeEnd}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setScheduledTimeEnd(value);
-                  updateActiveScheduleTime("timeEnd", value);
-                }}
-              />
-            </div>
-          </div>
+          <ScheduleDateTimePicker
+            selectedDate={selectedDate}
+            onSelectDate={handleDateSelect}
+            calendarMonth={calendarMonth}
+            onCalendarMonthChange={setCalendarMonth}
+            onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
+            onDayMouseLeave={() => setHoveredUnavailableReason(null)}
+            disabledDate={isDateUnavailable}
+            scheduledTimeStart={scheduledTimeStart}
+            onScheduledTimeStartChange={(value) => {
+              setScheduledTimeStart(value);
+              updateActiveScheduleTime("timeStart", value);
+            }}
+            scheduledTimeEnd={scheduledTimeEnd}
+            onScheduledTimeEndChange={(value) => {
+              setScheduledTimeEnd(value);
+              updateActiveScheduleTime("timeEnd", value);
+            }}
+            selectedDateJobs={selectedDateJobs as ScheduledDateJob[]}
+            showNoDateSelectedState={false}
+            busyDatesSet={allBusyDatesSet}
+            modifiers={{
+              fullyBooked: (date) => {
+                const dateStr = format(date, "yyyy-MM-dd");
+                return effectiveFullyBookedDatesSet.has(dateStr);
+              },
+              dayOff: (date) => {
+                const dateStr = format(date, "yyyy-MM-dd");
+                return dayOffDatesSet.has(dateStr);
+              },
+            }}
+            modifiersClassNames={{
+              fullyBooked: "opacity-50 line-through",
+              dayOff: "opacity-50 line-through text-destructive",
+            }}
+            calendarClassName={cn("rounded-md")}
+          />
 
           <Button onClick={addSchedule} className="w-full">
             <Plus className="h-4 w-4 mr-2" />

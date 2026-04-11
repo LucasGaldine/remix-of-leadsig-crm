@@ -72,7 +72,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 describe("JobInvoiceCard total sign", () => {
-  it("prefixes the invoice total with a plus sign", () => {
+  it("shows invoiced total with a plus sign and the estimate total in ratio form", () => {
     render(
       <JobInvoiceCard
         jobId="job_1"
@@ -82,6 +82,8 @@ describe("JobInvoiceCard total sign", () => {
       />,
     );
 
-    expect(screen.getByText(/^\+\$0\.00$/)).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => element?.textContent === "+$0.00/$500.00"),
+    ).toBeInTheDocument();
   });
 });

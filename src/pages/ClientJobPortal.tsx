@@ -175,6 +175,24 @@ export interface CustomerPortalData {
 
 type PageState = "loading" | "loaded" | "error";
 type ViewMode = "job-list" | "job-detail";
+const DEFAULT_FAVICON = "/logo.png";
+
+function setDocumentFavicon(href: string) {
+  const iconLink = document.querySelector("link[rel='icon']") ?? document.createElement("link");
+  iconLink.setAttribute("rel", "icon");
+  iconLink.setAttribute("href", href);
+  if (!iconLink.parentNode) {
+    document.head.appendChild(iconLink);
+  }
+
+  const appleTouchIconLink =
+    document.querySelector("link[rel='apple-touch-icon']") ?? document.createElement("link");
+  appleTouchIconLink.setAttribute("rel", "apple-touch-icon");
+  appleTouchIconLink.setAttribute("href", href);
+  if (!appleTouchIconLink.parentNode) {
+    document.head.appendChild(appleTouchIconLink);
+  }
+}
 
 export default function ClientJobPortal() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -204,6 +222,24 @@ export default function ClientJobPortal() {
     }
     fetchData();
   }, [token, jobId]);
+
+  useEffect(() => {
+    const logoUrl = customerData?.company.logo_url ?? data?.company.logo_url ?? DEFAULT_FAVICON;
+    setDocumentFavicon(logoUrl || DEFAULT_FAVICON);
+
+    return () => {
+      setDocumentFavicon(DEFAULT_FAVICON);
+    };
+  }, [customerData?.company.logo_url, data?.company.logo_url]);
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = "Client Portal";
+
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
 
   const fetchData = async () => {
     setPageState("loading");
@@ -527,7 +563,7 @@ export default function ClientJobPortal() {
           />
         )}
 
-        {estimate && (
+        {estimate ? (
           <ClientPortalEstimate
             estimate={estimate}
             token={token!}
@@ -546,6 +582,18 @@ export default function ClientJobPortal() {
             portalColor={portalColor}
             portalTextColor={portalTextColor}
           />
+        ) : (
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-slate-400" />
+                <h2 className="text-lg font-semibold text-slate-900">Estimate</h2>
+              </div>
+            </div>
+            <div className="px-6 sm:px-8 py-6">
+              <p className="text-sm text-slate-600">No estimate has been created for this job yet.</p>
+            </div>
+          </div>
         )}
 
         {invoice?.stripe_invoice_url && (

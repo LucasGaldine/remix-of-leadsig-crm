@@ -5,7 +5,16 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { Loader as Loader2 } from "lucide-react";
+import {
+  BadgeCheck,
+  BarChart3,
+  Clock3,
+  Loader as Loader2,
+  Scale,
+  Target,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   useRevenueExpenses,
@@ -44,11 +53,24 @@ function TimeframeToggle({ value, onChange }: { value: Timeframe; onChange: (v: 
   );
 }
 
-function VisualCard({ title, children, isLoading }: { title: string; children: React.ReactNode; isLoading?: boolean }) {
+function VisualCard({
+  title,
+  icon: Icon,
+  children,
+  isLoading,
+}: {
+  title: string;
+  icon: LucideIcon;
+  children: React.ReactNode;
+  isLoading?: boolean;
+}) {
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <h3 className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+          <Icon className="h-3.5 w-3.5" />
+          <span>{title}</span>
+        </h3>
         {isLoading ? (
           <div className="flex items-center justify-center h-[200px]">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -99,7 +121,7 @@ function RevenueExpenses({ timeframe }: { timeframe: Timeframe }) {
     .filter((period: any) => period.entries.length > 0);
 
   return (
-    <VisualCard title="Revenue vs Expenses" isLoading={isLoading}>
+    <VisualCard title="Revenue vs Expenses" icon={BarChart3} isLoading={isLoading}>
       {!hasData ? (
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No payment data yet</div>
       ) : (
@@ -188,7 +210,7 @@ function LeadFunnel({ timeframe }: { timeframe: Timeframe }) {
   const totalLeads = data.length > 0 ? data[0]?.count || 1 : 1;
 
   return (
-    <VisualCard title="Lead Conversion Funnel" isLoading={isLoading}>
+    <VisualCard title="Lead Conversion Funnel" icon={Target} isLoading={isLoading}>
       {data.every((d: any) => d.count === 0) ? (
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No leads yet</div>
       ) : (
@@ -222,7 +244,7 @@ function CompletionDonut({ timeframe }: { timeframe: Timeframe }) {
   const completionPercent = data.length > 0 ? data[0]?.value || 0 : 0;
 
   return (
-    <VisualCard title="Job Completion Rate" isLoading={isLoading}>
+    <VisualCard title="Job Completion Rate" icon={BadgeCheck} isLoading={isLoading}>
       {data.every((d: any) => d.value === 0) ? (
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No job data yet</div>
       ) : (
@@ -273,7 +295,7 @@ function PlannedVsActual({ timeframe }: { timeframe: Timeframe }) {
   const { data = [], isLoading } = usePlannedVsActual(timeframe);
 
   return (
-    <VisualCard title="Planned vs Actual Hours" isLoading={isLoading}>
+    <VisualCard title="Planned vs Actual Hours" icon={Clock3} isLoading={isLoading}>
       {data.length === 0 ? (
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No hours data yet</div>
       ) : (
@@ -317,7 +339,7 @@ function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
   const { data = [], isLoading } = useCostVsQuoted(timeframe);
 
   return (
-    <VisualCard title="Cost vs Quoted" isLoading={isLoading}>
+    <VisualCard title="Cost vs Quoted" icon={Scale} isLoading={isLoading}>
       {data.length === 0 ? (
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No cost data yet</div>
       ) : (
@@ -360,7 +382,7 @@ function CrewHours({ timeframe }: { timeframe: Timeframe }) {
   const totalHours = data.reduce((sum: number, c: any) => sum + c.hours, 0);
 
   return (
-    <VisualCard title="Crew Hours This Week" isLoading={isLoading}>
+    <VisualCard title="Crew Member Hours" icon={Users} isLoading={isLoading}>
       {data.length === 0 ? (
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No crew data yet</div>
       ) : (

@@ -109,6 +109,7 @@ export default function CrewDashboard() {
       <PageHeader
         title={`Welcome, ${user?.user_metadata?.full_name || 'Crew Member'}`}
         subtitle={currentAccount?.company_name || 'Dashboard'}
+        hideTitle
       />
 
       <main className="px-4 py-4 space-y-6">

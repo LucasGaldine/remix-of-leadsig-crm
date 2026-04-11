@@ -288,7 +288,7 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Settings" />
+      <PageHeader title="Settings" hideTitle />
 
       <div className="max-w-[var(--content-max-width)] m-auto p-4">
         <div className="relative mb-4">

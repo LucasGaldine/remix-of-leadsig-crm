@@ -38,6 +38,7 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { parseMentionsForDisplay, parseMentionsToHTML } from "@/lib/mentionParser";
 import { formatCurrency } from "@/lib/formatter";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
+import { getEstimateCardTotal } from "@/lib/estimateCardTotals";
 import { getInteractionPostLabel, getInteractionPostUrl } from "@/lib/interactionPostLink";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
@@ -196,18 +197,7 @@ export default function LeadDetail() {
   const estimateVersions = Array.isArray(estimate?.versions) ? estimate.versions : [];
   const hasMultipleEstimateVersions = estimateVersions.length > 1;
   const isAcceptedEstimate = String(estimate?.status || "") === "accepted";
-  const estimateVersionTotals = estimateVersions
-    .map((version: any) => Number(version?.total))
-    .filter((value: number) => Number.isFinite(value));
-  const estimateCardTotal = (() => {
-    if (isAcceptedEstimate) return Number(estimate?.total || 0);
-    if (!hasMultipleEstimateVersions) return Number(estimate?.total || 0);
-    const candidates = [
-      ...estimateVersionTotals,
-      Number.isFinite(Number(estimate?.total)) ? Number(estimate?.total) : null,
-    ].filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-    return candidates.length > 0 ? Math.min(...candidates) : Number(estimate?.total || 0);
-  })();
+  const estimateCardTotal = getEstimateCardTotal(estimate);
 
   // New note state
   const [newNote, setNewNote] = useState("");

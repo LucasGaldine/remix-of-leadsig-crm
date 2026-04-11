@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Calendar as CalendarIcon, Users, Repeat } from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
+import { Users, Repeat } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -15,8 +13,8 @@ import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
-import { cn } from "@/lib/utils";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
+import { ScheduleDateTimePicker, type ScheduledDateJob } from "@/components/scheduling/ScheduleDateTimePicker";
 
 const roleLabels: Record<string, string> = {
   owner: 'Owner',
@@ -258,91 +256,35 @@ export function ScheduleJobDialog({
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-3">
-            <Label className="text-base font-semibold flex items-center gap-2">
-              <CalendarIcon className="h-4 w-4" />
-              Schedule Date & Time
-            </Label>
-
-            {/* Inline Calendar */}
-            <div className="flex justify-center">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={setSelectedDate}
-                onMonthChange={setCalendarMonth}
-                disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
-                className={cn("rounded-md border pointer-events-auto")}
-                modifiers={{
-                  busy: (date) => {
-                    const dateStr = format(date, "yyyy-MM-dd");
-                    return busyDatesSet?.has(dateStr) || false;
-                  },
-                }}
-                modifiersClassNames={{
-                  busy: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
-                }}
-              />
-            </div>
-
-            {/* Jobs status for selected date */}
-            {selectedDate && selectedDateJobs.length > 0 && (
-              <div className="rounded-lg border border-border p-3 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {selectedDateJobs.length} job{selectedDateJobs.length !== 1 ? "s" : ""} on {format(selectedDate, "MMM d")}:
+            <ScheduleDateTimePicker
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              calendarMonth={calendarMonth}
+              onCalendarMonthChange={setCalendarMonth}
+              disabledDate={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+              scheduledTimeStart={scheduledTimeStart}
+              onScheduledTimeStartChange={setScheduledTimeStart}
+              scheduledTimeEnd={scheduledTimeEnd}
+              onScheduledTimeEndChange={setScheduledTimeEnd}
+              selectedDateJobs={selectedDateJobs as ScheduledDateJob[]}
+              busyDatesSet={busyDatesSet}
+              calendarClassName="rounded-md"
+            >
+              {selectedDate && selectedDateJobs.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  No jobs scheduled on {format(selectedDate, "MMM d")}
                 </p>
-                <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                  {selectedDateJobs.map((job: any) => (
-                    <div key={job.schedule_id} className="flex items-center justify-between text-sm">
-                      <span className="truncate flex-1">{job.name || "Unnamed job"}</span>
-                      {job.scheduled_time_start && (
-                        <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">
-                          {job.scheduled_time_start}{job.scheduled_time_end ? ` - ${job.scheduled_time_end}` : ""}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+              )}
+
+              {onMakeRecurring && (
+                <div className="flex justify-start pt-1">
+                  <Button variant="outline" onClick={handleMakeRecurring} className="gap-1.5">
+                    <Repeat className="h-4 w-4" />
+                    Make Recurring Instead
+                  </Button>
                 </div>
-              </div>
-            )}
-
-            {selectedDate && selectedDateJobs.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center">No jobs scheduled on {format(selectedDate, "MMM d")}</p>
-            )}
-
-            {!selectedDate && (
-              <p className="text-xs text-muted-foreground text-center">No date selected</p>
-            )}
-
-            {/* Time inputs */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="schedule-start">Start Time</Label>
-                <Input
-                  id="schedule-start"
-                  type="time"
-                  value={scheduledTimeStart}
-                  onChange={(e) => setScheduledTimeStart(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="schedule-end">End Time</Label>
-                <Input
-                  id="schedule-end"
-                  type="time"
-                  value={scheduledTimeEnd}
-                  onChange={(e) => setScheduledTimeEnd(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {onMakeRecurring && (
-              <div className="flex justify-start pt-1">
-                <Button variant="outline" onClick={handleMakeRecurring} className="gap-1.5">
-                  <Repeat className="h-4 w-4" />
-                  Make Recurring Instead
-                </Button>
-              </div>
-            )}
+              )}
+            </ScheduleDateTimePicker>
           </div>
 
           {/* Assign Crew */}

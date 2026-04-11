@@ -44,4 +44,27 @@ describe("ListPageFilters", () => {
 
     expect(onSearchChange).toHaveBeenCalledWith("roof");
   });
+
+  it("renders search actions in the search row", () => {
+    const onSearchChange = vi.fn();
+
+    render(
+      <ListPageFilters
+        searchQuery=""
+        onSearchChange={onSearchChange}
+        searchPlaceholder="Search leads..."
+        tabs={[{ value: "all", label: "All", count: 3 }]}
+        activeTab="all"
+        onTabChange={vi.fn()}
+        searchActions={<button type="button" aria-label="Sort leads">sort</button>}
+      />,
+    );
+
+    const searchInput = screen.getByPlaceholderText("Search leads...");
+    const searchRow = searchInput.closest("div")?.parentElement;
+    const sortButton = screen.getByRole("button", { name: /sort leads/i });
+
+    expect(searchRow).not.toBeNull();
+    expect(searchRow).toContainElement(sortButton);
+  });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { normalizeClientPortalColor, normalizeClientPortalTextColor } from "@/lib/clientPortalTheme";
 
@@ -86,9 +86,11 @@ export function ClientPortalEstimate({
   portalColor = "",
   portalTextColor = "",
 }: ClientPortalEstimateProps) {
+  const versionWindowSize = 3;
   const [submitting, setSubmitting] = useState<"approve" | "decline" | "approve_changes" | "decline_changes" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [versionWindowStart, setVersionWindowStart] = useState(0);
 
   const isPending = estimate.status !== "accepted" && estimate.status !== "declined";
   const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
@@ -116,6 +118,40 @@ export function ClientPortalEstimate({
     () => availableVersions.find((version) => version.id === selectedVersionId) || null,
     [availableVersions, selectedVersionId],
   );
+  const maxVersionWindowStart = Math.max(availableVersions.length - versionWindowSize, 0);
+  const visibleVersions = useMemo(
+    () => availableVersions.slice(versionWindowStart, versionWindowStart + versionWindowSize),
+    [availableVersions, versionWindowStart, versionWindowSize],
+  );
+
+  useEffect(() => {
+    setVersionWindowStart((previous) => Math.min(previous, maxVersionWindowStart));
+  }, [maxVersionWindowStart]);
+
+  useEffect(() => {
+    if (!selectedVersionId) {
+      setVersionWindowStart(0);
+      return;
+    }
+
+    const selectedIndex = availableVersions.findIndex((version) => version.id === selectedVersionId);
+    if (selectedIndex === -1) {
+      return;
+    }
+
+    setVersionWindowStart((previous) => {
+      if (selectedIndex < previous) {
+        return selectedIndex;
+      }
+
+      const currentWindowEnd = previous + versionWindowSize - 1;
+      if (selectedIndex > currentWindowEnd) {
+        return Math.min(selectedIndex - (versionWindowSize - 1), maxVersionWindowStart);
+      }
+
+      return previous;
+    });
+  }, [availableVersions, maxVersionWindowStart, selectedVersionId, versionWindowSize]);
 
   const currentLineItems = estimate.line_items.filter((item) =>
     !item.is_change_order || item.change_order_type !== 'deleted'
@@ -147,6 +183,7 @@ export function ClientPortalEstimate({
     : Number(estimate.tax_rate);
   const normalizedPortalColor = normalizeClientPortalColor(portalColor);
   const normalizedPortalTextColor = normalizeClientPortalTextColor(portalTextColor);
+  const isVersionComparisonMode = isPending && !hasPendingChanges && availableVersions.length > 0;
 
   const handleDownloadPDF = async () => {
     await generateEstimatePDF({
@@ -382,22 +419,125 @@ export function ClientPortalEstimate({
           <Download className="h-4 w-4" />
           Download PDF
         </button>
-        {isPending && !hasPendingChanges && availableVersions.length > 0 && (
-          <div className="mt-3">
-            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-              Choose Option
-            </label>
-            <select
-              value={selectedVersionId || ""}
-              onChange={(event) => setSelectedVersionId(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              {availableVersions.map((version) => (
-                <option key={version.id} value={version.id}>
-                  {version.name} - ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </option>
-              ))}
-            </select>
+        {isVersionComparisonMode && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Choose Option
+              </label>
+              {availableVersions.length > versionWindowSize && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-label="Previous options"
+                    onClick={() => setVersionWindowStart((previous) => Math.max(previous - 1, 0))}
+                    disabled={versionWindowStart === 0}
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="text-[11px] text-slate-500 tabular-nums">
+                    {versionWindowStart + 1}-{Math.min(versionWindowStart + versionWindowSize, availableVersions.length)} of {availableVersions.length}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Next options"
+                    onClick={() => setVersionWindowStart((previous) => Math.min(previous + 1, maxVersionWindowStart))}
+                    disabled={versionWindowStart >= maxVersionWindowStart}
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {visibleVersions.map((version) => {
+                const isSelectedVersion = selectedVersionId === version.id;
+                return (
+                  <button
+                    key={version.id}
+                    type="button"
+                    onClick={() => setSelectedVersionId(version.id)}
+                    aria-pressed={isSelectedVersion}
+                    className={[
+                      "rounded-2xl border text-left transition-all overflow-hidden",
+                      isSelectedVersion
+                        ? "shadow-md"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm",
+                    ].join(" ")}
+                    style={isSelectedVersion ? { backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor, borderColor: normalizedPortalColor } : undefined}
+                  >
+                    <div className={isSelectedVersion ? "px-4 py-3 border-b border-white/25" : "px-4 py-3 border-b border-slate-200"}>
+                      <p className="text-sm font-semibold leading-tight">{version.name}</p>
+                      <p className={isSelectedVersion ? "text-2xl font-bold mt-1 tracking-tight" : "text-2xl font-bold mt-1 tracking-tight text-slate-900"}>
+                        ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+
+                    <div className="px-4 py-3 space-y-3">
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {version.line_items.length > 0 ? (
+                          version.line_items.map((item) => (
+                            <div
+                              key={item.id}
+                              className={isSelectedVersion ? "pb-2 border-b border-white/20 last:border-b-0 last:pb-0" : "pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className={isSelectedVersion ? "text-sm font-medium leading-tight" : "text-sm font-medium text-slate-900 leading-tight"}>
+                                    {item.name}
+                                  </p>
+                                  <p className={isSelectedVersion ? "text-xs mt-0.5 opacity-85" : "text-xs text-slate-500 mt-0.5"}>
+                                    {item.quantity} {item.unit} x ${Number(item.unit_price).toFixed(2)}
+                                  </p>
+                                </div>
+                                <p className={isSelectedVersion ? "text-sm font-semibold whitespace-nowrap" : "text-sm font-semibold text-slate-900 whitespace-nowrap"}>
+                                  ${Number(item.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className={isSelectedVersion ? "text-xs opacity-85" : "text-xs text-slate-500"}>
+                            No line items.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className={isSelectedVersion ? "pt-2 border-t border-white/30 space-y-1.5" : "pt-2 border-t border-slate-200 space-y-1.5"}>
+                        <div className="flex justify-between text-xs">
+                          <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>Subtotal</span>
+                          <span className={isSelectedVersion ? "font-medium" : "text-slate-700 font-medium"}>
+                            ${Number(version.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>
+                            Tax ({(Number(version.tax_rate) * 100).toFixed(1)}%)
+                          </span>
+                          <span className={isSelectedVersion ? "font-medium" : "text-slate-700 font-medium"}>
+                            ${Number(version.tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        {Number(version.discount) > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>Discount</span>
+                            <span className={isSelectedVersion ? "font-medium" : "text-emerald-600 font-medium"}>
+                              -${Number(version.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+                        <div className={isSelectedVersion ? "flex justify-between text-sm font-bold pt-1" : "flex justify-between text-sm font-bold text-slate-900 pt-1"}>
+                          <span>Total</span>
+                          <span>${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -477,7 +617,7 @@ export function ClientPortalEstimate({
         </div>
       ) : (
         <>
-          {displayLineItems.length > 0 && (
+          {!isVersionComparisonMode && displayLineItems.length > 0 && (
             <div className="px-6 sm:px-8 py-5">
               <div className="space-y-0">
                 {displayLineItems.map((item) => (
@@ -508,65 +648,69 @@ export function ClientPortalEstimate({
             </div>
           )}
 
-          <div className="px-6 sm:px-8 py-5 bg-slate-50 border-t border-slate-100">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Subtotal</span>
-                <span className="text-slate-700">
-                  $
-                  {Number(displaySubtotal).toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              {displayProfitMargin > 0 && (
+          {!isVersionComparisonMode && (
+            <div className="px-6 sm:px-8 py-5 bg-slate-50 border-t border-slate-100">
+              <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">
-                    Profit Margin ({displayProfitMargin.toFixed(1)}%)
+                    Subtotal
                   </span>
                   <span className="text-slate-700">
                     $
-                    {(Number(displaySubtotal) * (displayProfitMargin / 100)).toLocaleString(undefined, {
+                    {Number(displaySubtotal).toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                     })}
                   </span>
                 </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">
-                  Tax ({(Number(displayTaxRate) * 100).toFixed(1)}%)
-                </span>
-                <span className="text-slate-700">
-                  $
-                  {Number(displayTax).toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              {Number(displayDiscount) > 0 && (
+                {displayProfitMargin > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">
+                      Profit Margin ({displayProfitMargin.toFixed(1)}%)
+                    </span>
+                    <span className="text-slate-700">
+                      $
+                      {(Number(displaySubtotal) * (displayProfitMargin / 100)).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Discount</span>
-                  <span className="text-emerald-600">
-                    -$
-                    {Number(displayDiscount).toLocaleString(undefined, {
+                  <span className="text-slate-500">
+                    Tax ({(Number(displayTaxRate) * 100).toFixed(1)}%)
+                  </span>
+                  <span className="text-slate-700">
+                    $
+                    {Number(displayTax).toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                     })}
                   </span>
                 </div>
-              )}
-              <div className="flex justify-between pt-3 border-t border-slate-200">
-                <span className="text-lg font-bold text-slate-900">Total</span>
-                <span className="text-lg font-bold text-slate-900">
-                  $
-                  {Number(displayTotal).toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
+                {Number(displayDiscount) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Discount</span>
+                    <span className="text-emerald-600">
+                      -$
+                      {Number(displayDiscount).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-3 border-t border-slate-200">
+                  <span className="text-lg font-bold text-slate-900">Total</span>
+                  <span className="text-lg font-bold text-slate-900">
+                    $
+                    {Number(displayTotal).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {displayNotes && (
+          {!isVersionComparisonMode && displayNotes && (
             <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
                 Notes

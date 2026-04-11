@@ -1,36 +1,66 @@
-import { LayoutDashboard, Magnet, FileText, Calendar, DollarSign, Settings, ChevronLeft, ChevronRight,Briefcase } from "lucide-react";
+import {
+  LayoutDashboard,
+  Magnet,
+  Calendar,
+  DollarSign,
+  Settings,
+  Briefcase,
+  Inbox,
+  Bug,
+  Users,
+  Ellipsis,
+  ChevronDown,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { BugReportModal } from "@/components/layout/BugReportModal";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface NavItem {
   icon: React.ReactNode;
   label: string;
   path: string;
   badgeKey?: string;
-  requiredRole?: 'manager' | 'all';
+  requiredRole?: "manager" | "all";
 }
 
-const navItems: NavItem[] = [
-  { icon: <LayoutDashboard className="h-5 w-5" />, label: "Dashboard", path: "/", requiredRole: 'all' },
-  { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", badgeKey: "pendingLeads", requiredRole: 'manager' },
-  { icon: <Briefcase className="h-5 w-5" />, label: "Jobs", path: "/jobs", requiredRole: 'all' },
-  { icon: <Calendar className="h-5 w-5" />, label: "Calendar", path: "/schedule", requiredRole: 'all' },
-  { icon: <DollarSign className="h-5 w-5" />, label: "Payments", path: "/payments", requiredRole: 'manager' },
-  { icon: <Settings className="h-5 w-5" />, label: "Settings", path: "/settings", requiredRole: 'all' },
+const primaryNavItems: NavItem[] = [
+  { icon: <LayoutDashboard className="h-5 w-5" />, label: "Dashboard", path: "/", requiredRole: "all" },
+  { icon: <Inbox className="h-5 w-5" />, label: "Inbox", path: "/inbox", requiredRole: "manager" },
+  { icon: <Calendar className="h-5 w-5" />, label: "Calendar", path: "/schedule", requiredRole: "all" },
+];
+
+const moreMenuItems: NavItem[] = [
+  { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
+  { icon: <Briefcase className="h-5 w-5" />, label: "Jobs", path: "/jobs", requiredRole: "all" },
+  { icon: <DollarSign className="h-5 w-5" />, label: "Payments", path: "/payments", requiredRole: "manager" },
+  { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
 ];
 
 const EDGE_ZONE = 40;
 const SWIPE_THRESHOLD = 80;
 const VERTICAL_RATIO = 1.5;
+const DESKTOP_NAV_WIDTH_CLASS = "md:w-60";
+const DESKTOP_NAV_OFFSET = "15rem";
+const MOBILE_NAV_OFFSET = "4.5rem";
+const DESKTOP_MORE_OPEN_STORAGE_KEY = "mobile-nav:desktop-more-open";
 
 export function MobileNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isCrewMember } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
+  const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [desktopMoreOpen, setDesktopMoreOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const storedValue = window.localStorage.getItem(DESKTOP_MORE_OPEN_STORAGE_KEY);
+    if (storedValue === "true") return true;
+    if (storedValue === "false") return false;
+    return true;
+  });
 
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
@@ -39,37 +69,37 @@ export function MobileNav() {
   const isEdgeSwipe = useRef(false);
 
   const [swipeOffset, setSwipeOffset] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [swipeDirection, setSwipeDirection] = useState<"left" | "right" | null>(null);
 
   const badges: Record<string, number> = {
     pendingLeads: pendingLeadsCount,
   };
 
-  const visibleNavItems = navItems.filter(item => {
-    if (!item.requiredRole || item.requiredRole === 'all') return true;
-    if (item.requiredRole === 'manager') return !isCrewMember();
-    return true;
-  });
+  const filterByRole = useCallback(
+    (item: NavItem) => {
+      if (!item.requiredRole || item.requiredRole === "all") return true;
+      if (item.requiredRole === "manager") return !isCrewMember();
+      return true;
+    },
+    [isCrewMember],
+  );
 
-  const isActiveRoute = (path: string) => {
-    if (path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(path);
-  };
+  const visiblePrimaryNavItems = primaryNavItems.filter(filterByRole);
+  const visibleMoreMenuItems = moreMenuItems.filter(filterByRole);
 
-  const currentIndex = visibleNavItems.findIndex(item => isActiveRoute(item.path));
+  const isActiveRoute = useCallback(
+    (path: string) => {
+      if (path === "/") return location.pathname === "/";
+      return location.pathname.startsWith(path);
+    },
+    [location.pathname],
+  );
+
+  const moreIsActive = visibleMoreMenuItems.some((item) => isActiveRoute(item.path));
+  const settingsIsActive = isActiveRoute("/settings");
+
+  const currentIndex = visiblePrimaryNavItems.findIndex((item) => isActiveRoute(item.path));
   const activeIndex = currentIndex === -1 ? 0 : currentIndex;
-
-  const navigateToPrevious = () => {
-    if (activeIndex > 0) {
-      navigate(visibleNavItems[activeIndex - 1].path);
-    }
-  };
-
-  const navigateToNext = () => {
-    if (activeIndex < visibleNavItems.length - 1) {
-      navigate(visibleNavItems[activeIndex + 1].path);
-    }
-  };
 
   const resetSwipeState = useCallback(() => {
     touchStartX.current = null;
@@ -82,7 +112,13 @@ export function MobileNav() {
   }, []);
 
   const handleSwipe = useCallback(() => {
-    if (!isEdgeSwipe.current || touchStartX.current === null || touchEndX.current === null || touchStartY.current === null || touchEndY.current === null) {
+    if (
+      !isEdgeSwipe.current ||
+      touchStartX.current === null ||
+      touchEndX.current === null ||
+      touchStartY.current === null ||
+      touchEndY.current === null
+    ) {
       resetSwipeState();
       return;
     }
@@ -99,16 +135,16 @@ export function MobileNav() {
     const isLeftSwipe = distanceX > 0;
     const isRightSwipe = distanceX < 0;
 
-    if (isLeftSwipe && activeIndex < visibleNavItems.length - 1) {
-      navigate(visibleNavItems[activeIndex + 1].path);
+    if (isLeftSwipe && activeIndex < visiblePrimaryNavItems.length - 1) {
+      navigate(visiblePrimaryNavItems[activeIndex + 1].path);
     }
 
     if (isRightSwipe && activeIndex > 0) {
-      navigate(visibleNavItems[activeIndex - 1].path);
+      navigate(visiblePrimaryNavItems[activeIndex - 1].path);
     }
 
     resetSwipeState();
-  }, [activeIndex, visibleNavItems, navigate, resetSwipeState]);
+  }, [activeIndex, visiblePrimaryNavItems, navigate, resetSwipeState]);
 
   useEffect(() => {
     const screenWidth = window.innerWidth;
@@ -145,12 +181,12 @@ export function MobileNav() {
       }
 
       const canGoRight = activeIndex > 0;
-      const canGoLeft = activeIndex < visibleNavItems.length - 1;
+      const canGoLeft = activeIndex < visiblePrimaryNavItems.length - 1;
 
       if ((dx > 0 && canGoRight) || (dx < 0 && canGoLeft)) {
         const clamped = Math.max(-SWIPE_THRESHOLD, Math.min(SWIPE_THRESHOLD, dx));
         setSwipeOffset(clamped);
-        setSwipeDirection(dx > 0 ? 'right' : 'left');
+        setSwipeDirection(dx > 0 ? "right" : "left");
       } else {
         setSwipeOffset(0);
         setSwipeDirection(null);
@@ -161,25 +197,51 @@ export function MobileNav() {
       handleSwipe();
     };
 
-    document.addEventListener('touchstart', onTouchStart, { passive: true });
-    document.addEventListener('touchmove', onTouchMove, { passive: true });
-    document.addEventListener('touchend', onTouchEnd);
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
+    document.addEventListener("touchend", onTouchEnd);
 
     return () => {
-      document.removeEventListener('touchstart', onTouchStart);
-      document.removeEventListener('touchmove', onTouchMove);
-      document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
     };
-  }, [activeIndex, visibleNavItems, handleSwipe]);
+  }, [activeIndex, visiblePrimaryNavItems, handleSwipe]);
+
+  useEffect(() => {
+    const applyContentOffsets = () => {
+      const isDesktop = window.innerWidth >= 768;
+      document.body.style.paddingLeft = isDesktop ? DESKTOP_NAV_OFFSET : "";
+      document.body.style.paddingBottom = isDesktop ? "" : MOBILE_NAV_OFFSET;
+    };
+
+    applyContentOffsets();
+    window.addEventListener("resize", applyContentOffsets);
+
+    return () => {
+      window.removeEventListener("resize", applyContentOffsets);
+      document.body.style.paddingLeft = "";
+      document.body.style.paddingBottom = "";
+    };
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(DESKTOP_MORE_OPEN_STORAGE_KEY, String(desktopMoreOpen));
+  }, [desktopMoreOpen]);
 
   const swipeProgress = Math.abs(swipeOffset) / SWIPE_THRESHOLD;
   const showIndicator = isEdgeSwipe.current && swipeProgress > 0.1;
 
-  const targetLabel = swipeDirection === 'left' && activeIndex < visibleNavItems.length - 1
-    ? visibleNavItems[activeIndex + 1].label
-    : swipeDirection === 'right' && activeIndex > 0
-      ? visibleNavItems[activeIndex - 1].label
-      : null;
+  const targetLabel =
+    swipeDirection === "left" && activeIndex < visiblePrimaryNavItems.length - 1
+      ? visiblePrimaryNavItems[activeIndex + 1].label
+      : swipeDirection === "right" && activeIndex > 0
+        ? visiblePrimaryNavItems[activeIndex - 1].label
+        : null;
+
+  const handleNavigate = (path: string) => {
+    navigate(path);
+  };
 
   return (
     <>
@@ -187,121 +249,197 @@ export function MobileNav() {
         <div
           className={cn(
             "fixed top-1/2 -translate-y-1/2 z-[60] pointer-events-none transition-opacity duration-100 md:hidden",
-            swipeDirection === 'left' ? "right-0" : "left-0"
+            swipeDirection === "left" ? "right-0" : "left-0",
           )}
           style={{ opacity: swipeProgress }}
         >
           <div
             className={cn(
               "flex items-center gap-1.5 px-3 py-2 bg-foreground/80 text-background backdrop-blur-sm",
-              swipeDirection === 'left' ? "rounded-l-full" : "rounded-r-full"
+              swipeDirection === "left" ? "rounded-l-full" : "rounded-r-full",
             )}
           >
-            {swipeDirection === 'right' && <ChevronLeft className="h-4 w-4" />}
             <span className="text-xs font-medium">{targetLabel}</span>
-            {swipeDirection === 'left' && <ChevronRight className="h-4 w-4" />}
           </div>
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom">
-        <div className="md:flex md:items-stretch md:overflow-x-auto md:scrollbar-hide hidden">
-          {visibleNavItems.map((item) => {
-            const isActive = isActiveRoute(item.path);
-            const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+      <nav
+        aria-label="Primary navigation"
+        className={cn(
+          "fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom md:top-0 md:bottom-0 md:left-0 md:right-auto md:h-screen md:border-t-0 md:border-r",
+          DESKTOP_NAV_WIDTH_CLASS,
+        )}
+      >
+        <div className="hidden h-full md:flex md:flex-col md:gap-3 md:px-3 md:pt-3 md:pb-3">
+          <div className="shrink-0 px-1 py-1">
+            <img src="/header_logo.png" alt="LeadSig logo" className="h-12 w-auto object-contain" />
+          </div>
 
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={cn(
-                  "flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] min-w-[52px] transition-colors",
-                  "active:bg-muted",
-                  isActive
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <div
-                  className={cn(
-                    "relative p-1 rounded-lg transition-colors",
-                    isActive && "bg-primary/10"
-                  )}
-                >
-                  {item.icon}
-                  {badgeCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-status-attention text-white text-[9px] font-bold flex items-center justify-center">
-                      {badgeCount > 9 ? "9+" : badgeCount}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] font-medium mt-0.5 leading-tight">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center justify-between md:hidden">
-          <button
-            onClick={navigateToPrevious}
-            disabled={activeIndex === 0}
-            className={cn(
-              "p-2 transition-opacity",
-              activeIndex === 0 ? "opacity-30" : "opacity-100"
-            )}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-5 w-5 text-muted-foreground" />
-          </button>
-
-          <div className="flex items-center justify-center gap-3 pt-2">
-            {visibleNavItems.map((item) => {
+          <div className="flex-1 space-y-4 overflow-y-auto pr-1 scrollbar-hide">
+            {visiblePrimaryNavItems.map((item) => {
               const isActive = isActiveRoute(item.path);
-              const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
 
               return (
                 <button
                   key={item.path}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => handleNavigate(item.path)}
                   className={cn(
-                    "relative flex items-center justify-center transition-all",
-                    "active:scale-95"
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors",
+                    "active:bg-muted",
+                    isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
+                >
+                  <div className="relative shrink-0">{item.icon}</div>
+                  <span className="flex-1 truncate">{item.label}</span>
+                </button>
+              );
+            })}
+
+            <div className="space-y-2">
+              <button
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors active:bg-muted",
+                  moreIsActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+                aria-label="More"
+                onClick={() => setDesktopMoreOpen((prev) => !prev)}
+              >
+                <Ellipsis className="h-5 w-5 shrink-0" />
+                <span className="flex-1 truncate">More</span>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", desktopMoreOpen && "rotate-180")} />
+              </button>
+
+              {desktopMoreOpen && (
+                <div className="space-y-4">
+                  {visibleMoreMenuItems.map((item) => {
+                    const isActive = isActiveRoute(item.path);
+                    const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => handleNavigate(item.path)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors active:bg-muted",
+                          isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <div className="relative shrink-0">
+                          {item.icon}
+                          {badgeCount > 0 && (
+                            <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-status-attention px-1 text-[9px] font-bold leading-4 text-white text-center">
+                              {badgeCount > 9 ? "9+" : badgeCount}
+                            </span>
+                          )}
+                        </div>
+                        <span className="flex-1 truncate">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3 border-t border-border pt-3">
+            <button
+              onClick={() => setBugReportOpen(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
+            >
+              <Bug className="h-5 w-5 shrink-0" />
+              <span className="flex-1 truncate">Report a Bug</span>
+            </button>
+            <button
+              onClick={() => handleNavigate("/settings")}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors active:bg-muted",
+                settingsIsActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <Settings className="h-5 w-5 shrink-0" />
+              <span className="flex-1 truncate">Settings</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center md:hidden">
+          <div className="flex w-full items-stretch justify-between px-2 pt-2 pb-2">
+            {visiblePrimaryNavItems.map((item) => {
+              const isActive = isActiveRoute(item.path);
+
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => handleNavigate(item.path)}
+                  className={cn("relative flex flex-1 flex-col items-center justify-center gap-1 transition-all", "active:scale-95")}
                   aria-label={item.label}
                 >
                   <div
                     className={cn(
                       "relative flex items-center justify-center rounded-full transition-all",
-                      isActive
-                        ? "bg-primary text-primary-foreground h-12 w-12"
-                        : "text-muted-foreground h-10 w-10"
+                      isActive ? "bg-primary/10 text-primary h-12 w-12" : "text-muted-foreground h-10 w-10",
                     )}
                   >
                     {item.icon}
-                    {badgeCount > 0 && (
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-status-attention text-white text-[9px] font-bold flex items-center justify-center">
-                        {badgeCount > 9 ? "9+" : badgeCount}
-                      </span>
-                    )}
                   </div>
+                  <span className={cn("text-[10px] leading-none", isActive ? "text-primary font-semibold" : "text-muted-foreground")}>
+                    {item.label}
+                  </span>
                 </button>
               );
             })}
-          </div>
 
-          <button
-            onClick={navigateToNext}
-            disabled={activeIndex === visibleNavItems.length - 1}
-            className={cn(
-              "p-2 transition-opacity",
-              activeIndex === visibleNavItems.length - 1 ? "opacity-30" : "opacity-100"
-            )}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="relative flex flex-1 flex-col items-center justify-center gap-1 transition-all active:scale-95"
+                  aria-label="More"
+                >
+                  <div
+                    className={cn(
+                      "relative flex items-center justify-center gap-0.5 rounded-full px-3 transition-all",
+                      moreIsActive ? "bg-primary/10 text-primary h-12" : "text-muted-foreground h-10",
+                    )}
+                  >
+                    <Ellipsis className="h-5 w-5" />
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </div>
+                  <span className={cn("text-[10px] leading-none", moreIsActive ? "text-primary font-semibold" : "text-muted-foreground")}>
+                    More
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" sideOffset={12} collisionPadding={12} className="w-64">
+                {visibleMoreMenuItems.map((item) => {
+                  const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+
+                  return (
+                    <DropdownMenuItem key={item.path} onSelect={() => handleNavigate(item.path)} className="gap-3 px-4 py-4 text-base">
+                      {item.icon}
+                      <span className="flex-1">{item.label}</span>
+                      {badgeCount > 0 && (
+                        <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                          {badgeCount > 9 ? "9+" : badgeCount}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuItem onSelect={() => handleNavigate("/settings")} className="gap-3 px-4 py-4 text-base">
+                  <Settings className="h-5 w-5" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setBugReportOpen(true)} className="gap-3 px-4 py-4 text-base">
+                  <Bug className="h-5 w-5" />
+                  <span>Report a Bug</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </nav>
+      <BugReportModal open={bugReportOpen} onOpenChange={setBugReportOpen} />
     </>
   );
 }
