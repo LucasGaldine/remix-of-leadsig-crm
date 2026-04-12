@@ -1,5 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6.10.1";
+import { jsPDF as JsPDF } from "npm:jspdf@2.5.2";
+import { format } from "npm:date-fns@3.6.0";
+type JsPdfDoc = InstanceType<typeof JsPDF>;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -91,6 +94,394 @@ function buildUserHtml(params: {
 </html>`;
 }
 
+async function getImageDataUrl(imageUrl: string) {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error("Failed to load image");
+  }
+
+  const blob = await response.blob();
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+
+  return `data:${blob.type || "image/png"};base64,${btoa(binary)}`;
+}
+
+function resolveImageFormat(imageDataUrl: string) {
+  if (imageDataUrl.startsWith("data:image/jpeg") || imageDataUrl.startsWith("data:image/jpg")) {
+    return "JPEG";
+  }
+
+  if (imageDataUrl.startsWith("data:image/webp")) {
+    return "WEBP";
+  }
+
+  return "PNG";
+}
+
+async function addCompanyLogo(doc: JsPdfDoc, logoUrl: string | undefined, margin: number, yPosition: number) {
+  if (!logoUrl) return yPosition;
+
+  try {
+    const logoDataUrl = await getImageDataUrl(logoUrl);
+    const logoProps = doc.getImageProperties(logoDataUrl);
+    const maxLogoWidth = 36;
+    const maxLogoHeight = 18;
+    const widthScale = maxLogoWidth / logoProps.width;
+    const heightScale = maxLogoHeight / logoProps.height;
+    const logoScale = Math.min(widthScale, heightScale);
+    const logoWidth = logoProps.width * logoScale;
+    const logoHeight = logoProps.height * logoScale;
+
+    doc.addImage(logoDataUrl, "PNG", margin, yPosition, logoWidth, logoHeight);
+    return yPosition + logoHeight + 6;
+  } catch {
+    return yPosition;
+  }
+}
+
+function addHeader(doc: JsPdfDoc, title: string, margin: number, yPosition: number) {
+  doc.setFontSize(24);
+  doc.setFont("helvetica", "bold");
+  doc.text(title, margin, yPosition);
+  return yPosition + 15;
+}
+
+function addGeneratedTimestamp(doc: JsPdfDoc, margin: number, yPosition: number) {
+  const timestamp = format(new Date(), "MMMM d, yyyy 'at' h:mm a");
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated: ${timestamp}`, margin, yPosition);
+  doc.setTextColor(0, 0, 0);
+  return yPosition + 15;
+}
+
+function addCompanySection(
+  doc: JsPdfDoc,
+  company: { name?: string | null; email?: string | null; phone?: string | null },
+  margin: number,
+  yPosition: number,
+) {
+  if (!company.name) return yPosition;
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(company.name, margin, yPosition);
+  yPosition += 6;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+
+  if (company.email) {
+    doc.text(company.email, margin, yPosition);
+    yPosition += 5;
+  }
+
+  if (company.phone) {
+    doc.text(company.phone, margin, yPosition);
+    yPosition += 5;
+  }
+
+  return yPosition + 5;
+}
+
+function addRecipientSection(
+  doc: JsPdfDoc,
+  recipient: { customerName: string; jobName: string; address?: string | null },
+  margin: number,
+  yPosition: number,
+) {
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("BILL TO:", margin, yPosition);
+  yPosition += 6;
+
+  doc.setFont("helvetica", "normal");
+  doc.text(recipient.customerName, margin, yPosition);
+  yPosition += 5;
+
+  if (recipient.jobName) {
+    doc.text(recipient.jobName, margin, yPosition);
+    yPosition += 5;
+  }
+
+  if (recipient.address) {
+    doc.text(recipient.address, margin, yPosition);
+    yPosition += 5;
+  }
+
+  return yPosition + 10;
+}
+
+function addDocumentMeta(doc: JsPdfDoc, lines: string[], margin: number, yPosition: number) {
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+
+  for (const line of lines) {
+    doc.text(line, margin, yPosition);
+    yPosition += 5;
+  }
+
+  doc.setTextColor(0, 0, 0);
+  return yPosition + 5;
+}
+
+function addLineItemsTable(
+  doc: JsPdfDoc,
+  lineItems: Array<{
+    name: string;
+    description?: string | null;
+    quantity?: number | null;
+    unit?: string | null;
+    unit_price?: number | null;
+    total?: number | null;
+  }>,
+  margin: number,
+  pageWidth: number,
+  yPosition: number,
+) {
+  doc.setFillColor(240, 240, 240);
+  doc.rect(margin, yPosition, pageWidth - margin * 2, 8, "F");
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("Description", margin + 2, yPosition + 5);
+  doc.text("Qty", pageWidth - 100, yPosition + 5);
+  doc.text("Price", pageWidth - 70, yPosition + 5);
+  doc.text("Total", pageWidth - margin - 2, yPosition + 5, { align: "right" });
+
+  yPosition += 10;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+
+  for (const item of lineItems) {
+    if (yPosition > 270) {
+      doc.addPage();
+      yPosition = 20;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.text(item.name || "Line item", margin, yPosition);
+    yPosition += 5;
+
+    if (item.description) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      const descLines = doc.splitTextToSize(item.description, pageWidth - margin * 2 - 20);
+      doc.text(descLines, margin, yPosition);
+      yPosition += descLines.length * 4;
+      doc.setFontSize(10);
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`${Number(item.quantity || 0)} ${item.unit || ""}`.trim(), pageWidth - 100, yPosition);
+    doc.text(`$${Number(item.unit_price || 0).toFixed(2)}`, pageWidth - 70, yPosition);
+    doc.text(`$${Number(item.total || 0).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
+
+    yPosition += 8;
+  }
+
+  return yPosition;
+}
+
+function addSummary(
+  doc: JsPdfDoc,
+  params: { subtotal: number; taxRate: number; tax: number; discount: number; total: number },
+  margin: number,
+  pageWidth: number,
+  yPosition: number,
+) {
+  yPosition += 5;
+  doc.setDrawColor(200, 200, 200);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 8;
+
+  const summaryX = pageWidth - 80;
+  doc.setFont("helvetica", "normal");
+
+  doc.text("Subtotal:", summaryX, yPosition);
+  doc.text(`$${Number(params.subtotal).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
+  yPosition += 6;
+
+  doc.text(`Tax (${(params.taxRate * 100).toFixed(1)}%):`, summaryX, yPosition);
+  doc.text(`$${Number(params.tax).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
+  yPosition += 6;
+
+  if (params.discount > 0) {
+    doc.text("Discount:", summaryX, yPosition);
+    doc.text(`-$${Number(params.discount).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
+    yPosition += 6;
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Total:", summaryX, yPosition);
+  doc.text(`$${Number(params.total).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
+  return yPosition + 8;
+}
+
+function addNotes(doc: JsPdfDoc, notes: string | undefined, margin: number, pageWidth: number, yPosition: number) {
+  if (!notes) return yPosition;
+
+  yPosition += 15;
+  if (yPosition > 250) {
+    doc.addPage();
+    yPosition = 20;
+  }
+
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("Notes:", margin, yPosition);
+  yPosition += 6;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const notesLines = doc.splitTextToSize(notes, pageWidth - margin * 2);
+  doc.text(notesLines, margin, yPosition);
+  return yPosition + notesLines.length * 4;
+}
+
+async function addSignaturePage(
+  doc: JsPdfDoc,
+  signatureImageUrl: string | undefined,
+  margin: number,
+  pageWidth: number,
+  pageHeight: number,
+) {
+  if (!signatureImageUrl) return;
+
+  try {
+    const signatureDataUrl = await getImageDataUrl(signatureImageUrl);
+    const signatureProps = doc.getImageProperties(signatureDataUrl);
+    const imageFormat = resolveImageFormat(signatureDataUrl);
+
+    doc.addPage();
+    let yPosition = 20;
+
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("Signature", margin, yPosition);
+    yPosition += 8;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 100, 100);
+    doc.text("Captured during estimate approval", margin, yPosition);
+    doc.setTextColor(0, 0, 0);
+    yPosition += 8;
+
+    const maxImageWidth = pageWidth - margin * 2;
+    const maxImageHeight = pageHeight - yPosition - margin;
+    const widthScale = maxImageWidth / signatureProps.width;
+    const heightScale = maxImageHeight / signatureProps.height;
+    const imageScale = Math.min(widthScale, heightScale);
+    const imageWidth = signatureProps.width * imageScale;
+    const imageHeight = signatureProps.height * imageScale;
+    const imageX = (pageWidth - imageWidth) / 2;
+
+    doc.addImage(signatureDataUrl, imageFormat, imageX, yPosition, imageWidth, imageHeight);
+  } catch {
+    // Keep PDF generation resilient when signature image fails to load.
+  }
+}
+
+async function buildEstimatePdfAttachment(params: {
+  estimateId: string;
+  companyName: string;
+  companyLogoUrl?: string | null;
+  companyEmail?: string | null;
+  companyPhone?: string | null;
+  customerName: string;
+  jobName: string;
+  address?: string | null;
+  total: number;
+  subtotal: number;
+  taxRate: number;
+  tax: number;
+  discount: number;
+  notes?: string | null;
+  createdAt?: string | null;
+  expiresAt?: string | null;
+  signatureImageUrl?: string | null;
+  acceptedAt?: string | null;
+  lineItems: Array<{
+    name: string;
+    description?: string | null;
+    quantity?: number | null;
+    unit?: string | null;
+    unit_price?: number | null;
+    total?: number | null;
+    sort_order?: number | null;
+    is_change_order?: boolean | null;
+    change_order_type?: string | null;
+  }>;
+}) {
+  const doc = new JsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  let yPosition = 20;
+
+  yPosition = await addCompanyLogo(doc, params.companyLogoUrl || undefined, margin, yPosition);
+  yPosition = addHeader(doc, "ESTIMATE", margin, yPosition);
+  yPosition = addGeneratedTimestamp(doc, margin, yPosition);
+  yPosition = addCompanySection(
+    doc,
+    { name: params.companyName, email: params.companyEmail, phone: params.companyPhone },
+    margin,
+    yPosition,
+  );
+  yPosition = addRecipientSection(
+    doc,
+    { customerName: params.customerName, jobName: params.jobName, address: params.address },
+    margin,
+    yPosition,
+  );
+
+  const metaLines: string[] = [];
+  if (params.createdAt) metaLines.push(`Created: ${format(new Date(params.createdAt), "MMM d, yyyy")}`);
+  if (params.expiresAt) metaLines.push(`Expires: ${format(new Date(params.expiresAt), "MMM d, yyyy")}`);
+  if (!params.createdAt && params.acceptedAt) metaLines.push(`Approved: ${format(new Date(params.acceptedAt), "MMM d, yyyy")}`);
+  if (metaLines.length > 0) {
+    yPosition = addDocumentMeta(doc, metaLines, margin, yPosition);
+  }
+
+  const visibleLineItems = params.lineItems
+    .filter((item) => !item.is_change_order || item.change_order_type !== "deleted")
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  yPosition = addLineItemsTable(doc, visibleLineItems, margin, pageWidth, yPosition);
+  yPosition = addSummary(
+    doc,
+    {
+      subtotal: Number(params.subtotal || 0),
+      taxRate: Number(params.taxRate || 0),
+      tax: Number(params.tax || 0),
+      discount: Number(params.discount || 0),
+      total: Number(params.total || 0),
+    },
+    margin,
+    pageWidth,
+    yPosition,
+  );
+  addNotes(doc, params.notes || undefined, margin, pageWidth, yPosition);
+  await addSignaturePage(doc, params.signatureImageUrl || undefined, margin, pageWidth, pageHeight);
+
+  const attachmentBuffer = doc.output("arraybuffer");
+  const filenameSafeCustomer = params.customerName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "customer";
+  return {
+    filename: `estimate-${filenameSafeCustomer}-${format(new Date(), "yyyy-MM-dd")}.pdf`,
+    content: new Uint8Array(attachmentBuffer),
+    contentType: "application/pdf",
+  };
+}
+
 async function sendEmail(params: {
   smtpHost: string;
   smtpPort: number;
@@ -103,6 +494,11 @@ async function sendEmail(params: {
   html: string;
   text: string;
   replyTo?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Uint8Array;
+    contentType: string;
+  }>;
 }) {
   const transporter = nodemailer.createTransport({
     host: params.smtpHost,
@@ -121,6 +517,7 @@ async function sendEmail(params: {
     subject: params.subject,
     html: params.html,
     text: params.text,
+    attachments: params.attachments,
   });
 }
 
@@ -172,11 +569,20 @@ Deno.serve(async (req: Request) => {
         account_id,
         customer_id,
         job_id,
+        created_at,
+        expires_at,
         total,
+        subtotal,
+        tax_rate,
+        tax,
+        discount,
+        notes,
         status,
         accepted_at,
+        manual_approval_photo_url,
         customer:customers(name, email),
-        job:leads!estimates_job_id_fkey(name)
+        job:leads!estimates_job_id_fkey(name, address),
+        line_items:estimate_line_items(name, description, quantity, unit, unit_price, total, sort_order, is_change_order, change_order_type)
       `)
       .eq("id", estimateId)
       .maybeSingle();
@@ -197,7 +603,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name, company_email, settings")
+      .select("company_name, company_email, company_phone, logo_url, settings")
       .eq("id", estimate.account_id)
       .maybeSingle();
 
@@ -213,6 +619,27 @@ Deno.serve(async (req: Request) => {
     const companyReplyTo = account?.company_email?.trim() || undefined;
     const customerName = estimate.customer?.name?.trim() || "there";
     const jobName = estimate.job?.name?.trim() || "your project";
+    const pdfAttachment = await buildEstimatePdfAttachment({
+      estimateId: estimate.id,
+      companyName,
+      companyLogoUrl: (account as any)?.logo_url || null,
+      companyEmail: account?.company_email || null,
+      companyPhone: (account as any)?.company_phone || null,
+      customerName,
+      jobName,
+      address: (estimate as any)?.job?.address || null,
+      total: Number(estimate.total || 0),
+      subtotal: Number((estimate as any).subtotal || 0),
+      taxRate: Number((estimate as any).tax_rate || 0),
+      tax: Number((estimate as any).tax || 0),
+      discount: Number((estimate as any).discount || 0),
+      notes: (estimate as any).notes || null,
+      createdAt: (estimate as any).created_at || null,
+      expiresAt: (estimate as any).expires_at || null,
+      signatureImageUrl: (estimate as any).manual_approval_photo_url || null,
+      acceptedAt: estimate.accepted_at || null,
+      lineItems: (estimate as any).line_items || [],
+    });
 
     const { data: members } = await supabase
       .from("account_members")
@@ -307,6 +734,7 @@ Deno.serve(async (req: Request) => {
           html,
           text,
           replyTo: companyReplyTo,
+          attachments: [pdfAttachment],
         });
 
         sent += 1;
