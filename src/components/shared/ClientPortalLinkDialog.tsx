@@ -1,6 +1,6 @@
 import { Check, Copy, Mail, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
 interface ClientPortalLinkDialogProps {
@@ -9,6 +9,9 @@ interface ClientPortalLinkDialogProps {
   portalLink: string;
   copied: boolean;
   onCopy: () => Promise<void> | void;
+  onEmailClient?: () => Promise<void> | void;
+  emailSending?: boolean;
+  emailSent?: boolean;
   clientPhone?: string | null;
   clientEmail?: string | null;
 }
@@ -19,6 +22,9 @@ export function ClientPortalLinkDialog({
   portalLink,
   copied,
   onCopy,
+  onEmailClient,
+  emailSending = false,
+  emailSent = false,
   clientPhone,
   clientEmail,
 }: ClientPortalLinkDialogProps) {
@@ -32,9 +38,13 @@ export function ClientPortalLinkDialog({
     window.open(`sms:${normalizedClientPhone}`, "_blank");
   };
 
-  const handleEmailClient = () => {
+  const handleEmailClient = async () => {
     if (!canEmailClient) return;
-    window.open(`mailto:${normalizedClientEmail}`, "_blank");
+    if (!onEmailClient) {
+      window.open(`mailto:${normalizedClientEmail}`, "_blank");
+      return;
+    }
+    await onEmailClient();
   };
 
   return (
@@ -76,17 +86,12 @@ export function ClientPortalLinkDialog({
             variant="secondary"
             className="flex-1"
             onClick={handleEmailClient}
-            disabled={!canEmailClient}
+            disabled={!canEmailClient || emailSending}
           >
             <Mail className="h-4 w-4" />
-            Email Client
+            {emailSending ? "Sending..." : emailSent ? "Email Sent" : "Email Client"}
           </Button>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -29,6 +29,13 @@ vi.mock("@/hooks/useTeamMembers", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useJobAssignments", () => ({
+  useJobAssignments: () => ({
+    assignCrewAsync: vi.fn(),
+    isAssigning: false,
+  }),
+}));
+
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: vi.fn(),
@@ -48,7 +55,7 @@ vi.mock("@/components/ui/calendar", () => ({
 }));
 
 describe("ScheduleJobDialog recurring shortcut", () => {
-  it("shows no date selected state before a date is chosen", () => {
+  it("does not show a no date selected helper before a date is chosen", () => {
     render(
       <ScheduleJobDialog
         open
@@ -57,7 +64,7 @@ describe("ScheduleJobDialog recurring shortcut", () => {
       />
     );
 
-    expect(screen.getByText("No date selected")).toBeInTheDocument();
+    expect(screen.queryByText("No date selected")).not.toBeInTheDocument();
   });
 
   it("offers a recurring shortcut and opens recurring flow from add date dialog", () => {
@@ -74,13 +81,13 @@ describe("ScheduleJobDialog recurring shortcut", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Make Recurring Instead" }));
+    fireEvent.click(screen.getByRole("button", { name: "Recurring" }));
 
     expect(onMakeRecurring).toHaveBeenCalledTimes(1);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("places recurring near time controls and keeps spacing between footer actions", () => {
+  it("places recurring tab near time controls and keeps spacing between footer actions", () => {
     render(
       <ScheduleJobDialog
         open
@@ -91,9 +98,9 @@ describe("ScheduleJobDialog recurring shortcut", () => {
       />
     );
 
-    const recurringButton = screen.getByRole("button", { name: "Make Recurring Instead" });
+    const recurringButton = screen.getByRole("button", { name: "Recurring" });
     const recurringContainer = recurringButton.parentElement;
-    expect(recurringContainer?.className).toContain("justify-start");
+    expect(recurringContainer?.className).toContain("grid-cols-2");
 
     const cancelButton = screen.getByRole("button", { name: "Cancel" });
     const footerContainer = cancelButton.parentElement;

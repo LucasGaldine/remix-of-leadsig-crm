@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   evaluateAutoQualifyWebhook,
+  evaluateIntegrationQualificationDecision,
   getAutoQualifyWebhookConfig,
 } from "../../supabase/functions/_shared/integration-lead-automation";
 
@@ -104,5 +105,62 @@ describe("evaluateAutoQualifyWebhook", () => {
     expect(result.qualified).toBe(true);
     expect(result.reason).toContain("fallback");
     expect(result.metadata.webhook_error).toBeDefined();
+  });
+});
+
+describe("evaluateIntegrationQualificationDecision", () => {
+  it("rejects as out of range when rule is enabled and lead location does not match", async () => {
+    const result = await evaluateIntegrationQualificationDecision({
+      automationSettings: {
+        autoQualifyEnabled: true,
+        webhookConfig: null,
+        rejectOutOfRange: true,
+        rejectOutOfBudget: false,
+        minJobSize: {},
+        serviceAreas: [
+          {
+            location: "Austin, TX",
+            radiusMiles: 10,
+            lat: 30.2672,
+            lng: -97.7431,
+          },
+        ],
+      },
+      accountId: "acct_1",
+      source: "google",
+      leadData: {
+        city: "Dallas",
+        state: "TX",
+        lat: 32.7767,
+        lng: -96.797,
+      },
+      rawPayload: {},
+    });
+
+    expect(result.qualified).toBe(false);
+    expect(result.metadata.rejection_rule).toBe("out_of_range");
+  });
+
+  it("rejects as out of budget when rule is enabled and budget is below min job size", async () => {
+    const result = await evaluateIntegrationQualificationDecision({
+      automationSettings: {
+        autoQualifyEnabled: true,
+        webhookConfig: null,
+        rejectOutOfRange: false,
+        rejectOutOfBudget: true,
+        minJobSize: { "Pavers / Patio": 5000 },
+        serviceAreas: [],
+      },
+      accountId: "acct_1",
+      source: "google",
+      leadData: {
+        service_type: "Pavers / Patio",
+        budget: 1200,
+      },
+      rawPayload: {},
+    });
+
+    expect(result.qualified).toBe(false);
+    expect(result.metadata.rejection_rule).toBe("out_of_budget");
   });
 });

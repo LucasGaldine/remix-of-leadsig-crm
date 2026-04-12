@@ -168,9 +168,9 @@ export default function Inbox() {
   const [activeFilter, setActiveFilter] = useState<InboxFilter>("all");
   const [sortBy, setSortBy] = useState<InboxSortOption>("newest");
 
-  const { data: customers = [], isLoading: customersLoading } = useCustomers();
-  const { data: leads = [], isLoading: leadsLoading } = useLeads();
-  const { data: jobs = [], isLoading: jobsLoading } = useJobs();
+  const { data: customers = [], isLoading: customersLoading, refetch: refetchCustomers } = useCustomers();
+  const { data: leads = [], isLoading: leadsLoading, refetch: refetchLeads } = useLeads();
+  const { data: jobs = [], isLoading: jobsLoading, refetch: refetchJobs } = useJobs();
   const { data: estimates = [], isLoading: estimatesLoading } = useEstimates({ limit: 100 });
   const { data: invoices = [], isLoading: invoicesLoading } = useInvoices({ limit: 100 });
   const { data: payments = [], isLoading: paymentsLoading } = usePayments({ limit: 100 });
@@ -454,7 +454,16 @@ export default function Inbox() {
         </section>
       </div>
 
-      <MainPageQuickActions show={isManager()} />
+      <MainPageQuickActions
+        show={isManager()}
+        onLeadCreated={() => {
+          void refetchCustomers();
+          void refetchLeads();
+        }}
+        onJobCreated={() => {
+          void refetchJobs();
+        }}
+      />
       <MobileNav />
     </div>
   );

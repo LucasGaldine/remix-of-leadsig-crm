@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   buildIntegrationLeadStatus,
-  evaluateAutoQualifyWebhook,
+  evaluateIntegrationQualificationDecision,
   getIntegrationAutomationSettings,
 } from "../_shared/integration-lead-automation.ts";
 import {
@@ -150,31 +150,23 @@ async function processTestLeadInBackground(
     parsingMethod = aiTimeoutFallback ? "fallback_timeout" : "fallback";
   }
 
-  let qualificationDecision = {
-    qualified: autoQualify,
-    reason: autoQualify ? "Auto-qualify enabled" : "Auto-qualify disabled",
-    metadata: { webhook_used: false },
-  };
-
-  if (autoQualify && automationSettings.webhookConfig) {
-    qualificationDecision = await evaluateAutoQualifyWebhook({
-      config: automationSettings.webhookConfig,
-      accountId,
-      source: platform,
-      leadData: {
-        full_name: leadName,
-        email: leadEmail,
-        phone_number: leadPhone,
-        city: leadCity,
-        state: leadState,
-        address: leadAddress,
-        service_type: leadServiceType,
-        notes: leadNotes,
-        budget: leadBudget,
-      },
-      rawPayload: testPayload,
-    });
-  }
+  const qualificationDecision = await evaluateIntegrationQualificationDecision({
+    automationSettings,
+    accountId,
+    source: platform,
+    leadData: {
+      full_name: leadName,
+      email: leadEmail,
+      phone_number: leadPhone,
+      city: leadCity,
+      state: leadState,
+      address: leadAddress,
+      service_type: leadServiceType,
+      notes: leadNotes,
+      budget: leadBudget,
+    },
+    rawPayload: testPayload,
+  });
 
   const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
 
@@ -213,7 +205,7 @@ async function processTestLeadInBackground(
         summary: autoQualify
           ? qualificationDecision.qualified
             ? `Test lead auto-qualified for ${platformNames[platform] || platform} connection verification`
-            : `Test lead marked not qualified by endpoint for ${platformNames[platform] || platform} connection verification`
+            : `Test lead marked not qualified for ${platformNames[platform] || platform} connection verification`
           : `Test lead created for ${platformNames[platform] || platform} connection verification`,
         metadata: {
           test: true,

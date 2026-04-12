@@ -88,6 +88,15 @@ const eventTypeLabels: Record<string, string> = {
   same_day_reminders: "Day reminder",
 };
 
+const isMissingSmsConsentMetadataColumnError = (message?: string) => {
+  if (!message) return false;
+  return (
+    message.includes("sms_consent_captured_at") ||
+    message.includes("sms_consent_source") ||
+    message.includes("sms_consent_text_version")
+  );
+};
+
 export default function SettingsNotifications() {
   const { profile, user, currentAccount, isCrewMember, refreshProfile } = useAuth();
   const { logs: smsLogs, isLoading: smsLogsLoading, refetch: refetchSmsLogs } = useSmsLogs(5);
@@ -244,27 +253,39 @@ export default function SettingsNotifications() {
 
     setIsSendingEmailTest(true);
     try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      const accessToken =
+        refreshData.session?.access_token ||
+        (await supabase.auth.getSession()).data.session?.access_token;
+      if (refreshError || !accessToken) {
+        toast.error("Your session expired. Please sign in again and retry.");
+        return;
+      }
+
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email-digest`;
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           digest_type: digestFrequency === "weekly" ? "weekly" : "daily",
+          test_mode: true,
+          test_email: email,
         }),
       });
 
       const result = await response.json();
 
       if (response.ok && result.sent > 0) {
-        toast.success("Test digest email sent to " + email);
+        toast.success("Test email sent to " + email);
       } else if (response.ok && result.sent === 0) {
-        const reason = result.results?.[0]?.reason || "No new notifications to include";
-        toast.info("Digest not sent: " + reason);
+        const reason = result.results?.[0]?.reason || "No reason returned";
+        toast.info("Test email not sent: " + reason);
       } else {
-        toast.error(result.error || "Failed to send test email");
+        const reason = result.error || result.results?.[0]?.reason || "Failed to send test email";
+        toast.error(reason);
       }
     } catch {
       toast.error("Could not reach the email service. Please try again.");
@@ -305,13 +326,26 @@ export default function SettingsNotifications() {
     }
 
     setIsSaving(true);
+    const runProfileUpdate = (updatePayload: Record<string, unknown>) =>
+      supabase
+        .from("profiles")
+        .update(updatePayload)
+        .eq("user_id", user.id)
+        .select("notification_preferences, mention_notifications_enabled, sms_consent_status")
+        .maybeSingle();
+
     // Try update first
-    let { data, error } = await supabase
-      .from("profiles")
-      .update(profileUpdate)
-      .eq("user_id", user.id)
-      .select("notification_preferences, mention_notifications_enabled, sms_consent_status")
-      .maybeSingle();
+    let { data, error } = await runProfileUpdate(profileUpdate);
+
+    if (error && consentChanged && isMissingSmsConsentMetadataColumnError(error.message)) {
+      const {
+        sms_consent_captured_at: _smsCapturedAt,
+        sms_consent_source: _smsSource,
+        sms_consent_text_version: _smsTextVersion,
+        ...fallbackProfileUpdate
+      } = profileUpdate;
+      ({ data, error } = await runProfileUpdate(fallbackProfileUpdate));
+    }
 
     // If no row was updated, try insert (profile may not exist yet)
     if (!error && !data) {

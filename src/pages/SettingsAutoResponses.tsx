@@ -1,37 +1,761 @@
-import { Zap } from "lucide-react";
-import { FeaturePlaceholder } from "@/components/features/FeaturePlaceholder";
+import { useEffect, useState } from "react";
+import { Check, ChevronsUpDown, Loader2, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
 import { PlanGate } from "@/components/features/PlanGate";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { SERVICE_TYPES } from "@/constants/serviceTypes";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { useAccountSettings } from "@/hooks/useAccountSettings";
+import { toast } from "sonner";
+
+const TEMPLATE_VARIABLES = [
+  "{{job_name}}",
+  "{{client_name}}",
+  "{{first_name}}",
+  "{{service_type}}",
+  "{{job_status}}",
+  "{{lead_id}}",
+  "{{scheduled_date}}",
+  "{{scheduled_time}}",
+  "{{scheduled_datetime}}",
+] as const;
+type OffsetUnit = "seconds" | "hours" | "days" | "months";
+
+const OFFSET_UNITS: OffsetUnit[] = ["seconds", "hours", "days", "months"];
+
+const offsetToMinutes = (offsetValue: number, offsetUnit: OffsetUnit): number => {
+  if (!Number.isFinite(offsetValue) || offsetValue <= 0) return 0;
+  if (offsetUnit === "seconds") return Math.floor(offsetValue / 60);
+  if (offsetUnit === "hours") return offsetValue * 60;
+  if (offsetUnit === "days") return offsetValue * 24 * 60;
+  return offsetValue * 30 * 24 * 60;
+};
 
 export default function SettingsAutoResponses() {
+  const { settings, updateSettingsAsync, isSaving } = useAccountSettings();
+
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useUnsavedChanges(isDirty);
+
+  const [jobMessageAutomationEnabled, setJobMessageAutomationEnabled] = useState(false);
+  const [jobMessageTemplateDraft, setJobMessageTemplateDraft] = useState("");
+  const [jobMessageTemplateName, setJobMessageTemplateName] = useState("");
+  const [jobMessageTemplates, setJobMessageTemplates] = useState<Array<{
+    id: string;
+    name: string;
+    content: string;
+    is_finished: boolean;
+    job_service_types: string[];
+    trigger: {
+      type: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion";
+      offset_value: number;
+      offset_unit: OffsetUnit;
+    };
+  }>>([]);
+  const [isAddingTemplate, setIsAddingTemplate] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [draftServiceTypes, setDraftServiceTypes] = useState<string[]>([]);
+  const [draftTriggerType, setDraftTriggerType] = useState<"immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion">("immediate");
+  const [draftOffsetValue, setDraftOffsetValue] = useState("0");
+  const [draftOffsetUnit, setDraftOffsetUnit] = useState<OffsetUnit>("days");
+  const [customEndpointEnabled, setCustomEndpointEnabled] = useState(false);
+  const [endpointUrl, setEndpointUrl] = useState("");
+  const [authHeaderName, setAuthHeaderName] = useState("");
+  const [authHeaderValue, setAuthHeaderValue] = useState("");
+  const [maxRetryAttempts, setMaxRetryAttempts] = useState("3");
+  const [retryBackoffMinutes, setRetryBackoffMinutes] = useState("5");
+  const [serviceTypePopoverOpen, setServiceTypePopoverOpen] = useState(false);
+
+  useEffect(() => {
+    const automation = settings?.job_message_automation ?? null;
+    const legacyServiceTypes = Array.isArray(automation?.job_service_types)
+      ? automation.job_service_types.filter((value): value is string => typeof value === "string")
+      : [];
+    const legacyTriggerType =
+      automation?.trigger?.type === "before_schedule_start"
+      || automation?.trigger?.type === "after_schedule_start"
+      || automation?.trigger?.type === "after_job_completion"
+        ? automation.trigger.type
+        : "immediate";
+    const legacyOffsetMinutes = typeof automation?.trigger?.offset_minutes === "number" ? automation.trigger.offset_minutes : 0;
+    const legacyOffsetUnit: OffsetUnit = automation?.trigger?.offset_unit === "seconds"
+      || automation?.trigger?.offset_unit === "hours"
+      || automation?.trigger?.offset_unit === "days"
+      || automation?.trigger?.offset_unit === "months"
+      ? automation.trigger.offset_unit
+      : typeof automation?.trigger?.offset_minutes === "number"
+        ? "seconds"
+        : "days";
+    const legacyOffsetValue = typeof automation?.trigger?.offset_value === "number"
+      ? Math.max(0, automation.trigger.offset_value)
+      : legacyOffsetUnit === "seconds"
+        ? Math.max(0, legacyOffsetMinutes * 60)
+        : Math.max(0, legacyOffsetMinutes);
+
+    const configuredTemplates = Array.isArray(automation?.message_templates)
+      ? automation.message_templates
+        .map((template, index) => {
+          const content = typeof template?.content === "string" ? template.content.trim() : "";
+          if (!content) return null;
+          return {
+            id: typeof template?.id === "string" && template.id.trim().length > 0 ? template.id : `template-${index + 1}`,
+            name: typeof template?.name === "string" && template.name.trim().length > 0 ? template.name : `Template ${index + 1}`,
+            content,
+            is_finished: template?.is_finished !== false,
+            job_service_types: Array.isArray(template?.job_service_types)
+              ? template.job_service_types.filter((value): value is string => typeof value === "string")
+              : legacyServiceTypes,
+            trigger: {
+              type:
+                template?.trigger?.type === "before_schedule_start"
+                || template?.trigger?.type === "after_schedule_start"
+                || template?.trigger?.type === "after_job_completion"
+                  ? template.trigger.type
+                  : legacyTriggerType,
+              offset_unit:
+                template?.trigger?.offset_unit === "seconds"
+                  || template?.trigger?.offset_unit === "hours"
+                  || template?.trigger?.offset_unit === "days"
+                  || template?.trigger?.offset_unit === "months"
+                  ? template.trigger.offset_unit
+                  : typeof template?.trigger?.offset_minutes === "number"
+                    ? "seconds"
+                    : legacyOffsetUnit,
+              offset_value:
+                typeof template?.trigger?.offset_value === "number" && template.trigger.offset_value >= 0
+                  ? template.trigger.offset_value
+                  : typeof template?.trigger?.offset_minutes === "number" && template.trigger.offset_minutes >= 0
+                    ? template.trigger.offset_minutes * 60
+                    : legacyOffsetValue,
+            },
+          };
+        })
+        .filter((template): template is {
+          id: string;
+          name: string;
+          content: string;
+          is_finished: boolean;
+          job_service_types: string[];
+          trigger: { type: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion"; offset_value: number; offset_unit: OffsetUnit };
+        } => template !== null)
+      : [];
+    const legacyTemplate = typeof automation?.message_template === "string" ? automation.message_template.trim() : "";
+
+    setJobMessageAutomationEnabled(automation?.enabled === true);
+    setJobMessageTemplates(
+      configuredTemplates.length > 0
+        ? configuredTemplates
+        : legacyTemplate
+          ? [{
+            id: "template-1",
+            name: "Template 1",
+            content: legacyTemplate,
+            is_finished: true,
+            job_service_types: legacyServiceTypes,
+            trigger: {
+              type: legacyTriggerType,
+              offset_value: legacyOffsetValue,
+              offset_unit: legacyOffsetUnit,
+            },
+          }]
+          : [],
+    );
+    setJobMessageTemplateDraft("");
+    setJobMessageTemplateName("");
+    setIsAddingTemplate(false);
+    setEditingTemplateId(null);
+    setDraftServiceTypes([]);
+    setDraftTriggerType("immediate");
+    setDraftOffsetValue("0");
+    setDraftOffsetUnit("days");
+    setCustomEndpointEnabled(
+      automation?.endpoint?.enabled === true
+      || (typeof automation?.endpoint?.url === "string" && automation.endpoint.url.trim().length > 0),
+    );
+    setEndpointUrl(typeof automation?.endpoint?.url === "string" ? automation.endpoint.url : "");
+    setAuthHeaderName(typeof automation?.endpoint?.auth_header_name === "string" ? automation.endpoint.auth_header_name : "");
+    setAuthHeaderValue(typeof automation?.endpoint?.auth_header_value === "string" ? automation.endpoint.auth_header_value : "");
+    setMaxRetryAttempts(String(typeof automation?.retry?.max_attempts === "number" ? automation.retry.max_attempts : 3));
+    setRetryBackoffMinutes(String(typeof automation?.retry?.backoff_minutes === "number" ? automation.retry.backoff_minutes : 5));
+    setIsDirty(false);
+  }, [settings]);
+
+  const handleSave = async () => {
+    const parsedMaxRetryAttempts = Number.parseInt(maxRetryAttempts, 10);
+    const parsedRetryBackoffMinutes = Number.parseInt(retryBackoffMinutes, 10);
+    const fallbackTemplate = jobMessageTemplates[0];
+
+    try {
+      await updateSettingsAsync({
+        job_message_automation: {
+          enabled: jobMessageAutomationEnabled,
+          message_template: jobMessageTemplates[0]?.content ?? "",
+          message_templates: jobMessageTemplates.map((template) => ({
+            id: template.id,
+            name: template.name,
+            content: template.content,
+            is_finished: template.is_finished,
+            job_service_types: template.job_service_types,
+            trigger: template.trigger,
+          })),
+          job_service_types: fallbackTemplate?.job_service_types ?? [],
+          trigger: {
+            type: fallbackTemplate?.trigger.type ?? "immediate",
+            offset_minutes: fallbackTemplate ? offsetToMinutes(fallbackTemplate.trigger.offset_value, fallbackTemplate.trigger.offset_unit) : 0,
+            offset_value: fallbackTemplate?.trigger.offset_value ?? 0,
+            offset_unit: fallbackTemplate?.trigger.offset_unit ?? "days",
+          },
+          endpoint: {
+            enabled: customEndpointEnabled,
+            url: customEndpointEnabled ? endpointUrl.trim() : "",
+            auth_header_name: customEndpointEnabled ? authHeaderName.trim() : "",
+            auth_header_value: customEndpointEnabled ? authHeaderValue : "",
+          },
+          retry: {
+            max_attempts: customEndpointEnabled && Number.isFinite(parsedMaxRetryAttempts) && parsedMaxRetryAttempts > 0 ? parsedMaxRetryAttempts : 3,
+            backoff_minutes: customEndpointEnabled && Number.isFinite(parsedRetryBackoffMinutes) && parsedRetryBackoffMinutes >= 0 ? parsedRetryBackoffMinutes : 5,
+          },
+        },
+      });
+      setIsDirty(false);
+      toast.success("Auto Messaging settings saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save settings");
+    }
+  };
+
+  const toggleDraftServiceType = (serviceType: string) => {
+    setDraftServiceTypes((current) => {
+      if (current.includes(serviceType)) {
+        return current.filter((value) => value !== serviceType);
+      }
+      return [...current, serviceType];
+    });
+    setIsDirty(true);
+  };
+
+  const addMessageTemplate = () => {
+    const trimmedContent = jobMessageTemplateDraft.trim();
+    const trimmedName = jobMessageTemplateName.trim();
+    if (!trimmedContent) {
+      toast.error("Add template content before saving");
+      return;
+    }
+    const parsedDraftOffsetValue = Number.parseInt(draftOffsetValue, 10);
+    setJobMessageTemplates((current) => {
+      if (editingTemplateId) {
+        return current.map((template) =>
+          template.id === editingTemplateId
+            ? {
+              ...template,
+              name: trimmedName || template.name,
+              content: trimmedContent,
+              job_service_types: draftServiceTypes,
+              trigger: {
+                type: draftTriggerType,
+                offset_value: Number.isFinite(parsedDraftOffsetValue) && parsedDraftOffsetValue >= 0 ? parsedDraftOffsetValue : 0,
+                offset_unit: draftOffsetUnit,
+              },
+            }
+            : template,
+        );
+      }
+
+      return [
+        ...current,
+        {
+          id: `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: trimmedName || `Template ${current.length + 1}`,
+          content: trimmedContent,
+          is_finished: true,
+          job_service_types: draftServiceTypes,
+          trigger: {
+            type: draftTriggerType,
+            offset_value: Number.isFinite(parsedDraftOffsetValue) && parsedDraftOffsetValue >= 0 ? parsedDraftOffsetValue : 0,
+            offset_unit: draftOffsetUnit,
+          },
+        },
+      ];
+    });
+    setJobMessageTemplateDraft("");
+    setJobMessageTemplateName("");
+    setEditingTemplateId(null);
+    setDraftServiceTypes([]);
+    setDraftTriggerType("immediate");
+    setDraftOffsetValue("0");
+    setDraftOffsetUnit("days");
+    setIsAddingTemplate(false);
+    setIsDirty(true);
+  };
+
+  const removeMessageTemplate = (templateId: string) => {
+    setJobMessageTemplates((current) => current.filter((template) => template.id !== templateId));
+    if (editingTemplateId === templateId) {
+      setEditingTemplateId(null);
+      setJobMessageTemplateDraft("");
+      setJobMessageTemplateName("");
+      setDraftServiceTypes([]);
+      setDraftTriggerType("immediate");
+      setDraftOffsetValue("0");
+      setDraftOffsetUnit("days");
+      setIsAddingTemplate(false);
+    }
+    setIsDirty(true);
+  };
+
+  const toggleTemplateEnabled = (templateId: string, enabled: boolean) => {
+    setJobMessageTemplates((current) =>
+      current.map((template) =>
+        template.id === templateId
+          ? {
+            ...template,
+            is_finished: enabled,
+          }
+          : template,
+      ),
+    );
+    setIsDirty(true);
+  };
+
+  const editTemplate = (templateId: string) => {
+    const template = jobMessageTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+
+    setEditingTemplateId(template.id);
+    setJobMessageTemplateName(template.name);
+    setJobMessageTemplateDraft(template.content);
+    setDraftServiceTypes(template.job_service_types);
+    setDraftTriggerType(template.trigger.type);
+    setDraftOffsetValue(String(template.trigger.offset_value));
+    setDraftOffsetUnit(template.trigger.offset_unit);
+    setIsAddingTemplate(true);
+  };
+
   return (
     <PlanGate
       requiredPlan="premium"
-      featureName="Auto-Responses"
-      featureDescription="Automate responses for missed calls and follow-ups. Send automatic texts within minutes so you never lose a lead."
+      featureName="Auto Messaging"
+      featureDescription="Automate job message workflows for follow-ups and outbound reminders."
       backTo="/settings"
     >
-      <FeaturePlaceholder
-        title="Auto-Responses"
-        description="Automate responses for missed calls and follow-ups"
-        icon={<Zap className="h-8 w-8 text-amber-500" />}
-        isPremium
-        whatItDoes={[
-          "Send automatic texts when you miss a call",
-          "Schedule follow-up reminders for cold leads",
-          "Send confirmation texts when appointments are booked",
-          "Auto-reply to new lead inquiries",
-          "Set business hours for delayed responses",
-        ]}
-        whatYouCanDoNow={[
-          "Manually log calls and texts in lead interactions",
-          "Track all lead communications in the timeline",
-          "Use status changes to mark follow-up needed",
-          "Set up email notifications for new leads",
-        ]}
-        unlockInfo="Auto-responses help you respond within 5 minutes—when leads are most likely to book."
-        backTo="/settings"
-        backLabel="Back to Settings"
-      />
+      <div className="min-h-screen bg-surface-sunken pb-24">
+        <PageHeader
+          title="Auto Messaging"
+          subtitle="Automate job message workflows"
+          showBack
+          backTo="/settings"
+        />
+
+        <main className="mx-auto w-full max-w-4xl px-4 py-6 space-y-6">
+          <Card>
+            <CardHeader className="space-y-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-amber-500" />
+                    Job Message Automation
+                  </CardTitle>
+                  <CardDescription>
+                    Configure an automatic job message event and send a full payload to your endpoint.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center sm:pt-1">
+                  <Switch
+                    id="enable-job-message-automation"
+                    aria-label="Enable job message automation"
+                    checked={jobMessageAutomationEnabled}
+                    onCheckedChange={(checked) => {
+                      setJobMessageAutomationEnabled(checked);
+                      setIsDirty(true);
+                    }}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {jobMessageAutomationEnabled ? (
+                <>
+
+              <div className="space-y-3">
+                <Label>Templates</Label>
+                <div className="rounded-lg border bg-background p-3">
+                  {jobMessageTemplates.length > 0 ? (
+                    <div className="divide-y">
+                      {jobMessageTemplates.map((template) => (
+                        <div
+                          key={template.id}
+                          className="flex cursor-pointer items-start justify-between gap-4 rounded-md py-3 first:pt-0 last:pb-0 hover:bg-accent/30"
+                          onClick={() => editTemplate(template.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              editTemplate(template.id);
+                            }
+                          }}
+                        >
+                          <div className="flex items-start gap-2 pr-2">
+                            <Pencil className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            <div className="space-y-1">
+                            <p className="text-sm font-medium">
+                              {template.name}
+                              {!template.is_finished ? <span className="ml-2 text-xs text-muted-foreground">(Disabled)</span> : null}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{template.content}</p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 pt-0.5">
+                            <Switch
+                              checked={template.is_finished}
+                              onClick={(event) => event.stopPropagation()}
+                              onCheckedChange={(checked) => toggleTemplateEnabled(template.id, checked)}
+                              aria-label={`Enable ${template.name}`}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeMessageTemplate(template.id);
+                              }}
+                              aria-label={`Delete ${template.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No templates created.</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    setIsAddingTemplate((current) => {
+                      const next = !current;
+                      if (!next) {
+                        setEditingTemplateId(null);
+                        setJobMessageTemplateDraft("");
+                        setJobMessageTemplateName("");
+                        setDraftServiceTypes([]);
+                        setDraftTriggerType("immediate");
+                        setDraftOffsetValue("0");
+                        setDraftOffsetUnit("days");
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  {isAddingTemplate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                  {isAddingTemplate ? "Cancel template" : "Add template"}
+                </Button>
+              </div>
+
+              {isAddingTemplate ? (
+                <div className="space-y-5 rounded-lg border bg-background p-4">
+                  <div className="space-y-3">
+                    <Label htmlFor="job-message-template-name">Message template</Label>
+                    <div className="space-y-2">
+                      <Input
+                        id="job-message-template-name"
+                        value={jobMessageTemplateName}
+                        onChange={(event) => {
+                          setJobMessageTemplateName(event.target.value);
+                          setIsDirty(true);
+                        }}
+                        placeholder="Template name (optional)"
+                      />
+                      <Textarea
+                        id="job-message-template"
+                        value={jobMessageTemplateDraft}
+                        onChange={(event) => {
+                          setJobMessageTemplateDraft(event.target.value);
+                          setIsDirty(true);
+                        }}
+                        placeholder="Reminder: {{job_name}} is scheduled for {{scheduled_date}}"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm text-muted-foreground">Variables:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {TEMPLATE_VARIABLES.map((variableName) => (
+                            <Badge
+                              key={variableName}
+                              variant="outline"
+                              className="font-mono text-xs font-normal text-muted-foreground border-muted-foreground/30"
+                            >
+                              {variableName}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Jobs this message applies to</Label>
+                    <div className="space-y-3">
+                      <Popover open={serviceTypePopoverOpen} onOpenChange={setServiceTypePopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={serviceTypePopoverOpen}
+                            className="w-full justify-between font-normal"
+                          >
+                            Select service types
+                            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search service types..." />
+                            <CommandList>
+                              <CommandEmpty>No service types found.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem
+                                  value="All service types"
+                                  onSelect={() => {
+                                    setDraftServiceTypes([]);
+                                    setIsDirty(true);
+                                  }}
+                                >
+                                  <Check className={`mr-2 h-4 w-4 ${draftServiceTypes.length === 0 ? "opacity-100" : "opacity-0"}`} />
+                                  All service types
+                                </CommandItem>
+                                {SERVICE_TYPES.map((serviceType) => {
+                                  const isSelected = draftServiceTypes.includes(serviceType);
+                                  return (
+                                    <CommandItem
+                                      key={serviceType}
+                                      value={serviceType}
+                                      onSelect={() => toggleDraftServiceType(serviceType)}
+                                    >
+                                      <Check className={`mr-2 h-4 w-4 ${isSelected ? "opacity-100" : "opacity-0"}`} />
+                                      {serviceType}
+                                    </CommandItem>
+                                  );
+                                })}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+
+                      <div className="flex flex-wrap gap-2">
+                        {draftServiceTypes.length > 0 ? (
+                          draftServiceTypes.map((serviceType) => (
+                            <Badge key={serviceType} variant="secondary" className="gap-1 pr-1">
+                              {serviceType}
+                              <button
+                                type="button"
+                                onClick={() => toggleDraftServiceType(serviceType)}
+                                className="rounded-sm p-0.5 hover:bg-black/10 dark:hover:bg-white/20"
+                                aria-label={`Remove ${serviceType}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge variant="secondary">All service types</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-trigger-timing">Trigger timing</Label>
+                      <select
+                        id="job-message-trigger-timing"
+                        value={draftTriggerType}
+                        onChange={(event) => {
+                          setDraftTriggerType(
+                            event.target.value as "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion",
+                          );
+                          setIsDirty(true);
+                        }}
+                        className="h-10 w-full rounded-full border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="immediate">Immediate</option>
+                        <option value="before_schedule_start">Before schedule start</option>
+                        <option value="after_schedule_start">After schedule start</option>
+                        <option value="after_job_completion">After job completion</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-offset-value">Offset</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="job-message-offset-value"
+                          type="number"
+                          min={0}
+                          value={draftOffsetValue}
+                          onChange={(event) => {
+                            setDraftOffsetValue(event.target.value);
+                            setIsDirty(true);
+                          }}
+                          disabled={draftTriggerType === "immediate"}
+                        />
+                        <select
+                          id="job-message-offset-unit"
+                          value={draftOffsetUnit}
+                          onChange={(event) => {
+                            setDraftOffsetUnit(event.target.value as OffsetUnit);
+                            setIsDirty(true);
+                          }}
+                          className="h-10 w-32 rounded-full border border-input bg-background px-3 text-sm"
+                          disabled={draftTriggerType === "immediate"}
+                        >
+                          {OFFSET_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button type="button" className="gap-2" onClick={addMessageTemplate}>
+                      <Check className="h-4 w-4" />
+                      {editingTemplateId ? "Save template" : "Confirm template"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between rounded-lg border bg-background p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="enable-custom-endpoint">Use custom endpoint</Label>
+                  <p className="text-sm text-muted-foreground">Enable to send job message events to your endpoint.</p>
+                </div>
+                <Switch
+                  id="enable-custom-endpoint"
+                  checked={customEndpointEnabled}
+                  onCheckedChange={(checked) => {
+                    setCustomEndpointEnabled(checked);
+                    setIsDirty(true);
+                  }}
+                />
+              </div>
+
+              {customEndpointEnabled ? (
+                <>
+                  <div className="space-y-3">
+                    <Label htmlFor="job-message-endpoint-url">Job message endpoint URL</Label>
+                    <Input
+                      id="job-message-endpoint-url"
+                      type="url"
+                      value={endpointUrl}
+                      onChange={(event) => {
+                        setEndpointUrl(event.target.value);
+                        setIsDirty(true);
+                      }}
+                      placeholder="https://example.com/hooks/job-message"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-auth-header-name">Job message auth header name</Label>
+                      <Input
+                        id="job-message-auth-header-name"
+                        value={authHeaderName}
+                        onChange={(event) => {
+                          setAuthHeaderName(event.target.value);
+                          setIsDirty(true);
+                        }}
+                        placeholder="Authorization"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-auth-header-value">Job message auth header value</Label>
+                      <Input
+                        id="job-message-auth-header-value"
+                        value={authHeaderValue}
+                        onChange={(event) => {
+                          setAuthHeaderValue(event.target.value);
+                          setIsDirty(true);
+                        }}
+                        placeholder="Bearer <token>"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-max-retry-attempts">Max retry attempts</Label>
+                      <Input
+                        id="job-message-max-retry-attempts"
+                        type="number"
+                        min={1}
+                        value={maxRetryAttempts}
+                        onChange={(event) => {
+                          setMaxRetryAttempts(event.target.value);
+                          setIsDirty(true);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-retry-backoff-minutes">Retry backoff minutes</Label>
+                      <Input
+                        id="job-message-retry-backoff-minutes"
+                        type="number"
+                        min={0}
+                        value={retryBackoffMinutes}
+                        onChange={(event) => {
+                          setRetryBackoffMinutes(event.target.value);
+                          setIsDirty(true);
+                        }}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+                </>
+              ) : null}
+            </CardContent>
+          </Card>
+
+        </main>
+
+        <div className="fixed bottom-24 right-4 z-40 sm:bottom-6 sm:right-6">
+          <Button
+            onClick={handleSave}
+            size="icon"
+            className="h-14 w-14 rounded-full shadow-lg"
+            disabled={isSaving}
+            aria-label={isSaving ? "Saving changes" : "Save changes"}
+          >
+            {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+          </Button>
+        </div>
+
+        <MobileNav />
+        <UnsavedChangesDialog blocker={blocker} />
+      </div>
     </PlanGate>
   );
 }

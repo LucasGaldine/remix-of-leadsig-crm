@@ -72,7 +72,7 @@ export default function Settings() {
           label: "Company Profile",
           description: "Name, logo, contact info",
           onClick: () => navigate("/settings/company"),
-          searchTerms: ["business name", "company name", "company logo", "phone number", "email", "address", "business info", "company email", "company phone", "business address", "billing email", "website", "invite code", "team invite", "join company", "company code", "team members"],
+          searchTerms: ["business name", "company name", "company logo", "phone number", "email", "address", "business info", "company email", "company phone", "business address", "billing email", "website", "invite code", "team invite", "join company", "company code", "team members", "client portal", "portal", "portal color", "portal text color"],
         },
         {
           icon: <MapPin className="h-5 w-5" />,
@@ -95,19 +95,19 @@ export default function Settings() {
           onClick: () => navigate("/settings/min-job-size"),
           searchTerms: ["minimum", "floor", "smallest job", "min size"],
         },
-        ...(role === "owner" ? [{
-          icon: <Crown className="h-5 w-5" />,
-          label: "Pricing Plans",
-          description: "Manage your subscription",
-          onClick: () => navigate("/settings/pricing"),
-          searchTerms: ["pricing", "plan", "subscription", "upgrade", "billing", "free", "basic", "premium"],
-        }] : []),
       ],
     },
     {
       title: "Payments",
       roles: ["owner"],
       items: [
+        {
+          icon: <Crown className="h-5 w-5" />,
+          label: "Pricing Plans",
+          description: "Manage your subscription",
+          onClick: () => navigate("/settings/pricing"),
+          searchTerms: ["pricing", "plan", "subscription", "upgrade", "billing", "free", "basic", "premium"],
+        },
         {
           icon: <DollarSign className="h-5 w-5" />,
           label: "Stripe Payments",
@@ -142,33 +142,31 @@ export default function Settings() {
         {
           icon: <Webhook className="h-5 w-5" />,
           label: "Lead Automations",
-          description: "Webhook hooks and auto-qualification",
+          description: "Webhook hooks and API automations",
           onClick: () => navigate("/settings/lead-automations"),
           requiredPlan: "basic",
-          searchTerms: ["automation", "webhook", "bot", "call intake", "auto qualify", "integration leads", "lead automation"],
+          searchTerms: ["automation", "webhook", "bot", "call intake", "lead automation", "api keys"],
         },
         {
           icon: <Zap className="h-5 w-5" />,
-          label: "Auto-Responses",
-          description: "Missed calls, follow-ups",
+          label: "Auto Messaging",
+          description: "Job message automation and follow-ups",
           onClick: () => navigate("/settings/auto-responses"),
           requiredPlan: "premium",
-          searchTerms: ["auto response", "automatic", "missed call", "follow up", "sms", "text message"],
+          searchTerms: ["automessaging", "auto messaging", "job message", "job message automation", "auto response", "automatic", "missed call", "follow up", "sms", "text message"],
         },
-      ],
-    },
-    {
-      title: "Integrations",
-      roles: ["owner"],
-      items: [
-        {
-          icon: <Plug className="h-5 w-5" />,
-          label: "Lead Sources",
-          description: "Connect platforms to capture leads",
-          onClick: () => navigate("/settings/lead-sources"),
-          requiredPlan: "basic",
-          searchTerms: ["lead sources", "integrations", "facebook", "meta", "api", "webhook", "connect", "platforms"],
-        },
+        ...(role === "owner"
+          ? [
+              {
+                icon: <Plug className="h-5 w-5" />,
+                label: "Lead Sources",
+                description: "Connect platforms and manage auto-qualify",
+                onClick: () => navigate("/settings/lead-sources"),
+                requiredPlan: "basic",
+                searchTerms: ["lead sources", "integrations", "facebook", "meta", "api", "webhook", "connect", "platforms", "auto qualify", "integration leads"],
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -309,7 +307,7 @@ export default function Settings() {
             <h2 className="px-4 mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               {section.title}
             </h2>
-            <div className="bg-card border-y border-border divide-y divide-border">
+            <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
               {section.items.map((item, index) => (
                 <button
                   key={index}

@@ -58,55 +58,8 @@ describe("SettingsLeadAutomations", () => {
     updateSettingsAsyncMock.mockResolvedValue({});
   });
 
-  it("defaults auto-qualify to off", () => {
-    render(
-      <MemoryRouter>
-        <SettingsLeadAutomations />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole("switch", { name: /auto-qualify integration leads/i })).toHaveAttribute("aria-checked", "false");
-  });
-
-  it("hydrates the toggle from account settings", () => {
-    mockSettings = { auto_qualify_integration_leads: true };
-
-    render(
-      <MemoryRouter>
-        <SettingsLeadAutomations />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole("switch", { name: /auto-qualify integration leads/i })).toHaveAttribute("aria-checked", "true");
-  });
-
-  it("saves updated automation settings", async () => {
-    render(
-      <MemoryRouter>
-        <SettingsLeadAutomations />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("switch", { name: /auto-qualify integration leads/i }));
-    fireEvent.change(screen.getByLabelText(/auto-qualify endpoint url/i), { target: { value: "https://hooks.example.com/lead-qualify" } });
-    fireEvent.change(screen.getByLabelText(/auto-qualify auth header name/i), { target: { value: "x-api-key" } });
-    fireEvent.change(screen.getByLabelText(/auto-qualify auth header value/i), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
-
-    await waitFor(() => {
-      expect(updateSettingsAsyncMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          auto_qualify_integration_leads: true,
-        }),
-      );
-    });
-
-    expect(toastSuccessMock).toHaveBeenCalledWith("Lead automation settings saved");
-  });
-
   it("hydrates job message automation fields from account settings", () => {
     mockSettings = {
-      auto_qualify_integration_leads: true,
       job_message_automation: {
         enabled: true,
         message_template: "Hi {{job_name}}",
@@ -169,12 +122,6 @@ describe("SettingsLeadAutomations", () => {
 
     await waitFor(() => {
       expect(updateSettingsAsyncMock).toHaveBeenCalledWith({
-        auto_qualify_integration_leads: false,
-        auto_qualify_webhook: {
-          endpoint_url: "",
-          auth_header_name: "",
-          auth_header_value: "",
-        },
         job_message_automation: {
           enabled: true,
           message_template: "Reminder for {{job_name}}",
@@ -194,6 +141,21 @@ describe("SettingsLeadAutomations", () => {
           },
         },
       });
+    });
+  });
+
+  it("shows save success toast", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsLeadAutomations />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /enable job message automation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(toastSuccessMock).toHaveBeenCalledWith("Lead automation settings saved");
     });
   });
 });

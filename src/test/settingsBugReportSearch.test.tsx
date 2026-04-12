@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -48,6 +48,19 @@ function renderSettings(initialEntry = "/settings") {
 }
 
 describe("Settings bug report search", () => {
+  it("shows Pricing Plans in Payments section instead of Business", () => {
+    renderSettings();
+
+    const businessSection = screen.getByRole("heading", { name: /business/i }).parentElement;
+    const paymentsSection = screen.getByRole("heading", { name: /payments/i }).parentElement;
+
+    expect(businessSection).not.toBeNull();
+    expect(paymentsSection).not.toBeNull();
+
+    expect(within(businessSection as HTMLElement).queryByRole("button", { name: /pricing plans/i })).not.toBeInTheDocument();
+    expect(within(paymentsSection as HTMLElement).getByRole("button", { name: /pricing plans/i })).toBeInTheDocument();
+  });
+
   it("finds report a bug from settings search", () => {
     renderSettings();
 
@@ -56,6 +69,16 @@ describe("Settings bug report search", () => {
     });
 
     expect(screen.getByRole("button", { name: /report a bug/i })).toBeInTheDocument();
+  });
+
+  it("finds company profile from client portal search terms", () => {
+    renderSettings();
+
+    fireEvent.change(screen.getByPlaceholderText("Search settings..."), {
+      target: { value: "client portal" },
+    });
+
+    expect(screen.getByRole("button", { name: /company profile/i })).toBeInTheDocument();
   });
 
   it("opens report a bug modal from the reportBug query param", () => {

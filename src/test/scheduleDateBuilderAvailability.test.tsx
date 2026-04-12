@@ -15,10 +15,6 @@ vi.mock("@/hooks/useAuth", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useScheduledJobs", () => ({
-  useScheduledJobs: () => ({ data: [] }),
-}));
-
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({
     data: {
@@ -87,6 +83,7 @@ describe("ScheduleDateBuilder availability guards", () => {
 
     render(<ScheduleDateBuilder schedules={[]} onSchedulesChange={onSchedulesChangeMock} />);
 
+    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
     expect(screen.getByText("target-disabled")).toBeInTheDocument();
 
     fireEvent.mouseEnter(screen.getByRole("button", { name: /hover date/i }));
@@ -99,7 +96,7 @@ describe("ScheduleDateBuilder availability guards", () => {
     expect(toastErrorMock).toHaveBeenCalledWith("Daily job limit has been reached for this date.");
   });
 
-  it("changes the active schedule date on click and adds a new one only after Add Schedule Date", () => {
+  it("adds schedules only on check click and clears date/time fields after saving", () => {
     const SchedulingHarness = () => {
       const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
       return <ScheduleDateBuilder schedules={schedules} onSchedulesChange={setSchedules} />;
@@ -107,19 +104,28 @@ describe("ScheduleDateBuilder availability guards", () => {
 
     render(<SchedulingHarness />);
 
+    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
     fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
-    expect(screen.getByText(/Added Schedules \(1\)/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
     expect(screen.getByText(/Jan 11, 2030/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Date$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/start time/i)).toHaveValue("");
+    expect(screen.getByLabelText(/end time/i)).toHaveValue("");
 
+    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
     fireEvent.click(screen.getByRole("button", { name: /pick third date/i }));
-    expect(screen.getByText(/Added Schedules \(1\)/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
     expect(screen.getByText(/Jan 12, 2030/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Jan 11, 2030/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Jan 11, 2030/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Date$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/start time/i)).toHaveValue("");
+    expect(screen.getByLabelText(/end time/i)).toHaveValue("");
 
     fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
+    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
     fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
-    expect(screen.getByText(/Added Schedules \(2\)/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
     expect(screen.getByText(/Jan 12, 2030/i)).toBeInTheDocument();
-    expect(screen.getByText(/Jan 11, 2030/i)).toBeInTheDocument();
+    expect(screen.queryAllByText(/Jan 11, 2030/i).length).toBeGreaterThan(0);
   });
 });

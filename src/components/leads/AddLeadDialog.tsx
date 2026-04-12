@@ -17,6 +17,7 @@ import { formatCurrency } from "@/lib/formatter";
 import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
 import { matchServiceType, normalizeVoiceLeadParsedData } from "@/lib/voiceIntake";
 import type { VoiceLeadParsedData } from "@/types/voiceIntake";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface AddLeadDialogProps {
   open: boolean;
@@ -34,6 +35,7 @@ const INITIAL_CLIENT_DATA: CreateCustomerInput = {
 
 export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDialogProps) {
   const { user, currentAccount } = useAuth();
+  const queryClient = useQueryClient();
   const createCustomer = useCreateCustomer();
   const [saving, setSaving] = useState(false);
   const [showCSVImport, setShowCSVImport] = useState(false);
@@ -193,6 +195,11 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           created_by: user.id,
         });
       }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["leads"] }),
+        queryClient.invalidateQueries({ queryKey: ["lead-counts"] }),
+      ]);
 
       toast.success("Lead created successfully");
       resetForm();

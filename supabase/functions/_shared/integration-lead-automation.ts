@@ -11,13 +11,36 @@ export type AutoQualifyWebhookConfig = {
   authHeaderValue?: string;
 };
 
+export type IntegrationAutomationSettings = {
+  autoQualifyEnabled: boolean;
+  webhookConfig: AutoQualifyWebhookConfig | null;
+  rejectOutOfRange: boolean;
+  rejectOutOfBudget: boolean;
+  minJobSize: Record<string, number>;
+  serviceAreas: Array<{
+    location: string;
+    radiusMiles: number;
+    lat: number | null;
+    lng: number | null;
+  }>;
+};
+
 type AccountSettings = {
   auto_qualify_integration_leads?: boolean;
+  auto_qualify_reject_out_of_range?: boolean;
+  auto_qualify_reject_out_of_budget?: boolean;
   auto_qualify_webhook?: {
     endpoint_url?: string;
     auth_header_name?: string;
     auth_header_value?: string;
   };
+  min_job_size?: Record<string, number>;
+  service_areas?: Array<{
+    location?: string;
+    radius_miles?: number;
+    lat?: number | null;
+    lng?: number | null;
+  }>;
 };
 
 const DEFAULT_WEBHOOK_TIMEOUT_MS = 12_000;
@@ -134,7 +157,7 @@ export function getAutoQualifyWebhookConfig(settings: AccountSettings | null): A
 export async function getIntegrationAutomationSettings(
   supabase: ReturnType<typeof import("npm:@supabase/supabase-js@2").createClient>,
   accountId: string,
-): Promise<{ autoQualifyEnabled: boolean; webhookConfig: AutoQualifyWebhookConfig | null }> {
+): Promise<IntegrationAutomationSettings> {
   const { data, error } = await supabase
     .from("accounts")
     .select("settings")
@@ -143,15 +166,52 @@ export async function getIntegrationAutomationSettings(
 
   if (error) {
     console.error("integration-lead-automation: failed to load account settings", error);
-    return { autoQualifyEnabled: false, webhookConfig: null };
+    return {
+      autoQualifyEnabled: false,
+      webhookConfig: null,
+      rejectOutOfRange: false,
+      rejectOutOfBudget: false,
+      minJobSize: {},
+      serviceAreas: [],
+    };
   }
 
   const settings = (data?.settings ?? null) as AccountSettings | null;
   const autoQualifyEnabled = settings?.auto_qualify_integration_leads === true;
+  const rejectOutOfRange = settings?.auto_qualify_reject_out_of_range === true;
+  const rejectOutOfBudget = settings?.auto_qualify_reject_out_of_budget === true;
+
+  const minJobSize = Object.fromEntries(
+    Object.entries(settings?.min_job_size ?? {})
+      .filter(([key, value]) => typeof key === "string" && typeof value === "number" && Number.isFinite(value)),
+  );
+
+  const serviceAreas = Array.isArray(settings?.service_areas)
+    ? settings.service_areas
+      .map((serviceArea) => {
+        const location = typeof serviceArea?.location === "string" ? serviceArea.location.trim() : "";
+        const radiusMiles = isFiniteNumber(serviceArea?.radius_miles) ? Math.max(0, serviceArea.radius_miles) : 0;
+        const coordinates = toCoordinates(serviceArea?.lat, serviceArea?.lng);
+        return {
+          location,
+          radiusMiles,
+          lat: coordinates?.lat ?? null,
+          lng: coordinates?.lng ?? null,
+        };
+      })
+      .filter((serviceArea) =>
+        serviceArea.radiusMiles > 0 &&
+        (serviceArea.location.length > 0 || (serviceArea.lat !== null && serviceArea.lng !== null))
+      )
+    : [];
 
   return {
     autoQualifyEnabled,
     webhookConfig: getAutoQualifyWebhookConfig(settings),
+    rejectOutOfRange,
+    rejectOutOfBudget,
+    minJobSize,
+    serviceAreas,
   };
 }
 
@@ -161,6 +221,205 @@ export async function isIntegrationAutoQualifyEnabled(
 ): Promise<boolean> {
   const settings = await getIntegrationAutomationSettings(supabase, accountId);
   return settings.autoQualifyEnabled;
+}
+
+function normalizeText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+type Coordinates = { lat: number; lng: number };
+
+function toCoordinates(lat: unknown, lng: unknown): Coordinates | null {
+  if (!isFiniteNumber(lat) || !isFiniteNumber(lng)) return null;
+  return { lat, lng };
+}
+
+function toLocationText(leadData: Record<string, unknown>): string {
+  const leadCity = typeof leadData.city === "string" ? leadData.city.trim() : "";
+  const leadState = typeof leadData.state === "string" ? leadData.state.trim() : "";
+  const leadAddress = typeof leadData.address === "string" ? leadData.address.trim() : "";
+  return [leadAddress, leadCity, leadState].filter(Boolean).join(", ");
+}
+
+function haversineMiles(a: Coordinates, b: Coordinates): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const earthRadiusMiles = 3958.8;
+
+  const dLat = toRadians(b.lat - a.lat);
+  const dLng = toRadians(b.lng - a.lng);
+  const lat1 = toRadians(a.lat);
+  const lat2 = toRadians(b.lat);
+
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const arc = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  const centralAngle = 2 * Math.atan2(Math.sqrt(arc), Math.sqrt(1 - arc));
+
+  return earthRadiusMiles * centralAngle;
+}
+
+const geocodeCache = new Map<string, Promise<Coordinates | null>>();
+
+async function geocodeLocation(location: string): Promise<Coordinates | null> {
+  const trimmedLocation = location.trim();
+  if (!trimmedLocation) return null;
+
+  const cacheKey = normalizeText(trimmedLocation);
+  const cached = geocodeCache.get(cacheKey);
+  if (cached) return cached;
+
+  const geocodePromise = (async () => {
+    const denoGlobal = globalThis as { Deno?: { env?: { get: (name: string) => string | undefined } } };
+    const mapsApiKey = denoGlobal.Deno?.env?.get("GOOGLE_MAPS_API_KEY");
+    if (!mapsApiKey) return null;
+
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${
+          encodeURIComponent(trimmedLocation)
+        }&key=${encodeURIComponent(mapsApiKey)}`,
+      );
+      if (!response.ok) return null;
+
+      const payload = await response.json() as {
+        status?: string;
+        results?: Array<{
+          geometry?: {
+            location?: {
+              lat?: number;
+              lng?: number;
+            };
+          };
+        }>;
+      };
+      if (payload.status !== "OK") return null;
+
+      const locationResult = payload.results?.[0]?.geometry?.location;
+      return toCoordinates(locationResult?.lat, locationResult?.lng);
+    } catch {
+      return null;
+    }
+  })();
+
+  geocodeCache.set(cacheKey, geocodePromise);
+  return geocodePromise;
+}
+
+function findMinBudgetForServiceType(minJobSize: Record<string, number>, serviceType: string): number | null {
+  const normalizedServiceType = normalizeText(serviceType);
+  if (!normalizedServiceType) return null;
+
+  const exactEntry = Object.entries(minJobSize).find(([key]) => normalizeText(key) === normalizedServiceType);
+  if (exactEntry) return exactEntry[1];
+
+  const partialEntry = Object.entries(minJobSize).find(([key]) => {
+    const normalizedKey = normalizeText(key);
+    return normalizedServiceType.includes(normalizedKey) || normalizedKey.includes(normalizedServiceType);
+  });
+  return partialEntry ? partialEntry[1] : null;
+}
+
+async function evaluateRuleBasedRejection(
+  automationSettings: IntegrationAutomationSettings,
+  leadData: Record<string, unknown>,
+): Promise<{ qualified: false; reason: string; metadata: Record<string, unknown> } | null> {
+  const leadServiceType = typeof leadData.service_type === "string" ? leadData.service_type.trim() : "";
+  const leadBudget = typeof leadData.budget === "number" && Number.isFinite(leadData.budget) ? leadData.budget : null;
+
+  if (automationSettings.rejectOutOfRange && automationSettings.serviceAreas.length > 0) {
+    const leadLocation = toLocationText(leadData);
+    const leadCoordinates = toCoordinates(leadData.lat, leadData.lng) ?? await geocodeLocation(leadLocation);
+
+    if (leadCoordinates) {
+      let inRange = false;
+      for (const serviceArea of automationSettings.serviceAreas) {
+        const serviceAreaCoordinates = toCoordinates(serviceArea.lat, serviceArea.lng) ?? await geocodeLocation(serviceArea.location);
+        if (!serviceAreaCoordinates) continue;
+
+        const distanceMiles = haversineMiles(leadCoordinates, serviceAreaCoordinates);
+        if (distanceMiles <= serviceArea.radiusMiles) {
+          inRange = true;
+          break;
+        }
+      }
+
+      if (!inRange) {
+        return {
+          qualified: false,
+          reason: "Rejected: lead location appears outside configured service area radius",
+          metadata: {
+            rejection_rule: "out_of_range",
+            lead_location: leadLocation,
+            lead_coordinates: leadCoordinates,
+            configured_service_areas: automationSettings.serviceAreas,
+          },
+        };
+      }
+    }
+  }
+
+  if (automationSettings.rejectOutOfBudget && leadBudget !== null && leadServiceType) {
+    const minBudgetForServiceType = findMinBudgetForServiceType(automationSettings.minJobSize, leadServiceType);
+    if (minBudgetForServiceType !== null && leadBudget < minBudgetForServiceType) {
+      return {
+        qualified: false,
+        reason: `Rejected: lead budget ${leadBudget} is below minimum ${minBudgetForServiceType} for ${leadServiceType}`,
+        metadata: {
+          rejection_rule: "out_of_budget",
+          lead_budget: leadBudget,
+          min_budget: minBudgetForServiceType,
+          service_type: leadServiceType,
+        },
+      };
+    }
+  }
+
+  return null;
+}
+
+export async function evaluateIntegrationQualificationDecision(params: {
+  automationSettings: IntegrationAutomationSettings;
+  accountId: string;
+  source: string;
+  leadData: Record<string, unknown>;
+  rawPayload: Record<string, unknown>;
+}): Promise<{
+  qualified: boolean;
+  reason: string;
+  metadata: Record<string, unknown>;
+}> {
+  const { automationSettings, accountId, source, leadData, rawPayload } = params;
+
+  if (!automationSettings.autoQualifyEnabled) {
+    return {
+      qualified: false,
+      reason: "Auto-qualify disabled",
+      metadata: { webhook_used: false },
+    };
+  }
+
+  const ruleBasedRejection = await evaluateRuleBasedRejection(automationSettings, leadData);
+  if (ruleBasedRejection) return ruleBasedRejection;
+
+  if (automationSettings.webhookConfig) {
+    return evaluateAutoQualifyWebhook({
+      config: automationSettings.webhookConfig,
+      accountId,
+      source,
+      leadData,
+      rawPayload,
+    });
+  }
+
+  return {
+    qualified: true,
+    reason: "Auto-qualify enabled",
+    metadata: { webhook_used: false },
+  };
 }
 
 export async function evaluateAutoQualifyWebhook(params: {

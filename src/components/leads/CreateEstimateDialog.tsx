@@ -6,7 +6,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Users, X, Search, Repeat } from "lucide-react";
+import { FileText, Users, X, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -341,19 +341,26 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
             <ScheduleDateBuilder
               schedules={addedSchedules}
               onSchedulesChange={setAddedSchedules}
+              recurringControls={(
+                <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
+                  <div className="pointer-events-none absolute inset-1 grid grid-cols-2 gap-1">
+                    <div className="rounded-full bg-background shadow-sm" />
+                    <div />
+                  </div>
+                  <div className="relative z-10 flex h-9 items-center justify-center rounded-full text-sm font-medium text-foreground">
+                    One Off
+                  </div>
+                  <button
+                    type="button"
+                    className="relative z-10 h-9 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    onClick={handleMakeRecurringInstead}
+                    disabled={scheduling || preparingRecurring}
+                  >
+                    {preparingRecurring ? "Preparing..." : "Recurring"}
+                  </button>
+                </div>
+              )}
             />
-
-            <div className="pt-1">
-              <Button
-                variant="outline"
-                onClick={handleMakeRecurringInstead}
-                disabled={scheduling || preparingRecurring}
-                className="gap-1.5"
-              >
-                <Repeat className="h-4 w-4" />
-                {preparingRecurring ? "Preparing..." : "Make Recurring Instead"}
-              </Button>
-            </div>
 
             {!hasEstimate && (
               <div className="pt-2 border-t border-border">
@@ -400,6 +407,10 @@ export function CreateEstimateDialog({ open, onOpenChange, hasEstimate = false, 
           open={makeRecurringOpen}
           onOpenChange={setMakeRecurringOpen}
           jobId={lead.id}
+          onMakeOneOffInstead={() => {
+            setMakeRecurringOpen(false);
+            onOpenChange(true);
+          }}
           jobSchedules={addedSchedules.map((schedule) => ({
             scheduled_time_start: schedule.timeStart || null,
             scheduled_time_end: schedule.timeEnd || null,

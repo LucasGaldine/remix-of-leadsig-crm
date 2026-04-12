@@ -21,13 +21,13 @@ interface ScheduleDateTimePickerProps {
   onSelectDate: (date: Date | undefined) => void;
   calendarMonth: Date;
   onCalendarMonthChange: (date: Date) => void;
+  showCalendar?: boolean;
   disabledDate: (date: Date) => boolean;
   scheduledTimeStart: string;
   onScheduledTimeStartChange: (value: string) => void;
   scheduledTimeEnd: string;
   onScheduledTimeEndChange: (value: string) => void;
   selectedDateJobs?: ScheduledDateJob[];
-  showNoDateSelectedState?: boolean;
   busyDatesSet?: Set<string>;
   modifiers?: CalendarModifierMap;
   modifiersClassNames?: CalendarModifierClassMap;
@@ -44,13 +44,13 @@ export function ScheduleDateTimePicker({
   onSelectDate,
   calendarMonth,
   onCalendarMonthChange,
+  showCalendar = true,
   disabledDate,
   scheduledTimeStart,
   onScheduledTimeStartChange,
   scheduledTimeEnd,
   onScheduledTimeEndChange,
   selectedDateJobs = [],
-  showNoDateSelectedState = true,
   busyDatesSet,
   modifiers,
   modifiersClassNames,
@@ -82,20 +82,22 @@ export function ScheduleDateTimePicker({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-center max-w-full overflow-x-auto">
-        <Calendar
-          mode="single"
-          selected={selectedDate}
-          onSelect={onSelectDate}
-          onMonthChange={onCalendarMonthChange}
-          disabled={disabledDate}
-          onDayMouseEnter={onDayMouseEnter}
-          onDayMouseLeave={onDayMouseLeave}
-          className={cn("w-fit rounded-md border pointer-events-auto", calendarClassName)}
-          modifiers={Object.keys(mergedModifiers).length > 0 ? mergedModifiers : undefined}
-          modifiersClassNames={Object.keys(mergedModifiersClassNames).length > 0 ? mergedModifiersClassNames : undefined}
-        />
-      </div>
+      {showCalendar && (
+        <div className="flex justify-center max-w-full overflow-x-auto">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={onSelectDate}
+            onMonthChange={onCalendarMonthChange}
+            disabled={disabledDate}
+            onDayMouseEnter={onDayMouseEnter}
+            onDayMouseLeave={onDayMouseLeave}
+            className={cn("w-fit rounded-md border pointer-events-auto", calendarClassName)}
+            modifiers={Object.keys(mergedModifiers).length > 0 ? mergedModifiers : undefined}
+            modifiersClassNames={Object.keys(mergedModifiersClassNames).length > 0 ? mergedModifiersClassNames : undefined}
+          />
+        </div>
+      )}
 
       {selectedDate && selectedDateJobs.length > 0 && (
         <div className="rounded-lg border border-border p-3 space-y-2">
@@ -116,10 +118,6 @@ export function ScheduleDateTimePicker({
             ))}
           </div>
         </div>
-      )}
-
-      {showNoDateSelectedState && !selectedDate && (
-        <p className="text-xs text-muted-foreground text-center">No date selected</p>
       )}
 
       <div className="grid grid-cols-2 gap-3">

@@ -123,7 +123,7 @@ export const searchPages: SearchPage[] = [
     icon: "settings",
     description: "Business information",
     roles: ["owner", "sales"],
-    keywords: ["business", "company name", "logo", "contact"],
+    keywords: ["business", "company name", "logo", "contact", "client portal", "portal", "portal color", "portal text color"],
   },
   {
     name: "Service Area",
@@ -156,11 +156,11 @@ export const searchPages: SearchPage[] = [
     keywords: ["team", "staff", "employees", "workers"],
   },
   {
-    name: "Auto-Responses",
+    name: "Auto Messaging",
     path: "/settings/auto-responses",
     icon: "settings",
-    description: "Automated messages",
-    keywords: ["automation", "sms", "messages"],
+    description: "Job message automation",
+    keywords: ["automessaging", "auto messaging", "job message", "job message automation", "automation", "sms", "messages"],
   },
   {
     name: "Notifications",

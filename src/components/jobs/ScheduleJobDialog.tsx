@@ -1,36 +1,15 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Repeat } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useScheduledJobs } from "@/hooks/useScheduledJobs";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
+import { useAuth } from "@/hooks/useAuth";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
-import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
+import { useJobAssignments } from "@/hooks/useJobAssignments";
+import { ScheduleDateBuilder, type ScheduleEntry } from "@/components/scheduling/ScheduleDateBuilder";
+import { CreateJobCrewAssignmentStep } from "@/components/jobs/CreateJobCrewAssignmentStep";
+import { supabase } from "@/integrations/supabase/client";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
-import { ScheduleDateTimePicker, type ScheduledDateJob } from "@/components/scheduling/ScheduleDateTimePicker";
-
-const roleLabels: Record<string, string> = {
-  owner: 'Owner',
-  admin: 'Admin',
-  sales: 'Sales',
-  crew_lead: 'Crew Lead',
-  crew_member: 'Crew Member',
-};
-
-const roleBadgeColors: Record<string, string> = {
-  owner: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
-  admin: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-  sales: 'bg-green-500/10 text-green-600 border-green-500/20',
-  crew_lead: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-  crew_member: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
-};
 
 interface ScheduleJobDialogProps {
   open: boolean;
@@ -41,6 +20,13 @@ interface ScheduleJobDialogProps {
   onMakeRecurring?: () => void;
 }
 
+type CrewConflictDetail = {
+  jobTitle: string;
+  scheduledDate: string;
+  scheduledTimeStart: string | null;
+  scheduledTimeEnd: string | null;
+};
+
 export function ScheduleJobDialog({ 
   open, 
   onOpenChange, 
@@ -49,195 +35,317 @@ export function ScheduleJobDialog({
   hasSchedules = false,
   onMakeRecurring 
 }: ScheduleJobDialogProps) {
-  const { user, currentAccount } = useAuth();
   const { scheduleJob, isScheduling } = useScheduleJob();
-  const queryClient = useQueryClient();
-  
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
-  const [scheduledTimeStart, setScheduledTimeStart] = useState("");
-  const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
-  const [selectedCrewIds, setSelectedCrewIds] = useState<string[]>([]);
-  const [calendarMonth, setCalendarMonth] = useState(new Date());
-
-  // Fetch busy dates for the visible month range
-  const monthStart = startOfMonth(calendarMonth);
-  const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
-
-  const { data: busyDatesSet } = useQuery({
-    queryKey: ["busy-dates", format(monthStart, "yyyy-MM-dd"), format(monthEnd, "yyyy-MM-dd")],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("job_schedules")
-        .select("scheduled_date")
-        .gte("scheduled_date", format(monthStart, "yyyy-MM-dd"))
-        .lte("scheduled_date", format(monthEnd, "yyyy-MM-dd"));
-
-      if (error) throw error;
-      const dates = new Set<string>();
-      data?.forEach((s) => { if (s.scheduled_date) dates.add(s.scheduled_date); });
-      return dates;
-    },
-    enabled: !!user && open,
-  });
-
-  // Fetch jobs for the selected date
-  const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
-
+  const { currentAccount, user } = useAuth();
   const { data: crewMembers = [] } = useTeamMembers();
+  const { assignCrewAsync, isAssigning } = useJobAssignments(jobId);
+  
+  const [builderSchedules, setBuilderSchedules] = useState<ScheduleEntry[]>([]);
+  const [step, setStep] = useState<"schedule" | "crew-assignment">("schedule");
+  const [crewByScheduleIndex, setCrewByScheduleIndex] = useState<Record<number, string[]>>({});
+  const [crewConflictByMember, setCrewConflictByMember] = useState<Record<string, number[]>>({});
+  const [crewConflictDetailsByMember, setCrewConflictDetailsByMember] = useState<
+    Record<string, Record<number, CrewConflictDetail>>
+  >({});
+  const [crewSearchQuery, setCrewSearchQuery] = useState("");
+  const [activeCrewId, setActiveCrewId] = useState<string>("");
+  const [isLoadingCrewConflicts, setIsLoadingCrewConflicts] = useState(false);
+  const crewStepSchedules = builderSchedules;
+  const crewMemberIdsKey = crewMembers
+    .map((member) => member.user_id)
+    .sort()
+    .join("|");
+  const scheduleConflictKey = crewStepSchedules
+    .map((schedule) => `${schedule.date}:${schedule.timeStart || ""}:${schedule.timeEnd || ""}`)
+    .join("|");
 
-  const toggleCrewSelection = (crewId: string) => {
-    setSelectedCrewIds((current) =>
-      current.includes(crewId)
-        ? current.filter((id) => id !== crewId)
-        : [...current, crewId],
+  const filteredCrewMembers = useMemo(() => {
+    if (!crewSearchQuery.trim()) return crewMembers;
+    const query = crewSearchQuery.toLowerCase();
+    return crewMembers.filter((member) =>
+      (member.full_name || "").toLowerCase().includes(query) ||
+      (member.email || "").toLowerCase().includes(query),
     );
-  };
+  }, [crewMembers, crewSearchQuery]);
 
-  const handleSchedule = async () => {
-    if (!scheduledDate) {
-      toast.error("Please select a date");
+  useEffect(() => {
+    if (!open || step !== "crew-assignment") return;
+
+    if (!currentAccount?.id || crewStepSchedules.length === 0 || crewMembers.length === 0) {
+      setCrewConflictByMember({});
+      setCrewConflictDetailsByMember({});
+      setIsLoadingCrewConflicts(false);
       return;
     }
 
-    if (selectedCrewIds.length > 0) {
-      const parsedCrew = selectedCrewIds.map((crewId) => parseCrewAssigneeId(crewId));
+    let isCancelled = false;
+
+    const loadCrewConflicts = async () => {
+      setIsLoadingCrewConflicts(true);
+
+      const parsedCrew = crewMembers.map((member) => parseCrewAssigneeId(member.user_id));
       const realCrewIds = parsedCrew
-        .filter((crew) => crew.type === "user" && crew.userId)
-        .map((crew) => crew.userId as string);
+        .filter((member) => member.type === "user" && member.userId)
+        .map((member) => member.userId as string);
       const mockCrewIds = parsedCrew
-        .filter((crew) => crew.type === "mock" && crew.mockProfileId)
-        .map((crew) => crew.mockProfileId as string);
-      const conflicts: any[] = [];
+        .filter((member) => member.type === "mock" && member.mockProfileId)
+        .map((member) => member.mockProfileId as string);
+
+      const assignmentRows: any[] = [];
 
       if (realCrewIds.length > 0) {
         const { data, error } = await supabase
           .from("job_assignments")
-          .select(`
-            user_id,
-            mock_crew_profile_id,
-            job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)
-          `)
+          .select("user_id, mock_crew_profile_id, job_schedules!inner(lead_id, scheduled_date, scheduled_time_start, scheduled_time_end)")
           .in("user_id", realCrewIds)
-          .eq("job_schedules.scheduled_date", scheduledDate);
-        if (error) throw error;
-        conflicts.push(...(data || []));
+          .eq("account_id", currentAccount.id);
+
+        if (isCancelled) return;
+        if (error) {
+          setCrewConflictByMember({});
+          setCrewConflictDetailsByMember({});
+          setIsLoadingCrewConflicts(false);
+          return;
+        }
+        assignmentRows.push(...(data || []));
       }
 
       if (mockCrewIds.length > 0) {
         const { data, error } = await supabase
           .from("job_assignments")
-          .select(`
-            user_id,
-            mock_crew_profile_id,
-            job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)
-          `)
+          .select("user_id, mock_crew_profile_id, job_schedules!inner(lead_id, scheduled_date, scheduled_time_start, scheduled_time_end)")
           .in("mock_crew_profile_id", mockCrewIds)
-          .eq("job_schedules.scheduled_date", scheduledDate);
-        if (error) throw error;
-        conflicts.push(...(data || []));
+          .eq("account_id", currentAccount.id);
+
+        if (isCancelled) return;
+        if (error) {
+          setCrewConflictByMember({});
+          setCrewConflictDetailsByMember({});
+          setIsLoadingCrewConflicts(false);
+          return;
+        }
+        assignmentRows.push(...(data || []));
       }
 
-      if (conflicts.length > 0) {
-        const conflict = conflicts[0];
-        const conflictId = conflict?.user_id
-          || (conflict?.mock_crew_profile_id ? buildMockCrewAssigneeId(conflict.mock_crew_profile_id) : selectedCrewIds[0]);
-        const crewMemberName = crewMembers.find((member) => member.user_id === conflictId)?.full_name || "This crew member";
-        toast.error(
-          `Scheduling conflict: ${crewMemberName} is already assigned to another job on ${format(new Date(scheduledDate), "MMM d, yyyy")}`
-        );
-        return;
-      }
-    }
+      const conflictMap: Record<string, number[]> = {};
+      const conflictDetailsMap: Record<string, Record<number, CrewConflictDetail>> = {};
+      const leadIds = Array.from(
+        new Set(
+          assignmentRows
+            .flatMap((assignment) => {
+              const scheduleRows = Array.isArray((assignment as any).job_schedules)
+                ? (assignment as any).job_schedules
+                : [(assignment as any).job_schedules];
+              return scheduleRows
+                .map((scheduleRow: any) => scheduleRow?.lead_id)
+                .filter((leadId: unknown): leadId is string => Boolean(leadId));
+            }),
+        ),
+      );
+      const jobTitleByLeadId: Record<string, string> = {};
 
-    const result = await scheduleJob({
-      leadId: jobId,
-      scheduledDate,
-      startTime: scheduledTimeStart || undefined,
-      endTime: scheduledTimeEnd || undefined,
+      if (leadIds.length > 0) {
+        const { data: leadsData } = await supabase
+          .from("leads")
+          .select("id, title")
+          .in("id", leadIds);
+        for (const lead of leadsData || []) {
+          jobTitleByLeadId[lead.id] = lead.title || "Another job";
+        }
+      }
+
+      for (const [scheduleIndex, schedule] of crewStepSchedules.entries()) {
+        for (const assignment of assignmentRows) {
+          const scheduleRows = Array.isArray((assignment as any).job_schedules)
+            ? (assignment as any).job_schedules
+            : [(assignment as any).job_schedules];
+
+          for (const scheduleRow of scheduleRows) {
+            if (!scheduleRow || scheduleRow.scheduled_date !== schedule.date) continue;
+
+            const hasOverlap =
+              !schedule.timeStart ||
+              !schedule.timeEnd ||
+              !scheduleRow.scheduled_time_start ||
+              !scheduleRow.scheduled_time_end ||
+              (
+                schedule.timeStart < scheduleRow.scheduled_time_end &&
+                schedule.timeEnd > scheduleRow.scheduled_time_start
+              );
+
+            if (!hasOverlap) continue;
+
+            const crewId = (assignment as any).user_id
+              || ((assignment as any).mock_crew_profile_id
+                ? buildMockCrewAssigneeId((assignment as any).mock_crew_profile_id)
+                : "");
+            if (!crewId) continue;
+
+            if (!conflictMap[crewId]) {
+              conflictMap[crewId] = [];
+            }
+            if (!conflictMap[crewId].includes(scheduleIndex)) {
+              conflictMap[crewId].push(scheduleIndex);
+            }
+
+            if (!conflictDetailsMap[crewId]) {
+              conflictDetailsMap[crewId] = {};
+            }
+            if (!conflictDetailsMap[crewId][scheduleIndex]) {
+              conflictDetailsMap[crewId][scheduleIndex] = {
+                jobTitle: jobTitleByLeadId[scheduleRow.lead_id] || "Another job",
+                scheduledDate: scheduleRow.scheduled_date,
+                scheduledTimeStart: scheduleRow.scheduled_time_start,
+                scheduledTimeEnd: scheduleRow.scheduled_time_end,
+              };
+            }
+          }
+        }
+      }
+
+      setCrewConflictByMember(conflictMap);
+      setCrewConflictDetailsByMember(conflictDetailsMap);
+      setCrewByScheduleIndex((current) => {
+        let changed = false;
+        const next: Record<number, string[]> = {};
+
+        for (const [rawIndex, assignedCrewIds] of Object.entries(current)) {
+          const scheduleIndex = Number(rawIndex);
+          const filteredCrewIds = assignedCrewIds.filter(
+            (crewId) => !(conflictMap[crewId] || []).includes(scheduleIndex),
+          );
+          if (filteredCrewIds.length !== assignedCrewIds.length) {
+            changed = true;
+          }
+          if (filteredCrewIds.length > 0) {
+            next[scheduleIndex] = filteredCrewIds;
+          }
+        }
+
+        return changed ? next : current;
+      });
+
+      setActiveCrewId((current) => {
+        if (!current) return current;
+        const conflicts = conflictMap[current] || [];
+        const unavailableForAllDays =
+          crewStepSchedules.length > 0 && conflicts.length >= crewStepSchedules.length;
+        return unavailableForAllDays ? "" : current;
+      });
+      setIsLoadingCrewConflicts(false);
+    };
+
+    void loadCrewConflicts();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [open, step, currentAccount?.id, crewMemberIdsKey, scheduleConflictKey]);
+
+  const isCrewAssignedToDay = (scheduleIndex: number, crewId: string) => {
+    return (crewByScheduleIndex[scheduleIndex] || []).includes(crewId);
+  };
+
+  const isCrewConflictedOnDay = (scheduleIndex: number, crewId: string) => {
+    return (crewConflictByMember[crewId] || []).includes(scheduleIndex);
+  };
+
+  const isCrewUnavailableForSelectedSchedules = (crewId: string) => {
+    return crewStepSchedules.length > 0
+      && crewStepSchedules.every((_, scheduleIndex) => isCrewConflictedOnDay(scheduleIndex, crewId));
+  };
+
+  const toggleCrewSelectionForSchedule = (scheduleIndex: number, crewId: string) => {
+    setCrewByScheduleIndex((current) => {
+      const existing = current[scheduleIndex] || [];
+      const nextForSchedule = existing.includes(crewId)
+        ? existing.filter((id) => id !== crewId)
+        : [...existing, crewId];
+
+      return {
+        ...current,
+        [scheduleIndex]: nextForSchedule,
+      };
     });
+  };
 
-    if (!result.ok || !result.scheduleId) {
+  const toggleSelectedCrewDay = (scheduleIndex: number) => {
+    if (!activeCrewId) return;
+    if (isCrewConflictedOnDay(scheduleIndex, activeCrewId)) return;
+    toggleCrewSelectionForSchedule(scheduleIndex, activeCrewId);
+  };
+
+  const handleSchedule = async () => {
+    if (builderSchedules.length === 0) {
+      toast.error("Please add at least one schedule date");
       return;
     }
 
-    if (selectedCrewIds.length > 0 && currentAccount && user) {
-      for (const crewId of selectedCrewIds) {
-        const parsedCrew = parseCrewAssigneeId(crewId);
-        const overlapFn = parsedCrew.type === "user" ? "check_assignment_overlap" : "check_mock_assignment_overlap";
-        const overlapArgs = parsedCrew.type === "user"
-          ? {
-              p_user_id: parsedCrew.userId,
-              p_schedule_id: result.scheduleId,
-              p_account_id: currentAccount.id,
-            }
-          : {
-              p_mock_profile_id: parsedCrew.mockProfileId,
-              p_schedule_id: result.scheduleId,
-              p_account_id: currentAccount.id,
-            };
-        const { data: hasOverlap } = await supabase.rpc(overlapFn, overlapArgs as any);
-
-        if (hasOverlap) {
-          const crewName = crewMembers.find((member) => member.user_id === crewId)?.full_name || "This crew member";
-          const dateStr = scheduledDate
-            ? format(new Date(scheduledDate), "EEEE, MMMM d, yyyy")
-            : 'the selected date';
-
-          toast.error(`${crewName} is already assigned to another job on ${dateStr}. Please choose a different date or crew member.`, { duration: 5000 });
-          return;
-        }
+    for (const [scheduleIndex, _schedule] of builderSchedules.entries()) {
+      const selectedCrewIds = crewByScheduleIndex[scheduleIndex] || [];
+      const hasConflict = selectedCrewIds.some((crewId) => isCrewConflictedOnDay(scheduleIndex, crewId));
+      if (hasConflict) {
+        toast.error("One or more selected crew members are unavailable for this date and time.");
+        return;
       }
+    }
 
-      const { error: assignError } = await supabase
-        .from("job_assignments")
-        .insert(
-          selectedCrewIds.map((crewId) => {
-            const parsedCrew = parseCrewAssigneeId(crewId);
-            return {
-              lead_id: jobId,
-              user_id: parsedCrew.type === "user" ? parsedCrew.userId : null,
-              mock_crew_profile_id: parsedCrew.type === "mock" ? parsedCrew.mockProfileId : null,
-              job_schedule_id: result.scheduleId,
-              account_id: currentAccount.id,
-              assigned_by: user.id,
-            };
-          }),
-        );
+    let assignmentFailed = false;
+    for (const [scheduleIndex, schedule] of builderSchedules.entries()) {
+      const result = await scheduleJob({
+        leadId: jobId,
+        scheduledDate: schedule.date,
+        startTime: schedule.timeStart || undefined,
+        endTime: schedule.timeEnd || undefined,
+      });
 
-      if (assignError) {
-        console.error("Failed to assign crew:", assignError);
-        if (assignError.message.includes("row-level security") || assignError.message.includes("policy")) {
-          toast.error("This crew member is already assigned to another job at this time. Please choose a different time or crew member.", { duration: 5000 });
-        } else {
-          toast.error(`Failed to assign crew: ${assignError.message}`);
-        }
+      if (!result.ok || !result.scheduleId) {
         return;
       }
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["job-assignments", jobId] }),
-        queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
-        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
-        queryClient.invalidateQueries({ queryKey: ["crew-hours"] }),
-        queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] }),
-      ]);
+      const selectedCrewIds = crewByScheduleIndex[scheduleIndex] || [];
+      if (selectedCrewIds.length > 0 && currentAccount?.id && user?.id) {
+        for (const crewId of selectedCrewIds) {
+          try {
+            await assignCrewAsync({ assigneeId: crewId, scheduleId: result.scheduleId });
+          } catch {
+            assignmentFailed = true;
+          }
+        }
+      }
     }
 
-    setSelectedDate(undefined);
-    setScheduledTimeStart("");
-    setScheduledTimeEnd("");
-    setSelectedCrewIds([]);
+    if (assignmentFailed) {
+      toast.error("Schedule added, but one or more crew assignments failed. Please review crew assignments.");
+    }
+
+    setBuilderSchedules([]);
+    setStep("schedule");
+    setCrewByScheduleIndex({});
+    setCrewConflictByMember({});
+    setCrewConflictDetailsByMember({});
+    setCrewSearchQuery("");
+    setActiveCrewId("");
     onOpenChange(false);
+  };
+
+  const handleContinue = () => {
+    if (builderSchedules.length === 0) {
+      toast.error("Please add at least one schedule date");
+      return;
+    }
+    setStep("crew-assignment");
   };
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
-      // Reset state when closing
-      setSelectedDate(undefined);
-      setScheduledTimeStart("");
-      setScheduledTimeEnd("");
-      setSelectedCrewIds([]);
+      setBuilderSchedules([]);
+      setStep("schedule");
+      setCrewByScheduleIndex({});
+      setCrewConflictByMember({});
+      setCrewConflictDetailsByMember({});
+      setCrewSearchQuery("");
+      setActiveCrewId("");
     }
     onOpenChange(newOpen);
   };
@@ -255,91 +363,78 @@ export function ScheduleJobDialog({
           <DialogDescription>Schedule a date and optionally assign one or more crew members.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="space-y-3">
-            <ScheduleDateTimePicker
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-              calendarMonth={calendarMonth}
-              onCalendarMonthChange={setCalendarMonth}
-              disabledDate={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-              scheduledTimeStart={scheduledTimeStart}
-              onScheduledTimeStartChange={setScheduledTimeStart}
-              scheduledTimeEnd={scheduledTimeEnd}
-              onScheduledTimeEndChange={setScheduledTimeEnd}
-              selectedDateJobs={selectedDateJobs as ScheduledDateJob[]}
-              busyDatesSet={busyDatesSet}
-              calendarClassName="rounded-md"
-            >
-              {selectedDate && selectedDateJobs.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  No jobs scheduled on {format(selectedDate, "MMM d")}
-                </p>
-              )}
-
-              {onMakeRecurring && (
-                <div className="flex justify-start pt-1">
-                  <Button variant="outline" onClick={handleMakeRecurring} className="gap-1.5">
-                    <Repeat className="h-4 w-4" />
-                    Make Recurring Instead
-                  </Button>
+          {step === "schedule" ? (
+            <ScheduleDateBuilder
+              schedules={builderSchedules}
+              onSchedulesChange={(schedules) => {
+                setBuilderSchedules(schedules);
+              }}
+              recurringControls={onMakeRecurring ? (
+                <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
+                  <div className="pointer-events-none absolute inset-1 grid grid-cols-2 gap-1">
+                    <div className="rounded-full bg-background shadow-sm" />
+                    <div />
+                  </div>
+                  <div className="relative z-10 flex h-9 items-center justify-center rounded-full text-sm font-medium text-foreground">
+                    One Off
+                  </div>
+                  <button
+                    type="button"
+                    className="relative z-10 h-9 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground"
+                    onClick={handleMakeRecurring}
+                  >
+                    Recurring
+                  </button>
                 </div>
-              )}
-            </ScheduleDateTimePicker>
-          </div>
-
-          {/* Assign Crew */}
-          {scheduledDate && crewMembers.length > 0 && (
-            <div className="space-y-3 pt-2 border-t border-border">
-              <Label className="text-base font-semibold flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Assign Crew (optional)
-              </Label>
-              <div className="rounded-md border border-border max-h-48 overflow-y-auto">
-                {crewMembers.map((member) => {
-                  const checkboxId = `crew-member-${member.user_id}`;
-                  const isSelected = selectedCrewIds.includes(member.user_id);
-
-                  return (
-                    <div
-                      key={member.user_id}
-                      className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border last:border-b-0"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          id={checkboxId}
-                          checked={isSelected}
-                          onCheckedChange={() => toggleCrewSelection(member.user_id)}
-                        />
-                        <Label htmlFor={checkboxId} className="font-normal cursor-pointer">
-                          {member.full_name || "Unnamed"}
-                        </Label>
-                      </div>
-                      {member.role && (
-                        <Badge variant="outline" className={`text-xs py-0 ${roleBadgeColors[member.role] || ''}`}>
-                          {roleLabels[member.role] || member.role}
-                        </Badge>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {selectedCrewIds.length > 0
-                  ? `${selectedCrewIds.length} crew member${selectedCrewIds.length === 1 ? "" : "s"} selected`
-                  : "No crew selected"}
-              </p>
-            </div>
+              ) : undefined}
+            />
+          ) : (
+            <CreateJobCrewAssignmentStep
+              addedSchedules={crewStepSchedules}
+              crewMembers={crewMembers}
+              assignedCrewByScheduleIndex={crewByScheduleIndex}
+              filteredCrewMembers={filteredCrewMembers}
+              crewSearchQuery={crewSearchQuery}
+              onCrewSearchQueryChange={setCrewSearchQuery}
+              activeCrewId={activeCrewId}
+              onActiveCrewIdChange={setActiveCrewId}
+              crewConflictByMember={crewConflictByMember}
+              isLoadingCrewConflicts={isLoadingCrewConflicts}
+              isCrewUnavailableForSelectedSchedules={isCrewUnavailableForSelectedSchedules}
+              isCrewAssignedToDay={isCrewAssignedToDay}
+              isCrewConflictedOnDay={isCrewConflictedOnDay}
+              getCrewConflictDetail={(scheduleIndex, crewId) =>
+                crewConflictDetailsByMember[crewId]?.[scheduleIndex] || null
+              }
+              onToggleSelectedCrewDay={toggleSelectedCrewDay}
+            />
           )}
-
         </div>
 
-        <DialogFooter className="gap-3">
-          <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSchedule} disabled={!selectedDate || isScheduling}>
-            {isScheduling ? "Scheduling..." : "Add Schedule"}
-          </Button>
+        <DialogFooter className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+          {step === "schedule" ? (
+            <>
+              <Button variant="outline" onClick={() => handleOpenChange(false)} className="w-full">
+                Cancel
+              </Button>
+              <Button onClick={handleContinue} disabled={builderSchedules.length === 0 || isScheduling} className="w-full">
+                Continue
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setStep("schedule")} className="w-full">
+                Back
+              </Button>
+              <Button
+                onClick={handleSchedule}
+                disabled={builderSchedules.length === 0 || isScheduling || isAssigning || isLoadingCrewConflicts}
+                className="w-full"
+              >
+                {isScheduling || isAssigning ? "Scheduling..." : "Add Schedule"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

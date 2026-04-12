@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   buildIntegrationLeadStatus,
-  evaluateAutoQualifyWebhook,
+  evaluateIntegrationQualificationDecision,
   getIntegrationAutomationSettings,
 } from "../_shared/integration-lead-automation.ts";
 import {
@@ -274,21 +274,13 @@ async function processLeadInBackground(
     }
   }
 
-  let qualificationDecision = {
-    qualified: autoQualify,
-    reason: autoQualify ? "Auto-qualify enabled" : "Auto-qualify disabled",
-    metadata: { webhook_used: false },
-  };
-
-  if (autoQualify && automationSettings.webhookConfig && leadData) {
-    qualificationDecision = await evaluateAutoQualifyWebhook({
-      config: automationSettings.webhookConfig,
-      accountId,
-      source,
-      leadData: leadData as Record<string, unknown>,
-      rawPayload,
-    });
-  }
+  const qualificationDecision = await evaluateIntegrationQualificationDecision({
+    automationSettings,
+    accountId,
+    source,
+    leadData: (leadData ?? {}) as Record<string, unknown>,
+    rawPayload,
+  });
 
   if (!leadData || (!leadData.full_name && !leadData.phone_number && !leadData.email)) {
     const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
@@ -355,7 +347,7 @@ async function processLeadInBackground(
       summary: autoQualify
         ? qualificationDecision.qualified
           ? `Lead created via ${source} and auto-qualified`
-          : `Lead created via ${source} and marked not qualified by endpoint`
+          : `Lead created via ${source} and marked not qualified`
         : `Lead created via ${source} (parsed directly)`,
       metadata: {
         source,

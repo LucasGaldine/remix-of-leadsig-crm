@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@6.10.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +30,12 @@ interface AccountMemberRow {
   user_id: string;
   account_id: string;
   accounts: { name: string } | null;
+}
+
+interface DigestRequestBody {
+  digest_type?: "daily" | "weekly";
+  test_mode?: boolean;
+  test_email?: string;
 }
 
 const EVENT_ICONS: Record<string, string> = {
@@ -160,36 +167,54 @@ function formatTime(isoStr: string): string {
   });
 }
 
-async function sendResendEmail(
+async function sendSmtpEmail(
   to: string,
   subject: string,
   html: string,
-  apiKey: string
+  smtpConfig: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    pass: string;
+    from: string;
+  }
 ): Promise<{ success: boolean; id?: string; error?: string }> {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "LeadSig Notifications <notification@leadsig.ai>",
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      secure: smtpConfig.secure,
+      auth: {
+        user: smtpConfig.user,
+        pass: smtpConfig.pass,
+      },
+    });
+
+    const info = await transporter.sendMail({
+      from: smtpConfig.from,
       to: [to],
       subject,
       html,
-    }),
-  });
+    });
 
-  const result = await response.json();
+    return { success: true, id: info.messageId };
+  } catch (error) {
+    const rawError =
+      error instanceof Error ? error.message : "SMTP send failed";
+    const normalized = rawError.toLowerCase();
+    const isGmailAuthError =
+      normalized.includes("535-5.7.8") ||
+      normalized.includes("badcredentials") ||
+      normalized.includes("username and password not accepted");
 
-  if (!response.ok) {
     return {
       success: false,
-      error: result.message || `Resend error ${response.status}`,
+      error: isGmailAuthError
+        ? "SMTP auth failed (Gmail 535). Ensure SMTP_USER matches the account that generated the App Password, and SMTP_PASS is the 16-character app password with no spaces."
+        : rawError,
     };
   }
-
-  return { success: true, id: result.id };
 }
 
 Deno.serve(async (req: Request) => {
@@ -198,11 +223,23 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
+    const smtpHost = Deno.env.get("SMTP_HOST") || "smtp.gmail.com";
+    const smtpPortRaw = Deno.env.get("SMTP_PORT") || "465";
+    const smtpSecureRaw = Deno.env.get("SMTP_SECURE") || "true";
+    const smtpUser = Deno.env.get("SMTP_USER")?.trim();
+    // App passwords are often copied with spaces between groups.
+    // Normalize all whitespace (including NBSP) before SMTP auth.
+    const smtpPass = Deno.env.get("SMTP_PASS")?.replace(/\s+/gu, "");
+    const smtpFrom = Deno.env.get("SMTP_FROM_EMAIL") || smtpUser || "";
+    const smtpPort = Number(smtpPortRaw);
+    const smtpSecure = smtpSecureRaw.toLowerCase() === "true";
+
+    if (!smtpUser || !smtpPass || !smtpFrom || Number.isNaN(smtpPort)) {
       return new Response(
         JSON.stringify({
-          error: "RESEND_API_KEY not configured",
+          error: "SMTP not configured",
+          details:
+            "Set SMTP_USER, SMTP_PASS, SMTP_FROM_EMAIL, SMTP_HOST, SMTP_PORT, and SMTP_SECURE",
         }),
         {
           status: 500,
@@ -216,11 +253,103 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     let digestFilter: "daily" | "weekly" | null = null;
+    let testMode = false;
+    let testUserId: string | null = null;
+    let testEmail: string | null = null;
     try {
-      const body = await req.json();
+      const body: DigestRequestBody = await req.json();
       digestFilter = body?.digest_type || null;
+      testMode = Boolean(body?.test_mode);
+      testEmail = body?.test_email?.trim() || null;
     } catch {
       // No body or invalid JSON is fine - process all due digests
+    }
+
+    if (testMode) {
+      const authHeader = req.headers.get("Authorization");
+      const token =
+        authHeader?.startsWith("Bearer ")
+          ? authHeader.replace("Bearer ", "")
+          : null;
+
+      if (token) {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser(token);
+
+        if (!userError && user) {
+          testUserId = user.id;
+        }
+      }
+
+      // Test mode should always send immediately and never depend on digest contents.
+      const resolvedTestEmail = testEmail;
+      if (!resolvedTestEmail && testUserId) {
+        const { data: testProfile } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("user_id", testUserId)
+          .maybeSingle();
+        testEmail = testProfile?.email?.trim() || null;
+      }
+
+      if (!testEmail) {
+        return new Response(
+          JSON.stringify({ error: "No test email available for test mode" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const subject = "LeadSig email test";
+      const nowIso = new Date().toISOString();
+      const html = buildDigestHtml(
+        [
+          {
+            id: "test-email-direct",
+            title: "Email test successful",
+            body: "SMTP is configured correctly and LeadSig can send emails.",
+            event_type: "new_lead",
+            created_at: nowIso,
+          },
+        ],
+        "there",
+        "",
+        "daily",
+        new Date(nowIso),
+        new Date(nowIso)
+      );
+
+      const emailResult = await sendSmtpEmail(testEmail, subject, html, {
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        user: smtpUser,
+        pass: smtpPass,
+        from: smtpFrom,
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: emailResult.success,
+          sent: emailResult.success ? 1 : 0,
+          total: 1,
+          results: [
+            {
+              sent: emailResult.success,
+              reason: emailResult.error,
+              notification_count: 1,
+            },
+          ],
+        }),
+        {
+          status: emailResult.success ? 200 : 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const now = new Date();
@@ -234,12 +363,17 @@ Deno.serve(async (req: Request) => {
       digestTypes.push(digestFilter);
     }
 
-    const { data: allMembers, error: membersError } = await supabase
+    let membersQuery = supabase
       .from("account_members")
       .select("user_id, account_id, accounts(name)")
       .eq("is_active", true);
+    if (testUserId) {
+      membersQuery = membersQuery.eq("user_id", testUserId);
+    }
 
-    if (membersError || !allMembers?.length) {
+    const { data: memberRows, error: membersError } = await membersQuery;
+
+    if (membersError || !memberRows?.length) {
       return new Response(
         JSON.stringify({ success: true, sent: 0, reason: "No active members" }),
         {
@@ -249,12 +383,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const userIds = [...new Set(allMembers.map((m: AccountMemberRow) => m.user_id))];
+    const userIds = [...new Set(memberRows.map((m: AccountMemberRow) => m.user_id))];
 
-    const { data: profiles } = await supabase
+    let profileQuery = supabase
       .from("profiles")
-      .select("user_id, email, full_name, notification_preferences")
-      .in("user_id", userIds);
+      .select("user_id, email, full_name, notification_preferences");
+    if (testUserId) {
+      profileQuery = profileQuery.eq("user_id", testUserId);
+    } else {
+      profileQuery = profileQuery.in("user_id", userIds);
+    }
+
+    const { data: profiles } = await profileQuery;
 
     if (!profiles?.length) {
       return new Response(
@@ -289,7 +429,7 @@ Deno.serve(async (req: Request) => {
         if (prefs.digest?.frequency !== digestType) continue;
         if (!profile.email) continue;
 
-        const memberEntries = allMembers.filter(
+        const memberEntries = memberRows.filter(
           (m: AccountMemberRow) => m.user_id === profile.user_id
         );
 
@@ -319,7 +459,20 @@ Deno.serve(async (req: Request) => {
             .order("created_at", { ascending: false })
             .limit(50);
 
-          if (!notifications?.length) {
+          const notificationsForEmail =
+            testMode && !notifications?.length
+              ? ([
+                  {
+                    id: "test-email",
+                    title: "Test digest email",
+                    body: "Your email notification channel is connected and working.",
+                    event_type: "new_lead",
+                    created_at: now.toISOString(),
+                  },
+                ] as NotificationRow[])
+              : (notifications as NotificationRow[] | null);
+
+          if (!notificationsForEmail?.length) {
             results.push({
               user_id: profile.user_id,
               account_id: member.account_id,
@@ -332,13 +485,14 @@ Deno.serve(async (req: Request) => {
 
           const companyName =
             (member.accounts as unknown as { name: string })?.name || "";
+          const subjectPrefix = testMode ? "Test: " : "";
           const subject =
             digestType === "daily"
-              ? `Your daily digest - ${notifications.length} update${notifications.length !== 1 ? "s" : ""}`
-              : `Your weekly digest - ${notifications.length} update${notifications.length !== 1 ? "s" : ""}`;
+              ? `${subjectPrefix}Your daily digest - ${notificationsForEmail.length} update${notificationsForEmail.length !== 1 ? "s" : ""}`
+              : `${subjectPrefix}Your weekly digest - ${notificationsForEmail.length} update${notificationsForEmail.length !== 1 ? "s" : ""}`;
 
           const html = buildDigestHtml(
-            notifications as NotificationRow[],
+            notificationsForEmail,
             profile.full_name || "",
             companyName,
             digestType,
@@ -346,11 +500,18 @@ Deno.serve(async (req: Request) => {
             periodEnd
           );
 
-          const emailResult = await sendResendEmail(
+          const emailResult = await sendSmtpEmail(
             profile.email,
             subject,
             html,
-            resendApiKey
+            {
+              host: smtpHost,
+              port: smtpPort,
+              secure: smtpSecure,
+              user: smtpUser,
+              pass: smtpPass,
+              from: smtpFrom,
+            }
           );
 
           await supabase.from("email_digest_log").insert({
@@ -358,7 +519,7 @@ Deno.serve(async (req: Request) => {
             user_id: profile.user_id,
             email_to: profile.email,
             digest_type: digestType,
-            notification_count: notifications.length,
+            notification_count: notificationsForEmail.length,
             status: emailResult.success ? "sent" : "failed",
             error_message: emailResult.error || null,
             period_start: cutoff.toISOString(),
@@ -370,7 +531,7 @@ Deno.serve(async (req: Request) => {
             account_id: member.account_id,
             sent: emailResult.success,
             reason: emailResult.error,
-            notification_count: notifications.length,
+            notification_count: notificationsForEmail.length,
           });
         }
       }

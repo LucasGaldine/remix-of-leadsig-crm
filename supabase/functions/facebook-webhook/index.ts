@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   buildIntegrationLeadStatus,
-  evaluateAutoQualifyWebhook,
+  evaluateIntegrationQualificationDecision,
   getIntegrationAutomationSettings,
 } from "../_shared/integration-lead-automation.ts";
 import {
@@ -213,31 +213,23 @@ async function processLeadgenEvent(
       parsingMethod = aiTimeoutFallback ? "manual_timeout_fallback" : "manual";
     }
 
-    let qualificationDecision = {
-      qualified: autoQualify,
-      reason: autoQualify ? "Auto-qualify enabled" : "Auto-qualify disabled",
-      metadata: { webhook_used: false },
-    };
-
-    if (autoQualify && automationSettings.webhookConfig) {
-      qualificationDecision = await evaluateAutoQualifyWebhook({
-        config: automationSettings.webhookConfig,
-        accountId: connection.account_id,
-        source: "facebook",
-        leadData: {
-          full_name: leadName,
-          email: leadEmail,
-          phone_number: leadPhone,
-          city: leadCity,
-          state: leadState,
-          address: leadAddress,
-          service_type: leadServiceType,
-          notes: leadNotes,
-          budget: leadBudget,
-        },
-        rawPayload: leadData as unknown as Record<string, unknown>,
-      });
-    }
+    const qualificationDecision = await evaluateIntegrationQualificationDecision({
+      automationSettings,
+      accountId: connection.account_id,
+      source: "facebook",
+      leadData: {
+        full_name: leadName,
+        email: leadEmail,
+        phone_number: leadPhone,
+        city: leadCity,
+        state: leadState,
+        address: leadAddress,
+        service_type: leadServiceType,
+        notes: leadNotes,
+        budget: leadBudget,
+      },
+      rawPayload: leadData as unknown as Record<string, unknown>,
+    });
 
     const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
 
@@ -276,7 +268,7 @@ async function processLeadgenEvent(
         summary: autoQualify
           ? qualificationDecision.qualified
             ? "Lead received from Facebook Lead Ads and auto-qualified"
-            : "Lead received from Facebook Lead Ads and marked not qualified by endpoint"
+            : "Lead received from Facebook Lead Ads and marked not qualified"
           : "Lead received from Facebook Lead Ads",
         metadata: {
           source: "facebook",

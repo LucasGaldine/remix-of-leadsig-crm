@@ -505,7 +505,10 @@ export default function SettingsCompanyProfile() {
               </div>
             </div>
 
-            <div className="relative left-1/2 right-1/2 w-screen -translate-x-1/2 px-4 sm:px-6 lg:px-8">
+            <div
+              data-testid="client-portal-preview-container"
+              className="w-full"
+            >
               <div className="client-portal-themed space-y-4" style={previewPortalThemeStyle}>
                 <ClientPortalHeader
                   job={previewJob}

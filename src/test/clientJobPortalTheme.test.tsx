@@ -132,7 +132,7 @@ describe("ClientJobPortal theming", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
-  it("sets the browser tab title to Client Portal", async () => {
+  it("sets the browser tab title to Customer Name | Client Portal", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -159,15 +159,15 @@ describe("ClientJobPortal theming", () => {
 
     await screen.findByRole("heading", { name: /Welcome, Another import/i });
 
-    expect(document.title).toBe("Client Portal");
+    expect(document.title).toBe("Another import | Client Portal");
   });
 
-  it("falls back to Client Portal tab title when company name is unavailable", async () => {
+  it("falls back to Client Portal tab title when customer name is unavailable", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         customer: {
-          name: "Another import",
+          name: "",
         },
         company: {},
         jobs: [],
@@ -185,7 +185,7 @@ describe("ClientJobPortal theming", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("heading", { name: /Welcome, Another import/i });
+    await screen.findByRole("heading", { name: /Welcome,/i });
 
     expect(document.title).toBe("Client Portal");
   });

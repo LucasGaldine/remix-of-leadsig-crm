@@ -6,10 +6,11 @@ import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 
 interface MainPageQuickActionsProps {
   onLeadCreated?: (leadId: string) => void;
+  onJobCreated?: (jobId: string) => void;
   show?: boolean;
 }
 
-export function MainPageQuickActions({ onLeadCreated, show = true }: MainPageQuickActionsProps) {
+export function MainPageQuickActions({ onLeadCreated, onJobCreated, show = true }: MainPageQuickActionsProps) {
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [addJobOpen, setAddJobOpen] = useState(false);
 
@@ -42,7 +43,11 @@ export function MainPageQuickActions({ onLeadCreated, show = true }: MainPageQui
       )}
 
       {addJobOpen && (
-        <CreateJobDialog open={addJobOpen} onOpenChange={setAddJobOpen} />
+        <CreateJobDialog
+          open={addJobOpen}
+          onOpenChange={setAddJobOpen}
+          onJobCreated={onJobCreated}
+        />
       )}
     </>
   );

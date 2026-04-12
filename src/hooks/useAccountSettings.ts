@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 export type AccountSettings = {
   daily_job_limit?: number | null;
   auto_qualify_integration_leads?: boolean | null;
+  auto_qualify_reject_out_of_range?: boolean | null;
+  auto_qualify_reject_out_of_budget?: boolean | null;
   auto_qualify_webhook?: {
     endpoint_url?: string;
     auth_header_name?: string;
@@ -14,12 +16,28 @@ export type AccountSettings = {
   job_message_automation?: {
     enabled?: boolean;
     message_template?: string;
+    message_templates?: Array<{
+      id?: string;
+      name?: string;
+      content?: string;
+      is_finished?: boolean;
+      job_service_types?: string[];
+      trigger?: {
+        type?: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion";
+        offset_minutes?: number;
+        offset_value?: number;
+        offset_unit?: "seconds" | "hours" | "days" | "months";
+      };
+    }>;
     job_service_types?: string[];
     trigger?: {
-      type?: "immediate" | "before_schedule_start" | "after_schedule_start";
+      type?: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion";
       offset_minutes?: number;
+      offset_value?: number;
+      offset_unit?: "seconds" | "hours" | "days" | "months";
     };
     endpoint?: {
+      enabled?: boolean;
       url?: string;
       auth_header_name?: string;
       auth_header_value?: string;

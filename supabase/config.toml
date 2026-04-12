@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.verify-address]
 verify_jwt = false
+
+[functions.client-portal-share]
+verify_jwt = false
+
+[functions.send-client-portal-email]
+verify_jwt = false

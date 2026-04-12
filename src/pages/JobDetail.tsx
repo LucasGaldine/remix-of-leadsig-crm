@@ -29,6 +29,7 @@ import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { isTwilioNotConfiguredErrorMessage, shouldUsePortalFallback } from "@/lib/jobCompletionReview";
+import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { PhotoSection } from "@/components/photos/PhotoSection";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
 import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, useRecurringJobEstimate } from "@/hooks/useRecurringJobs";
@@ -164,6 +165,8 @@ export default function JobDetail() {
   const [portalLink, setPortalLink] = useState("");
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalCopied, setPortalCopied] = useState(false);
+  const [portalEmailSending, setPortalEmailSending] = useState(false);
+  const [portalEmailSent, setPortalEmailSent] = useState(false);
   const [isTwilioConfigured, setIsTwilioConfigured] = useState(true);
   const [headerInfoOpen, setHeaderInfoOpen] = useState(false);
 
@@ -509,7 +512,7 @@ export default function JobDetail() {
       if (updateError) throw updateError;
     }
 
-    return `${window.location.origin}/client/job?token=${token}`;
+    return buildClientPortalShareUrl(token);
   };
 
   const handleOpenClientPortal = async () => {
@@ -518,6 +521,7 @@ export default function JobDetail() {
     try {
       const link = await resolveCustomerPortalLink();
       setPortalLink(link);
+      setPortalEmailSent(false);
       setPortalDialogOpen(true);
     } catch (err) {
       toast.error("Failed to generate portal link");
@@ -534,6 +538,7 @@ export default function JobDetail() {
 
     if (portalFallback) {
       setPortalLink(portalLink);
+      setPortalEmailSent(false);
       setPortalDialogOpen(true);
       toast.success("Job completed. Share the client portal link to request a review.");
       return;
@@ -562,6 +567,7 @@ export default function JobDetail() {
       if (isTwilioNotConfiguredErrorMessage(errorMessage)) {
         setIsTwilioConfigured(false);
         setPortalLink(portalLink);
+        setPortalEmailSent(false);
         setPortalDialogOpen(true);
         toast.success("Job completed. Share the client portal link to request a review.");
         return;
@@ -581,6 +587,61 @@ export default function JobDetail() {
       setTimeout(() => setPortalCopied(false), 2000);
     } catch {
       toast.error("Failed to copy link");
+    }
+  };
+
+  const handleEmailPortalLink = async () => {
+    if (!job?.customer?.id || !portalLink) {
+      toast.error("Open the client portal link first.");
+      return;
+    }
+
+    const clientEmail = job.customer?.email?.trim() || "";
+    if (!clientEmail) {
+      toast.error("Add a customer email before sending.");
+      return;
+    }
+
+    setPortalEmailSending(true);
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      const accessToken =
+        refreshData.session?.access_token ||
+        (await supabase.auth.getSession()).data.session?.access_token;
+
+      if (refreshError || !accessToken) {
+        toast.error("Your session expired. Please sign in again and retry.");
+        return;
+      }
+
+      const { error } = await supabase.functions.invoke("send-client-portal-email", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: {
+          customer_id: job.customer.id,
+          job_id: job.id,
+          job_name: job.name || null,
+          portal_link: portalLink,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setPortalEmailSent(true);
+      setTimeout(() => setPortalEmailSent(false), 2500);
+      toast.success(`Portal link emailed to ${clientEmail}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to send portal email";
+      if (message.toLowerCase().includes("failed to fetch")) {
+        toast.error("Email service unavailable. Deploy the send-client-portal-email function and retry.");
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setPortalEmailSending(false);
     }
   };
 
@@ -1474,6 +1535,11 @@ export default function JobDetail() {
                                 )}
                               </div>
                             </div>
+                            {isManager() && (
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground">
+                                <Edit className="h-4 w-4" />
+                              </div>
+                            )}
                           </div>
                         );
 
@@ -1845,6 +1911,9 @@ export default function JobDetail() {
         portalLink={portalLink}
         copied={portalCopied}
         onCopy={handleCopyPortalLink}
+        onEmailClient={handleEmailPortalLink}
+        emailSending={portalEmailSending}
+        emailSent={portalEmailSent}
         clientPhone={job.customer?.phone || ""}
         clientEmail={job.customer?.email || ""}
       />
@@ -2275,6 +2344,10 @@ export default function JobDetail() {
           open={makeRecurringOpen}
           onOpenChange={setMakeRecurringOpen}
           jobId={id}
+          onMakeOneOffInstead={() => {
+            setMakeRecurringOpen(false);
+            setScheduleDialogOpen(true);
+          }}
           jobSchedules={schedules}
         />
       )}
