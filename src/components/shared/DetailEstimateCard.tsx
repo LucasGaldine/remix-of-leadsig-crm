@@ -7,6 +7,7 @@ interface DetailEstimateCardProps {
   lineItemCount: number;
   showStartingAt?: boolean;
   onClick: () => void;
+  variant?: "card" | "plain";
 }
 
 export function DetailEstimateCard({
@@ -16,11 +17,16 @@ export function DetailEstimateCard({
   lineItemCount,
   showStartingAt = false,
   onClick,
+  variant = "card",
 }: DetailEstimateCardProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+      className={
+        variant === "plain"
+          ? "w-full text-left text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+          : "w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+      }
     >
       <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
         <div className="flex gap-2 items-center">

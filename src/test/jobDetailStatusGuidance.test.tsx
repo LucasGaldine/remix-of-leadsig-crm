@@ -710,7 +710,7 @@ describe("JobDetail status guidance", () => {
     expect(within(leftCard).getByRole("button", { name: "Add Date" })).toBeInTheDocument();
     expect(within(leftCard).queryByRole("button", { name: "Recurring" })).not.toBeInTheDocument();
     expect(within(leftCard).getByText("No crew assigned")).toBeInTheDocument();
-    expect(within(leftCard).getByRole("button", { name: /edit crew/i })).toBeInTheDocument();
+    expect(within(leftCard).getByRole("button", { name: /edit schedule and crew for/i })).toBeInTheDocument();
 
     expect(within(rightColumn).getByText("job costs")).toBeInTheDocument();
     expect(within(rightColumn).getByText("Invoices")).toBeInTheDocument();
@@ -900,7 +900,7 @@ describe("JobDetail status guidance", () => {
     renderJobDetail();
     await screen.findByRole("button", { name: /open job status guide for scheduled/i });
 
-    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit schedule and crew for/i }));
 
     const dialog = await screen.findByRole("dialog");
     const modal = within(dialog);
@@ -972,7 +972,7 @@ describe("JobDetail status guidance", () => {
     renderJobDetail();
     await screen.findByRole("button", { name: /open job status guide for scheduled/i });
 
-    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit schedule and crew for/i }));
 
     const editDialog = await screen.findByRole("dialog");
     fireEvent.click(within(editDialog).getByRole("button", { name: /delete scheduled date/i }));
@@ -1043,7 +1043,7 @@ describe("JobDetail status guidance", () => {
     renderJobDetail();
     await screen.findByRole("button", { name: /open job status guide for scheduled/i });
 
-    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit schedule and crew for/i }));
 
     const dialog = await screen.findByRole("dialog");
     const modal = within(dialog);
@@ -1110,7 +1110,7 @@ describe("JobDetail status guidance", () => {
     renderJobDetail();
     await screen.findByRole("button", { name: /open job status guide for scheduled/i });
 
-    fireEvent.click(screen.getByRole("button", { name: /edit crew/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit schedule and crew for/i }));
 
     const dialog = await screen.findByRole("dialog");
     const modal = within(dialog);

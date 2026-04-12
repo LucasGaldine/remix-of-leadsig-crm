@@ -95,6 +95,13 @@ export default function Settings() {
           onClick: () => navigate("/settings/min-job-size"),
           searchTerms: ["minimum", "floor", "smallest job", "min size"],
         },
+        ...(role === "owner" ? [{
+          icon: <Crown className="h-5 w-5" />,
+          label: "Pricing Plans",
+          description: "Manage your subscription",
+          onClick: () => navigate("/settings/pricing"),
+          searchTerms: ["pricing", "plan", "subscription", "upgrade", "billing", "free", "basic", "premium"],
+        }] : []),
       ],
     },
     {
@@ -201,13 +208,6 @@ export default function Settings() {
           requiredPlan: "basic",
           searchTerms: ["notifications", "alerts", "sms", "text", "push", "email digest", "mentions", "new leads", "lead updates", "payments", "schedule changes", "tasks", "reminders", "job assignments", "same day reminders", "quiet hours", "daily digest", "weekly digest", "test sms", "mention notifications"],
         },
-        ...(role === "owner" ? [{
-          icon: <Crown className="h-5 w-5" />,
-          label: "Pricing Plans",
-          description: "Manage your subscription",
-          onClick: () => navigate("/settings/pricing"),
-          searchTerms: ["pricing", "plan", "subscription", "upgrade", "billing", "free", "basic", "premium"],
-        }] : []),
 
       ],
     },

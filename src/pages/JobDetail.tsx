@@ -110,6 +110,11 @@ export default function JobDetail() {
     service_type: "",
     address: "",
     description: "",
+    customer_name: "",
+    customer_phone: "",
+    customer_email: "",
+    customer_address: "",
+    customer_city: "",
   });
 
   const queryClient = useQueryClient();
@@ -878,6 +883,11 @@ export default function JobDetail() {
       service_type: job?.service_type || "",
       address: job?.address || "",
       description: job?.description || "",
+      customer_name: job?.customer?.name || "",
+      customer_phone: job?.customer?.phone || "",
+      customer_email: job?.customer?.email || "",
+      customer_address: job?.customer?.address || "",
+      customer_city: job?.customer?.city || "",
     });
     setEditDialogOpen(true);
   };
@@ -893,6 +903,21 @@ export default function JobDetail() {
         address: editForm.address.trim() || null,
         description: editForm.description.trim() || null,
       });
+
+      if (job?.customer?.id) {
+        const { error: customerError } = await supabase
+          .from("customers")
+          .update({
+            name: editForm.customer_name.trim() || null,
+            phone: editForm.customer_phone.trim() || null,
+            email: editForm.customer_email.trim() || null,
+            address: editForm.customer_address.trim() || null,
+            city: editForm.customer_city.trim() || null,
+          })
+          .eq("id", job.customer.id);
+
+        if (customerError) throw customerError;
+      }
 
       toast.success("Job updated successfully!");
       setEditDialogOpen(false);
@@ -1174,11 +1199,16 @@ export default function JobDetail() {
                 {isManager() && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label="Open job actions menu"
+                      >
                         <EllipsisVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="start">
                       <DropdownMenuItem onClick={openEditDialog}>
                         <Edit className="h-4 w-4 mr-2" />
                         Edit Job
@@ -1399,75 +1429,67 @@ export default function JobDetail() {
                           schedule.scheduled_time_end
                         );
 
-                        return (
-                          <div key={schedule.id} className="rounded-xl">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex min-w-0 flex-1 items-start gap-3">
-                                <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center border border-border rounded-2xl bg-muted text-foreground">
-                                  <p className="text-[10px] font-semibold leading-none tracking-wide">
-                                    {format(new Date(schedule.scheduled_date + "T00:00:00"), "MMM").toUpperCase()}
-                                  </p>
-                                  <p className="mt-1 text-2xl font-semibold leading-none">
-                                    {format(new Date(schedule.scheduled_date + "T00:00:00"), "d")}
-                                  </p>
-                                </div>
-
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-lg font-semibold leading-tight text-foreground ">
-                                      {format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d")}
-                                    </p>
-                                  </div>
-                                  {outsideHours && (
-                                    <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
-                                      Outside normal hours
-                                    </Badge>
-                                  )}
-
-                                  {scheduleTimeRange && (
-                                    <p className="mt-0.5 text-xs  text-muted-foreground">
-                                      {scheduleTimeRange}
-                                    </p>
-                                  )}
-                                  {scheduleAssignments.length > 0 ? (
-                                    <div className="mt-2 flex flex-wrap gap-1.5">
-                                      {scheduleAssignments.map((assignment) => (
-                                        <Badge key={assignment.id} variant="outline" className="text-xs text-muted-foreground py-0">
-                                          {assignment.profiles?.full_name || "Unknown"}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                                      {isManager() && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => openEditCrewDialog(schedule.id)}
-                                          className="h-7 px-2 text-xs text-muted-foreground"
-                                        >
-                                          Assign crew member
-                                        </Button>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
+                        const scheduleDateLabel = format(new Date(schedule.scheduled_date + "T00:00:00"), "EEE, MMM d");
+                        const scheduleCardContent = (
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex min-w-0 flex-1 items-start gap-3">
+                              <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center border border-border rounded-2xl bg-muted text-foreground">
+                                <p className="text-[10px] font-semibold leading-none tracking-wide">
+                                  {format(new Date(schedule.scheduled_date + "T00:00:00"), "MMM").toUpperCase()}
+                                </p>
+                                <p className="mt-1 text-2xl font-semibold leading-none">
+                                  {format(new Date(schedule.scheduled_date + "T00:00:00"), "d")}
+                                </p>
                               </div>
 
-                              {isManager() && (
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => openEditCrewDialog(schedule.id)}
-                                    className="h-7 w-7 p-0 text-muted-foreground"
-                                    aria-label="Edit crew"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-lg font-semibold leading-tight text-foreground ">
+                                    {scheduleDateLabel}
+                                  </p>
                                 </div>
-                              )}
+                                {outsideHours && (
+                                  <Badge variant="outline" className="text-xs border-orange-500 text-orange-700 dark:text-orange-400">
+                                    Outside normal hours
+                                  </Badge>
+                                )}
+
+                                {scheduleTimeRange && (
+                                  <p className="mt-0.5 text-xs  text-muted-foreground">
+                                    {scheduleTimeRange}
+                                  </p>
+                                )}
+                                {scheduleAssignments.length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {scheduleAssignments.map((assignment) => (
+                                      <Badge key={assignment.id} variant="outline" className="text-xs text-muted-foreground py-0">
+                                        {assignment.profiles?.full_name || "Unknown"}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    No crew assigned
+                                  </p>
+                                )}
+                              </div>
                             </div>
+                          </div>
+                        );
+
+                        return isManager() ? (
+                          <button
+                            key={schedule.id}
+                            type="button"
+                            onClick={() => openEditCrewDialog(schedule.id)}
+                            className="w-full rounded-xl text-left transition-colors hover:bg-muted/40 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            aria-label={`Edit schedule and crew for ${scheduleDateLabel}`}
+                          >
+                            {scheduleCardContent}
+                          </button>
+                        ) : (
+                          <div key={schedule.id} className="rounded-xl">
+                            {scheduleCardContent}
                           </div>
                         );
                       })}
@@ -1823,6 +1845,8 @@ export default function JobDetail() {
         portalLink={portalLink}
         copied={portalCopied}
         onCopy={handleCopyPortalLink}
+        clientPhone={job.customer?.phone || ""}
+        clientEmail={job.customer?.email || ""}
       />
 
       <Dialog open={statusGuidanceOpen} onOpenChange={setStatusGuidanceOpen}>
@@ -1900,10 +1924,62 @@ export default function JobDetail() {
           <DialogHeader>
             <DialogTitle>Edit Job Details</DialogTitle>
             <DialogDescription>
-              Update job information. To edit customer details, visit the customer page.
+              Update job and customer information.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-customer-name">Customer Name</Label>
+                <Input
+                  id="edit-customer-name"
+                  value={editForm.customer_name}
+                  onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
+                  placeholder="Customer name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-customer-phone">Customer Phone</Label>
+                <Input
+                  id="edit-customer-phone"
+                  type="tel"
+                  value={editForm.customer_phone}
+                  onChange={(e) => setEditForm({ ...editForm, customer_phone: e.target.value })}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-customer-email">Customer Email</Label>
+                <Input
+                  id="edit-customer-email"
+                  type="email"
+                  value={editForm.customer_email}
+                  onChange={(e) => setEditForm({ ...editForm, customer_email: e.target.value })}
+                  placeholder="customer@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-customer-city">Customer City</Label>
+                <Input
+                  id="edit-customer-city"
+                  value={editForm.customer_city}
+                  onChange={(e) => setEditForm({ ...editForm, customer_city: e.target.value })}
+                  placeholder="Austin"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-customer-address">Customer Address</Label>
+              <Input
+                id="edit-customer-address"
+                value={editForm.customer_address}
+                onChange={(e) => setEditForm({ ...editForm, customer_address: e.target.value })}
+                placeholder="123 Main St"
+              />
+            </div>
+            <Separator />
             <div className="space-y-2">
               <Label htmlFor="edit-name">Job Name</Label>
               <Input
@@ -1953,7 +2029,7 @@ export default function JobDetail() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEdit}>
+            <Button onClick={handleEdit} disabled={updateJobMutation.isPending}>
               Save Changes
             </Button>
           </DialogFooter>

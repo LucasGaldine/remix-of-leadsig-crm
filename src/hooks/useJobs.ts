@@ -57,7 +57,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           .from("leads")
           .select(`
             *,
-            customer:customers!customer_id(id, name, email, phone, address),
+            customer:customers!customer_id(id, name, email, phone, address, city),
             crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
             job_schedules!lead_id(id, scheduled_date, scheduled_time_start, scheduled_time_end${includeSuppressUnassigned ? ", suppress_unassigned" : ""}),
             job_assignments!lead_id(id, user_id, job_schedule_id),
@@ -200,7 +200,7 @@ export function useJob(id: string | undefined) {
         .from("leads")
         .select(`
           *,
-          customer:customers!customer_id(id, name, email, phone, address),
+          customer:customers!customer_id(id, name, email, phone, address, city),
           crew_lead:profiles!leads_crew_lead_id_fkey(id, full_name),
           job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
         `)
