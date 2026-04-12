@@ -12,6 +12,7 @@ const corsHeaders = {
 
 type RequestBody = {
   estimate_id?: string;
+  event_type?: "estimate_approved" | "change_order_approved";
 };
 
 type RecipientType = "customer" | "user";
@@ -30,11 +31,13 @@ function buildCustomerHtml(params: {
   customerName: string;
   estimateTotal: number;
   jobName: string;
+  eventType: "estimate_approved" | "change_order_approved";
 }) {
   const companyName = escapeHtml(params.companyName);
   const customerName = escapeHtml(params.customerName);
   const jobName = escapeHtml(params.jobName);
   const amount = Number(params.estimateTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const approvalLabel = params.eventType === "change_order_approved" ? "change order" : "estimate";
 
   return `<!doctype html>
 <html>
@@ -48,7 +51,7 @@ function buildCustomerHtml(params: {
         <div style="padding:24px;">
           <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.5;">Hi ${customerName},</p>
           <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.6;">
-            Thanks for approving your estimate for <strong>${jobName}</strong>.
+            Thanks for approving your ${approvalLabel} for <strong>${jobName}</strong>.
           </p>
           <p style="margin:0 0 12px;color:#0f172a;font-size:14px;">Approved total: <strong>$${amount}</strong></p>
           <p style="margin:0;color:#64748b;font-size:13px;line-height:1.5;">${companyName} will follow up with the next steps.</p>
@@ -65,12 +68,15 @@ function buildUserHtml(params: {
   estimateTotal: number;
   jobName: string;
   companyName: string;
+  eventType: "estimate_approved" | "change_order_approved";
 }) {
   const userName = escapeHtml(params.userName || "there");
   const customerName = escapeHtml(params.customerName);
   const jobName = escapeHtml(params.jobName);
   const companyName = escapeHtml(params.companyName);
   const amount = Number(params.estimateTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const approvedLabel = params.eventType === "change_order_approved" ? "change order" : "estimate";
+  const title = params.eventType === "change_order_approved" ? "Change Order Approved" : "Estimate Approved";
 
   return `<!doctype html>
 <html>
@@ -78,13 +84,13 @@ function buildUserHtml(params: {
     <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
         <div style="background:#0f172a;padding:20px 24px;">
-          <h1 style="margin:0;color:#fff;font-size:20px;">Estimate Approved</h1>
+          <h1 style="margin:0;color:#fff;font-size:20px;">${title}</h1>
           <p style="margin:6px 0 0;color:#cbd5e1;font-size:13px;">${companyName}</p>
         </div>
         <div style="padding:24px;">
           <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.5;">Hi ${userName},</p>
           <p style="margin:0 0 10px;color:#334155;font-size:15px;line-height:1.6;">
-            ${customerName} approved the estimate for <strong>${jobName}</strong>.
+            ${customerName} approved the ${approvedLabel} for <strong>${jobName}</strong>.
           </p>
           <p style="margin:0;color:#0f172a;font-size:14px;">Approved total: <strong>$${amount}</strong></p>
         </div>
@@ -536,6 +542,7 @@ Deno.serve(async (req: Request) => {
   try {
     const body: RequestBody = await req.json().catch(() => ({}));
     const estimateId = body.estimate_id?.trim();
+    const eventType = body.event_type === "change_order_approved" ? "change_order_approved" : "estimate_approved";
 
     if (!estimateId) {
       return new Response(JSON.stringify({ error: "estimate_id is required" }), {
@@ -671,6 +678,7 @@ Deno.serve(async (req: Request) => {
       .from("estimate_email_notifications_log")
       .select("recipient_email, recipient_type")
       .eq("estimate_id", estimate.id)
+      .eq("event_type", eventType)
       .eq("status", "sent");
 
     const alreadySent = new Set((sentRows || []).map((row: any) => `${row.recipient_type}:${(row.recipient_email || "").toLowerCase()}`));
@@ -710,16 +718,24 @@ Deno.serve(async (req: Request) => {
       }
 
       const subject = recipient.recipientType === "customer"
-        ? `${companyName} | Estimate Approved`
-        : `${companyName} | Estimate Approved by ${customerName}`;
+        ? (eventType === "change_order_approved"
+          ? `${companyName} | Change Order Approved`
+          : `${companyName} | Estimate Approved`)
+        : (eventType === "change_order_approved"
+          ? `${companyName} | Change Order Approved by ${customerName}`
+          : `${companyName} | Estimate Approved by ${customerName}`);
 
       const html = recipient.recipientType === "customer"
-        ? buildCustomerHtml({ companyName, customerName, estimateTotal: Number(estimate.total || 0), jobName })
-        : buildUserHtml({ userName: recipient.name, customerName, estimateTotal: Number(estimate.total || 0), jobName, companyName });
+        ? buildCustomerHtml({ companyName, customerName, estimateTotal: Number(estimate.total || 0), jobName, eventType })
+        : buildUserHtml({ userName: recipient.name, customerName, estimateTotal: Number(estimate.total || 0), jobName, companyName, eventType });
 
       const text = recipient.recipientType === "customer"
-        ? `Hi ${customerName},\n\nThanks for approving your estimate for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}\n\n${companyName} will follow up with the next steps.`
-        : `Hi ${recipient.name},\n\n${customerName} approved the estimate for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}`;
+        ? (eventType === "change_order_approved"
+          ? `Hi ${customerName},\n\nThanks for approving your change order for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}\n\n${companyName} will follow up with the next steps.`
+          : `Hi ${customerName},\n\nThanks for approving your estimate for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}\n\n${companyName} will follow up with the next steps.`)
+        : (eventType === "change_order_approved"
+          ? `Hi ${recipient.name},\n\n${customerName} approved the change order for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}`
+          : `Hi ${recipient.name},\n\n${customerName} approved the estimate for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}`);
 
       try {
         await sendEmail({
@@ -742,6 +758,7 @@ Deno.serve(async (req: Request) => {
         await supabase.from("estimate_email_notifications_log").insert({
           estimate_id: estimate.id,
           account_id: estimate.account_id,
+          event_type: eventType,
           recipient_email: recipient.email,
           recipient_type: recipient.recipientType,
           status: "sent",
@@ -754,6 +771,7 @@ Deno.serve(async (req: Request) => {
         await supabase.from("estimate_email_notifications_log").insert({
           estimate_id: estimate.id,
           account_id: estimate.account_id,
+          event_type: eventType,
           recipient_email: recipient.email,
           recipient_type: recipient.recipientType,
           status: "failed",
