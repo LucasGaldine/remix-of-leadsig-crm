@@ -55,24 +55,25 @@ export default function SettingsMinJobSize() {
     setIsDirty(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!currentAccount?.id) {
       toast.error("No account selected");
-      return;
+      return false;
     }
 
     const payload = Object.fromEntries(
       Object.entries(minimums).map(([k, v]) => [k, Number(v) || 0])
     );
 
-    updateSettingsAsync({ min_job_size: payload })
-      .then(() => {
-        setIsDirty(false);
-        toast.success("Minimum job sizes saved");
-      })
-      .catch((err: Error) => {
-        toast.error(err.message);
-      });
+    try {
+      await updateSettingsAsync({ min_job_size: payload });
+      setIsDirty(false);
+      toast.success("Minimum job sizes saved");
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save minimum job sizes");
+      return false;
+    }
   };
 
   return (
@@ -126,7 +127,7 @@ export default function SettingsMinJobSize() {
       </main>
 
       <MobileNav />
-      <UnsavedChangesDialog blocker={blocker} />
+      <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={handleSave} />
     </div>
   );
 }

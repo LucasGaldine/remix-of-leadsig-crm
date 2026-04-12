@@ -30,6 +30,7 @@ interface PdfBaseData {
 
 export interface EstimatePDFData extends PdfBaseData {
   expiresAt?: string;
+  signatureImageUrl?: string;
 }
 
 export interface InvoicePDFData extends PdfBaseData {
@@ -54,6 +55,18 @@ async function getImageDataUrl(imageUrl: string) {
   }
 
   return `data:${blob.type || "image/png"};base64,${btoa(binary)}`;
+}
+
+function resolveImageFormat(imageDataUrl: string) {
+  if (imageDataUrl.startsWith("data:image/jpeg") || imageDataUrl.startsWith("data:image/jpg")) {
+    return "JPEG";
+  }
+
+  if (imageDataUrl.startsWith("data:image/webp")) {
+    return "WEBP";
+  }
+
+  return "PNG";
 }
 
 async function addCompanyLogo(doc: jsPDF, logoUrl: string | undefined, margin: number, yPosition: number) {
@@ -273,9 +286,54 @@ function addNotes(doc: jsPDF, notes: string | undefined, margin: number, pageWid
   return yPosition + notesLines.length * 4;
 }
 
+async function addSignaturePage(
+  doc: jsPDF,
+  signatureImageUrl: string | undefined,
+  margin: number,
+  pageWidth: number,
+  pageHeight: number,
+) {
+  if (!signatureImageUrl) return;
+
+  try {
+    const signatureDataUrl = await getImageDataUrl(signatureImageUrl);
+    const signatureProps = doc.getImageProperties(signatureDataUrl);
+    const imageFormat = resolveImageFormat(signatureDataUrl);
+
+    doc.addPage();
+    let yPosition = 20;
+
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("Signature", margin, yPosition);
+    yPosition += 8;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 100, 100);
+    doc.text("Captured during estimate approval", margin, yPosition);
+    doc.setTextColor(0, 0, 0);
+    yPosition += 8;
+
+    const maxImageWidth = pageWidth - margin * 2;
+    const maxImageHeight = pageHeight - yPosition - margin;
+    const widthScale = maxImageWidth / signatureProps.width;
+    const heightScale = maxImageHeight / signatureProps.height;
+    const imageScale = Math.min(widthScale, heightScale);
+    const imageWidth = signatureProps.width * imageScale;
+    const imageHeight = signatureProps.height * imageScale;
+    const imageX = (pageWidth - imageWidth) / 2;
+
+    doc.addImage(signatureDataUrl, imageFormat, imageX, yPosition, imageWidth, imageHeight);
+  } catch {
+    // Keep PDF generation resilient when signature image fails to load.
+  }
+}
+
 export async function generateEstimatePDF(data: EstimatePDFData) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   let yPosition = 20;
 
@@ -295,6 +353,7 @@ export async function generateEstimatePDF(data: EstimatePDFData) {
   yPosition = addLineItemsTable(doc, data, margin, pageWidth, yPosition);
   yPosition = addSummary(doc, data, margin, pageWidth, yPosition);
   addNotes(doc, data.notes, margin, pageWidth, yPosition);
+  await addSignaturePage(doc, data.signatureImageUrl, margin, pageWidth, pageHeight);
 
   const filename = `estimate-${data.customerName.replace(/[^a-z0-9]/gi, "_").toLowerCase()}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
   doc.save(filename);

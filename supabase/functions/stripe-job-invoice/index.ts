@@ -209,6 +209,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const { data: activeMembers } = await supabase
+      .from("account_members")
+      .select("user_id")
+      .eq("account_id", membership.account_id)
+      .eq("is_active", true);
+
+    if (activeMembers?.length) {
+      const notificationRows = activeMembers.map((member) => ({
+        account_id: membership.account_id,
+        user_id: member.user_id,
+        title: "Invoice Sent",
+        body: `Invoice sent for ${job.name || "job"}`,
+        event_type: "invoice_sent",
+        reference_id: newInvoice.id,
+        reference_type: "invoice",
+      }));
+
+      await supabase.from("notifications").insert(notificationRows);
+    }
+
     return new Response(
       JSON.stringify({
         invoiceId: newInvoice.id,

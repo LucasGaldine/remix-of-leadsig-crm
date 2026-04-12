@@ -48,6 +48,7 @@ import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallback";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
+import { applyCustomerContactToJob } from "@/lib/jobCustomerCache";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
@@ -167,6 +168,8 @@ export default function JobDetail() {
   const [portalCopied, setPortalCopied] = useState(false);
   const [portalEmailSending, setPortalEmailSending] = useState(false);
   const [portalEmailSent, setPortalEmailSent] = useState(false);
+  const [portalClientPhone, setPortalClientPhone] = useState("");
+  const [portalClientEmail, setPortalClientEmail] = useState("");
   const [isTwilioConfigured, setIsTwilioConfigured] = useState(true);
   const [headerInfoOpen, setHeaderInfoOpen] = useState(false);
 
@@ -495,7 +498,7 @@ export default function JobDetail() {
 
     const { data: customer, error: fetchError } = await supabase
       .from("customers")
-      .select("client_portal_token")
+      .select("client_portal_token, phone, email")
       .eq("id", customerId)
       .maybeSingle();
 
@@ -512,15 +515,21 @@ export default function JobDetail() {
       if (updateError) throw updateError;
     }
 
-    return buildClientPortalShareUrl(token);
+    return {
+      link: buildClientPortalShareUrl(token),
+      phone: customer?.phone?.trim() || "",
+      email: customer?.email?.trim() || "",
+    };
   };
 
   const handleOpenClientPortal = async () => {
     if (portalLoading) return;
     setPortalLoading(true);
     try {
-      const link = await resolveCustomerPortalLink();
-      setPortalLink(link);
+      const portalData = await resolveCustomerPortalLink();
+      setPortalLink(portalData.link);
+      setPortalClientPhone(portalData.phone);
+      setPortalClientEmail(portalData.email);
       setPortalEmailSent(false);
       setPortalDialogOpen(true);
     } catch (err) {
@@ -534,10 +543,13 @@ export default function JobDetail() {
     if (!job?.customer?.id || !currentAccount?.id) return;
 
     const portalFallback = shouldUsePortalFallback(isTwilioConfigured, job.customer.phone);
-    const portalLink = await resolveCustomerPortalLink();
+    const portalData = await resolveCustomerPortalLink();
+    const portalLink = portalData.link;
 
     if (portalFallback) {
       setPortalLink(portalLink);
+      setPortalClientPhone(portalData.phone);
+      setPortalClientEmail(portalData.email);
       setPortalEmailSent(false);
       setPortalDialogOpen(true);
       toast.success("Job completed. Share the client portal link to request a review.");
@@ -596,7 +608,7 @@ export default function JobDetail() {
       return;
     }
 
-    const clientEmail = job.customer?.email?.trim() || "";
+    const clientEmail = portalClientEmail || job.customer?.email?.trim() || "";
     if (!clientEmail) {
       toast.error("Add a customer email before sending.");
       return;
@@ -978,6 +990,15 @@ export default function JobDetail() {
           .eq("id", job.customer.id);
 
         if (customerError) throw customerError;
+
+        queryClient.setQueryData(["job", id], (currentJob: unknown) => {
+          if (!currentJob || typeof currentJob !== "object") {
+            return currentJob;
+          }
+          return applyCustomerContactToJob(currentJob as Record<string, unknown>, editForm);
+        });
+
+        queryClient.invalidateQueries({ queryKey: ["job", id] });
       }
 
       toast.success("Job updated successfully!");
@@ -1914,8 +1935,8 @@ export default function JobDetail() {
         onEmailClient={handleEmailPortalLink}
         emailSending={portalEmailSending}
         emailSent={portalEmailSent}
-        clientPhone={job.customer?.phone || ""}
-        clientEmail={job.customer?.email || ""}
+        clientPhone={portalClientPhone || job.customer?.phone || ""}
+        clientEmail={portalClientEmail || job.customer?.email || ""}
       />
 
       <Dialog open={statusGuidanceOpen} onOpenChange={setStatusGuidanceOpen}>

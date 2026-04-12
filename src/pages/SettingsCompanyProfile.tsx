@@ -92,17 +92,15 @@ export default function SettingsCompanyProfile() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const handleSave = async () => {
     if (!currentAccount) {
       toast.error("No account selected");
-      return;
+      return false;
     }
 
     if (!companyName.trim()) {
       toast.error("Company name is required");
-      return;
+      return false;
     }
 
     setIsSaving(true);
@@ -131,7 +129,7 @@ export default function SettingsCompanyProfile() {
         toast.error("Failed to upload company logo");
         setIsUploadingLogo(false);
         setIsSaving(false);
-        return;
+        return false;
       } finally {
         setIsUploadingLogo(false);
       }
@@ -161,7 +159,7 @@ export default function SettingsCompanyProfile() {
     if (error) {
       console.error("Error updating company profile:", error);
       toast.error("Failed to update company profile");
-      return;
+      return false;
     }
 
     setIsDirty(false);
@@ -169,6 +167,7 @@ export default function SettingsCompanyProfile() {
     setSelectedLogoFile(null);
     toast.success("Company profile updated successfully");
     await refreshProfile();
+    return true;
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -210,7 +209,7 @@ export default function SettingsCompanyProfile() {
 
   const handleSubmitForm = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSave(e);
+    void handleSave();
   };
 
   const normalizedPortalColor = normalizeClientPortalColor(portalColor);
@@ -543,14 +542,14 @@ export default function SettingsCompanyProfile() {
               toast.error("Company name is required");
               return;
             }
-            handleSave({ preventDefault: () => {} } as React.FormEvent);
+            void handleSave();
           }}
           isSaving={isSaving || isUploadingLogo}
         />
       </form>
 
       <MobileNav />
-      <UnsavedChangesDialog blocker={blocker} />
+      <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={handleSave} />
     </div>
   );
 }

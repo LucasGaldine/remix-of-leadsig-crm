@@ -358,11 +358,9 @@ describe("EstimateDetail layout", () => {
     expect(headerActions).toHaveClass("flex-nowrap");
     expect(within(headerActions).getByRole("button", { name: /^Approve$/i })).toBeInTheDocument();
     expect(within(headerActions).getByRole("button", { name: /^Client Portal$/i })).toBeInTheDocument();
-    const headerMenuButton = within(headerActions).getByRole("button", {
-      name: /open estimate actions menu/i,
-    });
-    expect(headerMenuButton).toBeInTheDocument();
-    expect(within(headerActions).getByRole("button", { name: /download pdf/i })).toBeInTheDocument();
+    expect(
+      within(headerActions).queryByRole("button", { name: /open estimate actions menu/i }),
+    ).not.toBeInTheDocument();
 
     expect(within(rightColumn).getByText("Client")).toBeInTheDocument();
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
@@ -475,8 +473,9 @@ describe("EstimateDetail layout", () => {
     fireEvent.mouseDown(versionTwoTab);
     fireEvent.click(versionTwoTab);
 
-    const headerMenuButton = screen.getByRole("button", { name: /open estimate actions menu/i });
-    expect(headerMenuButton).toBeInTheDocument();
+    const versionActionsButton = screen.getByRole("button", { name: /version actions/i });
+    expect(versionActionsButton).toBeInTheDocument();
+    fireEvent.click(versionActionsButton);
     fireEvent.click(screen.getByRole("button", { name: /download pdf/i }));
 
     await waitFor(() => {
@@ -504,7 +503,7 @@ describe("EstimateDetail layout", () => {
     });
   });
 
-  it("shows approved-estimate actions menu with only download pdf", async () => {
+  it("shows approved details collapsed and keeps download in tabs actions", async () => {
     mockEstimate = buildEstimate({
       has_pending_changes: false,
       status: "accepted",
@@ -519,13 +518,17 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    const approvedMenuButton = await screen.findByRole("button", {
-      name: /open approved estimate actions menu/i,
-    });
-    expect(approvedMenuButton).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open estimate actions menu/i })).not.toBeInTheDocument();
+    const compareActionsButton = await screen.findByRole("button", { name: /compare version actions/i });
+    expect(compareActionsButton).toBeInTheDocument();
+    fireEvent.click(compareActionsButton);
+    expect(screen.getByRole("button", { name: /download pdf/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open approved estimate actions menu/i })).not.toBeInTheDocument();
 
-    const downloadPdfButtons = screen.getAllByRole("button", { name: /download pdf/i });
-    expect(downloadPdfButtons).toHaveLength(2);
+    const approvedToggleButton = screen.getByRole("button", { name: /approved/i, expanded: false });
+    expect(approvedToggleButton).toBeInTheDocument();
+    expect(screen.queryByText(/manually marked as approved/i)).not.toBeInTheDocument();
+
   });
 
   it("allows manual approval without a photo", async () => {

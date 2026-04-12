@@ -1,6 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6.10.1";
-import { extractBearerToken } from "../_shared/auth-header.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +14,19 @@ interface SendClientPortalEmailBody {
   job_name?: string | null;
 }
 
+function extractBearerToken(authHeader: string | null): string | null {
+  if (!authHeader) {
+    return null;
+  }
+
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  return match[1]?.trim() || null;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -27,13 +39,11 @@ function escapeHtml(value: string): string {
 function buildEmailHtml(params: {
   companyName: string;
   customerName: string;
-  jobName: string;
   portalLink: string;
 }): string {
-  const { companyName, customerName, jobName, portalLink } = params;
+  const { companyName, customerName, portalLink } = params;
   const safeCompanyName = escapeHtml(companyName);
   const safeCustomerName = escapeHtml(customerName);
-  const safeJobName = escapeHtml(jobName);
   const safePortalLink = escapeHtml(portalLink);
 
   return `<!DOCTYPE html>
@@ -52,7 +62,7 @@ function buildEmailHtml(params: {
         <div style="padding:24px;">
           <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.5;">Hi ${safeCustomerName},</p>
           <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">
-            Your portal link for <strong>${safeJobName}</strong> is ready. Use the button below to review your job details, photos, estimates, and invoices.
+            The portal link for your project is ready. Use the button below to review your job details, photos, estimates, and invoices.
           </p>
           <p style="margin:0 0 20px;">
             <a href="${safePortalLink}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 18px;border-radius:8px;">Open Client Portal</a>
@@ -184,14 +194,22 @@ Deno.serve(async (req: Request) => {
 
     const companyName = account?.company_name?.trim() || "LeadSig";
     const customerName = customer.name?.trim() || "there";
-    const jobName = rawJobName?.trim() || "your job";
-
+    const subjectProjectLabel = rawJobName?.trim() || "Your project";
+    const subject = `${companyName} | Client Portal - ${subjectProjectLabel}`;
     const html = buildEmailHtml({
       companyName,
       customerName,
-      jobName,
       portalLink,
     });
+    const text = [
+      `Hi ${customerName},`,
+      "",
+      "The portal link for your project is ready. Use the link below to review your job details, photos, estimates, and invoices.",
+      "",
+      portalLink,
+      "",
+      "If the link does not work, copy and paste it into your browser.",
+    ].join("\n");
 
     const transporter = nodemailer.createTransport({
       host: smtpHost,
@@ -207,7 +225,8 @@ Deno.serve(async (req: Request) => {
       from: smtpFrom,
       to: [customer.email],
       replyTo: account?.company_email || undefined,
-      subject: `${companyName} | Client Portal Link`,
+      subject,
+      text,
       html,
     });
 

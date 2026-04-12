@@ -3,6 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
 
+const { toastErrorMock } = vi.hoisted(() => ({
+  toastErrorMock: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: toastErrorMock,
+  },
+}));
+
 describe("ClientPortalLinkDialog", () => {
   it("renders text as primary and email as secondary full-width actions", () => {
     render(
@@ -29,7 +39,7 @@ describe("ClientPortalLinkDialog", () => {
     expect(emailButton).not.toBeDisabled();
   });
 
-  it("disables text and email actions when contact values are missing", () => {
+  it("shows disabled state copy and explains why actions are unavailable when contact values are missing", () => {
     render(
       <ClientPortalLinkDialog
         open
@@ -43,8 +53,17 @@ describe("ClientPortalLinkDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /text client/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /email client/i })).toBeDisabled();
+    const textButton = screen.getByRole("button", { name: /text client/i });
+    const emailButton = screen.getByRole("button", { name: /email client/i });
+
+    expect(textButton).toHaveAttribute("aria-disabled", "true");
+    expect(emailButton).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(textButton);
+    fireEvent.click(emailButton);
+
+    expect(toastErrorMock).toHaveBeenCalledWith("Add a customer phone number before sending a text.");
+    expect(toastErrorMock).toHaveBeenCalledWith("Add a customer email before sending an email.");
   });
 
   it("opens sms and calls the email send callback when actions are clicked", async () => {

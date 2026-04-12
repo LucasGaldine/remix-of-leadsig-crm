@@ -92,6 +92,7 @@ export default function SettingsDashboard() {
     } else {
       toast.error("Failed to save dashboard layout");
     }
+    return success;
   };
 
   return (
@@ -238,7 +239,7 @@ export default function SettingsDashboard() {
       </main>
 
       <MobileNav />
-      <UnsavedChangesDialog blocker={blocker} />
+      <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={handleSave} />
     </div>
   );
 }

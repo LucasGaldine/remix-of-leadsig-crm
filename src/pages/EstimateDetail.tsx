@@ -115,8 +115,11 @@ export default function EstimateDetail() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalLink, setPortalLink] = useState<string | null>(null);
   const [portalCopied, setPortalCopied] = useState(false);
+  const [portalClientPhone, setPortalClientPhone] = useState("");
+  const [portalClientEmail, setPortalClientEmail] = useState("");
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
+  const [showApprovedDetails, setShowApprovedDetails] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(() => new Set());
   const [manualApprovalPhoto, setManualApprovalPhoto] = useState<File | null>(null);
@@ -218,7 +221,9 @@ export default function EstimateDetail() {
         category: normalizeCategory(item.category),
       }));
 
-    const newVersionName = (nameOverride || `Version ${estimateVersions.length + 1}`).trim();
+    const normalizedNameOverride =
+      typeof nameOverride === "string" ? nameOverride : `Version ${estimateVersions.length + 1}`;
+    const newVersionName = normalizedNameOverride.trim();
 
     if (!newVersionName) {
       toast.error("Version name is required");
@@ -370,6 +375,7 @@ export default function EstimateDetail() {
       notes: displayNotes || undefined,
       createdAt: activeVersionSnapshot?.created_at || estimate.created_at,
       expiresAt: estimate.expires_at,
+      signatureImageUrl: (estimate as any).manual_approval_photo_url || undefined,
     });
 
     toast.success("PDF downloaded");
@@ -853,7 +859,7 @@ export default function EstimateDetail() {
 
     const { data: customer, error: fetchError } = await supabase
       .from("customers")
-      .select("client_portal_token")
+      .select("client_portal_token, phone, email")
       .eq("id", customerId)
       .maybeSingle();
 
@@ -870,15 +876,21 @@ export default function EstimateDetail() {
       if (updateError) throw updateError;
     }
 
-    return buildClientPortalShareUrl(token);
+    return {
+      link: buildClientPortalShareUrl(token),
+      phone: customer?.phone?.trim() || "",
+      email: customer?.email?.trim() || "",
+    };
   };
 
   const handleOpenClientPortal = async () => {
     if (portalLoading) return;
     setPortalLoading(true);
     try {
-      const link = await resolveCustomerPortalLink();
-      setPortalLink(link);
+      const portalData = await resolveCustomerPortalLink();
+      setPortalLink(portalData.link);
+      setPortalClientPhone(portalData.phone);
+      setPortalClientEmail(portalData.email);
       setPortalDialogOpen(true);
     } catch {
       toast.error("Failed to generate portal link");
@@ -1288,24 +1300,6 @@ export default function EstimateDetail() {
                 <Link2 className="h-4 w-4" />
                 {portalLoading ? "Generating..." : "Client Portal"}
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    aria-label="Open estimate actions menu"
-                  >
-                    <EllipsisVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => void handleDownloadPDF()}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download PDF
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
           </div>
         </div>
       </div>
@@ -1365,6 +1359,10 @@ export default function EstimateDetail() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => void handleDownloadPDF()}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Download PDF
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => {
                                   beginCreateEstimateVersion();
@@ -1480,26 +1478,46 @@ export default function EstimateDetail() {
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Versions</h3>
                     </div>
-                    <Tabs
-                      value={showingOriginal ? "original" : "modified"}
-                      onValueChange={(value) => setShowingOriginal(value === "original")}
-                      className="mt-0"
-                    >
-                      <TabsList className="w-full justify-start rounded-none bg-transparent p-0">
-                        <TabsTrigger
-                          value="modified"
-                          className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                        >
-                          Current
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="original"
-                          className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                        >
-                          Original
-                        </TabsTrigger>
-                      </TabsList>
-                    </Tabs>
+                    <div className="flex items-end gap-2">
+                      <Tabs
+                        value={showingOriginal ? "original" : "modified"}
+                        onValueChange={(value) => setShowingOriginal(value === "original")}
+                        className="mt-0 flex-1"
+                      >
+                        <TabsList className="w-full justify-start rounded-none bg-transparent p-0">
+                          <TabsTrigger
+                            value="modified"
+                            className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                          >
+                            Current
+                          </TabsTrigger>
+                          <TabsTrigger
+                            value="original"
+                            className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                          >
+                            Original
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 w-9 shrink-0 p-0"
+                            aria-label="Compare version actions"
+                          >
+                            <EllipsisVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => void handleDownloadPDF()}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Download PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </>
                 )}
                 {showPendingChangesCard && (
@@ -1516,51 +1534,48 @@ export default function EstimateDetail() {
                 )}
                 {showApprovedCard && (
                   <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
-                    <div className="mb-1 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="mb-1 flex w-full items-center justify-between gap-2 text-left"
+                      onClick={() => setShowApprovedDetails((current) => !current)}
+                      aria-expanded={showApprovedDetails}
+                    >
                       <div className="flex items-center gap-2">
                         <Check className="h-4 w-4 text-emerald-600" />
-                        <h4 className="font-semibold text-foreground">Approved</h4>
+                        <h4 className="font-semibold text-emerald-700">Approved</h4>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            aria-label="Open approved estimate actions menu"
-                          >
-                            <EllipsisVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => void handleDownloadPDF()}>
-                            <Download className="mr-2 h-4 w-4" />
-                            Download PDF
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {(estimate as any).approved_via === "customer_link"
-                        ? "Approved by customer via approval link"
-                        : (estimate as any).approved_via === "manual"
-                          ? "Manually marked as approved"
-                          : "This estimate has been approved"}
-                      {estimate.accepted_at && (
-                        <> on {format(new Date(estimate.accepted_at), "MMM d, yyyy 'at' h:mm a")}</>
-                      )}
-                    </p>
-                    {(estimate as any).manual_approval_photo_url && (
-                      <div className="mt-3">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Signature photo
+                      <ChevronRight
+                        className={cn(
+                          "h-4 w-4 text-emerald-700 transition-transform",
+                          showApprovedDetails ? "rotate-90" : "",
+                        )}
+                      />
+                    </button>
+                    {showApprovedDetails && (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          {(estimate as any).approved_via === "customer_link"
+                            ? "Approved by customer via approval link"
+                            : (estimate as any).approved_via === "manual"
+                              ? "Manually marked as approved"
+                              : "This estimate has been approved"}
+                          {estimate.accepted_at && (
+                            <> on {format(new Date(estimate.accepted_at), "MMM d, yyyy 'at' h:mm a")}</>
+                          )}
                         </p>
-                        <img
-                          src={(estimate as any).manual_approval_photo_url}
-                          alt="Signature photo captured during approval"
-                          className="mt-2 h-40 w-auto max-w-full rounded-lg border border-emerald-200 object-cover shadow-sm"
-                        />
-                      </div>
+                        {(estimate as any).manual_approval_photo_url && (
+                          <div className="mt-3">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Signature photo
+                            </p>
+                            <img
+                              src={(estimate as any).manual_approval_photo_url}
+                              alt="Signature photo captured during approval"
+                              className="mt-2 h-40 w-auto max-w-full rounded-lg border border-emerald-200 object-cover shadow-sm"
+                            />
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -1572,7 +1587,9 @@ export default function EstimateDetail() {
                     </p>
                     <Button
                       className="mt-5 gap-2"
-                      onClick={createEstimateVersion}
+                      onClick={() => {
+                        void createEstimateVersion();
+                      }}
                       disabled={creatingVersion}
                     >
                       <Plus className="h-4 w-4" />
@@ -1951,6 +1968,8 @@ export default function EstimateDetail() {
         portalLink={portalLink || ""}
         copied={portalCopied}
         onCopy={handleCopyPortalLink}
+        clientPhone={portalClientPhone || estimate.customer?.phone || ""}
+        clientEmail={portalClientEmail || estimate.customer?.email || ""}
       />
 
       <EditEstimateModal

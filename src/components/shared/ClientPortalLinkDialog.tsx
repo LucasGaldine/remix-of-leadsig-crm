@@ -2,6 +2,7 @@ import { Check, Copy, Mail, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 interface ClientPortalLinkDialogProps {
   open: boolean;
@@ -34,12 +35,18 @@ export function ClientPortalLinkDialog({
   const canEmailClient = normalizedClientEmail.length > 0;
 
   const handleTextClient = () => {
-    if (!canTextClient) return;
+    if (!canTextClient) {
+      toast.error("Add a customer phone number before sending a text.");
+      return;
+    }
     window.open(`sms:${normalizedClientPhone}`, "_blank");
   };
 
   const handleEmailClient = async () => {
-    if (!canEmailClient) return;
+    if (!canEmailClient) {
+      toast.error("Add a customer email before sending an email.");
+      return;
+    }
     if (!onEmailClient) {
       window.open(`mailto:${normalizedClientEmail}`, "_blank");
       return;
@@ -77,19 +84,27 @@ export function ClientPortalLinkDialog({
           </Button>
         </div>
         <div className="flex w-full items-center gap-2">
-          <Button type="button" className="flex-1" onClick={handleTextClient} disabled={!canTextClient}>
+          <Button
+            type="button"
+            className={`flex-1 ${!canTextClient ? "opacity-50 cursor-not-allowed" : ""}`}
+            onClick={handleTextClient}
+            aria-disabled={!canTextClient}
+            data-disabled={!canTextClient ? "true" : undefined}
+          >
             <MessageSquare className="h-4 w-4" />
-            Text Client
+            Send via text
           </Button>
           <Button
             type="button"
             variant="secondary"
-            className="flex-1"
+            className={`flex-1 ${!canEmailClient ? "opacity-50 cursor-not-allowed" : ""}`}
             onClick={handleEmailClient}
-            disabled={!canEmailClient || emailSending}
+            disabled={emailSending}
+            aria-disabled={!canEmailClient || emailSending}
+            data-disabled={!canEmailClient ? "true" : undefined}
           >
             <Mail className="h-4 w-4" />
-            {emailSending ? "Sending..." : emailSent ? "Email Sent" : "Email Client"}
+            {emailSending ? "Sending" : emailSent ? "Email sent" : "Send via email"}
           </Button>
         </div>
       </DialogContent>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Mail, MessageSquare, Smartphone, DollarSign, CalendarClock, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Clock, Inbox, Send, History, CircleCheck as CheckCircle, Circle as XCircle, Loader as Loader2, UserCheck, Sun, RotateCcw, AtSign } from "lucide-react";
+import { Bell, Mail, MessageSquare, Smartphone, DollarSign, CalendarClock, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Clock, Inbox, History, CircleCheck as CheckCircle, Circle as XCircle, Loader as Loader2, UserCheck, Sun, RotateCcw, AtSign } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -22,11 +22,13 @@ import { PlanGate } from "@/components/features/PlanGate";
 
 type Channel = "push" | "email" | "sms";
 type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks" | "job_assignments" | "same_day_reminders";
+type EmailEventKey = "estimate_approved" | "invoice_sent" | "payment_logged";
 const SMS_CONSENT_TEXT_VERSION = "2026-04-09-v1";
 
 type NotificationPreferences = {
   channels: Record<Channel, boolean>;
   alerts: Partial<Record<AlertKey, boolean>>;
+  email_events: Record<EmailEventKey, boolean>;
   quiet_hours: { enabled: boolean; start: string; end: string };
   digest: { frequency: "off" | "daily" | "weekly" };
 };
@@ -111,10 +113,11 @@ export default function SettingsNotifications() {
 
   const defaultPrefs: NotificationPreferences = useMemo(
     () => ({
-      channels: { push: false, email: false, sms: false },
+      channels: { push: false, email: true, sms: false },
       alerts: isCrew
         ? { job_assignments: true, schedule_changes: true, same_day_reminders: true, tasks: true, new_leads: false, lead_updates: false, payments: false }
-        : { new_leads: true, lead_updates: true, payments: true, schedule_changes: true, tasks: false, job_assignments: false, same_day_reminders: false },
+        : { new_leads: true, lead_updates: false, payments: true, schedule_changes: true, tasks: false, job_assignments: false, same_day_reminders: false },
+      email_events: { estimate_approved: true, invoice_sent: true, payment_logged: true },
       quiet_hours: { enabled: false, start: "21:00", end: "07:00" },
       digest: { frequency: isCrew ? "off" : "daily" },
     }),
@@ -123,6 +126,7 @@ export default function SettingsNotifications() {
 
   const [channels, setChannels] = useState<Record<Channel, boolean>>(defaultPrefs.channels);
   const [alerts, setAlerts] = useState<Partial<Record<AlertKey, boolean>>>(defaultPrefs.alerts);
+  const [emailEvents, setEmailEvents] = useState<Record<EmailEventKey, boolean>>(defaultPrefs.email_events);
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(defaultPrefs.quiet_hours.enabled);
   const [quietStart, setQuietStart] = useState(defaultPrefs.quiet_hours.start);
   const [quietEnd, setQuietEnd] = useState(defaultPrefs.quiet_hours.end);
@@ -140,6 +144,7 @@ export default function SettingsNotifications() {
 
     setChannels({ ...defaultPrefs.channels, ...(prefs.channels || {}) });
     setAlerts({ ...defaultPrefs.alerts, ...(prefs.alerts || {}) });
+    setEmailEvents({ ...defaultPrefs.email_events, ...(prefs.email_events || {}) });
     setQuietHoursEnabled(prefs.quiet_hours?.enabled ?? defaultPrefs.quiet_hours.enabled);
     setQuietStart(prefs.quiet_hours?.start ?? defaultPrefs.quiet_hours.start);
     setQuietEnd(prefs.quiet_hours?.end ?? defaultPrefs.quiet_hours.end);
@@ -169,6 +174,11 @@ export default function SettingsNotifications() {
 
   const toggleAlert = (key: AlertKey, value: boolean) => {
     setAlerts((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
+  };
+
+  const toggleEmailEvent = (key: EmailEventKey, value: boolean) => {
+    setEmailEvents((prev) => ({ ...prev, [key]: value }));
     setIsDirty(true);
   };
 
@@ -297,12 +307,13 @@ export default function SettingsNotifications() {
   const handleSave = async () => {
     if (!user) {
       toast.error("You need to be signed in to save preferences.");
-      return;
+      return false;
     }
 
     const payload: NotificationPreferences = {
       channels,
       alerts,
+      email_events: emailEvents,
       quiet_hours: { enabled: quietHoursEnabled, start: quietStart, end: quietEnd },
       digest: { frequency: digestFrequency },
     };
@@ -369,13 +380,14 @@ export default function SettingsNotifications() {
         "Could not save preferences (profile missing or no permission). Please contact support.";
       toast.error(msg);
       setIsSaving(false);
-      return;
+      return false;
     }
 
     // Keep UI in sync immediately using the saved response
     const saved = (data?.notification_preferences || payloadWithConsent) as NotificationPreferences;
     setChannels(saved.channels);
     setAlerts(saved.alerts);
+    setEmailEvents(saved.email_events ?? defaultPrefs.email_events);
     setQuietHoursEnabled(saved.quiet_hours.enabled);
     setQuietStart(saved.quiet_hours.start);
     setQuietEnd(saved.quiet_hours.end);
@@ -387,6 +399,7 @@ export default function SettingsNotifications() {
     await refreshProfile();
 
     setIsSaving(false);
+    return true;
   };
 
   const handleReset = async () => {
@@ -410,6 +423,7 @@ export default function SettingsNotifications() {
 
     setChannels(defaultPrefs.channels);
     setAlerts(defaultPrefs.alerts);
+    setEmailEvents(defaultPrefs.email_events);
     setQuietHoursEnabled(defaultPrefs.quiet_hours.enabled);
     setQuietStart(defaultPrefs.quiet_hours.start);
     setQuietEnd(defaultPrefs.quiet_hours.end);
@@ -430,7 +444,7 @@ export default function SettingsNotifications() {
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Notification Settings" showBack backTo="/settings" />
 
-      <main className="px-4 py-4 space-y-6">
+      <main className="max-w-[var(--content-max-width)] m-auto px-4 py-4 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -477,69 +491,137 @@ export default function SettingsNotifications() {
             </CardTitle>
             <CardDescription>Choose where we should reach you.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            {(Object.keys(channelMeta) as Channel[]).map((channel) => {
-              const { available, reason } = channelAvailability[channel];
-              const isComingSoon = channel === "push";
-              return (
-                <div
-                  key={channel}
-                  className={cn(
-                    "relative flex items-center justify-between rounded-lg border px-4 py-3 transition-colors",
-                    !available && "opacity-60",
-                    channels[channel] && available ? "bg-[hsl(var(--status-confirmed-bg))]" : "bg-card"
-                  )}
-                >
-                  {isComingSoon && (
-                    <span className="absolute -top-2.5 left-3 bg-slate-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wide">
-                      COMING SOON
-                    </span>
-                  )}
-                  {channelMeta[channel].badge && available && (
-                    <span className="absolute -top-2.5 right-3 bg-emerald-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wide">
-                      {channelMeta[channel].badge}
-                    </span>
-                  )}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "p-2 rounded-lg",
-                        available ? "bg-secondary text-secondary-foreground" : "bg-muted text-muted-foreground"
-                      )}>
-                        {channelMeta[channel].icon}
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              {(Object.keys(channelMeta) as Channel[]).map((channel) => {
+                const { available, reason } = channelAvailability[channel];
+                const isComingSoon = channel === "push";
+                return (
+                  <div
+                    key={channel}
+                    className={cn(
+                      "relative py-2 transition-colors",
+                      !available && "opacity-60"
+                    )}
+                  >
+                    {isComingSoon && (
+                      <span className="absolute -top-2.5 left-3 bg-slate-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wide">
+                        COMING SOON
                       </span>
-                      <span className={cn(
-                        "font-medium",
-                        available ? "text-foreground" : "text-muted-foreground"
-                      )}>
-                        {channelMeta[channel].label}
+                    )}
+                    {channelMeta[channel].badge && available && (
+                      <span className="absolute -top-2.5 right-3 bg-emerald-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wide">
+                        {channelMeta[channel].badge}
                       </span>
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "p-2 rounded-lg",
+                            available ? "bg-secondary text-secondary-foreground" : "bg-muted text-muted-foreground"
+                          )}>
+                            {channelMeta[channel].icon}
+                          </span>
+                          <span className={cn(
+                            "font-medium",
+                            available ? "text-foreground" : "text-muted-foreground"
+                          )}>
+                            {channelMeta[channel].label}
+                          </span>
+                        </div>
+                        <Switch
+                          checked={available ? channels[channel] : false}
+                          onCheckedChange={(v) => toggleChannel(channel, v)}
+                          disabled={!available}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-10">
+                        {!available && reason ? reason : channelMeta[channel].helper}
+                      </p>
+                      {channel === "push" && (
+                        <div className="pt-1">
+                          <Button
+                            disabled
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-center gap-2"
+                          >
+                            <Bell className="h-4 w-4" />
+                            Send test push
+                          </Button>
+                        </div>
+                      )}
+                      {channel === "sms" && (
+                        <div className="pt-1">
+                          <Button
+                            onClick={handleTest}
+                            disabled={isSendingTest || !channels.sms || !hasPhone || isDirty}
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-center gap-2"
+                          >
+                            {isSendingTest ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <MessageSquare className="h-4 w-4" />
+                            )}
+                            {isSendingTest ? "Sending..." : "Send test SMS"}
+                          </Button>
+                        </div>
+                      )}
+                      {!isCrew && channel === "email" && (
+                        <div className="pt-1">
+                          <Button
+                            onClick={handleEmailTest}
+                            disabled={isSendingEmailTest || !channels.email || !hasEmail || isDirty || digestFrequency === "off"}
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-center gap-2"
+                          >
+                            {isSendingEmailTest ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Mail className="h-4 w-4" />
+                            )}
+                            {isSendingEmailTest ? "Sending..." : "Send test email"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground ml-10">
-                      {!available && reason ? reason : channelMeta[channel].helper}
-                    </p>
                   </div>
-                  <Switch
-                    checked={available ? channels[channel] : false}
-                    onCheckedChange={(v) => toggleChannel(channel, v)}
-                    disabled={!available}
-                  />
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AtSign className="h-5 w-5" />
-              Mention Notifications
-            </CardTitle>
-            <CardDescription>Control notifications when someone mentions you in a note using @.</CardDescription>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                SMS Alerts
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReset}
+                disabled={isResetting || isSaving}
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
+              >
+                {isResetting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
+                Reset to defaults
+              </Button>
+            </div>
+            <CardDescription>Pick the SMS events that should trigger notifications, including @mentions.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-start justify-between rounded-lg border px-4 py-3 gap-3">
+          <CardContent className="space-y-3">
+            <div className="flex items-start justify-between gap-3 py-2">
               <div className="flex items-start gap-3">
                 <div className="p-2 rounded-lg bg-secondary text-secondary-foreground mt-0.5">
                   <AtSign className="h-4 w-4" />
@@ -559,38 +641,11 @@ export default function SettingsNotifications() {
                 }}
               />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Alerts
-              </CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleReset}
-                disabled={isResetting || isSaving}
-                className="gap-1.5 text-muted-foreground hover:text-foreground"
-              >
-                {isResetting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-3.5 w-3.5" />
-                )}
-                Reset to defaults
-              </Button>
-            </div>
-            <CardDescription>Pick the events that should trigger notifications.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
+            <div className="border-t" />
             {visibleAlertKeys.map((key) => (
               <div
                 key={key}
-                className="flex items-start justify-between rounded-lg border px-4 py-3 gap-3"
+                className="flex items-start justify-between gap-3 py-2"
               >
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-secondary text-secondary-foreground mt-0.5">
@@ -616,7 +671,7 @@ export default function SettingsNotifications() {
             <CardDescription>Silence alerts outside your working hours. We’ll queue them for later.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+            <div className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium text-foreground">Enable quiet hours</p>
                 <p className="text-sm text-muted-foreground">
@@ -680,85 +735,44 @@ export default function SettingsNotifications() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Overdue invoice escalation</Label>
-                  <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                    <div>
-                      <p className="font-medium text-foreground">Alert me when invoices are overdue</p>
-                      <p className="text-xs text-muted-foreground">Sends push + email when an invoice is 3+ days late.</p>
+                  <Label>Email event alerts</Label>
+                  <div className="space-y-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-foreground">Estimate approved</p>
+                        <p className="text-xs text-muted-foreground">Send an email when an estimate is approved.</p>
+                      </div>
+                      <Switch
+                        checked={emailEvents.estimate_approved}
+                        onCheckedChange={(v) => toggleEmailEvent("estimate_approved", v)}
+                      />
                     </div>
-                    <Switch checked={alerts.payments ?? false} onCheckedChange={(v) => toggleAlert("payments", v)} />
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-foreground">Invoice sent</p>
+                        <p className="text-xs text-muted-foreground">Send an email when an invoice is sent.</p>
+                      </div>
+                      <Switch
+                        checked={emailEvents.invoice_sent}
+                        onCheckedChange={(v) => toggleEmailEvent("invoice_sent", v)}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-foreground">Payment logged</p>
+                        <p className="text-xs text-muted-foreground">Send an email when any payment is logged.</p>
+                      </div>
+                      <Switch
+                        checked={emailEvents.payment_logged}
+                        onCheckedChange={(v) => toggleEmailEvent("payment_logged", v)}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5" />
-              Test Notifications
-            </CardTitle>
-            <CardDescription>Send yourself a test notification to confirm everything is working correctly.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border px-4 py-3">
-              <div className="space-y-1">
-                <p className="font-medium text-foreground">Send a test SMS</p>
-                <p className="text-sm text-muted-foreground">
-                  {!channels.sms
-                    ? "Enable SMS channel first"
-                    : isDirty
-                    ? "Save preferences before testing"
-                    : `Sends to ${profile?.phone || "your phone number"}`}
-                </p>
-              </div>
-              <Button
-                onClick={handleTest}
-                disabled={isSendingTest || !channels.sms || !hasPhone || isDirty}
-                variant="outline"
-                className="w-full sm:w-auto gap-2"
-              >
-                {isSendingTest ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MessageSquare className="h-4 w-4" />
-                )}
-                {isSendingTest ? "Sending..." : "Send test SMS"}
-              </Button>
-            </div>
-            {!isCrew && (
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border px-4 py-3">
-                <div className="space-y-1">
-                  <p className="font-medium text-foreground">Send a test email digest</p>
-                  <p className="text-sm text-muted-foreground">
-                    {!channels.email
-                      ? "Enable email channel first"
-                      : isDirty
-                      ? "Save preferences before testing"
-                      : digestFrequency === "off"
-                      ? "Enable email digest first"
-                      : `Sends to ${profile?.email || user?.email || "your email"}`}
-                  </p>
-                </div>
-                <Button
-                  onClick={handleEmailTest}
-                  disabled={isSendingEmailTest || !channels.email || !hasEmail || isDirty || digestFrequency === "off"}
-                  variant="outline"
-                  className="w-full sm:w-auto gap-2"
-                >
-                  {isSendingEmailTest ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Mail className="h-4 w-4" />
-                  )}
-                  {isSendingEmailTest ? "Sending..." : "Send test email"}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {channels.sms && (
           <Card>
@@ -786,7 +800,7 @@ export default function SettingsNotifications() {
                   {smsLogs.map((log) => (
                     <div
                       key={log.id}
-                      className="flex items-start justify-between rounded-lg border px-4 py-3 gap-3"
+                      className="flex items-start justify-between gap-3 py-2"
                     >
                       <div className="flex items-start gap-3 min-w-0">
                         <div className={cn(
@@ -831,7 +845,7 @@ export default function SettingsNotifications() {
       </main>
 
       <MobileNav />
-      <UnsavedChangesDialog blocker={blocker} />
+      <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={handleSave} />
     </div>
     </PlanGate>
   );

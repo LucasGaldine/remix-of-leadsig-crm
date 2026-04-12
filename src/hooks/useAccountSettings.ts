@@ -21,6 +21,9 @@ export type AccountSettings = {
       name?: string;
       content?: string;
       is_finished?: boolean;
+      delivery_channel?: "text" | "email" | "both";
+      send_email?: boolean;
+      send_text?: boolean;
       job_service_types?: string[];
       trigger?: {
         type?: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion";
@@ -45,6 +48,11 @@ export type AccountSettings = {
     retry?: {
       max_attempts?: number;
       backoff_minutes?: number;
+    };
+    payment_emails?: {
+      estimate_approved?: boolean;
+      invoice_sent?: boolean;
+      payment_logged?: boolean;
     };
   } | null;
   min_job_size?: Record<string, number> | null;

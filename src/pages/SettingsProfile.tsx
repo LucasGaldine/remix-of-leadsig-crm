@@ -92,7 +92,7 @@ export default function SettingsProfile() {
   }, [profile, user]);
 
   const handleSaveProfile = async () => {
-    if (!user) return;
+    if (!user) return false;
 
     setLoading(true);
     try {
@@ -114,9 +114,11 @@ export default function SettingsProfile() {
       await refreshProfile();
       setIsDirty(false);
       toast.success("Profile updated successfully");
+      return true;
     } catch (error) {
       console.error("Error updating profile:", error);
       toast.error("Failed to update profile");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -509,7 +511,7 @@ export default function SettingsProfile() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <UnsavedChangesDialog blocker={blocker} />
+      <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={handleSaveProfile} />
     </div>
   );
 }

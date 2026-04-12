@@ -23,6 +23,11 @@ interface ProfileRow {
   notification_preferences: {
     channels: { email: boolean };
     digest: { frequency: "off" | "daily" | "weekly" };
+    email_events?: {
+      estimate_approved?: boolean;
+      invoice_sent?: boolean;
+      payment_logged?: boolean;
+    };
   } | null;
 }
 
@@ -42,6 +47,7 @@ const EVENT_ICONS: Record<string, string> = {
   new_lead: "&#128204;",
   lead_status_change: "&#128260;",
   payment_received: "&#128176;",
+  invoice_sent: "&#128196;",
   schedule_change: "&#128197;",
   estimate_approved: "&#9989;",
 };
@@ -51,10 +57,33 @@ function getEventLabel(eventType: string): string {
     case "new_lead": return "New Lead";
     case "lead_status_change": return "Lead Update";
     case "payment_received": return "Payment";
+    case "invoice_sent": return "Invoice Sent";
     case "schedule_change": return "Schedule Change";
     case "estimate_approved": return "Estimate Approved";
     default: return "Notification";
   }
+}
+
+function isEmailEventEnabled(
+  eventType: string,
+  emailEvents?: {
+    estimate_approved?: boolean;
+    invoice_sent?: boolean;
+    payment_logged?: boolean;
+  }
+): boolean {
+  if (!emailEvents) return true;
+
+  if (eventType === "estimate_approved") {
+    return emailEvents.estimate_approved !== false;
+  }
+  if (eventType === "invoice_sent") {
+    return emailEvents.invoice_sent !== false;
+  }
+  if (eventType === "payment_received") {
+    return emailEvents.payment_logged !== false;
+  }
+  return true;
 }
 
 function buildDigestHtml(
@@ -459,8 +488,14 @@ Deno.serve(async (req: Request) => {
             .order("created_at", { ascending: false })
             .limit(50);
 
+          const nonSmsNotifications = (notifications || []).filter(
+            (n) =>
+              !n.title.startsWith("SMS Sent -") &&
+              isEmailEventEnabled(n.event_type, prefs.email_events)
+          );
+
           const notificationsForEmail =
-            testMode && !notifications?.length
+            testMode && !nonSmsNotifications.length
               ? ([
                   {
                     id: "test-email",
@@ -470,7 +505,7 @@ Deno.serve(async (req: Request) => {
                     created_at: now.toISOString(),
                   },
                 ] as NotificationRow[])
-              : (notifications as NotificationRow[] | null);
+              : (nonSmsNotifications as NotificationRow[] | null);
 
           if (!notificationsForEmail?.length) {
             results.push({

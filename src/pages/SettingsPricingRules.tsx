@@ -238,7 +238,7 @@ export default function SettingsPricingRules() {
   };
 
   const saveRules = async () => {
-    if (!user?.id || !currentAccount?.id) return;
+    if (!user?.id || !currentAccount?.id) return false;
 
     setSaving(true);
 
@@ -300,9 +300,11 @@ export default function SettingsPricingRules() {
       toast.success("Pricing rules saved");
       await refreshProfile();
       fetchRules();
+      return true;
     } catch (error) {
       console.error("Error saving rules:", error);
       toast.error("Failed to save pricing rules");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -742,7 +744,7 @@ export default function SettingsPricingRules() {
       </main>
 
       <MobileNav />
-      <UnsavedChangesDialog blocker={blocker} />
+      <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={saveRules} />
       <LineItemTemplateCSVImportModal
         open={showTemplateImportModal}
         onOpenChange={setShowTemplateImportModal}

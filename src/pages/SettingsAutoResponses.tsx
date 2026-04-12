@@ -30,8 +30,15 @@ const TEMPLATE_VARIABLES = [
   "{{scheduled_datetime}}",
 ] as const;
 type OffsetUnit = "seconds" | "hours" | "days" | "months";
+type DeliveryChannel = "text" | "email" | "both";
+type PaymentEmailKey = "estimate_approved" | "invoice_sent" | "payment_logged";
 
 const OFFSET_UNITS: OffsetUnit[] = ["seconds", "hours", "days", "months"];
+const DEFAULT_PAYMENT_EMAILS: Record<PaymentEmailKey, boolean> = {
+  estimate_approved: true,
+  invoice_sent: true,
+  payment_logged: true,
+};
 
 const offsetToMinutes = (offsetValue: number, offsetUnit: OffsetUnit): number => {
   if (!Number.isFinite(offsetValue) || offsetValue <= 0) return 0;
@@ -55,6 +62,7 @@ export default function SettingsAutoResponses() {
     name: string;
     content: string;
     is_finished: boolean;
+    delivery_channel: DeliveryChannel;
     job_service_types: string[];
     trigger: {
       type: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion";
@@ -68,6 +76,7 @@ export default function SettingsAutoResponses() {
   const [draftTriggerType, setDraftTriggerType] = useState<"immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion">("immediate");
   const [draftOffsetValue, setDraftOffsetValue] = useState("0");
   const [draftOffsetUnit, setDraftOffsetUnit] = useState<OffsetUnit>("days");
+  const [draftDeliveryChannel, setDraftDeliveryChannel] = useState<DeliveryChannel>("text");
   const [customEndpointEnabled, setCustomEndpointEnabled] = useState(false);
   const [endpointUrl, setEndpointUrl] = useState("");
   const [authHeaderName, setAuthHeaderName] = useState("");
@@ -75,6 +84,7 @@ export default function SettingsAutoResponses() {
   const [maxRetryAttempts, setMaxRetryAttempts] = useState("3");
   const [retryBackoffMinutes, setRetryBackoffMinutes] = useState("5");
   const [serviceTypePopoverOpen, setServiceTypePopoverOpen] = useState(false);
+  const [paymentEmails, setPaymentEmails] = useState<Record<PaymentEmailKey, boolean>>(DEFAULT_PAYMENT_EMAILS);
 
   useEffect(() => {
     const automation = settings?.job_message_automation ?? null;
@@ -107,11 +117,20 @@ export default function SettingsAutoResponses() {
         .map((template, index) => {
           const content = typeof template?.content === "string" ? template.content.trim() : "";
           if (!content) return null;
+          const deliveryChannel: DeliveryChannel =
+            template?.delivery_channel === "email" || template?.delivery_channel === "both" || template?.delivery_channel === "text"
+              ? template.delivery_channel
+              : template?.send_email === true && template?.send_text === true
+                ? "both"
+                : template?.send_email === true
+                  ? "email"
+                  : "text";
           return {
             id: typeof template?.id === "string" && template.id.trim().length > 0 ? template.id : `template-${index + 1}`,
             name: typeof template?.name === "string" && template.name.trim().length > 0 ? template.name : `Template ${index + 1}`,
             content,
             is_finished: template?.is_finished !== false,
+            delivery_channel: deliveryChannel,
             job_service_types: Array.isArray(template?.job_service_types)
               ? template.job_service_types.filter((value): value is string => typeof value === "string")
               : legacyServiceTypes,
@@ -145,6 +164,7 @@ export default function SettingsAutoResponses() {
           name: string;
           content: string;
           is_finished: boolean;
+          delivery_channel: DeliveryChannel;
           job_service_types: string[];
           trigger: { type: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion"; offset_value: number; offset_unit: OffsetUnit };
         } => template !== null)
@@ -161,6 +181,7 @@ export default function SettingsAutoResponses() {
             name: "Template 1",
             content: legacyTemplate,
             is_finished: true,
+            delivery_channel: "text",
             job_service_types: legacyServiceTypes,
             trigger: {
               type: legacyTriggerType,
@@ -178,6 +199,7 @@ export default function SettingsAutoResponses() {
     setDraftTriggerType("immediate");
     setDraftOffsetValue("0");
     setDraftOffsetUnit("days");
+    setDraftDeliveryChannel("text");
     setCustomEndpointEnabled(
       automation?.endpoint?.enabled === true
       || (typeof automation?.endpoint?.url === "string" && automation.endpoint.url.trim().length > 0),
@@ -187,6 +209,10 @@ export default function SettingsAutoResponses() {
     setAuthHeaderValue(typeof automation?.endpoint?.auth_header_value === "string" ? automation.endpoint.auth_header_value : "");
     setMaxRetryAttempts(String(typeof automation?.retry?.max_attempts === "number" ? automation.retry.max_attempts : 3));
     setRetryBackoffMinutes(String(typeof automation?.retry?.backoff_minutes === "number" ? automation.retry.backoff_minutes : 5));
+    setPaymentEmails({
+      ...DEFAULT_PAYMENT_EMAILS,
+      ...(automation?.payment_emails ?? {}),
+    });
     setIsDirty(false);
   }, [settings]);
 
@@ -205,6 +231,7 @@ export default function SettingsAutoResponses() {
             name: template.name,
             content: template.content,
             is_finished: template.is_finished,
+            delivery_channel: template.delivery_channel,
             job_service_types: template.job_service_types,
             trigger: template.trigger,
           })),
@@ -225,12 +252,15 @@ export default function SettingsAutoResponses() {
             max_attempts: customEndpointEnabled && Number.isFinite(parsedMaxRetryAttempts) && parsedMaxRetryAttempts > 0 ? parsedMaxRetryAttempts : 3,
             backoff_minutes: customEndpointEnabled && Number.isFinite(parsedRetryBackoffMinutes) && parsedRetryBackoffMinutes >= 0 ? parsedRetryBackoffMinutes : 5,
           },
+          payment_emails: paymentEmails,
         },
       });
       setIsDirty(false);
       toast.success("Auto Messaging settings saved");
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save settings");
+      return false;
     }
   };
 
@@ -260,6 +290,7 @@ export default function SettingsAutoResponses() {
               ...template,
               name: trimmedName || template.name,
               content: trimmedContent,
+              delivery_channel: draftDeliveryChannel,
               job_service_types: draftServiceTypes,
               trigger: {
                 type: draftTriggerType,
@@ -278,6 +309,7 @@ export default function SettingsAutoResponses() {
           name: trimmedName || `Template ${current.length + 1}`,
           content: trimmedContent,
           is_finished: true,
+          delivery_channel: draftDeliveryChannel,
           job_service_types: draftServiceTypes,
           trigger: {
             type: draftTriggerType,
@@ -294,6 +326,7 @@ export default function SettingsAutoResponses() {
     setDraftTriggerType("immediate");
     setDraftOffsetValue("0");
     setDraftOffsetUnit("days");
+    setDraftDeliveryChannel("text");
     setIsAddingTemplate(false);
     setIsDirty(true);
   };
@@ -308,6 +341,7 @@ export default function SettingsAutoResponses() {
       setDraftTriggerType("immediate");
       setDraftOffsetValue("0");
       setDraftOffsetUnit("days");
+      setDraftDeliveryChannel("text");
       setIsAddingTemplate(false);
     }
     setIsDirty(true);
@@ -338,7 +372,16 @@ export default function SettingsAutoResponses() {
     setDraftTriggerType(template.trigger.type);
     setDraftOffsetValue(String(template.trigger.offset_value));
     setDraftOffsetUnit(template.trigger.offset_unit);
+    setDraftDeliveryChannel(template.delivery_channel);
     setIsAddingTemplate(true);
+  };
+
+  const togglePaymentEmail = (key: PaymentEmailKey, checked: boolean) => {
+    setPaymentEmails((current) => ({
+      ...current,
+      [key]: checked,
+    }));
+    setIsDirty(true);
   };
 
   return (
@@ -408,11 +451,16 @@ export default function SettingsAutoResponses() {
                           <div className="flex items-start gap-2 pr-2">
                             <Pencil className="mt-0.5 h-4 w-4 text-muted-foreground" />
                             <div className="space-y-1">
-                            <p className="text-sm font-medium">
-                              {template.name}
-                              {!template.is_finished ? <span className="ml-2 text-xs text-muted-foreground">(Disabled)</span> : null}
-                            </p>
-                            <p className="text-sm text-muted-foreground">{template.content}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-medium">
+                                  {template.name}
+                                  {!template.is_finished ? <span className="ml-2 text-xs text-muted-foreground">(Disabled)</span> : null}
+                                </p>
+                                <Badge variant="outline" className="text-[11px] uppercase tracking-wide">
+                                  {template.delivery_channel}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">{template.content}</p>
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-2 pt-0.5">
@@ -461,6 +509,7 @@ export default function SettingsAutoResponses() {
                         setDraftTriggerType("immediate");
                         setDraftOffsetValue("0");
                         setDraftOffsetUnit("days");
+                        setDraftDeliveryChannel("text");
                       }
                       return next;
                     });
@@ -509,6 +558,23 @@ export default function SettingsAutoResponses() {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="job-message-delivery-channel">Send as</Label>
+                    <select
+                      id="job-message-delivery-channel"
+                      value={draftDeliveryChannel}
+                      onChange={(event) => {
+                        setDraftDeliveryChannel(event.target.value as DeliveryChannel);
+                        setIsDirty(true);
+                      }}
+                      className="h-10 w-full rounded-full border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="text">Text</option>
+                      <option value="email">Email</option>
+                      <option value="both">Both</option>
+                    </select>
                   </div>
 
                   <div className="space-y-3">
@@ -734,8 +800,58 @@ export default function SettingsAutoResponses() {
                   </div>
                 </>
               ) : null}
+
                 </>
               ) : null}
+
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Emails</CardTitle>
+              <CardDescription>
+                Send customer emails when payment-related milestones happen.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 rounded-lg border bg-background p-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Estimate approved</p>
+                      <p className="text-xs text-muted-foreground">Email customer when an estimate is approved.</p>
+                    </div>
+                    <Switch
+                      aria-label="Send payment email when estimate is approved"
+                      checked={paymentEmails.estimate_approved}
+                      onCheckedChange={(checked) => togglePaymentEmail("estimate_approved", checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Invoice sent</p>
+                      <p className="text-xs text-muted-foreground">Email customer when an invoice is sent.</p>
+                    </div>
+                    <Switch
+                      aria-label="Send payment email when invoice is sent"
+                      checked={paymentEmails.invoice_sent}
+                      onCheckedChange={(checked) => togglePaymentEmail("invoice_sent", checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Payment logged</p>
+                      <p className="text-xs text-muted-foreground">Email customer when a payment is logged.</p>
+                    </div>
+                    <Switch
+                      aria-label="Send payment email when payment is logged"
+                      checked={paymentEmails.payment_logged}
+                      onCheckedChange={(checked) => togglePaymentEmail("payment_logged", checked)}
+                    />
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -754,7 +870,7 @@ export default function SettingsAutoResponses() {
         </div>
 
         <MobileNav />
-        <UnsavedChangesDialog blocker={blocker} />
+        <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={handleSave} />
       </div>
     </PlanGate>
   );

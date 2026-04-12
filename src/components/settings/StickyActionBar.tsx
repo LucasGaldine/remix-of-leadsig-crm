@@ -1,4 +1,4 @@
-import { Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface StickyActionBarProps {
@@ -14,22 +14,19 @@ export function StickyActionBar({
   isSaving = false,
   label = "Save Changes",
   savingLabel = "Saving...",
-  contentClassName,
+  contentClassName: _contentClassName,
 }: StickyActionBarProps) {
   return (
-    <div className="sticky bottom-20 bg-surface-sunken/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur px-1 pt-2 pb-4 z-10">
-      <div className={contentClassName}>
-        <Button onClick={onSave} className="w-full gap-2" disabled={isSaving}>
-          {isSaving ? (
-            savingLabel
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              {label}
-            </>
-          )}
-        </Button>
-      </div>
+    <div className="fixed bottom-24 right-4 z-40 sm:bottom-6 sm:right-6">
+      <Button
+        onClick={onSave}
+        size="icon"
+        className="h-14 w-14 rounded-full shadow-lg"
+        disabled={isSaving}
+        aria-label={isSaving ? savingLabel : label}
+      >
+        {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+      </Button>
     </div>
   );
 }
