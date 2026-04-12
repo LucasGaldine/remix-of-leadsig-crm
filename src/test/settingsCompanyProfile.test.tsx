@@ -96,4 +96,16 @@ describe("SettingsCompanyProfile logo uploader", () => {
       color: "#0f172a",
     });
   });
+
+  it("keeps the client portal preview constrained to the card width", () => {
+    render(
+      <MemoryRouter>
+        <SettingsCompanyProfile />
+      </MemoryRouter>,
+    );
+
+    const previewContainer = screen.getByTestId("client-portal-preview-container");
+    expect(previewContainer).toHaveClass("w-full");
+    expect(previewContainer).not.toHaveClass("w-screen");
+  });
 });

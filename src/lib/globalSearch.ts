@@ -123,7 +123,7 @@ export const searchPages: SearchPage[] = [
     icon: "settings",
     description: "Business information",
     roles: ["owner", "sales"],
-    keywords: ["business", "company name", "logo", "contact"],
+    keywords: ["business", "company name", "logo", "contact", "client portal", "portal", "portal color", "portal text color"],
   },
   {
     name: "Service Area",

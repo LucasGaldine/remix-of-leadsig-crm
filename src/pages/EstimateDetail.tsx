@@ -31,6 +31,7 @@ import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
 import { prepareLeadPhotoForUpload } from "@/lib/photoCompression";
 import { createEstimateVersionSnapshot, isEstimateVersionsUnavailableError } from "@/lib/estimateVersions";
+import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 
 const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
   draft: { label: "Draft", icon: Edit2, className: "bg-secondary text-secondary-foreground" },
@@ -869,7 +870,7 @@ export default function EstimateDetail() {
       if (updateError) throw updateError;
     }
 
-    return `${window.location.origin}/client/job?token=${token}`;
+    return `${window.location.origin}${buildClientPortalShareUrl(token)}`;
   };
 
   const handleOpenClientPortal = async () => {

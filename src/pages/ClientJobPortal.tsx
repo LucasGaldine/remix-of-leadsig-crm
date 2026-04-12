@@ -206,6 +206,12 @@ export default function ClientJobPortal() {
   const [customerData, setCustomerData] = useState<CustomerPortalData | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [reviewCardDismissed, setReviewCardDismissed] = useState(false);
+  const customerName =
+    customerData?.customer?.name?.trim() ||
+    data?.job?.customer?.name?.trim() ||
+    data?.portal_metadata?.customer?.name?.trim() ||
+    "";
+  const portalTabTitle = customerName ? `${customerName} | Client Portal` : "Client Portal";
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-client-portal`;
   const apiHeaders = {
@@ -234,12 +240,12 @@ export default function ClientJobPortal() {
 
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = "Client Portal";
+    document.title = portalTabTitle;
 
     return () => {
       document.title = previousTitle;
     };
-  }, []);
+  }, [portalTabTitle]);
 
   const fetchData = async () => {
     setPageState("loading");

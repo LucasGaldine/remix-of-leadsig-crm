@@ -88,6 +88,15 @@ const eventTypeLabels: Record<string, string> = {
   same_day_reminders: "Day reminder",
 };
 
+const isMissingSmsConsentMetadataColumnError = (message?: string) => {
+  if (!message) return false;
+  return (
+    message.includes("sms_consent_captured_at") ||
+    message.includes("sms_consent_source") ||
+    message.includes("sms_consent_text_version")
+  );
+};
+
 export default function SettingsNotifications() {
   const { profile, user, currentAccount, isCrewMember, refreshProfile } = useAuth();
   const { logs: smsLogs, isLoading: smsLogsLoading, refetch: refetchSmsLogs } = useSmsLogs(5);
@@ -305,13 +314,26 @@ export default function SettingsNotifications() {
     }
 
     setIsSaving(true);
+    const runProfileUpdate = (updatePayload: Record<string, unknown>) =>
+      supabase
+        .from("profiles")
+        .update(updatePayload)
+        .eq("user_id", user.id)
+        .select("notification_preferences, mention_notifications_enabled, sms_consent_status")
+        .maybeSingle();
+
     // Try update first
-    let { data, error } = await supabase
-      .from("profiles")
-      .update(profileUpdate)
-      .eq("user_id", user.id)
-      .select("notification_preferences, mention_notifications_enabled, sms_consent_status")
-      .maybeSingle();
+    let { data, error } = await runProfileUpdate(profileUpdate);
+
+    if (error && consentChanged && isMissingSmsConsentMetadataColumnError(error.message)) {
+      const {
+        sms_consent_captured_at: _smsCapturedAt,
+        sms_consent_source: _smsSource,
+        sms_consent_text_version: _smsTextVersion,
+        ...fallbackProfileUpdate
+      } = profileUpdate;
+      ({ data, error } = await runProfileUpdate(fallbackProfileUpdate));
+    }
 
     // If no row was updated, try insert (profile may not exist yet)
     if (!error && !data) {

@@ -58,6 +58,16 @@ describe("Settings bug report search", () => {
     expect(screen.getByRole("button", { name: /report a bug/i })).toBeInTheDocument();
   });
 
+  it("finds company profile from client portal search terms", () => {
+    renderSettings();
+
+    fireEvent.change(screen.getByPlaceholderText("Search settings..."), {
+      target: { value: "client portal" },
+    });
+
+    expect(screen.getByRole("button", { name: /company profile/i })).toBeInTheDocument();
+  });
+
   it("opens report a bug modal from the reportBug query param", () => {
     renderSettings("/settings?reportBug=1");
 

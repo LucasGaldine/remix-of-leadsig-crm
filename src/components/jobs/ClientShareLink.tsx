@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Check, Copy, Link2, RefreshCw, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { toast } from "sonner";
 
 interface ClientShareLinkProps {
@@ -15,7 +16,7 @@ export function ClientShareLink({ customerId }: ClientShareLinkProps) {
   const [loading, setLoading] = useState(true);
 
   const shareUrl = token
-    ? `${window.location.origin}/client/job?token=${token}`
+    ? `${window.location.origin}${buildClientPortalShareUrl(token)}`
     : null;
 
   useEffect(() => {

@@ -8,4 +8,10 @@ describe("global search bug report entry", () => {
 
     expect(results.some((page) => page.path === "/settings?reportBug=1")).toBe(true);
   });
+
+  it("finds company profile from client portal query", () => {
+    const results = filterSearchPages("client portal", "owner");
+
+    expect(results.some((page) => page.path === "/settings/company")).toBe(true);
+  });
 });

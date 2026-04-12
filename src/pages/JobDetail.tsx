@@ -29,6 +29,7 @@ import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleJob } from "@/hooks/useScheduleJob";
 import { isTwilioNotConfiguredErrorMessage, shouldUsePortalFallback } from "@/lib/jobCompletionReview";
+import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { PhotoSection } from "@/components/photos/PhotoSection";
 import { JobChecklist } from "@/components/jobs/JobChecklist";
 import { useRecurringJob, useGenerateNextInstances, useUpdateRecurringJobCrew, useRecurringJobEstimate } from "@/hooks/useRecurringJobs";
@@ -504,7 +505,7 @@ export default function JobDetail() {
       if (updateError) throw updateError;
     }
 
-    return `${window.location.origin}/client/job?token=${token}`;
+    return `${window.location.origin}${buildClientPortalShareUrl(token)}`;
   };
 
   const handleOpenClientPortal = async () => {

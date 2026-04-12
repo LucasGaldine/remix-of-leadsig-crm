@@ -26,6 +26,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Copy, Check } from "lucide-react";
+import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 
 function PortalLinkButton({ customerId }: { customerId: string }) {
   const [loading, setLoading] = useState(false);
@@ -53,7 +54,7 @@ function PortalLinkButton({ customerId }: { customerId: string }) {
         if (error) throw error;
       }
 
-      const link = `${window.location.origin}/client/job?token=${token}`;
+      const link = `${window.location.origin}${buildClientPortalShareUrl(token)}`;
       setPortalLink(link);
       setDialogOpen(true);
     } catch (err) {
@@ -112,9 +113,12 @@ function PortalLinkButton({ customerId }: { customerId: string }) {
               )}
             </Button>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Close
+          <DialogFooter className="sm:justify-end">
+            <Button type="button" variant="outline">
+              Send by Email
+            </Button>
+            <Button type="button" variant="outline">
+              Send by Text
             </Button>
           </DialogFooter>
         </DialogContent>

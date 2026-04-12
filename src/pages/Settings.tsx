@@ -72,7 +72,7 @@ export default function Settings() {
           label: "Company Profile",
           description: "Name, logo, contact info",
           onClick: () => navigate("/settings/company"),
-          searchTerms: ["business name", "company name", "company logo", "phone number", "email", "address", "business info", "company email", "company phone", "business address", "billing email", "website", "invite code", "team invite", "join company", "company code", "team members"],
+          searchTerms: ["business name", "company name", "company logo", "phone number", "email", "address", "business info", "company email", "company phone", "business address", "billing email", "website", "invite code", "team invite", "join company", "company code", "team members", "client portal", "portal", "portal color", "portal text color"],
         },
         {
           icon: <MapPin className="h-5 w-5" />,

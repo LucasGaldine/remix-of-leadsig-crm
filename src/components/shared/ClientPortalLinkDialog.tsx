@@ -47,9 +47,12 @@ export function ClientPortalLinkDialog({
             )}
           </Button>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+        <DialogFooter className="sm:justify-end">
+          <Button type="button" variant="outline">
+            Send by Email
+          </Button>
+          <Button type="button" variant="outline">
+            Send by Text
           </Button>
         </DialogFooter>
       </DialogContent>
