@@ -5,24 +5,9 @@ import { ScheduleJobDialog } from "@/components/jobs/ScheduleJobDialog";
 
 const mocks = vi.hoisted(() => ({
   scheduleJobMock: vi.fn(),
-  insertAssignmentsMock: vi.fn(),
-  rpcMock: vi.fn(),
-  invalidateQueriesMock: vi.fn(),
+  assignCrewAsyncMock: vi.fn(),
+  supabaseFromMock: vi.fn(),
 }));
-
-function buildQueryResult<T>(result: T) {
-  return {
-    eq() {
-      return this;
-    },
-    in() {
-      return this;
-    },
-    then(resolve: (value: T) => unknown) {
-      return Promise.resolve(result).then(resolve);
-    },
-  };
-}
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -38,54 +23,40 @@ vi.mock("@/hooks/useScheduleJob", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useTeamMembers", () => ({
+  useTeamMembers: () => ({
+    data: [
+      {
+        user_id: "crew_1",
+        full_name: "Alex Crew",
+        email: "alex@example.com",
+        role: "crew_member",
+      },
+    ],
+  }),
+}));
+
+vi.mock("@/hooks/useJobAssignments", () => ({
+  useJobAssignments: () => ({
+    assignCrewAsync: mocks.assignCrewAsyncMock,
+    isAssigning: false,
+  }),
+}));
+
 vi.mock("@/hooks/useScheduledJobs", () => ({
   useScheduledJobs: () => ({
     data: [],
   }),
 }));
 
-vi.mock("@/hooks/useTeamMembers", () => ({
-  useTeamMembers: () => ({
-    data: [
-      { user_id: "crew_1", full_name: "Alex Crew", role: "crew_member" },
-      { user_id: "crew_2", full_name: "Sam Lead", role: "crew_lead" },
-    ],
-  }),
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({ data: new Set<string>() }),
 }));
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: (table: string) => {
-      if (table === "job_assignments") {
-        return {
-          select: () => buildQueryResult({ data: [], error: null }),
-          insert: mocks.insertAssignmentsMock,
-        };
-      }
-
-      if (table === "profiles") {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: { full_name: "Crew Member" }, error: null }),
-            }),
-          }),
-        };
-      }
-
-      return {
-        select: () => buildQueryResult({ data: [], error: null }),
-      };
-    },
-    rpc: mocks.rpcMock,
+    from: mocks.supabaseFromMock,
   },
-}));
-
-vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: new Set<string>() }),
-  useQueryClient: () => ({
-    invalidateQueries: mocks.invalidateQueriesMock,
-  }),
 }));
 
 vi.mock("@/components/ui/calendar", () => ({
@@ -96,33 +67,63 @@ vi.mock("@/components/ui/calendar", () => ({
   ),
 }));
 
-describe("ScheduleJobDialog multi-crew assignment", () => {
-  it("assigns multiple selected crew members from one modal submission", async () => {
-    mocks.invalidateQueriesMock.mockReset();
+describe("ScheduleJobDialog without crew assignment", () => {
+  it("uses a second step to assign crew and saves crew selection with the new schedule", async () => {
     mocks.scheduleJobMock.mockResolvedValue({ ok: true, scheduleId: "schedule_1" });
-    mocks.insertAssignmentsMock.mockResolvedValue({ error: null });
-    mocks.rpcMock.mockResolvedValue({ data: false });
+    mocks.assignCrewAsyncMock.mockResolvedValue(undefined);
+    mocks.supabaseFromMock.mockImplementation((table: string) => {
+      if (table === "job_assignments") {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            })),
+          })),
+        };
+      }
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn().mockResolvedValue({ data: [], error: null }),
+          })),
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
 
     render(<ScheduleJobDialog open onOpenChange={vi.fn()} jobId="job_1" />);
 
+    expect(screen.queryByLabelText("Find Crew Member")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "View Calendar" }));
     fireEvent.click(screen.getByRole("button", { name: "pick date" }));
-    fireEvent.click(screen.getByLabelText("Alex Crew"));
-    fireEvent.click(screen.getByLabelText("Sam Lead"));
+    fireEvent.click(screen.getByRole("button", { name: "Add Schedule Date" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByLabelText("Find Crew Member")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
+    fireEvent.click(screen.getByRole("button", { name: /Alex Crew/i }));
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Schedule" })).toBeEnabled();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Add Schedule" }));
 
     await waitFor(() => {
-      expect(mocks.insertAssignmentsMock).toHaveBeenCalledTimes(1);
+      expect(mocks.scheduleJobMock).toHaveBeenCalledTimes(1);
     });
-
-    expect(mocks.insertAssignmentsMock).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ user_id: "crew_1", job_schedule_id: "schedule_1", lead_id: "job_1" }),
-        expect.objectContaining({ user_id: "crew_2", job_schedule_id: "schedule_1", lead_id: "job_1" }),
-      ]),
-    );
-
     await waitFor(() => {
-      expect(mocks.invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["job-assignments", "job_1"] });
+      expect(mocks.assignCrewAsyncMock).toHaveBeenCalledWith({
+        assigneeId: "crew_1",
+        scheduleId: "schedule_1",
+      });
     });
+
+    expect(mocks.scheduleJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        leadId: "job_1",
+        scheduledDate: expect.stringMatching(/^2030-01-0[45]$/),
+      }),
+    );
   });
 });

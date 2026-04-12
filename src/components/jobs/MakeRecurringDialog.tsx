@@ -12,10 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useConvertToRecurring, RecurrenceFrequency } from "@/hooks/useRecurringJobs";
-import { useAuth } from "@/hooks/useAuth";
-import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { toast } from "sonner";
-import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -23,6 +20,7 @@ interface MakeRecurringDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   jobId: string;
+  onMakeOneOffInstead?: () => void;
   jobSchedules?: Array<{
     scheduled_time_start?: string | null;
     scheduled_time_end?: string | null;
@@ -45,8 +43,13 @@ const DAYS_OF_WEEK = [
   { value: 6, label: "Sat" },
 ];
 
-export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }: MakeRecurringDialogProps) {
-  const { currentAccount } = useAuth();
+export function MakeRecurringDialog({
+  open,
+  onOpenChange,
+  jobId,
+  onMakeOneOffInstead,
+  jobSchedules,
+}: MakeRecurringDialogProps) {
   const convertToRecurring = useConvertToRecurring();
 
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("weekly");
@@ -57,19 +60,10 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
   const [timeEnd, setTimeEnd] = useState(jobSchedules?.[0]?.scheduled_time_end || "");
   const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
   const [selectedDayOfMonth, setSelectedDayOfMonth] = useState<string>("");
-  const [selectedCrew, setSelectedCrew] = useState<string[]>([]);
-
-  const { data: crewMembers = [] } = useTeamMembers();
 
   const toggleDayOfWeek = (day: number) => {
     setSelectedDaysOfWeek((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  };
-
-  const toggleCrewMember = (userId: string) => {
-    setSelectedCrew((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
     );
   };
 
@@ -99,7 +93,7 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
         scheduled_time_end: timeEnd || null,
         preferred_days_of_week: (frequency === "weekly" || frequency === "biweekly") ? selectedDaysOfWeek : [],
         preferred_day_of_month: frequency === "monthly" && selectedDayOfMonth ? parseInt(selectedDayOfMonth) : null,
-        default_crew_user_ids: selectedCrew,
+        default_crew_user_ids: [],
       });
 
       toast.success("Job schedule created! Future visits and a shared quote have been set up.");
@@ -128,6 +122,25 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {onMakeOneOffInstead && (
+            <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
+              <div className="pointer-events-none absolute inset-1 grid grid-cols-2 gap-1">
+                <div />
+                <div className="rounded-full bg-background shadow-sm" />
+              </div>
+              <button
+                type="button"
+                className="relative z-10 h-9 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground"
+                onClick={onMakeOneOffInstead}
+              >
+                One Off
+              </button>
+              <div className="relative z-10 flex h-9 items-center justify-center rounded-full text-sm font-medium text-foreground">
+                Recurring
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label className="font-semibold">Frequency</Label>
             <Select value={frequency} onValueChange={(v) => { setFrequency(v as RecurrenceFrequency); setSelectedDaysOfWeek([]); setSelectedDayOfMonth(""); }}>
@@ -233,31 +246,6 @@ export function MakeRecurringDialog({ open, onOpenChange, jobId, jobSchedules }:
             </div>
           </div>
 
-          {crewMembers.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-gray-600" />
-                <Label className="font-semibold">Default Crew</Label>
-              </div>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {crewMembers.map((member: any) => (
-                  <label
-                    key={member.user_id}
-                    className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-                  >
-                    <Checkbox
-                      checked={selectedCrew.includes(member.user_id)}
-                      onCheckedChange={() => toggleCrewMember(member.user_id)}
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{member.full_name || member.email}</p>
-                      <p className="text-xs text-gray-500 capitalize">{member.role?.replace("_", " ")}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         <DialogFooter>

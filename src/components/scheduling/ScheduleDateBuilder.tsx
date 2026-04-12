@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
-import { Calendar as CalendarIcon, Plus, Trash2 } from "lucide-react";
+import { format, startOfMonth, endOfMonth, addMonths, parse, isValid } from "date-fns";
+import { CalendarDays, Check, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useScheduledJobs } from "@/hooks/useScheduledJobs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { ScheduleDateTimePicker, type ScheduledDateJob } from "@/components/scheduling/ScheduleDateTimePicker";
+import { ScheduleDateTimePicker } from "@/components/scheduling/ScheduleDateTimePicker";
 
 export type ScheduleEntry = {
   date: string;
@@ -24,15 +26,21 @@ type ScheduleAvailability = {
   dayOffReasonsByDate: Record<string, string | null>;
   fullyBookedDatesSet: Set<string>;
   existingCountsByDate: Record<string, number>;
+  scheduledJobsByDate: Record<string, Array<{
+    name: string;
+    scheduledTimeStart: string | null;
+    scheduledTimeEnd: string | null;
+  }>>;
   dailyLimit: number | null;
 };
 
 interface ScheduleDateBuilderProps {
   schedules: ScheduleEntry[];
   onSchedulesChange: (schedules: ScheduleEntry[]) => void;
+  recurringControls?: ReactNode;
 }
 
-export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDateBuilderProps) {
+export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringControls }: ScheduleDateBuilderProps) {
   const { currentAccount } = useAuth();
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [activeScheduleIndex, setActiveScheduleIndex] = useState<number | null>(null);
@@ -40,13 +48,15 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
   const [scheduledTimeStart, setScheduledTimeStart] = useState("");
   const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [hoveredUnavailableReason, setHoveredUnavailableReason] = useState<string | null>(null);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [pendingDate, setPendingDate] = useState<string>("");
 
   const activeSchedule = activeScheduleIndex !== null ? schedules[activeScheduleIndex] : undefined;
-  const selectedDate = activeSchedule?.date && !isAddingNextDate
-    ? new Date(`${activeSchedule.date}T00:00:00`)
+  const selectedDateString = pendingDate || (activeSchedule?.date && !isAddingNextDate ? activeSchedule.date : "");
+  const selectedDate = selectedDateString
+    ? new Date(`${selectedDateString}T00:00:00`)
     : undefined;
   const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
-  const { data: selectedDateJobs = [] } = useScheduledJobs(scheduledDate);
 
   const monthStart = startOfMonth(calendarMonth);
   const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
@@ -58,6 +68,14 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
       return acc;
     }, {});
   }, [schedules]);
+
+  const displayedSchedules = useMemo(
+    () =>
+      schedules
+        .map((schedule, index) => ({ schedule, index }))
+        .sort((a, b) => a.schedule.date.localeCompare(b.schedule.date) || a.index - b.index),
+    [schedules],
+  );
 
   const { data: availabilityData } = useQuery<ScheduleAvailability | Set<string>>({
     queryKey: [
@@ -74,6 +92,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
           dayOffReasonsByDate: {},
           fullyBookedDatesSet: new Set<string>(),
           existingCountsByDate: {},
+          scheduledJobsByDate: {},
           dailyLimit: null,
         };
       }
@@ -81,10 +100,12 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
       const [schedulesResult, daysOffResult, accountResult] = await Promise.all([
         supabase
           .from("job_schedules")
-          .select("scheduled_date")
+          .select("scheduled_date, scheduled_time_start, scheduled_time_end, job:leads!lead_id(name)")
           .eq("account_id", currentAccount.id)
           .gte("scheduled_date", format(monthStart, "yyyy-MM-dd"))
-          .lte("scheduled_date", format(monthEnd, "yyyy-MM-dd")),
+          .lte("scheduled_date", format(monthEnd, "yyyy-MM-dd"))
+          .order("scheduled_date", { ascending: true })
+          .order("scheduled_time_start", { ascending: true, nullsFirst: false }),
         supabase
           .from("days_off")
           .select("date, reason")
@@ -104,11 +125,24 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
 
       const busyDatesSet = new Set<string>();
       const existingCountsByDate: Record<string, number> = {};
+      const scheduledJobsByDate: Record<string, Array<{
+        name: string;
+        scheduledTimeStart: string | null;
+        scheduledTimeEnd: string | null;
+      }>> = {};
 
-      schedulesResult.data?.forEach((schedule) => {
+      schedulesResult.data?.forEach((schedule: any) => {
         if (!schedule.scheduled_date) return;
         busyDatesSet.add(schedule.scheduled_date);
         existingCountsByDate[schedule.scheduled_date] = (existingCountsByDate[schedule.scheduled_date] || 0) + 1;
+        if (!scheduledJobsByDate[schedule.scheduled_date]) {
+          scheduledJobsByDate[schedule.scheduled_date] = [];
+        }
+        scheduledJobsByDate[schedule.scheduled_date].push({
+          name: schedule.job?.name || "Unnamed job",
+          scheduledTimeStart: schedule.scheduled_time_start ?? null,
+          scheduledTimeEnd: schedule.scheduled_time_end ?? null,
+        });
       });
 
       const dayOffDatesSet = new Set<string>();
@@ -137,6 +171,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
         dayOffReasonsByDate,
         fullyBookedDatesSet,
         existingCountsByDate,
+        scheduledJobsByDate,
         dailyLimit,
       };
     },
@@ -155,6 +190,9 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
   const existingCountsByDate = availabilityData instanceof Set
     ? {}
     : (availabilityData?.existingCountsByDate ?? {});
+  const scheduledJobsByDate = availabilityData instanceof Set
+    ? {}
+    : (availabilityData?.scheduledJobsByDate ?? {});
   const dailyLimit = availabilityData instanceof Set
     ? null
     : (availabilityData?.dailyLimit ?? null);
@@ -181,6 +219,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
     Object.keys(localScheduleCountByDate).forEach((date) => merged.add(date));
     return merged;
   }, [busyDatesSet, localScheduleCountByDate]);
+  const selectedDateJobs = selectedDateString ? (scheduledJobsByDate[selectedDateString] ?? []) : [];
 
   const isDateUnavailable = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
@@ -240,9 +279,16 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
 
     setScheduledTimeStart(schedule.timeStart || "");
     setScheduledTimeEnd(schedule.timeEnd || "");
+    setPendingDate(schedule.date || "");
   }, [activeScheduleIndex, isAddingNextDate, schedules]);
 
   const canUseDate = (dateStr: string) => {
+    const localDate = parse(dateStr, "yyyy-MM-dd", new Date());
+    if (!isValid(localDate) || localDate < today) {
+      toast.error("Past dates are unavailable.");
+      return false;
+    }
+
     if (dayOffDatesSet.has(dateStr)) {
       toast.error("This date is marked as a day off.");
       return false;
@@ -257,41 +303,54 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
   };
 
   const handleDateSelect = (date: Date | undefined) => {
-    if (!date) return;
-    const selectedDateString = format(date, "yyyy-MM-dd");
+    if (!date) return false;
+    const nextDateString = format(date, "yyyy-MM-dd");
 
-    if (!canUseDate(selectedDateString)) {
+    if (!canUseDate(nextDateString)) {
+      return false;
+    }
+
+    setPendingDate(nextDateString);
+    return true;
+  };
+
+  const handleDateInputChange = (value: string) => {
+    if (!value) return;
+
+    const parsedDate = parse(value, "yyyy-MM-dd", new Date());
+    if (!isValid(parsedDate) || format(parsedDate, "yyyy-MM-dd") !== value) {
+      toast.error("Please enter a valid date.");
       return;
     }
 
-    if (activeScheduleIndex !== null && !isAddingNextDate) {
-      onSchedulesChange(
-        schedules.map((schedule, index) =>
-          index === activeScheduleIndex
-            ? { ...schedule, date: selectedDateString }
-            : schedule,
-        ),
-      );
-      return;
-    }
-
-    onSchedulesChange([
-      ...schedules,
-      {
-        date: selectedDateString,
-        timeStart: scheduledTimeStart,
-        timeEnd: scheduledTimeEnd,
-      },
-    ]);
-    setActiveScheduleIndex(schedules.length);
-    setIsAddingNextDate(false);
+    setCalendarMonth(parsedDate);
+    handleDateSelect(parsedDate);
   };
 
   const addSchedule = () => {
-    setIsAddingNextDate(true);
-    setActiveScheduleIndex(null);
-    setScheduledTimeStart("");
-    setScheduledTimeEnd("");
+    const clearScheduleFields = () => {
+      setIsAddingNextDate(true);
+      setActiveScheduleIndex(null);
+      setScheduledTimeStart("");
+      setScheduledTimeEnd("");
+      setPendingDate("");
+      setIsCalendarOpen(false);
+    };
+
+    if (pendingDate) {
+      onSchedulesChange([
+        ...schedules,
+        {
+          date: pendingDate,
+          timeStart: scheduledTimeStart,
+          timeEnd: scheduledTimeEnd,
+        },
+      ]);
+      clearScheduleFields();
+      return;
+    }
+
+    clearScheduleFields();
   };
 
   const removeSchedule = (index: number) => {
@@ -299,6 +358,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
     if (schedules.length <= 1) {
       setActiveScheduleIndex(null);
       setIsAddingNextDate(false);
+      setPendingDate("");
       return;
     }
 
@@ -325,18 +385,139 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
 
   return (
     <div className="space-y-4">
-      <Label className="text-base font-semibold flex items-center gap-2">
-        <CalendarIcon className="h-4 w-4" />
-        Add Schedule Dates
-      </Label>
-
       <div className="space-y-4">
+        {recurringControls && (
+          <div className="pt-1">
+            {recurringControls}
+          </div>
+        )}
+
+        <div className="max-h-[12.5rem] overflow-y-auto rounded-md border border-border">
+          {schedules.length > 0 ? (
+            displayedSchedules.map(({ schedule, index }) => {
+              const [year, month, day] = schedule.date.split("-").map(Number);
+              const localDate = new Date(year, month - 1, day);
+              return (
+                <div
+                  key={`${schedule.date}-${index}`}
+                  className="flex items-center justify-between p-3 bg-muted cursor-pointer border-b border-border last:border-b-0"
+                  onClick={() => {
+                    setIsAddingNextDate(false);
+                    setActiveScheduleIndex(index);
+                  }}
+                >
+                  <div className="text-sm">
+                    <div className="font-medium">{format(localDate, "EEEE, MMM d, yyyy")}</div>
+                    {schedule.timeStart && schedule.timeEnd && (
+                      <div className="text-xs text-muted-foreground">
+                        {schedule.timeStart} - {schedule.timeEnd}
+                      </div>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => removeSchedule(index)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              );
+            })
+          ) : (
+            <div className="bg-muted p-3 text-sm text-muted-foreground">
+              No dates added
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="schedule-date-input">Date</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="schedule-date-input"
+              type="date"
+              value={scheduledDate}
+              min={format(today, "yyyy-MM-dd")}
+              onChange={(event) => handleDateInputChange(event.target.value)}
+              className="w-full"
+            />
+            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" className="w-full gap-2">
+                  <CalendarDays className="h-4 w-4" />
+                  View Calendar
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <div className="w-[20rem]">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (!date) return;
+                      if (handleDateSelect(date)) {
+                        setIsCalendarOpen(false);
+                      }
+                    }}
+                    onMonthChange={setCalendarMonth}
+                    disabled={isDateUnavailable}
+                    onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
+                    onDayMouseLeave={() => setHoveredUnavailableReason(null)}
+                    className={cn("w-fit rounded-md border pointer-events-auto")}
+                    modifiers={{
+                      busy: (date) => allBusyDatesSet.has(format(date, "yyyy-MM-dd")),
+                      fullyBooked: (date) => {
+                        const dateStr = format(date, "yyyy-MM-dd");
+                        return effectiveFullyBookedDatesSet.has(dateStr);
+                      },
+                      dayOff: (date) => {
+                        const dateStr = format(date, "yyyy-MM-dd");
+                        return dayOffDatesSet.has(dateStr);
+                      },
+                    }}
+                    modifiersClassNames={{
+                      busy:
+                        "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
+                      fullyBooked: "opacity-50 line-through",
+                      dayOff: "opacity-50 line-through text-destructive",
+                    }}
+                    month={calendarMonth}
+                  />
+
+                  <div className="border-t border-border p-3">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {selectedDateString
+                        ? `Jobs on ${format(new Date(`${selectedDateString}T00:00:00`), "MMM d, yyyy")}`
+                        : "Jobs on selected day"}
+                    </p>
+                    {selectedDateString ? (
+                      selectedDateJobs.length > 0 ? (
+                        <div className="mt-2 space-y-1.5 max-h-28 overflow-y-auto">
+                          {selectedDateJobs.map((job, index) => (
+                            <div key={`${job.name}-${job.scheduledTimeStart}-${index}`} className="text-sm">
+                              <span className="font-medium">{job.name}</span>
+                              {job.scheduledTimeStart && (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  {job.scheduledTimeStart}
+                                  {job.scheduledTimeEnd ? ` - ${job.scheduledTimeEnd}` : ""}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">No jobs scheduled for this day.</p>
+                      )
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">Select a day to view scheduled jobs.</p>
+                    )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
         <div className="space-y-3">
-          {(dailyLimit || dayOffDatesSet.size > 0) && (
+          {dayOffDatesSet.size > 0 && (
             <div className="text-xs text-muted-foreground space-y-1">
-              {dailyLimit && (
-                <p>Dates at the daily limit ({dailyLimit}) are unavailable.</p>
-              )}
               {dayOffDatesSet.size > 0 && (
                 <p>Dates marked as day off are unavailable.</p>
               )}
@@ -356,6 +537,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
             onSelectDate={handleDateSelect}
             calendarMonth={calendarMonth}
             onCalendarMonthChange={setCalendarMonth}
+            showCalendar={false}
             onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
             onDayMouseLeave={() => setHoveredUnavailableReason(null)}
             disabledDate={isDateUnavailable}
@@ -369,8 +551,6 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
               setScheduledTimeEnd(value);
               updateActiveScheduleTime("timeEnd", value);
             }}
-            selectedDateJobs={selectedDateJobs as ScheduledDateJob[]}
-            showNoDateSelectedState={false}
             busyDatesSet={allBusyDatesSet}
             modifiers={{
               fullyBooked: (date) => {
@@ -389,47 +569,15 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange }: ScheduleDa
             calendarClassName={cn("rounded-md")}
           />
 
-          <Button onClick={addSchedule} className="w-full">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Schedule Date
+          <Button
+            onClick={addSchedule}
+            variant="secondary"
+            className="w-full"
+            aria-label="Add Schedule Date"
+            disabled={!pendingDate}
+          >
+            <Check className="h-4 w-4" />
           </Button>
-
-          {schedules.length > 0 && (
-            <div className="border rounded-lg p-3 space-y-2">
-              <p className="text-sm font-medium">Added Schedules ({schedules.length})</p>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {schedules.map((schedule, index) => {
-                  const [year, month, day] = schedule.date.split("-").map(Number);
-                  const localDate = new Date(year, month - 1, day);
-                  return (
-                    <div
-                      key={`${schedule.date}-${index}`}
-                      className={cn(
-                        "flex items-center justify-between p-2 bg-muted rounded cursor-pointer border border-transparent",
-                        activeScheduleIndex === index && !isAddingNextDate && "border-primary/40",
-                      )}
-                      onClick={() => {
-                        setIsAddingNextDate(false);
-                        setActiveScheduleIndex(index);
-                      }}
-                    >
-                      <div className="text-sm">
-                        <div className="font-medium">{format(localDate, "EEEE, MMM d, yyyy")}</div>
-                        {schedule.timeStart && schedule.timeEnd && (
-                          <div className="text-xs text-muted-foreground">
-                            {schedule.timeStart} - {schedule.timeEnd}
-                          </div>
-                        )}
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => removeSchedule(index)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

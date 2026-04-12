@@ -27,6 +27,10 @@ vi.mock("@/hooks/useRecurringJobs", () => ({
   useCreateRecurringJob: () => ({
     mutateAsync: vi.fn(),
   }),
+  useConvertToRecurring: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 
 vi.mock("@/hooks/useCustomers", () => ({
@@ -113,9 +117,10 @@ vi.mock("@/components/ui/switch", () => ({
 }));
 
 vi.mock("@/components/scheduling/ScheduleDateBuilder", () => ({
-  ScheduleDateBuilder: () => (
+  ScheduleDateBuilder: (props: { recurringControls?: any }) => (
     <div>
       <p>Add Schedule Dates</p>
+      {props.recurringControls}
       <button type="button">Add Schedule Date</button>
     </div>
   ),
@@ -151,8 +156,8 @@ describe("CreateJobDialog layout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     expect(screen.getByText(/step 3 of 5/i)).toBeInTheDocument();
-    expect(screen.getByText(/add schedule dates/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add schedule date/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^recurring$/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     expect(screen.getByText(/step 4 of 5/i)).toBeInTheDocument();

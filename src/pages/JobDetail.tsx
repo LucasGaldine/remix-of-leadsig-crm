@@ -2199,6 +2199,10 @@ export default function JobDetail() {
           open={makeRecurringOpen}
           onOpenChange={setMakeRecurringOpen}
           jobId={id}
+          onMakeOneOffInstead={() => {
+            setMakeRecurringOpen(false);
+            setScheduleDialogOpen(true);
+          }}
           jobSchedules={schedules}
         />
       )}

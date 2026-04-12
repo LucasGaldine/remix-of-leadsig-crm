@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -35,8 +34,10 @@ import { matchServiceType, normalizeVoiceEstimateParsedData, normalizeVoiceJobPa
 import type { VoiceEstimateParsedData, VoiceJobParsedData } from "@/types/voiceIntake";
 import { useAddressVerification } from "@/hooks/useAddressVerification";
 import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
+import { CreateJobCrewAssignmentStep } from "@/components/jobs/CreateJobCrewAssignmentStep";
 import { CreateJobEstimateStepContent } from "@/components/jobs/CreateJobEstimateStepContent";
 import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
+import { RecurrenceFrequency, useConvertToRecurring } from "@/hooks/useRecurringJobs";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -52,6 +53,12 @@ const INITIAL_CLIENT_DATA: CreateCustomerInput = {
 };
 
 type ManualStep = "client" | "job-information" | "assign-and-schedule" | "crew-assignment" | "estimate-line-items";
+type CrewConflictDetail = {
+  jobTitle: string;
+  scheduledDate: string;
+  scheduledTimeStart: string | null;
+  scheduledTimeEnd: string | null;
+};
 
 const MANUAL_STEPS: ManualStep[] = [
   "client",
@@ -76,6 +83,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const createCustomerMutation = useCreateCustomer();
   const createJob = useCreateJob();
   const deleteJob = useDeleteJob();
+  const convertToRecurring = useConvertToRecurring();
   const { scheduleJob } = useScheduleJob();
   const { data: crewMembers = [] } = useTeamMembers();
   const { verify, verifying, result: addressResult, reset: resetAddressVerification } = useAddressVerification();
@@ -94,8 +102,13 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   const [jobAddress, setJobAddress] = useState("");
   const [description, setDescription] = useState("");
   const [addedSchedules, setAddedSchedules] = useState<ScheduleEntry[]>([]);
+  const [scheduleMode, setScheduleMode] = useState<"one-time" | "recurring">("one-time");
+  const [recurringFrequency, setRecurringFrequency] = useState<RecurrenceFrequency>("weekly");
   const [crewByScheduleIndex, setCrewByScheduleIndex] = useState<Record<number, string[]>>({});
   const [crewConflictByMember, setCrewConflictByMember] = useState<Record<string, number[]>>({});
+  const [crewConflictDetailsByMember, setCrewConflictDetailsByMember] = useState<
+    Record<string, Record<number, CrewConflictDetail>>
+  >({});
   const [crewSearchQuery, setCrewSearchQuery] = useState("");
   const [activeCrewId, setActiveCrewId] = useState<string>("");
   const [isLoadingCrewConflicts, setIsLoadingCrewConflicts] = useState(false);
@@ -123,6 +136,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
     if (!currentAccount?.id || addedSchedules.length === 0 || crewMembers.length === 0) {
       setCrewConflictByMember({});
+      setCrewConflictDetailsByMember({});
       setIsLoadingCrewConflicts(false);
       return;
     }
@@ -145,7 +159,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       if (realCrewIds.length > 0) {
         const { data, error } = await supabase
           .from("job_assignments")
-          .select("user_id, mock_crew_profile_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
+          .select("user_id, mock_crew_profile_id, job_schedules!inner(lead_id, scheduled_date, scheduled_time_start, scheduled_time_end)")
           .in("user_id", realCrewIds)
           .eq("account_id", currentAccount.id);
 
@@ -153,6 +167,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         if (error) {
           console.error("Error loading crew conflicts:", error);
           setCrewConflictByMember({});
+          setCrewConflictDetailsByMember({});
           setIsLoadingCrewConflicts(false);
           return;
         }
@@ -162,7 +177,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       if (mockCrewIds.length > 0) {
         const { data, error } = await supabase
           .from("job_assignments")
-          .select("user_id, mock_crew_profile_id, job_schedules!inner(scheduled_date, scheduled_time_start, scheduled_time_end)")
+          .select("user_id, mock_crew_profile_id, job_schedules!inner(lead_id, scheduled_date, scheduled_time_start, scheduled_time_end)")
           .in("mock_crew_profile_id", mockCrewIds)
           .eq("account_id", currentAccount.id);
 
@@ -170,6 +185,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         if (error) {
           console.error("Error loading crew conflicts:", error);
           setCrewConflictByMember({});
+          setCrewConflictDetailsByMember({});
           setIsLoadingCrewConflicts(false);
           return;
         }
@@ -177,6 +193,31 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
       }
 
       const conflictMap: Record<string, number[]> = {};
+      const conflictDetailsMap: Record<string, Record<number, CrewConflictDetail>> = {};
+      const leadIds = Array.from(
+        new Set(
+          assignmentRows
+            .flatMap((assignment) => {
+              const scheduleRows = Array.isArray((assignment as any).job_schedules)
+                ? (assignment as any).job_schedules
+                : [(assignment as any).job_schedules];
+              return scheduleRows
+                .map((scheduleRow: any) => scheduleRow?.lead_id)
+                .filter((leadId: unknown): leadId is string => Boolean(leadId));
+            }),
+        ),
+      );
+      const jobTitleByLeadId: Record<string, string> = {};
+
+      if (leadIds.length > 0) {
+        const { data: leadsData } = await supabase
+          .from("leads")
+          .select("id, title")
+          .in("id", leadIds);
+        for (const lead of leadsData || []) {
+          jobTitleByLeadId[lead.id] = lead.title || "Another job";
+        }
+      }
 
       for (const [scheduleIndex, schedule] of addedSchedules.entries()) {
         for (const assignment of assignmentRows) {
@@ -210,11 +251,23 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             if (!conflictMap[crewId].includes(scheduleIndex)) {
               conflictMap[crewId].push(scheduleIndex);
             }
+            if (!conflictDetailsMap[crewId]) {
+              conflictDetailsMap[crewId] = {};
+            }
+            if (!conflictDetailsMap[crewId][scheduleIndex]) {
+              conflictDetailsMap[crewId][scheduleIndex] = {
+                jobTitle: jobTitleByLeadId[scheduleRow.lead_id] || "Another job",
+                scheduledDate: scheduleRow.scheduled_date,
+                scheduledTimeStart: scheduleRow.scheduled_time_start,
+                scheduledTimeEnd: scheduleRow.scheduled_time_end,
+              };
+            }
           }
         }
       }
 
       setCrewConflictByMember(conflictMap);
+      setCrewConflictDetailsByMember(conflictDetailsMap);
       setCrewByScheduleIndex((current) => {
         let changed = false;
         const next: Record<number, string[]> = {};
@@ -301,8 +354,11 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
     setJobAddress("");
     setDescription("");
     setAddedSchedules([]);
+    setScheduleMode("one-time");
+    setRecurringFrequency("weekly");
     setCrewByScheduleIndex({});
     setCrewConflictByMember({});
+    setCrewConflictDetailsByMember({});
     setCrewSearchQuery("");
     setActiveCrewId("");
     setShowVoiceJobIntake(false);
@@ -322,6 +378,11 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
     if (clientMode === "existing" && !selectedCustomer) {
       toast.error("Please select a client or create a new one");
+      return;
+    }
+
+    if (scheduleMode === "recurring" && addedSchedules.length === 0) {
+      toast.error("Select at least one schedule date to create a recurring schedule");
       return;
     }
 
@@ -363,8 +424,19 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
         + (lineItemsSubtotal * (surchargePercent / 100));
       const estimatedValue = adjustedSubtotal + (adjustedSubtotal * (taxRatePercent / 100));
 
-      const proposedCrewAssignments = addedSchedules.flatMap((schedule, scheduleIndex) => {
-        const selectedCrewForSchedule = crewByScheduleIndex[scheduleIndex] || [];
+      const recurringStartScheduleIndex = scheduleMode === "recurring" && addedSchedules.length > 0
+        ? addedSchedules.reduce((bestIndex, schedule, index) => {
+            if (bestIndex === -1) return index;
+            return schedule.date < addedSchedules[bestIndex].date ? index : bestIndex;
+          }, -1)
+        : -1;
+
+      const schedulesForCreation = scheduleMode === "recurring" && recurringStartScheduleIndex >= 0
+        ? [{ ...addedSchedules[recurringStartScheduleIndex], sourceIndex: recurringStartScheduleIndex }]
+        : addedSchedules.map((schedule, sourceIndex) => ({ ...schedule, sourceIndex }));
+
+      const proposedCrewAssignments = schedulesForCreation.flatMap((schedule) => {
+        const selectedCrewForSchedule = crewByScheduleIndex[schedule.sourceIndex] || [];
         return selectedCrewForSchedule.map((crewId) => ({
           crewId,
           date: schedule.date,
@@ -372,6 +444,21 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           timeEnd: schedule.timeEnd || null,
         }));
       });
+
+      const recurringDefaultCrewUserIds = scheduleMode === "recurring" && recurringStartScheduleIndex >= 0
+        ? Array.from(
+            new Set(
+              (crewByScheduleIndex[recurringStartScheduleIndex] || [])
+                .map((crewId) => parseCrewAssigneeId(crewId))
+                .filter((crew) => crew.type === "user" && crew.userId)
+                .map((crew) => crew.userId as string),
+            ),
+          )
+        : [];
+
+      const recurringStartSchedule = recurringStartScheduleIndex >= 0
+        ? addedSchedules[recurringStartScheduleIndex]
+        : null;
 
       if (proposedCrewAssignments.length > 0) {
         if (!currentAccount?.id) {
@@ -470,7 +557,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
 
       const createdSchedules: Array<{ scheduleId: string; sourceIndex: number }> = [];
 
-      for (const [scheduleIndex, schedule] of addedSchedules.entries()) {
+      for (const schedule of schedulesForCreation) {
         const scheduleResult = await scheduleJob({
           leadId: createdJob.id,
           scheduledDate: schedule.date,
@@ -480,7 +567,7 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
           suppressErrorToast: true,
         });
         if (scheduleResult.scheduleId) {
-          createdSchedules.push({ scheduleId: scheduleResult.scheduleId, sourceIndex: scheduleIndex });
+          createdSchedules.push({ scheduleId: scheduleResult.scheduleId, sourceIndex: schedule.sourceIndex });
         } else {
           const reason = scheduleResult.error?.message?.trim() || `Schedule ${schedule.date} could not be saved.`;
           throw new Error(reason);
@@ -639,6 +726,25 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
             })),
           });
         }
+      }
+
+      if (scheduleMode === "recurring" && recurringStartSchedule) {
+        const [year, month, day] = recurringStartSchedule.date.split("-").map(Number);
+        const localDate = new Date(year, month - 1, day);
+        const recurringInput = {
+          jobId: createdJob.id,
+          frequency: recurringFrequency,
+          start_date: recurringStartSchedule.date,
+          scheduled_time_start: recurringStartSchedule.timeStart || null,
+          scheduled_time_end: recurringStartSchedule.timeEnd || null,
+          preferred_days_of_week: (
+            recurringFrequency === "weekly" || recurringFrequency === "biweekly"
+          ) ? [localDate.getDay()] : [],
+          preferred_day_of_month: recurringFrequency === "monthly" ? localDate.getDate() : null,
+          default_crew_user_ids: recurringDefaultCrewUserIds,
+        } satisfies Parameters<typeof convertToRecurring.mutateAsync>[0];
+
+        await convertToRecurring.mutateAsync(recurringInput);
       }
 
       await Promise.all([
@@ -1009,141 +1115,97 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
                 <ScheduleDateBuilder
                   schedules={addedSchedules}
                   onSchedulesChange={setAddedSchedules}
+                  recurringControls={(
+                    <div className="space-y-2">
+                      <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
+                        <div className="pointer-events-none absolute inset-1 grid grid-cols-2 gap-1">
+                          {scheduleMode === "one-time" ? (
+                            <>
+                              <div className="rounded-full bg-background shadow-sm" />
+                              <div />
+                            </>
+                          ) : (
+                            <>
+                              <div />
+                              <div className="rounded-full bg-background shadow-sm" />
+                            </>
+                          )}
+                        </div>
+                        {scheduleMode === "one-time" ? (
+                          <>
+                            <div className="relative z-10 flex h-9 items-center justify-center rounded-full text-sm font-medium text-foreground">
+                              One Off
+                            </div>
+                            <button
+                              type="button"
+                              className="relative z-10 h-9 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground"
+                              onClick={() => setScheduleMode("recurring")}
+                            >
+                              Recurring
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="relative z-10 h-9 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground"
+                              onClick={() => setScheduleMode("one-time")}
+                            >
+                              One Off
+                            </button>
+                            <div className="relative z-10 flex h-9 items-center justify-center rounded-full text-sm font-medium text-foreground">
+                              Recurring
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {scheduleMode === "recurring" && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Select
+                            value={recurringFrequency}
+                            onValueChange={(value) => setRecurringFrequency(value as RecurrenceFrequency)}
+                          >
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="weekly">Weekly</SelectItem>
+                              <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
+                              <SelectItem value="monthly">Monthly</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            The earliest date you add will become the recurring start date.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 />
               </div>
             )}
 
             {manualStep === "crew-assignment" && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Assign Crew By Day (optional)</Label>
-                  {addedSchedules.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No schedule dates added yet. Go back and add at least one date.
-                    </p>
-                  ) : crewMembers.length > 0 ? (
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="crew-search">Find Crew Member</Label>
-                        <Input
-                          id="crew-search"
-                          value={crewSearchQuery}
-                          onChange={(event) => setCrewSearchQuery(event.target.value)}
-                          placeholder="Search by name or email"
-                        />
-                      </div>
-
-                      <div className="rounded-md border border-border divide-y max-h-48 overflow-y-auto">
-                        {filteredCrewMembers.length > 0 ? (
-                          filteredCrewMembers.map((member) => {
-                            const memberLabel = member.full_name || member.email || "Unnamed crew member";
-                            const selected = member.user_id === activeCrewId;
-                            const conflictCount = (crewConflictByMember[member.user_id] || []).length;
-                            const unavailableForCurrentSchedules = isCrewUnavailableForSelectedSchedules(member.user_id);
-                            return (
-                              <button
-                                key={member.user_id}
-                                type="button"
-                                onClick={() => {
-                                  if (!unavailableForCurrentSchedules) {
-                                    setActiveCrewId(member.user_id);
-                                  }
-                                }}
-                                disabled={unavailableForCurrentSchedules}
-                                className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                                  selected ? "bg-muted font-medium" : "hover:bg-muted/50"
-                                } ${
-                                  unavailableForCurrentSchedules ? "opacity-50 cursor-not-allowed hover:bg-transparent" : ""
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="truncate">{memberLabel}</span>
-                                  {conflictCount > 0 && (
-                                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                      {unavailableForCurrentSchedules
-                                        ? "Unavailable"
-                                        : `${conflictCount} conflict${conflictCount === 1 ? "" : "s"}`}
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            );
-                          })
-                        ) : (
-                          <p className="text-sm text-muted-foreground px-3 py-3">
-                            No crew members found.
-                          </p>
-                        )}
-                      </div>
-
-                      {isLoadingCrewConflicts && (
-                        <p className="text-xs text-muted-foreground">
-                          Checking crew availability for selected dates...
-                        </p>
-                      )}
-
-                      {activeCrewId ? (
-                        <div className="rounded-md border border-border">
-                          <div className="px-3 py-2 border-b border-border">
-                            <p className="text-sm font-medium">
-                              Assign days for{" "}
-                              {crewMembers.find((member) => member.user_id === activeCrewId)?.full_name ||
-                                crewMembers.find((member) => member.user_id === activeCrewId)?.email ||
-                                "Selected crew member"}
-                            </p>
-                          </div>
-                          <div className="divide-y">
-                            {addedSchedules.map((schedule, scheduleIndex) => {
-                              const [year, month, day] = schedule.date.split("-").map(Number);
-                              const localDate = new Date(year, month - 1, day);
-                              const checkboxId = `crew-day-${scheduleIndex}`;
-                              const isChecked = isCrewAssignedToDay(scheduleIndex, activeCrewId);
-                              const isConflicted = isCrewConflictedOnDay(scheduleIndex, activeCrewId);
-
-                              return (
-                                <div key={`${schedule.date}-${scheduleIndex}`} className="flex items-center gap-3 px-3 py-2">
-                                  <Checkbox
-                                    id={checkboxId}
-                                    checked={isChecked}
-                                    disabled={isConflicted}
-                                    onCheckedChange={() => toggleSelectedCrewDay(scheduleIndex)}
-                                  />
-                                  <div className="flex flex-col">
-                                    <Label
-                                      htmlFor={checkboxId}
-                                      className={`font-normal ${isConflicted ? "text-muted-foreground cursor-not-allowed" : "cursor-pointer"}`}
-                                    >
-                                      {format(localDate, "EEEE, MMM d, yyyy")}
-                                      {(schedule.timeStart || schedule.timeEnd) && (
-                                        <span className="text-muted-foreground">
-                                          {" "}({schedule.timeStart || "--:--"} - {schedule.timeEnd || "--:--"})
-                                        </span>
-                                      )}
-                                    </Label>
-                                    {isConflicted && (
-                                      <span className="text-xs text-muted-foreground">
-                                        Unavailable: already assigned at this time.
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-                          Select a crew member, then choose which scheduled days to assign.
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No crew members available. You can assign later.
-                    </p>
-                  )}
-                </div>
-              </div>
+              <CreateJobCrewAssignmentStep
+                addedSchedules={addedSchedules}
+                crewMembers={crewMembers}
+                assignedCrewByScheduleIndex={crewByScheduleIndex}
+                filteredCrewMembers={filteredCrewMembers}
+                crewSearchQuery={crewSearchQuery}
+                onCrewSearchQueryChange={setCrewSearchQuery}
+                activeCrewId={activeCrewId}
+                onActiveCrewIdChange={setActiveCrewId}
+                crewConflictByMember={crewConflictByMember}
+                isLoadingCrewConflicts={isLoadingCrewConflicts}
+                isCrewUnavailableForSelectedSchedules={isCrewUnavailableForSelectedSchedules}
+                isCrewAssignedToDay={isCrewAssignedToDay}
+                isCrewConflictedOnDay={isCrewConflictedOnDay}
+                getCrewConflictDetail={(scheduleIndex, crewId) =>
+                  crewConflictDetailsByMember[crewId]?.[scheduleIndex] || null
+                }
+                onToggleSelectedCrewDay={toggleSelectedCrewDay}
+              />
             )}
 
             {manualStep === "estimate-line-items" && (

@@ -333,6 +333,7 @@ export function useJobAssignments(leadId: string | undefined) {
     assignments,
     isLoading,
     assignCrew: assignCrewMutation.mutate,
+    assignCrewAsync: assignCrewMutation.mutateAsync,
     unassignCrew: unassignCrewMutation.mutate,
     isAssigning: assignCrewMutation.isPending,
     isUnassigning: unassignCrewMutation.isPending,

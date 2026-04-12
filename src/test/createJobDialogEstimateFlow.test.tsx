@@ -77,6 +77,13 @@ vi.mock("@/hooks/useScheduleJob", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useRecurringJobs", () => ({
+  useConvertToRecurring: () => ({
+    mutateAsync: vi.fn().mockResolvedValue({ id: "recurring_1" }),
+    isPending: false,
+  }),
+}));
+
 vi.mock("@/hooks/useTeamMembers", () => ({
   useTeamMembers: () => ({ data: [{ user_id: "crew_1", full_name: "Alex Crew", email: "alex@example.com" }] }),
 }));
@@ -274,8 +281,9 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
     fireEvent.click(screen.getByRole("button", { name: /alex crew/i }));
-    fireEvent.click(screen.getByLabelText(/jan 10, 2030/i));
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /fill line item/i }));
     fireEvent.click(screen.getByRole("button", { name: /create job/i }));
@@ -488,8 +496,9 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
     fireEvent.click(screen.getByRole("button", { name: /alex crew/i }));
-    fireEvent.click(screen.getByLabelText(/jan 10, 2030/i));
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /fill line item/i }));
     fireEvent.click(screen.getByRole("button", { name: /create job/i }));
@@ -531,6 +540,7 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
     const crewButton = screen.getByRole("button", { name: /alex crew/i });
 
     await waitFor(() => {
@@ -567,8 +577,9 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
     fireEvent.click(screen.getByRole("button", { name: /alex crew/i }));
-    fireEvent.click(screen.getByLabelText(/jan 10, 2030/i));
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /create job/i }));
 
