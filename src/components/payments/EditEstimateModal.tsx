@@ -63,6 +63,8 @@ interface EditEstimateModalProps {
     }>;
     profitMargin: string;
     surcharge: string;
+    profitMode?: "percentage" | "amount";
+    profitAmount?: string;
   }) => void;
   onDraftChange?: (payload: {
     lineItems: Array<{
@@ -75,6 +77,8 @@ interface EditEstimateModalProps {
     }>;
     profitMargin: string;
     surcharge: string;
+    profitMode?: "percentage" | "amount";
+    profitAmount?: string;
   }) => void;
 }
 
@@ -447,6 +451,12 @@ export function EditEstimateModal({
   const [profitMargin, setProfitMargin] = useState<string>(() => {
     return (estimate.profit_margin || 0).toString();
   });
+  const [profitMode, setProfitMode] = useState<"percentage" | "amount">("percentage");
+  const [profitAmount, setProfitAmount] = useState<string>(() => {
+    const subtotal = Number(estimate.subtotal || 0);
+    const marginPercent = Number(estimate.profit_margin || 0);
+    return (subtotal * (marginPercent / 100)).toFixed(2);
+  });
   const [surcharge, setSurcharge] = useState<string>(() => {
     return (estimate.surcharge || 0).toString();
   });
@@ -520,6 +530,8 @@ export function EditEstimateModal({
   const [lineItems, setLineItems] = useState<LineItemForm[]>(buildLineItemsFromEstimate);
 
   const initializeEditorState = () => {
+    const currentSubtotal = Number(estimate.subtotal || 0);
+    const currentMarginPercent = Number(estimate.profit_margin || 0);
     setLineItems(buildLineItemsFromEstimate());
     setPendingDeleteIndices(new Set());
     setSnapshots({});
@@ -527,6 +539,8 @@ export function EditEstimateModal({
     setDragIndex(null);
     setVersionNameDraft((versionName || "").trim());
     setProfitMargin((estimate.profit_margin || 0).toString());
+    setProfitMode("percentage");
+    setProfitAmount((currentSubtotal * (currentMarginPercent / 100)).toFixed(2));
     setSurcharge((estimate.surcharge || 0).toString());
   };
 
@@ -799,7 +813,14 @@ export function EditEstimateModal({
     }
 
     const originalProfitMargin = parseFloat(estimate.profit_margin?.toString() || '0');
-    const currentProfitMargin = parseFloat(profitMargin || '0');
+    const currentSubtotal = activeLineItems.reduce(
+      (sum, item) => sum + calculateLineItemTotal(item.quantity, item.unit_price),
+      0,
+    );
+    const currentProfitAmount = profitMode === "amount"
+      ? (parseFloat(profitAmount || "0") || 0)
+      : currentSubtotal * ((parseFloat(profitMargin || "0") || 0) / 100);
+    const currentProfitMargin = currentSubtotal > 0 ? (currentProfitAmount / currentSubtotal) * 100 : 0;
     const originalSurcharge = parseFloat(estimate.surcharge?.toString() || '0');
     const currentSurcharge = parseFloat(surcharge || '0');
 
@@ -828,6 +849,8 @@ export function EditEstimateModal({
     normalizedVersionNameDraft,
     shouldShowVersionNameField,
     profitMargin,
+    profitMode,
+    profitAmount,
     surcharge,
   ]);
 
@@ -835,16 +858,28 @@ export function EditEstimateModal({
     const subtotal = activeLineItems.reduce((sum, item) => {
       return sum + calculateLineItemTotal(item.quantity, item.unit_price);
     }, 0);
-    const profitMarginValue = parseFloat(profitMargin || '0') / 100;
-    const profitAmount = subtotal * profitMarginValue;
+    const parsedProfitAmount = parseFloat(profitAmount || "0");
+    const effectiveProfitAmount =
+      profitMode === "amount"
+        ? (Number.isFinite(parsedProfitAmount) ? parsedProfitAmount : 0)
+        : subtotal * (parseFloat(profitMargin || "0") / 100);
+    const effectiveProfitMarginPercent = subtotal > 0 ? (effectiveProfitAmount / subtotal) * 100 : 0;
     const surchargeValue = parseFloat(surcharge || '0') / 100;
     const surchargeAmount = subtotal * surchargeValue;
-    const subtotalWithAdjustments = subtotal + profitAmount + surchargeAmount;
+    const subtotalWithAdjustments = subtotal + effectiveProfitAmount + surchargeAmount;
     const taxAmount = subtotalWithAdjustments * parseFloat(estimate.tax_rate.toString());
     const discountAmount = parseFloat(estimate.discount.toString());
     const total = subtotalWithAdjustments + taxAmount - discountAmount;
 
-    return { subtotal, profitAmount, surchargeAmount, taxAmount, discountAmount, total };
+    return {
+      subtotal,
+      profitAmount: effectiveProfitAmount,
+      profitMarginPercent: effectiveProfitMarginPercent,
+      surchargeAmount,
+      taxAmount,
+      discountAmount,
+      total,
+    };
   };
 
   const saveChanges = async () => {
@@ -870,8 +905,10 @@ export function EditEstimateModal({
 
         onDraftSave({
           lineItems: normalizedLineItems,
-          profitMargin,
+          profitMargin: profitMarginPercent.toString(),
           surcharge,
+          profitMode,
+          profitAmount: calculatedProfitAmount.toString(),
         });
         onOpenChange(false);
         return;
@@ -902,7 +939,7 @@ export function EditEstimateModal({
           .filter((item) => item.name?.trim().length > 0);
 
         const subtotal = normalizedLineItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
-        const profitMarginValue = parseFloat(profitMargin || "0");
+        const profitMarginValue = profitMarginPercent;
         const surchargeValue = parseFloat(surcharge || "0");
         const profitAmount = subtotal * (profitMarginValue / 100);
         const surchargeAmount = subtotal * (surchargeValue / 100);
@@ -1081,7 +1118,7 @@ export function EditEstimateModal({
           (sum, item) => sum + parseFloat(item.total.toString()),
           0
         );
-        const profitMarginValue = parseFloat(profitMargin || '0') / 100;
+        const profitMarginValue = profitMarginPercent / 100;
         const profitAmount = newSubtotal * profitMarginValue;
         const surchargeValue = parseFloat(surcharge || '0') / 100;
         const surchargeAmount = newSubtotal * surchargeValue;
@@ -1093,7 +1130,7 @@ export function EditEstimateModal({
           .from('estimates')
           .update({
             subtotal: newSubtotal,
-            profit_margin: parseFloat(profitMargin || '0'),
+            profit_margin: profitMarginPercent,
             surcharge: parseFloat(surcharge || '0'),
             tax: newTax,
             total: newTotal,
@@ -1118,7 +1155,15 @@ export function EditEstimateModal({
     }
   };
 
-  const { subtotal, profitAmount, surchargeAmount, taxAmount, discountAmount, total } = calculateTotals();
+  const {
+    subtotal,
+    profitAmount: calculatedProfitAmount,
+    profitMarginPercent,
+    surchargeAmount,
+    taxAmount,
+    discountAmount,
+    total,
+  } = calculateTotals();
 
   useEffect(() => {
     if (!onDraftChange) return;
@@ -1135,10 +1180,12 @@ export function EditEstimateModal({
 
     onDraftChange({
       lineItems: normalizedLineItems,
-      profitMargin,
+      profitMargin: profitMarginPercent.toString(),
       surcharge,
+      profitMode,
+      profitAmount: calculatedProfitAmount.toString(),
     });
-  }, [activeLineItems, onDraftChange, profitMargin, surcharge]);
+  }, [activeLineItems, onDraftChange, profitMarginPercent, surcharge, profitMode, calculatedProfitAmount]);
 
   const editorBody = (
     <div className="space-y-4 py-4">
@@ -1235,22 +1282,60 @@ export function EditEstimateModal({
           </div>
           <div className="flex justify-between items-center text-sm gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Profit Margin:</span>
-              <div className="relative w-20">
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={profitMargin}
-                  onChange={(e) => setProfitMargin(e.target.value)}
-                  className="h-7 text-xs pr-6"
-                />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+              <span className="text-muted-foreground">Profit:</span>
+              <div className="flex items-center gap-2">
+                {profitMode === "percentage" ? (
+                  <div className="w-24">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={profitMargin}
+                      onChange={(e) => setProfitMargin(e.target.value)}
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-24">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={profitAmount}
+                      onChange={(e) => setProfitAmount(e.target.value)}
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                )}
+                <Select
+                  value={profitMode}
+                  onValueChange={(value) => {
+                    const nextMode = value as "percentage" | "amount";
+                    if (nextMode === profitMode) return;
+                    if (nextMode === "amount") {
+                      setProfitAmount(calculatedProfitAmount.toFixed(2));
+                    } else if (subtotal > 0) {
+                      const nextPercent = (calculatedProfitAmount / subtotal) * 100;
+                      setProfitMargin(nextPercent.toFixed(2));
+                    } else {
+                      setProfitMargin("0");
+                    }
+                    setProfitMode(nextMode);
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[64px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percentage">%</SelectItem>
+                    <SelectItem value="amount">$</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <span className="font-medium">
-              ${profitAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${calculatedProfitAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
           <div className="flex justify-between items-center text-sm gap-2">

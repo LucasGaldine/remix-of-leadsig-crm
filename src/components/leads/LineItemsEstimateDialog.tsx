@@ -42,6 +42,8 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
   const [estimateName, setEstimateName] = useState("original");
   const [profitMargin, setProfitMargin] = useState<string>("");
+  const [profitMode, setProfitMode] = useState<"percentage" | "amount">("percentage");
+  const [profitAmount, setProfitAmount] = useState<string>("0");
   const [surcharge, setSurcharge] = useState<string>("");
   const [creating, setCreating] = useState(false);
   const [showVoiceEstimateIntake, setShowVoiceEstimateIntake] = useState(false);
@@ -50,7 +52,15 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     if (open) {
       setLineItems(defaultLineItems);
       setEstimateName("original");
-      setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
+      const defaultProfitMargin = Number(currentAccount?.default_profit_margin ?? 0);
+      const defaultSubtotal = defaultLineItems.reduce((sum, item) => {
+        const quantity = Number.parseFloat(item.quantity || "0") || 0;
+        const unitPrice = Number.parseFloat(item.unit_price || "0") || 0;
+        return sum + (quantity * unitPrice);
+      }, 0);
+      setProfitMargin(String(defaultProfitMargin));
+      setProfitMode("percentage");
+      setProfitAmount((defaultSubtotal * (defaultProfitMargin / 100)).toFixed(2));
       setSurcharge(String(currentAccount?.default_surcharge ?? 0));
       setShowVoiceEstimateIntake(false);
     }
@@ -106,9 +116,13 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       .filter((item) => item.name.trim().length > 0);
 
     const subtotal = normalizedLineItems.reduce((sum, item) => sum + item.total, 0);
-    const profitMarginValue = (Number.parseFloat(profitMargin || "0") || 0) / 100;
+    const parsedProfitAmount = Number.parseFloat(profitAmount || "0");
+    const effectiveProfitAmount = profitMode === "amount"
+      ? (Number.isFinite(parsedProfitAmount) ? parsedProfitAmount : 0)
+      : subtotal * ((Number.parseFloat(profitMargin || "0") || 0) / 100);
+    const effectiveProfitMarginPercent = subtotal > 0 ? (effectiveProfitAmount / subtotal) * 100 : 0;
     const surchargeValue = (Number.parseFloat(surcharge || "0") || 0) / 100;
-    const adjustedSubtotal = subtotal + (subtotal * profitMarginValue) + (subtotal * surchargeValue);
+    const adjustedSubtotal = subtotal + effectiveProfitAmount + (subtotal * surchargeValue);
     const tax = adjustedSubtotal * taxRate;
     const total = adjustedSubtotal + tax;
 
@@ -121,10 +135,10 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       subtotal: Number(subtotal.toFixed(2)),
       tax: Number(tax.toFixed(2)),
       total: Number(total.toFixed(2)),
-      profit_margin: Number.parseFloat(profitMargin || "0") || 0,
+      profit_margin: Number(effectiveProfitMarginPercent.toFixed(6)),
       surcharge: Number.parseFloat(surcharge || "0") || 0,
     };
-  }, [currentAccount?.default_tax_rate, currentAccount?.id, lineItems, profitMargin, surcharge]);
+  }, [currentAccount?.default_tax_rate, currentAccount?.id, lineItems, profitMargin, profitMode, profitAmount, surcharge]);
 
   const isMissingEstimateNameColumnError = (error: unknown) => {
     if (!error || typeof error !== "object") return false;
@@ -170,13 +184,15 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         return sum + (quantity * unitPrice);
       }, 0);
 
-      const profitMarginPercent = parseFloat(profitMargin) || 0;
-      const profitMarginValue = profitMarginPercent / 100;
-      const profitAmount = estimateSubtotal * profitMarginValue;
+      const parsedProfitAmount = Number.parseFloat(profitAmount || "0");
+      const resolvedProfitAmount = profitMode === "amount"
+        ? (Number.isFinite(parsedProfitAmount) ? parsedProfitAmount : 0)
+        : estimateSubtotal * ((parseFloat(profitMargin) || 0) / 100);
+      const profitMarginPercent = estimateSubtotal > 0 ? (resolvedProfitAmount / estimateSubtotal) * 100 : 0;
       const surchargePercent = parseFloat(surcharge) || 0;
       const surchargeValue = surchargePercent / 100;
       const surchargeAmount = estimateSubtotal * surchargeValue;
-      const subtotalAfterAdjustments = estimateSubtotal + profitAmount + surchargeAmount;
+      const subtotalAfterAdjustments = estimateSubtotal + resolvedProfitAmount + surchargeAmount;
       const taxRatePercent = currentAccount?.default_tax_rate ?? 0;
       const taxRate = taxRatePercent / 100;
       const taxAmount = subtotalAfterAdjustments * taxRate;
@@ -322,7 +338,13 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
             onShowVoiceEstimateIntake={() => setShowVoiceEstimateIntake(true)}
             onHideVoiceEstimateIntake={() => setShowVoiceEstimateIntake(false)}
             onEstimateVersionNameChange={setEstimateName}
-            onDraftChange={({ lineItems: updatedLineItems, profitMargin: updatedProfitMargin, surcharge: updatedSurcharge }) => {
+            onDraftChange={({
+              lineItems: updatedLineItems,
+              profitMargin: updatedProfitMargin,
+              surcharge: updatedSurcharge,
+              profitMode: updatedProfitMode,
+              profitAmount: updatedProfitAmount,
+            }) => {
               setLineItems(
                 updatedLineItems.map((item) => ({
                   name: item.name,
@@ -334,6 +356,8 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
                 })),
               );
               setProfitMargin(updatedProfitMargin);
+              setProfitMode(updatedProfitMode || "percentage");
+              setProfitAmount(updatedProfitAmount || "0");
               setSurcharge(updatedSurcharge);
             }}
             onApplyVoiceEstimateIntake={applyVoiceEstimateIntake}

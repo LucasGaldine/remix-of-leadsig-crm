@@ -26,6 +26,8 @@ interface CreateJobEstimateStepContentProps {
     lineItems: EstimateLineItemDraft[];
     profitMargin: string;
     surcharge: string;
+    profitMode?: "percentage" | "amount";
+    profitAmount?: string;
   }) => void;
   onApplyVoiceEstimateIntake: (parsed: VoiceEstimateParsedData) => void;
 }
