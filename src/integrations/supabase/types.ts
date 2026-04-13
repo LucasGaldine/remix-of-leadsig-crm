@@ -56,6 +56,42 @@ export type Database = {
         }
         Relationships: []
       }
+      documentation_pages: {
+        Row: {
+          account_id: string
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          slug: string
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          slug: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          slug?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       job_crew_assignments: {
         Row: {
           account_id: string | null

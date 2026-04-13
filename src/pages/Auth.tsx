@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Loader2, Leaf } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { usePasswordStrength } from '@/hooks/usePasswordStrength';
 import { PasswordStrengthIndicator } from '@/components/auth/PasswordStrengthIndicator';
@@ -46,6 +46,7 @@ export default function Auth() {
   const [companyAddress, setCompanyAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [smsConsentEnabled, setSmsConsentEnabled] = useState(false);
+  const [isSignupPasswordFocused, setIsSignupPasswordFocused] = useState(false);
   const [signupStep, setSignupStep] = useState<1 | 2 | 3>(1);
   const [signupCompanyMode, setSignupCompanyMode] = useState<'create' | 'join' | null>(null);
 
@@ -255,9 +256,7 @@ export default function Auth() {
       >
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Leaf className="h-6 w-6 text-primary" />
-            </div>
+            <img src="/header_logo.png" alt="LeadSig logo" className="h-8 w-auto object-contain" />
             <span className="text-2xl font-bold">LeadSig</span>
           </div>
           <CardTitle className="text-2xl">Welcome</CardTitle>
@@ -400,17 +399,23 @@ export default function Auth() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="signup-password">Password</Label>
-                        <Input
-                          id="signup-password"
-                          type="password"
-                          placeholder="••••••••"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          disabled={isLoading}
-                        />
-                        {password.length > 0 && (
-                          <PasswordStrengthIndicator validation={passwordValidation} />
-                        )}
+                        <div className="relative">
+                          <Input
+                            id="signup-password"
+                            type="password"
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            onFocus={() => setIsSignupPasswordFocused(true)}
+                            onBlur={() => setIsSignupPasswordFocused(false)}
+                            disabled={isLoading}
+                          />
+                          {password.length > 0 && isSignupPasswordFocused && (
+                            <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-md border bg-popover p-3 shadow-lg">
+                              <PasswordStrengthIndicator validation={passwordValidation} />
+                            </div>
+                          )}
+                        </div>
                         {errors.password && (
                           <p className="text-sm text-destructive">{errors.password}</p>
                         )}

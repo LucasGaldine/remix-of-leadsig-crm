@@ -59,6 +59,7 @@ import Tutorial from "./pages/Tutorial";
 import OnboardingSource from "./pages/OnboardingSource";
 import OnboardingImport from "./pages/OnboardingImport";
 import AffiliateSignup from "./pages/AffiliateSignup";
+import Admin from "./pages/Admin";
 
 const queryClient = new QueryClient();
 
@@ -214,6 +215,7 @@ const router = createBrowserRouter([
       { path: "/payments/:id", element: <Protected><PaymentDetail /></Protected> },
       { path: "/customers", element: <Protected><Customers /></Protected> },
       { path: "/customers/:id", element: <Protected><CustomerDetail /></Protected> },
+      { path: "/admin", element: <Protected><Admin /></Protected> },
       { path: "*", element: <NotFound /> },
     ],
   },
