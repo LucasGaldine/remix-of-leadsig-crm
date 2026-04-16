@@ -338,7 +338,7 @@ export default function ClientJobPortal() {
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-        <div className="client-portal-themed w-full px-4 py-8 sm:px-8 sm:py-12 space-y-6" style={customerPortalThemeStyle}>
+        <div className="client-portal-themed mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 sm:py-12 space-y-6" style={customerPortalThemeStyle}>
           <div
             className="bg-white rounded-2xl shadow-lg overflow-hidden border"
             style={{ borderColor: hexToRgba(customerPortalTextColor, 0.8) }}
@@ -535,7 +535,7 @@ export default function ClientJobPortal() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="client-portal-themed w-full px-4 py-8 sm:px-8 sm:py-12 space-y-6" style={portalThemeStyle}>
+      <div className="client-portal-themed mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 sm:py-12 space-y-6" style={portalThemeStyle}>
         {showBackButton && (
           <button
             onClick={handleBackToList}
