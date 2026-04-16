@@ -20,6 +20,88 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+const MAX_SIGNATURE_IMAGE_BYTES = 6 * 1024 * 1024;
+
+function isManualApprovalPhotoUrlColumnMissing(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: string }).code;
+  if (code === "42703") return true;
+
+  const message = [
+    (error as { message?: string }).message,
+    (error as { details?: string }).details,
+    (error as { hint?: string }).hint,
+  ]
+    .filter((part): part is string => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+
+  return message.includes("manual_approval_photo_url");
+}
+
+function decodeBase64(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function parseSignatureDataUrl(signatureDataUrl: string): { bytes: Uint8Array; contentType: string; extension: string } | null {
+  const trimmedValue = signatureDataUrl.trim();
+  const match = trimmedValue.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) return null;
+
+  const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const extensionByContentType: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+  };
+  const extension = extensionByContentType[contentType];
+  if (!extension) return null;
+
+  let bytes: Uint8Array;
+  try {
+    bytes = decodeBase64(match[2]);
+  } catch {
+    return null;
+  }
+
+  if (!bytes.length || bytes.length > MAX_SIGNATURE_IMAGE_BYTES) {
+    return null;
+  }
+
+  return { bytes, contentType, extension };
+}
+
+async function uploadSignatureDataUrl(
+  supabase: any,
+  estimateId: string,
+  signatureDataUrl: string,
+): Promise<{ ok: true; filePath: string; publicUrl: string } | { ok: false; error: string; statusCode: number }> {
+  const parsedImage = parseSignatureDataUrl(signatureDataUrl);
+  if (!parsedImage) {
+    return { ok: false, error: "Invalid signature format. Please sign again.", statusCode: 400 };
+  }
+
+  const filePath = `estimate-approvals/${estimateId}/${crypto.randomUUID()}.${parsedImage.extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from("lead-photos")
+    .upload(filePath, parsedImage.bytes, {
+      contentType: parsedImage.contentType,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return { ok: false, error: "Failed to upload signature image", statusCode: 500 };
+  }
+
+  const { data: urlData } = supabase.storage.from("lead-photos").getPublicUrl(filePath);
+  return { ok: true, filePath, publicUrl: urlData.publicUrl };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -301,6 +383,12 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     const action = body.action;
     const clientUpdatedAt = body.updated_at;
     const estimateVersionId = typeof body.estimate_version_id === "string" ? body.estimate_version_id : null;
+    const signatureDataUrl =
+      typeof body.signature_data_url === "string"
+        ? body.signature_data_url
+        : typeof body.signatureDataUrl === "string"
+          ? body.signatureDataUrl
+          : null;
 
     if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
       return jsonResponse({ error: "Invalid action" }, 400);
@@ -316,7 +404,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       return jsonResponse({ error: "No quote found for this job schedule" }, 404);
     }
 
-    return await handleEstimateAction(supabase, estimate, action, null, clientUpdatedAt, estimateVersionId);
+    return await handleEstimateAction(supabase, estimate, action, null, clientUpdatedAt, estimateVersionId, signatureDataUrl);
   }
 
   if (req.method !== "GET") {
@@ -348,7 +436,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     supabase
       .from("estimates")
       .select(`
-        id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+        id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
         original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
@@ -469,6 +557,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       ? {
           total: estimate.total,
           subtotal: estimate.subtotal,
+          profit_margin: estimate.profit_margin,
           tax_rate: estimate.tax_rate,
           tax: estimate.tax,
           discount: estimate.discount,
@@ -505,6 +594,12 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
   const action = body.action;
   const clientUpdatedAt = body.updated_at;
   const estimateVersionId = typeof body.estimate_version_id === "string" ? body.estimate_version_id : null;
+  const signatureDataUrl =
+    typeof body.signature_data_url === "string"
+      ? body.signature_data_url
+      : typeof body.signatureDataUrl === "string"
+        ? body.signatureDataUrl
+        : null;
 
   if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
     return jsonResponse({ error: "Invalid action" }, 400);
@@ -537,10 +632,10 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
       return jsonResponse({ error: "No estimate found for this job" }, 404);
     }
 
-    return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt, estimateVersionId);
+    return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl);
   }
 
-  return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt, estimateVersionId);
+  return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl);
 }
 
 async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) {
@@ -568,7 +663,7 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
       .from("estimates")
       .select(
         `
-        id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+        id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
         original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
@@ -615,7 +710,7 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         .from("estimates")
         .select(
           `
-          id, subtotal, tax_rate, tax, discount, total, notes, status, created_at, updated_at,
+          id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
           original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
           line_items:estimate_line_items(
             id, name, description, quantity, unit, unit_price, total,
@@ -716,6 +811,7 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
       ? {
           total: parentEstimate.total,
           subtotal: parentEstimate.subtotal,
+          profit_margin: parentEstimate.profit_margin,
           tax_rate: parentEstimate.tax_rate,
           tax: parentEstimate.tax,
           discount: parentEstimate.discount,
@@ -761,7 +857,8 @@ async function handleEstimateAction(
   action: "approve" | "decline" | "approve_changes" | "decline_changes",
   portalJobId: string | null,
   clientUpdatedAt?: string,
-  estimateVersionId?: string | null
+  estimateVersionId?: string | null,
+  signatureDataUrl?: string | null,
 ) {
   if (clientUpdatedAt && estimate.updated_at !== clientUpdatedAt) {
     return jsonResponse({
@@ -775,6 +872,15 @@ async function handleEstimateAction(
     }
 
     if (action === "approve_changes") {
+      let uploadedSignature: { filePath: string; publicUrl: string } | null = null;
+      if (signatureDataUrl) {
+        const uploadedResult = await uploadSignatureDataUrl(supabase, estimate.id, signatureDataUrl);
+        if (!uploadedResult.ok) {
+          return jsonResponse({ error: uploadedResult.error }, uploadedResult.statusCode);
+        }
+        uploadedSignature = { filePath: uploadedResult.filePath, publicUrl: uploadedResult.publicUrl };
+      }
+
       const { error: approveError } = await supabase
         .from("estimate_line_items")
         .update({ change_order_approved: true })
@@ -783,7 +889,46 @@ async function handleEstimateAction(
         .eq("change_order_approved", false);
 
       if (approveError) {
+        if (uploadedSignature?.filePath) {
+          await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+        }
         return jsonResponse({ error: "Failed to approve changes" }, 500);
+      }
+
+      const changeApprovalUpdatePayload: Record<string, unknown> = {
+        approved_via: "customer_link",
+        accepted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      if (uploadedSignature) {
+        changeApprovalUpdatePayload.manual_approval_photo_url = uploadedSignature.publicUrl;
+      }
+
+      const { error: changeApprovalUpdateError } = await supabase
+        .from("estimates")
+        .update(changeApprovalUpdatePayload)
+        .eq("id", estimate.id);
+
+      if (changeApprovalUpdateError && uploadedSignature && isManualApprovalPhotoUrlColumnMissing(changeApprovalUpdateError)) {
+        const { manual_approval_photo_url: _manualApprovalPhotoUrl, ...fallbackPayload } = changeApprovalUpdatePayload;
+        const { error: fallbackError } = await supabase
+          .from("estimates")
+          .update(fallbackPayload)
+          .eq("id", estimate.id);
+
+        if (uploadedSignature.filePath) {
+          await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+        }
+
+        if (fallbackError) {
+          return jsonResponse({ error: "Failed to finalize change-order approval" }, 500);
+        }
+      } else if (changeApprovalUpdateError) {
+        if (uploadedSignature?.filePath) {
+          await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+        }
+        return jsonResponse({ error: "Failed to finalize change-order approval" }, 500);
       }
 
       return jsonResponse({ success: true, message: "Changes approved" });
@@ -819,24 +964,59 @@ async function handleEstimateAction(
   }
 
   if (action === "approve") {
+    let uploadedSignature: { filePath: string; publicUrl: string } | null = null;
+    if (signatureDataUrl) {
+      const uploadedResult = await uploadSignatureDataUrl(supabase, estimate.id, signatureDataUrl);
+      if (!uploadedResult.ok) {
+        return jsonResponse({ error: uploadedResult.error }, uploadedResult.statusCode);
+      }
+      uploadedSignature = { filePath: uploadedResult.filePath, publicUrl: uploadedResult.publicUrl };
+    }
+
     if (estimateVersionId) {
       const applyResult = await applyEstimateVersionBeforeApproval(supabase, estimate.id, estimateVersionId);
       if (!applyResult.ok) {
+        if (uploadedSignature?.filePath) {
+          await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+        }
         return jsonResponse({ error: applyResult.error }, applyResult.statusCode);
       }
     }
 
+    const estimateUpdatePayload: Record<string, unknown> = {
+      status: "accepted",
+      accepted_at: new Date().toISOString(),
+      approved_via: "customer_link",
+      updated_at: new Date().toISOString(),
+    };
+
+    if (uploadedSignature) {
+      estimateUpdatePayload.manual_approval_photo_url = uploadedSignature.publicUrl;
+    }
+
     const { error } = await supabase
       .from("estimates")
-      .update({
-        status: "accepted",
-        accepted_at: new Date().toISOString(),
-        approved_via: "customer_link",
-        updated_at: new Date().toISOString(),
-      })
+      .update(estimateUpdatePayload)
       .eq("id", estimate.id);
 
-    if (error) {
+    if (error && uploadedSignature && isManualApprovalPhotoUrlColumnMissing(error)) {
+      const { manual_approval_photo_url: _manualApprovalPhotoUrl, ...fallbackPayload } = estimateUpdatePayload;
+      const { error: fallbackError } = await supabase
+        .from("estimates")
+        .update(fallbackPayload)
+        .eq("id", estimate.id);
+
+      if (uploadedSignature.filePath) {
+        await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+      }
+
+      if (fallbackError) {
+        return jsonResponse({ error: "Failed to approve estimate" }, 500);
+      }
+    } else if (error) {
+      if (uploadedSignature?.filePath) {
+        await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+      }
       return jsonResponse({ error: "Failed to approve estimate" }, 500);
     }
 

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { normalizeClientPortalColor, normalizeClientPortalTextColor } from "@/lib/clientPortalTheme";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface LineItem {
   id: string;
@@ -67,6 +68,87 @@ interface ClientPortalEstimateProps {
   portalTextColor?: string;
 }
 
+function foldProfitMarginIntoLineItems(
+  lineItems: LineItem[],
+  subtotal: number,
+  profitMargin: number,
+): { lineItems: LineItem[]; subtotal: number } {
+  const normalizedSubtotal = Number(subtotal) || 0;
+  const marginRate = Number(profitMargin) / 100;
+  if (marginRate <= 0 || lineItems.length === 0) {
+    return { lineItems, subtotal: normalizedSubtotal };
+  }
+
+  const totalProfitCents = Math.round(normalizedSubtotal * marginRate * 100);
+  if (totalProfitCents <= 0) {
+    return { lineItems, subtotal: normalizedSubtotal };
+  }
+
+  const lineItemTotalCents = lineItems.map((item) => Math.round((Number(item.total) || 0) * 100));
+  let eligibleIndexes = lineItemTotalCents
+    .map((totalCents, index) => ({ index, totalCents }))
+    .filter((entry) => entry.totalCents > 0)
+    .map((entry) => entry.index);
+
+  if (eligibleIndexes.length === 0) {
+    eligibleIndexes = lineItems.map((_, index) => index);
+  }
+
+  if (eligibleIndexes.length === 0) {
+    return { lineItems, subtotal: normalizedSubtotal };
+  }
+
+  const weightSum = eligibleIndexes.reduce((sum, index) => sum + Math.max(lineItemTotalCents[index], 1), 0);
+  const distributedCentsByIndex = new Map<number, number>();
+  const fractionalShares: Array<{ index: number; fractional: number }> = [];
+  let distributedCents = 0;
+
+  for (const index of eligibleIndexes) {
+    const weight = Math.max(lineItemTotalCents[index], 1);
+    const rawShare = (totalProfitCents * weight) / Math.max(weightSum, 1);
+    const baseShare = Math.floor(rawShare);
+    distributedCentsByIndex.set(index, baseShare);
+    distributedCents += baseShare;
+    fractionalShares.push({ index, fractional: rawShare - baseShare });
+  }
+
+  let remainder = totalProfitCents - distributedCents;
+  fractionalShares
+    .sort((a, b) => b.fractional - a.fractional || a.index - b.index)
+    .forEach((entry) => {
+      if (remainder <= 0) {
+        return;
+      }
+      distributedCentsByIndex.set(entry.index, (distributedCentsByIndex.get(entry.index) || 0) + 1);
+      remainder -= 1;
+    });
+
+  const adjustedLineItems = lineItems.map((item, index) => {
+    const shareCents = distributedCentsByIndex.get(index) || 0;
+    if (shareCents === 0) {
+      return item;
+    }
+
+    const originalTotal = Number(item.total) || 0;
+    const quantity = Number(item.quantity) || 0;
+    const adjustedTotal = Number((originalTotal + shareCents / 100).toFixed(2));
+    const adjustedUnitPrice = quantity > 0
+      ? Number((adjustedTotal / quantity).toFixed(2))
+      : Number(((Number(item.unit_price) || 0) + shareCents / 100).toFixed(2));
+
+    return {
+      ...item,
+      total: adjustedTotal,
+      unit_price: adjustedUnitPrice,
+    };
+  });
+
+  return {
+    lineItems: adjustedLineItems,
+    subtotal: Number((normalizedSubtotal + totalProfitCents / 100).toFixed(2)),
+  };
+}
+
 export function ClientPortalEstimate({
   estimate,
   token,
@@ -86,15 +168,24 @@ export function ClientPortalEstimate({
   portalColor = "",
   portalTextColor = "",
 }: ClientPortalEstimateProps) {
+  const SIGNATURE_CANVAS_WIDTH = 600;
+  const SIGNATURE_CANVAS_HEIGHT = 180;
   const versionWindowSize = 3;
   const [submitting, setSubmitting] = useState<"approve" | "decline" | "approve_changes" | "decline_changes" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versionWindowStart, setVersionWindowStart] = useState(0);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
+  const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingSignatureRef = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   const isPending = estimate.status !== "accepted" && estimate.status !== "declined";
-  const hasOriginalEstimate = estimate.original_total != null && estimate.original_line_items;
+  const hasOriginalEstimate =
+    estimate.original_total != null && Array.isArray(estimate.original_line_items);
   const hasPendingChanges = estimate.has_pending_changes === true;
+  const shouldShowChangeOrderReview = hasPendingChanges;
   const availableVersions = useMemo(
     () => estimate.estimate_versions || [],
     [estimate.estimate_versions],
@@ -184,6 +275,140 @@ export function ClientPortalEstimate({
   const normalizedPortalColor = normalizeClientPortalColor(portalColor);
   const normalizedPortalTextColor = normalizeClientPortalTextColor(portalTextColor);
   const isVersionComparisonMode = isPending && !hasPendingChanges && availableVersions.length > 0;
+  const displayEstimateWithProfitFolded = useMemo(
+    () => foldProfitMarginIntoLineItems(displayLineItems, Number(displaySubtotal), displayProfitMargin),
+    [displayLineItems, displayProfitMargin, displaySubtotal],
+  );
+  const changeOrderDelta = hasOriginalEstimate
+    ? Number(estimate.total || 0) - Number(estimate.original_total || 0)
+    : null;
+  const displayLineItemsWithProfitFolded = displayEstimateWithProfitFolded.lineItems;
+  const displaySubtotalWithProfitFolded = displayEstimateWithProfitFolded.subtotal;
+
+  const getSignatureContext = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return null;
+
+    try {
+      return canvas.getContext("2d");
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const context = getSignatureContext();
+    if (!context) return;
+
+    context.clearRect(0, 0, SIGNATURE_CANVAS_WIDTH, SIGNATURE_CANVAS_HEIGHT);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#0f172a";
+    context.lineWidth = 2;
+  }, [SIGNATURE_CANVAS_HEIGHT, SIGNATURE_CANVAS_WIDTH]);
+
+  const clearSignature = () => {
+    const canvas = signatureCanvasRef.current;
+    const context = getSignatureContext();
+    if (!context) return;
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#0f172a";
+    context.lineWidth = 2;
+    isDrawingSignatureRef.current = false;
+    lastPointRef.current = null;
+    setHasSignature(false);
+  };
+
+  const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return null;
+
+    const bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return null;
+
+    const scaleX = canvas.width / bounds.width;
+    const scaleY = canvas.height / bounds.height;
+
+    return {
+      x: (event.clientX - bounds.left) * scaleX,
+      y: (event.clientY - bounds.top) * scaleY,
+    };
+  };
+
+  const drawSignatureSegment = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const context = getSignatureContext();
+    if (!context) return;
+
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.stroke();
+    context.closePath();
+  };
+
+  const handleSignaturePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const point = getCanvasPoint(event);
+    if (!point) return;
+
+    isDrawingSignatureRef.current = true;
+    lastPointRef.current = point;
+    drawSignatureSegment(point, point);
+    setHasSignature(true);
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const handleSignaturePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingSignatureRef.current) return;
+
+    const point = getCanvasPoint(event);
+    if (!point) return;
+
+    const lastPoint = lastPointRef.current || point;
+    drawSignatureSegment(lastPoint, point);
+    lastPointRef.current = point;
+    setHasSignature(true);
+    event.preventDefault();
+  };
+
+  const handleSignaturePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    isDrawingSignatureRef.current = false;
+    lastPointRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    event.preventDefault();
+  };
+
+  const getSignatureDataUrl = () => {
+    if (!hasSignature) {
+      return null;
+    }
+
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) {
+      return null;
+    }
+
+    return canvas.toDataURL("image/png");
+  };
+
+  const getSignaturePayloadFields = () => {
+    const signatureDataUrl = getSignatureDataUrl();
+    if (!signatureDataUrl) {
+      return {};
+    }
+
+    // Keep both key styles for backward/forward compatibility with edge-function payload parsing.
+    return {
+      signature_data_url: signatureDataUrl,
+      signatureDataUrl: signatureDataUrl,
+    };
+  };
 
   const handleDownloadPDF = async () => {
     await generateEstimatePDF({
@@ -194,8 +419,8 @@ export function ClientPortalEstimate({
       companyLogoUrl,
       companyEmail,
       companyPhone,
-      lineItems: displayLineItems,
-      subtotal: displaySubtotal,
+      lineItems: displayLineItemsWithProfitFolded,
+      subtotal: displaySubtotalWithProfitFolded,
       taxRate: displayTaxRate,
       tax: displayTax,
       discount: displayDiscount,
@@ -220,6 +445,7 @@ export function ClientPortalEstimate({
           action,
           updated_at: estimate.updated_at,
           estimate_version_id: action === "approve" ? selectedVersionId : undefined,
+          ...(action === "approve" ? getSignaturePayloadFields() : {}),
         }),
       });
 
@@ -227,12 +453,14 @@ export function ClientPortalEstimate({
 
       if (!response.ok) {
         setError(result.error || "Something went wrong");
-        return;
+        return false;
       }
 
       onRefresh();
+      return true;
     } catch {
       setError("Unable to connect. Please try again.");
+      return false;
     } finally {
       setSubmitting(null);
     }
@@ -250,7 +478,8 @@ export function ClientPortalEstimate({
         headers: apiHeaders,
         body: JSON.stringify({
           action,
-          updated_at: estimate.updated_at
+          updated_at: estimate.updated_at,
+          ...(action === "approve_changes" ? getSignaturePayloadFields() : {}),
         }),
       });
 
@@ -258,18 +487,52 @@ export function ClientPortalEstimate({
 
       if (!response.ok) {
         setError(result.error || "Something went wrong");
-        return;
+        return false;
       }
 
       onRefresh();
+      return true;
     } catch {
       setError("Unable to connect. Please try again.");
+      return false;
     } finally {
       setSubmitting(null);
     }
   };
 
-  const renderEstimateSection = (
+  const openApprovalDialog = (action: "approve" | "approve_changes") => {
+    clearSignature();
+    setError(null);
+    setApprovalDialogAction(action);
+  };
+
+  const closeApprovalDialog = (open: boolean) => {
+    if (!open) {
+      setApprovalDialogAction(null);
+      clearSignature();
+    }
+  };
+
+  const handleConfirmApproval = async () => {
+    if (approvalDialogAction === "approve") {
+      const didSucceed = await handleAction("approve");
+      if (didSucceed) {
+        setApprovalDialogAction(null);
+        clearSignature();
+      }
+      return;
+    }
+
+    if (approvalDialogAction === "approve_changes") {
+      const didSucceed = await handleChangeOrderAction("approve_changes");
+      if (didSucceed) {
+        setApprovalDialogAction(null);
+        clearSignature();
+      }
+    }
+  };
+
+  const renderComparisonCard = (
     title: string,
     lineItems: LineItem[],
     subtotal: number,
@@ -278,114 +541,121 @@ export function ClientPortalEstimate({
     tax: number,
     discount: number,
     total: number,
-    notes?: string | null
-  ) => (
-    <div className="bg-white rounded-xl border border-slate-200">
-      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-        <h3 className="font-semibold text-slate-900">{title}</h3>
-      </div>
+    options?: {
+      highlighted?: boolean;
+    }
+  ) => {
+    const adjustedEstimate = foldProfitMarginIntoLineItems(lineItems, subtotal, profitMargin);
+    const isHighlighted = options?.highlighted === true;
 
-      {lineItems.length > 0 && (
-        <div className="px-4 py-4">
-          <div className="space-y-0">
-            {lineItems.map((item) => (
-              <div key={item.id} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1 min-w-0 mr-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium text-slate-900 text-sm">{item.name}</p>
-                    </div>
-                    {item.description && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {item.description}
+    return (
+      <div
+        className={[
+          "rounded-2xl border overflow-hidden",
+          isHighlighted ? "shadow-md" : "border-slate-200 bg-white text-slate-700",
+        ].join(" ")}
+        style={isHighlighted ? { backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor, borderColor: normalizedPortalColor } : undefined}
+      >
+        <div className={isHighlighted ? "px-4 py-3 border-b border-white/25" : "px-4 py-3 border-b border-slate-200"}>
+          <p className="text-sm font-semibold leading-tight">{title}</p>
+          <p className={isHighlighted ? "text-2xl font-bold mt-1 tracking-tight" : "text-2xl font-bold mt-1 tracking-tight text-slate-900"}>
+            ${Number(total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+
+        <div className="px-4 py-3 space-y-3">
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {adjustedEstimate.lineItems.length > 0 ? (
+              adjustedEstimate.lineItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={isHighlighted ? "pb-2 border-b border-white/20 last:border-b-0 last:pb-0" : "pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className={isHighlighted ? "text-sm font-medium leading-tight" : "text-sm font-medium text-slate-900 leading-tight"}>
+                        {item.name}
                       </p>
-                    )}
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {item.quantity} {item.unit} x $
-                      {Number(item.unit_price).toFixed(2)}
+                      <p className={isHighlighted ? "text-xs mt-0.5 opacity-85" : "text-xs text-slate-500 mt-0.5"}>
+                        {item.quantity} {item.unit} x ${Number(item.unit_price).toFixed(2)}
+                      </p>
+                    </div>
+                    <p className={isHighlighted ? "text-sm font-semibold whitespace-nowrap" : "text-sm font-semibold text-slate-900 whitespace-nowrap"}>
+                      ${Number(item.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </p>
                   </div>
-                  <p className="font-semibold text-slate-900 whitespace-nowrap text-sm">
-                    $
-                    {Number(item.total).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                    })}
-                  </p>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className={isHighlighted ? "text-xs opacity-85" : "text-xs text-slate-500"}>
+                No line items.
+              </p>
+            )}
           </div>
-        </div>
-      )}
 
-      <div className="px-4 py-4 bg-slate-50 border-t border-slate-200">
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Subtotal</span>
-            <span className="text-slate-700">
-              $
-              {Number(subtotal).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-              })}
-            </span>
-          </div>
-          {Number(profitMargin) > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">
-                Profit Margin ({Number(profitMargin).toFixed(1)}%)
-              </span>
-              <span className="text-slate-700">
-                $
-                {(Number(subtotal) * (Number(profitMargin) / 100)).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                })}
+          <div className={isHighlighted ? "pt-2 border-t border-white/30 space-y-1.5" : "pt-2 border-t border-slate-200 space-y-1.5"}>
+            <div className="flex justify-between text-xs">
+              <span className={isHighlighted ? "opacity-85" : "text-slate-500"}>Subtotal</span>
+              <span className={isHighlighted ? "font-medium" : "text-slate-700 font-medium"}>
+                ${Number(adjustedEstimate.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </span>
             </div>
-          )}
-          <div className="flex justify-between text-sm">
-              <span className="text-slate-500">
+            <div className="flex justify-between text-xs">
+              <span className={isHighlighted ? "opacity-85" : "text-slate-500"}>
                 Tax ({(Number(taxRate) * 100).toFixed(1)}%)
               </span>
-            <span className="text-slate-700">
-              $
-              {Number(tax).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-              })}
-            </span>
-          </div>
-          {Number(discount) > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Discount</span>
-              <span className="text-emerald-600">
-                -$
-                {Number(discount).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                })}
+              <span className={isHighlighted ? "font-medium" : "text-slate-700 font-medium"}>
+                ${Number(tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </span>
             </div>
-          )}
-          <div className="flex justify-between pt-3 border-t border-slate-200">
-            <span className="text-base font-bold text-slate-900">Total</span>
-            <span className="text-base font-bold text-slate-900">
-              $
-              {Number(total).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-              })}
-            </span>
+            {Number(discount) > 0 && (
+              <div className="flex justify-between text-xs">
+                <span className={isHighlighted ? "opacity-85" : "text-slate-500"}>Discount</span>
+                <span className={isHighlighted ? "font-medium" : "text-emerald-600 font-medium"}>
+                  -${Number(discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+            <div className={isHighlighted ? "flex justify-between text-sm font-bold pt-1" : "flex justify-between text-sm font-bold text-slate-900 pt-1"}>
+              <span>Total</span>
+              <span>${Number(total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            </div>
           </div>
         </div>
       </div>
+    );
+  };
 
-      {notes && (
-        <div className="px-4 py-3 border-t border-slate-200">
-          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-            Notes
-          </p>
-          <p className="text-sm text-slate-600 whitespace-pre-wrap">
-            {notes}
+  const signaturePad = (
+    <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-900">E-signature (optional)</p>
+          <p className="text-xs text-slate-500">
+            Sign with your finger on mobile, or click and drag on desktop.
           </p>
         </div>
-      )}
+        <button
+          type="button"
+          onClick={clearSignature}
+          disabled={!hasSignature || submitting !== null}
+          className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Clear
+        </button>
+      </div>
+      <canvas
+        ref={signatureCanvasRef}
+        width={SIGNATURE_CANVAS_WIDTH}
+        height={SIGNATURE_CANVAS_HEIGHT}
+        onPointerDown={handleSignaturePointerDown}
+        onPointerMove={handleSignaturePointerMove}
+        onPointerUp={handleSignaturePointerUp}
+        onPointerCancel={handleSignaturePointerUp}
+        onPointerLeave={handleSignaturePointerUp}
+        className="h-40 w-full rounded-lg border border-slate-200 bg-white touch-none"
+        aria-label="Signature pad"
+      />
     </div>
   );
 
@@ -454,6 +724,12 @@ export function ClientPortalEstimate({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               {visibleVersions.map((version) => {
                 const isSelectedVersion = selectedVersionId === version.id;
+                const versionWithProfitFolded = foldProfitMarginIntoLineItems(
+                  version.line_items,
+                  Number(version.subtotal),
+                  Number(version.profit_margin || 0),
+                );
+
                 return (
                   <button
                     key={version.id}
@@ -477,8 +753,8 @@ export function ClientPortalEstimate({
 
                     <div className="px-4 py-3 space-y-3">
                       <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                        {version.line_items.length > 0 ? (
-                          version.line_items.map((item) => (
+                        {versionWithProfitFolded.lineItems.length > 0 ? (
+                          versionWithProfitFolded.lineItems.map((item) => (
                             <div
                               key={item.id}
                               className={isSelectedVersion ? "pb-2 border-b border-white/20 last:border-b-0 last:pb-0" : "pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"}
@@ -509,7 +785,7 @@ export function ClientPortalEstimate({
                         <div className="flex justify-between text-xs">
                           <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>Subtotal</span>
                           <span className={isSelectedVersion ? "font-medium" : "text-slate-700 font-medium"}>
-                            ${Number(version.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ${versionWithProfitFolded.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                         <div className="flex justify-between text-xs">
@@ -542,7 +818,7 @@ export function ClientPortalEstimate({
         )}
       </div>
 
-      {hasPendingChanges && hasOriginalEstimate ? (
+      {shouldShowChangeOrderReview ? (
         <div className="px-6 sm:px-8 py-5">
           <div className="flex items-start gap-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
             <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -553,24 +829,42 @@ export function ClientPortalEstimate({
               <p className="text-xs text-amber-700 mt-1">
                 The contractor has proposed changes to the original estimate. Please review both versions below.
               </p>
+              {changeOrderDelta !== null && (
+                <p className="text-xs text-amber-800 mt-1 font-semibold">
+                  Change Order Total: {changeOrderDelta >= 0 ? "+" : "-"}$
+                  {Math.abs(changeOrderDelta).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
+                </p>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {renderEstimateSection(
-              "Original Approved Estimate",
-              estimate.original_line_items!,
-              estimate.original_subtotal!,
-              estimate.tax_rate,
-              estimate.profit_margin || 0,
-              estimate.original_tax!,
-              estimate.original_discount!,
-              estimate.original_total!,
-              estimate.original_notes
-            )}
+            {hasOriginalEstimate
+              ? renderComparisonCard(
+                  "Original Approved Estimate",
+                  estimate.original_line_items!,
+                  estimate.original_subtotal!,
+                  estimate.tax_rate,
+                  estimate.profit_margin || 0,
+                  estimate.original_tax!,
+                  estimate.original_discount!,
+                  estimate.original_total!,
+                )
+              : renderComparisonCard(
+                  "Current Estimate",
+                  currentLineItems,
+                  estimate.subtotal,
+                  estimate.tax_rate,
+                  estimate.profit_margin || 0,
+                  estimate.tax,
+                  estimate.discount,
+                  estimate.total,
+                )}
 
-            {renderEstimateSection(
-              "Proposed Changes",
+            {renderComparisonCard(
+              hasOriginalEstimate ? "Proposed Changes" : "Proposed Changes (Awaiting Approval)",
               currentLineItems,
               estimate.subtotal,
               estimate.tax_rate,
@@ -578,7 +872,7 @@ export function ClientPortalEstimate({
               estimate.tax,
               estimate.discount,
               estimate.total,
-              estimate.notes
+              { highlighted: true }
             )}
           </div>
 
@@ -600,17 +894,13 @@ export function ClientPortalEstimate({
                 {submitting === "decline_changes" ? "Declining..." : "Decline Changes"}
               </button>
               <button
-                onClick={() => handleChangeOrderAction("approve_changes")}
+                onClick={() => openApprovalDialog("approve_changes")}
                 disabled={submitting !== null}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
               >
-                {submitting === "approve_changes" ? (
-                  <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                ) : (
-                  <Check className="h-4 w-4" />
-                )}
-                {submitting === "approve_changes" ? "Approving..." : "Approve Changes"}
+                <Check className="h-4 w-4" />
+                Approve Changes
               </button>
             </div>
           </div>
@@ -620,7 +910,7 @@ export function ClientPortalEstimate({
           {!isVersionComparisonMode && displayLineItems.length > 0 && (
             <div className="px-6 sm:px-8 py-5">
               <div className="space-y-0">
-                {displayLineItems.map((item) => (
+                {displayLineItemsWithProfitFolded.map((item) => (
                   <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0 mr-4">
@@ -657,24 +947,11 @@ export function ClientPortalEstimate({
                   </span>
                   <span className="text-slate-700">
                     $
-                    {Number(displaySubtotal).toLocaleString(undefined, {
+                    {Number(displaySubtotalWithProfitFolded).toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                     })}
                   </span>
                 </div>
-                {displayProfitMargin > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">
-                      Profit Margin ({displayProfitMargin.toFixed(1)}%)
-                    </span>
-                    <span className="text-slate-700">
-                      $
-                      {(Number(displaySubtotal) * (displayProfitMargin / 100)).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">
                     Tax ({(Number(displayTaxRate) * 100).toFixed(1)}%)
@@ -742,21 +1019,55 @@ export function ClientPortalEstimate({
               {submitting === "decline" ? "Declining..." : "Decline"}
             </button>
             <button
-              onClick={() => handleAction("approve")}
+              onClick={() => openApprovalDialog("approve")}
               disabled={submitting !== null}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
             >
-              {submitting === "approve" ? (
-                <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-              ) : (
-                <Check className="h-4 w-4" />
-              )}
-              {submitting === "approve" ? "Approving..." : "Approve"}
+              <Check className="h-4 w-4" />
+              Approve
             </button>
           </div>
         </div>
       )}
+
+      <Dialog open={approvalDialogAction !== null} onOpenChange={closeApprovalDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {approvalDialogAction === "approve_changes" ? "Approve Changes" : "Approve Estimate"}
+            </DialogTitle>
+            <DialogDescription>
+              Add an optional e-signature, then submit your approval.
+            </DialogDescription>
+          </DialogHeader>
+          {signaturePad}
+          <DialogFooter className="gap-2">
+            <button
+              type="button"
+              onClick={() => closeApprovalDialog(false)}
+              disabled={submitting !== null}
+              className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmApproval}
+              disabled={submitting !== null}
+              className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
+            >
+              {submitting === "approve" || submitting === "approve_changes" ? (
+                <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              {submitting === "approve" || submitting === "approve_changes" ? "Submitting..." : "Submit Approval"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

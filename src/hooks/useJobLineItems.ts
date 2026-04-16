@@ -369,7 +369,7 @@ export const useJobLineItems = (jobId: string | undefined) => {
 
       const { data: estimateTotalsItems, error: estimateTotalsItemsError } = await supabase
         .from("estimate_line_items")
-        .select("total")
+        .select("id,total,quantity,category,unit_price")
         .eq("estimate_id", estimate.id)
         .eq("account_id", currentAccount.id)
         .or("is_change_order.is.null,and(is_change_order.eq.false),and(is_change_order.eq.true,change_order_type.neq.deleted)");
@@ -384,14 +384,49 @@ export const useJobLineItems = (jobId: string | undefined) => {
       const surchargeRate = Number((estimate as any).surcharge || 0) / 100;
       const taxRate = Number(estimate.tax_rate || 0);
       const discount = Number(estimate.discount || 0);
-      const adjustedSubtotal = subtotal + subtotal * profitMarginRate + subtotal * surchargeRate;
+      const laborItems = (estimateTotalsItems ?? []).filter((item) => item.category === "labor");
+
+      // Fold profit dollars directly into labor line items to keep line-item totals aligned with estimate subtotal.
+      let distributedProfitAmount = 0;
+      if (profitMarginRate > 0 && laborItems.length > 0) {
+        const totalProfitCents = Math.round(subtotal * profitMarginRate * 100);
+        const baseShareCents = Math.floor(totalProfitCents / laborItems.length);
+        const remainderCents = totalProfitCents - baseShareCents * laborItems.length;
+
+        for (let index = 0; index < laborItems.length; index += 1) {
+          const laborItem = laborItems[index];
+          const shareCents = baseShareCents + (index < remainderCents ? 1 : 0);
+          const shareAmount = shareCents / 100;
+          const currentTotal = Number(laborItem.total || 0);
+          const quantity = Number(laborItem.quantity || 0);
+          const nextTotal = Number((currentTotal + shareAmount).toFixed(2));
+          const nextUnitPrice = quantity > 0
+            ? Number((nextTotal / quantity).toFixed(2))
+            : Number((Number(laborItem.unit_price || 0) + shareAmount).toFixed(2));
+
+          const { error: laborUpdateError } = await supabase
+            .from("estimate_line_items")
+            .update({
+              unit_price: nextUnitPrice,
+              total: nextTotal,
+            })
+            .eq("id", laborItem.id);
+
+          if (laborUpdateError) throw laborUpdateError;
+          distributedProfitAmount += shareAmount;
+        }
+      }
+
+      const adjustedSubtotalValue = Number((subtotal + distributedProfitAmount).toFixed(2));
+      const surchargeAmount = subtotal * surchargeRate;
+      const adjustedSubtotal = adjustedSubtotalValue + surchargeAmount;
       const tax = adjustedSubtotal * taxRate;
       const total = adjustedSubtotal + tax - discount;
 
       const { error: updateEstimateError } = await supabase
         .from("estimates")
         .update({
-          subtotal,
+          subtotal: adjustedSubtotalValue,
           tax,
           total,
           updated_at: new Date().toISOString(),

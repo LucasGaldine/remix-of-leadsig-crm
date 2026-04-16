@@ -103,6 +103,7 @@ interface LineItem {
 interface EstimateData {
   total: number;
   subtotal: number;
+  profit_margin?: number;
   tax_rate: number;
   tax: number;
   discount: number;

@@ -503,6 +503,85 @@ describe("EstimateDetail layout", () => {
     });
   });
 
+  it("downloads profit-adjusted values in the estimate PDF", async () => {
+    mockEstimate = buildEstimate({
+      has_pending_changes: false,
+      status: "sent",
+      subtotal: 1000,
+      profit_margin: 20,
+      tax_rate: 0.12,
+      tax: 240,
+      discount: 0,
+      total: 1440,
+    });
+    estimateVersionsOrderMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: "ver_profit",
+          name: "Profit Version",
+          subtotal: 1000,
+          tax_rate: 0.12,
+          tax: 240,
+          discount: 0,
+          total: 1440,
+          profit_margin: 20,
+          surcharge: 0,
+          notes: "Profit applied",
+          line_items: [
+            {
+              name: "Black Mulch",
+              description: "Spread and level mulch",
+              quantity: 1000,
+              unit: "sq ft",
+              unit_price: 1,
+              total: 1000,
+              sort_order: 0,
+              category: "materials",
+            },
+          ],
+          created_at: "2026-04-02T00:00:00.000Z",
+          updated_at: "2026-04-02T00:00:00.000Z",
+        },
+      ],
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/payments/estimates/est_1"]}>
+        <Routes>
+          <Route path="/payments/estimates/:id" element={<EstimateDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const versionTab = await screen.findByRole("tab", { name: /profit version/i });
+    fireEvent.mouseDown(versionTab);
+    fireEvent.click(versionTab);
+
+    const versionActionsButton = screen.getByRole("button", { name: /^version actions$/i });
+    fireEvent.click(versionActionsButton);
+    fireEvent.click(screen.getAllByRole("button", { name: /download pdf/i })[0]);
+
+    await waitFor(() => {
+      expect(generateEstimatePDF).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lineItems: [
+            expect.objectContaining({
+              name: "Black Mulch",
+              unit_price: 1.2,
+              total: 1200,
+            }),
+          ],
+          subtotal: 1200,
+          taxRate: 0.12,
+          tax: 240,
+          discount: 0,
+          total: 1440,
+        }),
+      );
+    });
+  });
+
   it("shows approved details collapsed and keeps download in tabs actions", async () => {
     mockEstimate = buildEstimate({
       has_pending_changes: false,

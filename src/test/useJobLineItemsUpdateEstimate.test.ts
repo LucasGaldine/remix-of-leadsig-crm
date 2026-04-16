@@ -16,11 +16,15 @@ const { useAuthMock } = vi.hoisted(() => ({
 
 const {
   fromMock,
+  estimatesUpdateMock,
+  estimateLineItemsAdjustUpdateMock,
   estimateLineItemsUpdateMock,
   estimateLineItemsMarkDeletedInMock,
   estimateLineItemsInsertMock,
 } = vi.hoisted(() => ({
   fromMock: vi.fn(),
+  estimatesUpdateMock: vi.fn(),
+  estimateLineItemsAdjustUpdateMock: vi.fn(),
   estimateLineItemsUpdateMock: vi.fn(),
   estimateLineItemsMarkDeletedInMock: vi.fn(),
   estimateLineItemsInsertMock: vi.fn(),
@@ -80,6 +84,8 @@ describe("useJobLineItems updateEstimateFromJobCosts", () => {
     invalidateQueriesMock.mockReset();
     useAuthMock.mockReset();
     fromMock.mockReset();
+    estimatesUpdateMock.mockReset();
+    estimateLineItemsAdjustUpdateMock.mockReset();
     estimateLineItemsUpdateMock.mockReset();
     estimateLineItemsMarkDeletedInMock.mockReset();
     estimateLineItemsInsertMock.mockReset();
@@ -110,6 +116,14 @@ describe("useJobLineItems updateEstimateFromJobCosts", () => {
     });
 
     estimateLineItemsInsertMock.mockResolvedValue({ error: null });
+    estimateLineItemsAdjustUpdateMock.mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    });
+    estimatesUpdateMock.mockReturnValue({
+      eq: vi.fn(() => ({
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      })),
+    });
 
     fromMock.mockImplementation((table: string) => {
       if (table === "estimates") {
@@ -126,11 +140,7 @@ describe("useJobLineItems updateEstimateFromJobCosts", () => {
               error: null,
             }),
           ),
-          update: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              eq: vi.fn().mockResolvedValue({ error: null }),
-            })),
-          })),
+          update: estimatesUpdateMock,
         };
       }
 
@@ -170,15 +180,24 @@ describe("useJobLineItems updateEstimateFromJobCosts", () => {
                 error: null,
               });
             }
-            if (columns === "total") {
+            if (columns === "id,total,quantity,category,unit_price") {
               return createAwaitableQuery({
-                data: [{ total: 100 }, { total: 200 }],
+                data: [
+                  { id: "item_1", total: 100, quantity: 1, category: "other", unit_price: 100 },
+                  { id: "item_2", total: 200, quantity: 1, category: "other", unit_price: 200 },
+                ],
                 error: null,
               });
             }
             throw new Error(`Unexpected estimate_line_items select columns: ${columns}`);
           }),
-          update: estimateLineItemsUpdateMock,
+          update: vi.fn((values: Record<string, unknown>) => {
+            if ("is_change_order" in values || "change_order_type" in values) {
+              return estimateLineItemsUpdateMock(values);
+            }
+
+            return estimateLineItemsAdjustUpdateMock(values);
+          }),
           insert: estimateLineItemsInsertMock,
         };
       }
@@ -224,6 +243,90 @@ describe("useJobLineItems updateEstimateFromJobCosts", () => {
           category: "labor",
         }),
       ]),
+    );
+  });
+
+  it("distributes profit margin across labor line items so subtotal matches adjusted line item totals", async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() =>
+            createMaybeSingleQuery({
+              data: {
+                id: "est_1",
+                tax_rate: 0,
+                discount: 0,
+                profit_margin: 10,
+                surcharge: 0,
+              },
+              error: null,
+            }),
+          ),
+          update: estimatesUpdateMock,
+        };
+      }
+
+      if (table === "job_line_items") {
+        return {
+          select: vi.fn(() =>
+            createAwaitableQuery({
+              data: [],
+              error: null,
+            }),
+          ),
+        };
+      }
+
+      if (table === "estimate_line_items") {
+        return {
+          select: vi.fn((columns: string) => {
+            if (columns === "id") {
+              return createAwaitableQuery({
+                data: [{ id: "base_labor_1" }, { id: "base_labor_2" }],
+                error: null,
+              });
+            }
+            if (columns === "id,total,quantity,category,unit_price") {
+              return createAwaitableQuery({
+                data: [
+                  { id: "labor_1", total: 100, quantity: 1, category: "labor", unit_price: 100 },
+                  { id: "labor_2", total: 200, quantity: 1, category: "labor", unit_price: 200 },
+                ],
+                error: null,
+              });
+            }
+            if (columns === "sort_order") {
+              return createAwaitableQuery({ data: [{ sort_order: 3 }], error: null });
+            }
+            throw new Error(`Unexpected estimate_line_items select columns: ${columns}`);
+          }),
+          update: vi.fn((values: Record<string, unknown>) => {
+            if ("is_change_order" in values || "change_order_type" in values) {
+              return estimateLineItemsUpdateMock(values);
+            }
+
+            return estimateLineItemsAdjustUpdateMock(values);
+          }),
+          insert: estimateLineItemsInsertMock,
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const hook = useJobLineItems("job_1");
+
+    await expect(
+      hook.updateEstimateFromJobCosts.mutateAsync({ mode: "replace", target: "labor" }),
+    ).resolves.toBeUndefined();
+
+    expect(estimateLineItemsAdjustUpdateMock).toHaveBeenCalledTimes(2);
+    expect(estimatesUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subtotal: 330,
+        tax: 0,
+        total: 330,
+      }),
     );
   });
 });

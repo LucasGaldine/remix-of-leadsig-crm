@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClientPortalEstimate } from "@/components/client-portal/ClientPortalEstimate";
 
@@ -12,7 +12,66 @@ vi.mock("@/lib/pdfGenerator", () => ({
 }));
 
 describe("ClientPortalEstimate", () => {
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+  const originalToDataUrl = HTMLCanvasElement.prototype.toDataURL;
+  const originalSetPointerCapture = HTMLCanvasElement.prototype.setPointerCapture;
+  const originalReleasePointerCapture = HTMLCanvasElement.prototype.releasePointerCapture;
+  const originalHasPointerCapture = HTMLCanvasElement.prototype.hasPointerCapture;
+
+  const setupSignatureCanvasMocks = () => {
+    const contextMock = {
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      closePath: vi.fn(),
+      clearRect: vi.fn(),
+      lineCap: "round",
+      lineJoin: "round",
+      strokeStyle: "#0f172a",
+      lineWidth: 2,
+    };
+
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => contextMock as unknown as CanvasRenderingContext2D);
+    HTMLCanvasElement.prototype.toDataURL = vi.fn(() => "data:image/png;base64,signature123");
+    HTMLCanvasElement.prototype.setPointerCapture = vi.fn();
+    HTMLCanvasElement.prototype.releasePointerCapture = vi.fn();
+    HTMLCanvasElement.prototype.hasPointerCapture = vi.fn(() => true);
+  };
+
+  const drawSignature = () => {
+    const canvas = screen.getByLabelText("Signature pad");
+    Object.defineProperty(canvas, "getBoundingClientRect", {
+      value: () => ({
+        left: 0,
+        top: 0,
+        width: 300,
+        height: 120,
+        right: 300,
+        bottom: 120,
+      }),
+      configurable: true,
+    });
+
+    fireEvent.pointerDown(canvas, { clientX: 20, clientY: 20, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 80, clientY: 50, pointerId: 1 });
+    fireEvent.pointerUp(canvas, { clientX: 80, clientY: 50, pointerId: 1 });
+  };
+
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => null);
+    HTMLCanvasElement.prototype.toDataURL = vi.fn(() => "data:image/png;base64,default");
+    HTMLCanvasElement.prototype.setPointerCapture = vi.fn();
+    HTMLCanvasElement.prototype.releasePointerCapture = vi.fn();
+    HTMLCanvasElement.prototype.hasPointerCapture = vi.fn(() => true);
+  });
+
   afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+    HTMLCanvasElement.prototype.toDataURL = originalToDataUrl;
+    HTMLCanvasElement.prototype.setPointerCapture = originalSetPointerCapture;
+    HTMLCanvasElement.prototype.releasePointerCapture = originalReleasePointerCapture;
+    HTMLCanvasElement.prototype.hasPointerCapture = originalHasPointerCapture;
     vi.unstubAllGlobals();
   });
 
@@ -119,6 +178,7 @@ describe("ClientPortalEstimate", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /^Approve$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit Approval/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
@@ -285,5 +345,335 @@ describe("ClientPortalEstimate", () => {
     expect(screen.getByText("Option 1")).toBeInTheDocument();
     expect(previousButton).toBeDisabled();
     expect(nextButton).not.toBeDisabled();
+  });
+
+  it("folds profit margin into displayed line items and subtotal for clients", () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 132,
+          subtotal: 100,
+          profit_margin: 20,
+          tax_rate: 0.1,
+          tax: 12,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Labor",
+              quantity: 1,
+              unit: "job",
+              unit_price: 50,
+              total: 50,
+            },
+            {
+              id: "item_2",
+              name: "Materials",
+              quantity: 1,
+              unit: "job",
+              unit_price: 50,
+              total: 50,
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/Profit Margin/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Subtotal")).toBeInTheDocument();
+    expect(screen.getByText("$120.00")).toBeInTheDocument();
+    expect(screen.getAllByText("$60.00")).toHaveLength(2);
+  });
+
+  it("uses profit-adjusted line items and subtotal when downloading approved estimate PDF", () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 13440,
+          subtotal: 10000,
+          profit_margin: 20,
+          tax_rate: 0.12,
+          tax: 1440,
+          discount: 0,
+          status: "accepted",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Black Mulch",
+              quantity: 1000,
+              unit: "sq ft",
+              unit_price: 10,
+              total: 10000,
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Download PDF/i }));
+
+    expect(generateEstimatePDF).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subtotal: 12000,
+        lineItems: [
+          expect.objectContaining({
+            name: "Black Mulch",
+            unit_price: 12,
+            total: 12000,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("keeps pending change-order review visible even when original snapshot data is missing", () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 1250,
+          subtotal: 1250,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "accepted",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Mulch",
+              quantity: 1,
+              unit: "job",
+              unit_price: 1250,
+              total: 1250,
+            },
+          ],
+          has_pending_changes: true,
+          original_total: null,
+          original_line_items: null,
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Changes Requiring Approval")).toBeInTheDocument();
+    expect(screen.getByText("Proposed Changes (Awaiting Approval)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Approve Changes/i })).toBeInTheDocument();
+  });
+
+  it("shows the change-order total delta when original totals are available", () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 140,
+          subtotal: 140,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "accepted",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_current",
+              name: "Scope Update",
+              quantity: 1,
+              unit: "job",
+              unit_price: 140,
+              total: 140,
+            },
+          ],
+          has_pending_changes: true,
+          original_total: 100,
+          original_subtotal: 100,
+          original_tax: 0,
+          original_discount: 0,
+          original_line_items: [
+            {
+              id: "item_original",
+              name: "Original Scope",
+              quantity: 1,
+              unit: "job",
+              unit_price: 100,
+              total: 100,
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Change Order Total: \+\$40\.00/i)).toBeInTheDocument();
+  });
+
+  it("includes signature_data_url when approving with a drawn signature", async () => {
+    setupSignatureCanvasMocks();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 1250,
+          subtotal: 1250,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Mulch",
+              quantity: 1,
+              unit: "job",
+              unit_price: 1250,
+              total: 1250,
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Approve$/i }));
+    drawSignature();
+    fireEvent.click(screen.getByRole("button", { name: /Submit Approval/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const requestOptions = fetchMock.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(requestOptions.body)).toMatchObject({
+      action: "approve",
+      signature_data_url: "data:image/png;base64,signature123",
+    });
+  });
+
+  it("does not send signature_data_url when declining", async () => {
+    setupSignatureCanvasMocks();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 1250,
+          subtotal: 1250,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Mulch",
+              quantity: 1,
+              unit: "job",
+              unit_price: 1250,
+              total: 1250,
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Decline$/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const requestOptions = fetchMock.mock.calls[0][1] as { body: string };
+    const payload = JSON.parse(requestOptions.body);
+    expect(payload.action).toBe("decline");
+    expect(payload).not.toHaveProperty("signature_data_url");
+  });
+
+  it("includes signature_data_url when approving pending changes", async () => {
+    setupSignatureCanvasMocks();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 140,
+          subtotal: 140,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "accepted",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_current",
+              name: "Scope Update",
+              quantity: 1,
+              unit: "job",
+              unit_price: 140,
+              total: 140,
+            },
+          ],
+          has_pending_changes: true,
+          original_total: 100,
+          original_subtotal: 100,
+          original_tax: 0,
+          original_discount: 0,
+          original_line_items: [
+            {
+              id: "item_original",
+              name: "Original Scope",
+              quantity: 1,
+              unit: "job",
+              unit_price: 100,
+              total: 100,
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Approve Changes/i }));
+    drawSignature();
+    fireEvent.click(screen.getByRole("button", { name: /Submit Approval/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const requestOptions = fetchMock.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(requestOptions.body)).toMatchObject({
+      action: "approve_changes",
+      signature_data_url: "data:image/png;base64,signature123",
+    });
   });
 });

@@ -981,6 +981,7 @@ export function EditEstimateModal({
 
       const currentIds = new Set(activeLineItems.filter((item) => item.id).map((item) => item.id));
       const deletedIds = Array.from(existingIds).filter((id) => !currentIds.has(id as string));
+      let createdPendingChangeOrder = false;
 
       if (shouldTrackChanges) {
         for (const deletedId of deletedIds) {
@@ -995,6 +996,7 @@ export function EditEstimateModal({
             .eq('id', deletedId);
 
           if (error) throw error;
+          createdPendingChangeOrder = true;
         }
       } else {
         for (const deletedId of deletedIds) {
@@ -1033,6 +1035,7 @@ export function EditEstimateModal({
             });
 
             if (error) throw error;
+            createdPendingChangeOrder = true;
           } else {
             const { error } = await supabase.from('estimate_line_items').insert({
               estimate_id: estimate.id,
@@ -1083,6 +1086,7 @@ export function EditEstimateModal({
               }).eq('id', item.id);
 
               if (error) throw error;
+              createdPendingChangeOrder = true;
             } else {
               const { error } = await supabase.from('estimate_line_items').update({
                 name: item.name,
@@ -1113,6 +1117,8 @@ export function EditEstimateModal({
         .eq('estimate_id', estimate.id)
         .or('is_change_order.is.null,and(is_change_order.eq.false),and(is_change_order.eq.true,change_order_type.neq.deleted)');
 
+      let estimateUpdateValues: Record<string, unknown> | null = null;
+
       if (activeItems && activeItems.length > 0) {
         const newSubtotal = activeItems.reduce(
           (sum, item) => sum + parseFloat(item.total.toString()),
@@ -1126,20 +1132,31 @@ export function EditEstimateModal({
         const newTax = subtotalWithAdjustments * parseFloat(estimate.tax_rate.toString());
         const newTotal = subtotalWithAdjustments + newTax - parseFloat(estimate.discount.toString());
 
+        estimateUpdateValues = {
+          subtotal: newSubtotal,
+          profit_margin: profitMarginPercent,
+          surcharge: parseFloat(surcharge || '0'),
+          tax: newTax,
+          total: newTotal,
+          updated_at: new Date().toISOString(),
+        };
+      }
+
+      if (shouldTrackChanges && createdPendingChangeOrder) {
+        estimateUpdateValues = {
+          ...(estimateUpdateValues || { updated_at: new Date().toISOString() }),
+          has_pending_changes: true,
+        };
+      }
+
+      if (estimateUpdateValues) {
         await supabase
           .from('estimates')
-          .update({
-            subtotal: newSubtotal,
-            profit_margin: profitMarginPercent,
-            surcharge: parseFloat(surcharge || '0'),
-            tax: newTax,
-            total: newTotal,
-            updated_at: new Date().toISOString(),
-          })
+          .update(estimateUpdateValues)
           .eq('id', estimate.id);
       }
 
-      if (shouldTrackChanges && changeSummary.hasSubstantiveChanges) {
+      if (shouldTrackChanges && createdPendingChangeOrder) {
         toast.success('Changes saved and tracked as change orders');
       } else {
         toast.success('Changes saved successfully');

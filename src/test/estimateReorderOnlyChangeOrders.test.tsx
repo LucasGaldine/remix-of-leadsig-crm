@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
@@ -263,6 +263,13 @@ describe("EditEstimateModal change detection", () => {
     );
     expect(substantiveUpdates).toHaveLength(1);
     expect(substantiveUpdates[0].values.name).toBe("Item One Updated");
+
+    await waitFor(() => {
+      const estimatePendingUpdate = updateCalls.find(
+        (call) => call.table === "estimates" && call.values.has_pending_changes === true,
+      );
+      expect(estimatePendingUpdate).toBeDefined();
+    });
   });
 
   it("allows renaming the active estimate version from the editor header", async () => {

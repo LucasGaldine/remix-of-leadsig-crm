@@ -102,6 +102,84 @@ interface EstimateVersion {
   updated_at: string;
 }
 
+function foldProfitMarginIntoLineItems(
+  lineItems: Array<{ total: number; quantity: number; unit_price: number } & Record<string, any>>,
+  subtotal: number,
+  profitMargin: number,
+) {
+  const normalizedSubtotal = Number(subtotal) || 0;
+  const marginRate = Number(profitMargin) / 100;
+
+  if (marginRate <= 0 || lineItems.length === 0) {
+    return { lineItems, subtotal: normalizedSubtotal };
+  }
+
+  const totalProfitCents = Math.round(normalizedSubtotal * marginRate * 100);
+  if (totalProfitCents <= 0) {
+    return { lineItems, subtotal: normalizedSubtotal };
+  }
+
+  const lineItemTotalCents = lineItems.map((item) => Math.round((Number(item.total) || 0) * 100));
+  let eligibleIndexes = lineItemTotalCents
+    .map((totalCents, index) => ({ index, totalCents }))
+    .filter((entry) => entry.totalCents > 0)
+    .map((entry) => entry.index);
+
+  if (eligibleIndexes.length === 0) {
+    eligibleIndexes = lineItems.map((_, index) => index);
+  }
+
+  if (eligibleIndexes.length === 0) {
+    return { lineItems, subtotal: normalizedSubtotal };
+  }
+
+  const weightSum = eligibleIndexes.reduce((sum, index) => sum + Math.max(lineItemTotalCents[index], 1), 0);
+  const distributedCentsByIndex = new Map<number, number>();
+  const fractionalShares: Array<{ index: number; fractional: number }> = [];
+  let distributedCents = 0;
+
+  for (const index of eligibleIndexes) {
+    const weight = Math.max(lineItemTotalCents[index], 1);
+    const rawShare = (totalProfitCents * weight) / Math.max(weightSum, 1);
+    const baseShare = Math.floor(rawShare);
+    distributedCentsByIndex.set(index, baseShare);
+    distributedCents += baseShare;
+    fractionalShares.push({ index, fractional: rawShare - baseShare });
+  }
+
+  let remainder = totalProfitCents - distributedCents;
+  fractionalShares
+    .sort((a, b) => b.fractional - a.fractional || a.index - b.index)
+    .forEach((entry) => {
+      if (remainder <= 0) return;
+      distributedCentsByIndex.set(entry.index, (distributedCentsByIndex.get(entry.index) || 0) + 1);
+      remainder -= 1;
+    });
+
+  const adjustedLineItems = lineItems.map((item, index) => {
+    const shareCents = distributedCentsByIndex.get(index) || 0;
+    if (shareCents === 0) return item;
+
+    const originalTotal = Number(item.total) || 0;
+    const quantity = Number(item.quantity) || 0;
+    const adjustedTotal = Number((originalTotal + shareCents / 100).toFixed(2));
+    const adjustedUnitPrice = quantity > 0
+      ? Number((adjustedTotal / quantity).toFixed(2))
+      : Number(((Number(item.unit_price) || 0) + shareCents / 100).toFixed(2));
+
+    return {
+      ...item,
+      total: adjustedTotal,
+      unit_price: adjustedUnitPrice,
+    };
+  });
+
+  return {
+    lineItems: adjustedLineItems,
+    subtotal: Number((normalizedSubtotal + totalProfitCents / 100).toFixed(2)),
+  };
+}
+
 
 export default function EstimateDetail() {
   const { id } = useParams();
@@ -351,6 +429,20 @@ export default function EstimateDetail() {
   const handleDownloadPDF = async () => {
     if (!estimate) return;
 
+    const lineItemsForPdf = displayLineItems.map((item: any) => ({
+      name: item.name,
+      description: item.description,
+      quantity: item.quantity,
+      unit: item.unit,
+      unit_price: item.unit_price,
+      total: item.total,
+    }));
+    const foldedPdfEstimate = foldProfitMarginIntoLineItems(
+      lineItemsForPdf,
+      Number(displaySubtotal) || 0,
+      Number(displayProfitMargin) || 0,
+    );
+
     await generateEstimatePDF({
       customerName: estimate.customer?.name || "Unknown Customer",
       jobName: estimate.job?.name || "",
@@ -359,15 +451,8 @@ export default function EstimateDetail() {
       companyLogoUrl: estimate.account?.logo_url || "",
       companyEmail: estimate.account?.company_email || "",
       companyPhone: estimate.account?.company_phone || "",
-      lineItems: displayLineItems.map((item: any) => ({
-        name: item.name,
-        description: item.description,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        total: item.total,
-      })),
-      subtotal: displaySubtotal,
+      lineItems: foldedPdfEstimate.lineItems,
+      subtotal: foldedPdfEstimate.subtotal,
       taxRate: displayTaxRate,
       tax: displayTax,
       discount: displayDiscount,
