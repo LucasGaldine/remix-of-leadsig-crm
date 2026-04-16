@@ -1656,7 +1656,7 @@ export default function EstimateDetail() {
                             <img
                               src={(estimate as any).manual_approval_photo_url}
                               alt="Signature photo captured during approval"
-                              className="mt-2 h-40 w-auto max-w-full rounded-lg border border-emerald-200 object-cover shadow-sm"
+                              className="mt-2 max-h-40 w-full rounded-lg border border-emerald-200 bg-emerald-50/30 object-contain shadow-sm"
                             />
                           </div>
                         )}
@@ -1799,8 +1799,11 @@ export default function EstimateDetail() {
                       <span className="text-foreground">${Number(displaySubtotal).toLocaleString()}</span>
                     </div>
                     {displayProfitMargin > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Profit Margin ({displayProfitMargin.toFixed(0)}%)</span>
+                      <div className="flex justify-between gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Profit ({displayProfitMargin.toFixed(0)}%)</span>
+                          <p className="mt-0.5 text-xs text-muted-foreground">(Hidden from customer)</p>
+                        </div>
                         <span className="text-foreground">${(Number(displaySubtotal) * (displayProfitMargin / 100)).toLocaleString()}</span>
                       </div>
                     )}
@@ -1975,7 +1978,7 @@ export default function EstimateDetail() {
                   <img
                     src={manualApprovalPreviewUrl}
                     alt="Selected signature photo"
-                    className="h-48 w-full object-cover"
+                    className="max-h-48 w-full bg-muted/20 object-contain"
                   />
                 </div>
                 <div className="flex items-center justify-between gap-3">
