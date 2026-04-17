@@ -28,16 +28,16 @@ describe("OnboardingSource page", () => {
     window.localStorage.removeItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY);
   });
 
-  it("captures selected CRM and continues to import onboarding", () => {
+  it("captures selected CRM and continues to profile onboarding", () => {
     render(<OnboardingSource />);
 
     fireEvent.click(screen.getByRole("button", { name: /Jobber/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Continue to comparison/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Continue to import step/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
 
     expect(window.localStorage.getItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY)).toBe("Jobber");
     expect(window.localStorage.getItem(ONBOARDING_SOURCE_STORAGE_KEY)).toBe("completed");
-    expect(navigateMock).toHaveBeenCalledWith("/onboarding/import");
+    expect(navigateMock).toHaveBeenCalledWith("/onboarding/profile");
   });
 
   it("supports custom CRM names", () => {
@@ -45,8 +45,8 @@ describe("OnboardingSource page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Other/i }));
     fireEvent.change(screen.getByLabelText(/Previous CRM name/i), { target: { value: "Pipedrive" } });
-    fireEvent.click(screen.getByRole("button", { name: /Continue to comparison/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Continue to import step/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
 
     expect(window.localStorage.getItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY)).toBe("Pipedrive");
   });
@@ -57,7 +57,7 @@ describe("OnboardingSource page", () => {
 
     expect(screen.queryByText(/LeadSig is already outrunning Jobber/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Continue to comparison/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
 
     expect(screen.getByText(/LeadSig is already outrunning Jobber/i)).toBeInTheDocument();
     expect(screen.getByRole("group", { name: /CRM performance comparison/i })).toHaveAttribute("aria-orientation", "vertical");
@@ -66,6 +66,6 @@ describe("OnboardingSource page", () => {
   it("shows step indicator for the first onboarding step", () => {
     render(<OnboardingSource />);
 
-    expect(screen.getByText(/^Step 1 of 2$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Step 1 of 3$/i)).toBeInTheDocument();
   });
 });

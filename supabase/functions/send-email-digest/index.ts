@@ -34,7 +34,7 @@ interface ProfileRow {
 interface AccountMemberRow {
   user_id: string;
   account_id: string;
-  accounts: { name: string } | null;
+  accounts: { name?: string | null; company_name?: string | null; pricing_plan?: string | null } | null;
 }
 
 interface DigestRequestBody {
@@ -394,7 +394,7 @@ Deno.serve(async (req: Request) => {
 
     let membersQuery = supabase
       .from("account_members")
-      .select("user_id, account_id, accounts(name)")
+      .select("user_id, account_id, accounts(name, company_name, pricing_plan)")
       .eq("is_active", true);
     if (testUserId) {
       membersQuery = membersQuery.eq("user_id", testUserId);
@@ -463,6 +463,17 @@ Deno.serve(async (req: Request) => {
         );
 
         for (const member of memberEntries as AccountMemberRow[]) {
+          if (member.accounts?.pricing_plan === "free") {
+            results.push({
+              user_id: profile.user_id,
+              account_id: member.account_id,
+              sent: false,
+              reason: "Notifications are not available on the Free plan",
+              notification_count: 0,
+            });
+            continue;
+          }
+
           const { data: lastDigest } = await supabase
             .from("email_digest_log")
             .select("created_at")
@@ -519,7 +530,7 @@ Deno.serve(async (req: Request) => {
           }
 
           const companyName =
-            (member.accounts as unknown as { name: string })?.name || "";
+            member.accounts?.company_name || member.accounts?.name || "";
           const subjectPrefix = testMode ? "Test: " : "";
           const subject =
             digestType === "daily"

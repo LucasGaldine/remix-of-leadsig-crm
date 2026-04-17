@@ -5,7 +5,11 @@ import { ArrowLeft, ArrowRight, Check, PlayCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { completeOnboardingTutorial } from "@/lib/onboarding";
+import {
+  completeOnboardingTutorial,
+  markOnboardingPlanPending,
+  ONBOARDING_PLAN_STORAGE_KEY,
+} from "@/lib/onboarding";
 import { onboardingSlides } from "@/lib/onboardingContent";
 
 export default function Tutorial() {
@@ -24,7 +28,11 @@ export default function Tutorial() {
 
   const handleFinish = () => {
     completeOnboardingTutorial();
-    navigate("/");
+    const planState = window.localStorage.getItem(ONBOARDING_PLAN_STORAGE_KEY);
+    if (planState === null) {
+      markOnboardingPlanPending();
+    }
+    navigate("/onboarding/plan");
   };
 
   const handleSkip = () => {

@@ -14,6 +14,34 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+class MockIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+if (typeof window !== "undefined" && !("IntersectionObserver" in window)) {
+  Object.defineProperty(window, "IntersectionObserver", {
+    writable: true,
+    configurable: true,
+    value: MockIntersectionObserver,
+  });
+}
+
+if (typeof window !== "undefined" && !("ResizeObserver" in window)) {
+  Object.defineProperty(window, "ResizeObserver", {
+    writable: true,
+    configurable: true,
+    value: MockResizeObserver,
+  });
+}
+
 if (
   typeof window !== "undefined" &&
   (!window.localStorage || typeof window.localStorage.removeItem !== "function")

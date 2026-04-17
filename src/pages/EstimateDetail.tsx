@@ -2058,6 +2058,8 @@ export default function EstimateDetail() {
         onCopy={handleCopyPortalLink}
         clientPhone={portalClientPhone || estimate.customer?.phone || ""}
         clientEmail={portalClientEmail || estimate.customer?.email || ""}
+        allowTextClient={currentAccount?.pricing_plan !== "free"}
+        allowEmailClient={currentAccount?.pricing_plan !== "free"}
       />
 
       <EditEstimateModal

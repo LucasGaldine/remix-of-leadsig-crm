@@ -81,11 +81,25 @@ export const searchPages: SearchPage[] = [
     keywords: ["crm", "source", "onboarding", "setup", "migration", "switch", "replay"],
   },
   {
+    name: "Replay Profile Setup",
+    path: "/onboarding/profile",
+    icon: "book-open",
+    description: "Run the profile setup onboarding again",
+    keywords: ["profile", "onboarding", "setup", "logo", "brand", "portal", "crew", "invite code", "replay"],
+  },
+  {
     name: "Replay Import Setup",
     path: "/onboarding/import",
     icon: "book-open",
     description: "Run the CSV import onboarding again",
     keywords: ["import", "csv", "onboarding", "setup", "leads", "clients", "jobs", "replay"],
+  },
+  {
+    name: "Replay Plan Selection",
+    path: "/onboarding/plan",
+    icon: "book-open",
+    description: "Run the pricing plan selection onboarding step again",
+    keywords: ["pricing", "plan", "subscription", "onboarding", "billing", "replay"],
   },
   {
     name: "Lead Sources",

@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Auth from "@/pages/Auth";
 import {
   ONBOARDING_IMPORT_STORAGE_KEY,
+  ONBOARDING_PLAN_STORAGE_KEY,
+  ONBOARDING_PROFILE_STORAGE_KEY,
   ONBOARDING_SOURCE_STORAGE_KEY,
   ONBOARDING_TUTORIAL_STORAGE_KEY,
 } from "@/lib/onboarding";
@@ -131,7 +133,9 @@ describe("Auth signup flow", () => {
     signUpMock.mockReset();
     navigateMock.mockReset();
     window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_PROFILE_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_PLAN_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
   });
 
@@ -201,7 +205,9 @@ describe("Auth signup flow", () => {
     });
 
     expect(window.localStorage.getItem(ONBOARDING_SOURCE_STORAGE_KEY)).toBe("pending");
+    expect(window.localStorage.getItem(ONBOARDING_PROFILE_STORAGE_KEY)).toBe("pending");
     expect(window.localStorage.getItem(ONBOARDING_IMPORT_STORAGE_KEY)).toBe("pending");
+    expect(window.localStorage.getItem(ONBOARDING_PLAN_STORAGE_KEY)).toBe("pending");
     expect(window.localStorage.getItem(ONBOARDING_TUTORIAL_STORAGE_KEY)).toBe("pending");
   });
 

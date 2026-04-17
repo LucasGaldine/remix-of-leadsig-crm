@@ -70,7 +70,7 @@ export default function OnboardingSource() {
     }
 
     completeOnboardingSource();
-    navigate(isReplay ? "/onboarding/import?source=search" : "/onboarding/import");
+    navigate(isReplay ? "/onboarding/profile?source=search" : "/onboarding/profile");
   };
 
   const comparisonCrmName = resolveComparisonCrmName(getOnboardingPreviousCrm());
@@ -78,17 +78,19 @@ export default function OnboardingSource() {
   return (
     <div className="min-h-screen bg-surface-sunken pb-10">
       <PageHeader
-        title="Tell Us Your Current CRM"
-        subtitle={isReplay ? "Replay your CRM setup anytime" : "Step 1 of 2 before importing your data"}
+        title=""
+        hideTitle
+        profileClickable={false}
         showNotifications={false}
         showSearch={false}
       />
 
       <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6">
         <div className="space-y-2">
-          <div className="text-sm font-medium text-muted-foreground">Step 1 of 2</div>
-          <div className="grid grid-cols-2 gap-2" aria-hidden>
+          <div className="text-sm font-medium text-muted-foreground">Step 1 of 3</div>
+          <div className="grid grid-cols-3 gap-2" aria-hidden>
             <div className="h-2 rounded-full bg-primary" />
+            <div className="h-2 rounded-full bg-muted" />
             <div className="h-2 rounded-full bg-muted" />
           </div>
         </div>
@@ -142,7 +144,7 @@ export default function OnboardingSource() {
 
               <div className="flex justify-end">
                 <Button onClick={continueToComparisonStep}>
-                  Continue to comparison
+                  Continue
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>
@@ -167,26 +169,26 @@ export default function OnboardingSource() {
                 >
                   <div className="flex flex-col items-center gap-2">
                     <div className="flex h-40 w-20 items-end rounded-2xl bg-primary/15 p-2 sm:h-48">
-                      <div className="crm-race-bar crm-race-bar--leadsig w-full rounded-xl bg-primary" />
-                    </div>
-                    <span className="text-xs font-semibold">LeadSig</span>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex h-40 w-20 items-end rounded-2xl bg-muted p-2 sm:h-48">
                       <div className="crm-race-bar crm-race-bar--previous w-full rounded-xl bg-muted-foreground/40" />
                     </div>
                     <span className="text-xs font-medium text-muted-foreground">{comparisonCrmName}</span>
                   </div>
+
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex h-40 w-20 items-end rounded-2xl bg-muted p-2 sm:h-48">
+                      <div className="crm-race-bar crm-race-bar--leadsig w-full rounded-xl bg-primary" />
+                    </div>
+                    <span className="text-xs font-semibold">LeadSig</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <Button variant="outline" onClick={() => setView("selection")}>
+              <div className="mt-6 flex flex-row gap-3 sm:justify-end">
+                <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setView("selection")}>
                   Back
                 </Button>
-                <Button onClick={continueToImportStep}>
-                  Continue to import step
+                <Button className="flex-1 sm:flex-none" onClick={continueToImportStep}>
+                  Continue
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>

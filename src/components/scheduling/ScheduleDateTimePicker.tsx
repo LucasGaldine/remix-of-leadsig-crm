@@ -128,6 +128,7 @@ export function ScheduleDateTimePicker({
             type="time"
             value={scheduledTimeStart}
             onChange={(event) => onScheduledTimeStartChange(event.target.value)}
+            className="h-10 px-3 py-2"
           />
         </div>
         <div className="space-y-2">
@@ -137,6 +138,7 @@ export function ScheduleDateTimePicker({
             type="time"
             value={scheduledTimeEnd}
             onChange={(event) => onScheduledTimeEndChange(event.target.value)}
+            className="h-10 px-3 py-2"
           />
         </div>
       </div>

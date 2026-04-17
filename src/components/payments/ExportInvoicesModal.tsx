@@ -121,6 +121,9 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {format(dateFrom, "MMM d, yyyy")} - {format(dateTo, "MMM d, yyyy")}
+            </p>
           </div>
 
           {selectedPreset === "custom" && (
@@ -210,10 +213,6 @@ export function ExportInvoicesModal({ open, onOpenChange }: ExportInvoicesModalP
               )}
             </ul>
           </div>
-
-          <p className="text-xs text-muted-foreground">
-            {format(dateFrom, "MMM d, yyyy")} - {format(dateTo, "MMM d, yyyy")}
-          </p>
 
           {!isLoadingHistory && lastExport && (
             <p className="text-xs text-muted-foreground">

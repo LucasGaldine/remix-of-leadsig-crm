@@ -186,6 +186,26 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("pricing_plan")
+      .eq("id", account_id)
+      .maybeSingle();
+
+    if (account?.pricing_plan === "free") {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          sent: 0,
+          reason: "Notifications are not available on the Free plan",
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const { data: members, error: membersError } = await supabase
       .from("account_members")
       .select("user_id, role")

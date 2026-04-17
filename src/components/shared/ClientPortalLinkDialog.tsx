@@ -15,6 +15,8 @@ interface ClientPortalLinkDialogProps {
   emailSent?: boolean;
   clientPhone?: string | null;
   clientEmail?: string | null;
+  allowTextClient?: boolean;
+  allowEmailClient?: boolean;
 }
 
 export function ClientPortalLinkDialog({
@@ -28,13 +30,19 @@ export function ClientPortalLinkDialog({
   emailSent = false,
   clientPhone,
   clientEmail,
+  allowTextClient = true,
+  allowEmailClient = true,
 }: ClientPortalLinkDialogProps) {
   const normalizedClientPhone = clientPhone?.trim() || "";
   const normalizedClientEmail = clientEmail?.trim() || "";
-  const canTextClient = normalizedClientPhone.length > 0;
-  const canEmailClient = normalizedClientEmail.length > 0;
+  const canTextClient = allowTextClient && normalizedClientPhone.length > 0;
+  const canEmailClient = allowEmailClient && normalizedClientEmail.length > 0;
 
   const handleTextClient = () => {
+    if (!allowTextClient) {
+      toast.error("Sending portal links by text is not available on the Free plan.");
+      return;
+    }
     if (!canTextClient) {
       toast.error("Add a customer phone number before sending a text.");
       return;
@@ -43,6 +51,10 @@ export function ClientPortalLinkDialog({
   };
 
   const handleEmailClient = async () => {
+    if (!allowEmailClient) {
+      toast.error("Sending portal links by email is not available on the Free plan.");
+      return;
+    }
     if (!canEmailClient) {
       toast.error("Add a customer email before sending an email.");
       return;
@@ -88,6 +100,7 @@ export function ClientPortalLinkDialog({
             type="button"
             className={`flex-1 ${!canTextClient ? "opacity-50 cursor-not-allowed" : ""}`}
             onClick={handleTextClient}
+            disabled={!allowTextClient}
             aria-disabled={!canTextClient}
             data-disabled={!canTextClient ? "true" : undefined}
           >
@@ -99,8 +112,8 @@ export function ClientPortalLinkDialog({
             variant="secondary"
             className={`flex-1 ${!canEmailClient ? "opacity-50 cursor-not-allowed" : ""}`}
             onClick={handleEmailClient}
-            disabled={emailSending}
-            aria-disabled={!canEmailClient || emailSending}
+            disabled={emailSending || !allowEmailClient}
+            aria-disabled={!canEmailClient || emailSending || !allowEmailClient}
             data-disabled={!canEmailClient ? "true" : undefined}
           >
             <Mail className="h-4 w-4" />

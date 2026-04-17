@@ -57,7 +57,9 @@ import Customers from "./pages/Customers";
 import CustomerDetail from "./pages/CustomerDetail";
 import Tutorial from "./pages/Tutorial";
 import OnboardingSource from "./pages/OnboardingSource";
+import OnboardingProfile from "./pages/OnboardingProfile";
 import OnboardingImport from "./pages/OnboardingImport";
+import OnboardingPlan from "./pages/OnboardingPlan";
 import AffiliateSignup from "./pages/AffiliateSignup";
 import Admin from "./pages/Admin";
 
@@ -176,7 +178,9 @@ const router = createBrowserRouter([
       { path: "/data-deletion", element: <DataDeletion /> },
       { path: "/affiliate", element: <AffiliateSignup /> },
       { path: "/onboarding/source", element: <Protected><OnboardingSource /></Protected> },
+      { path: "/onboarding/profile", element: <Protected><OnboardingProfile /></Protected> },
       { path: "/onboarding/import", element: <Protected><OnboardingImport /></Protected> },
+      { path: "/onboarding/plan", element: <Protected><OnboardingPlan /></Protected> },
       { path: "/tutorial", element: <Protected><Tutorial /></Protected> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
       { path: "/facebook-callback", element: <Protected><FacebookCallback /></Protected> },

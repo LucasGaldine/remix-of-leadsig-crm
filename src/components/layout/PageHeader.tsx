@@ -12,6 +12,7 @@ export interface PageHeaderProps {
   title: string;
   subtitle?: string;
   hideTitle?: boolean;
+  profileClickable?: boolean;
   showBack?: boolean;
   backTo?: string;
   showNotifications?: boolean;
@@ -26,6 +27,7 @@ export function PageHeader({
   title,
   subtitle,
   hideTitle = false,
+  profileClickable = true,
   showBack,
   backTo,
   showNotifications = true,
@@ -124,7 +126,7 @@ export function PageHeader({
                 )}
               </button>
             )}
-            <UserMenu />
+            <UserMenu clickable={profileClickable} />
           </div>
         </div>
 

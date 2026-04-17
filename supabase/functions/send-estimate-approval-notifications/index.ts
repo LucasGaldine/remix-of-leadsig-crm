@@ -610,9 +610,16 @@ Deno.serve(async (req: Request) => {
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name, company_email, company_phone, logo_url, settings")
+      .select("company_name, company_email, company_phone, logo_url, settings, pricing_plan")
       .eq("id", estimate.account_id)
       .maybeSingle();
+
+    if (account?.pricing_plan === "free") {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: "Notifications are not available on the Free plan" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const paymentEmails = (account?.settings as any)?.job_message_automation?.payment_emails;
     if (paymentEmails?.estimate_approved === false) {

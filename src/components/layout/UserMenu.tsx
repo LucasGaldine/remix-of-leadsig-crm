@@ -32,7 +32,11 @@ const roleColors: Record<string, string> = {
   crew_member: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
 };
 
-export function UserMenu() {
+interface UserMenuProps {
+  clickable?: boolean;
+}
+
+export function UserMenu({ clickable = true }: UserMenuProps) {
   const { user, profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const [bugReportOpen, setBugReportOpen] = useState(false);
@@ -53,17 +57,32 @@ export function UserMenu() {
     navigate('/auth');
   };
 
+  const avatar = (
+    <Avatar className="h-10 w-10">
+      <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
+      <AvatarFallback className="bg-primary/10 text-primary">
+        {initials}
+      </AvatarFallback>
+    </Avatar>
+  );
+
+  if (!clickable) {
+    return (
+      <>
+        <div className="relative h-10 w-10 rounded-full">
+          {avatar}
+        </div>
+        <BugReportModal open={bugReportOpen} onOpenChange={setBugReportOpen} />
+      </>
+    );
+  }
+
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            {avatar}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="end" forceMount>

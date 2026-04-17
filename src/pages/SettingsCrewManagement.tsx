@@ -47,7 +47,8 @@ import {
   updateAccountMemberWithDescriptionFallback,
 } from "@/lib/accountMembers";
 import { CrewRoleSelect } from "@/components/crew/CrewRoleSelect";
-import { crewOnlyRoles, roleBadgeColors, roleLabels } from "@/lib/crewRoles";
+import { roleBadgeColors, roleLabels } from "@/lib/crewRoles";
+import { MockCrewProfileDialog } from "@/components/crew/MockCrewProfileDialog";
 
 interface AccountMember {
   id: string;
@@ -690,7 +691,7 @@ export default function SettingsCrewManagement() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog
+      <MockCrewProfileDialog
         open={Boolean(mockProfileToEdit)}
         onOpenChange={(open) => {
           if (!open) {
@@ -701,77 +702,18 @@ export default function SettingsCrewManagement() {
             setMockProfileRole("crew_member");
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{mockProfileToEdit?.id ? "Edit Mock Crew Profile" : "Add Mock Crew Profile"}</DialogTitle>
-            <DialogDescription>
-              Use mock profiles to assign unsigned crew members to job schedules.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="mock-profile-name">Name</Label>
-              <Input
-                id="mock-profile-name"
-                value={mockProfileName}
-                onChange={(event) => setMockProfileName(event.target.value)}
-                placeholder="e.g. Alex - Seasonal Crew"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mock-profile-phone">Phone (optional)</Label>
-              <Input
-                id="mock-profile-phone"
-                value={mockProfilePhone}
-                onChange={(event) => setMockProfilePhone(event.target.value)}
-                placeholder="(555) 123-4567"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mock-profile-description">Short Description (optional)</Label>
-              <Textarea
-                id="mock-profile-description"
-                value={mockProfileDescription}
-                onChange={(event) => setMockProfileDescription(event.target.value.slice(0, CREW_DESCRIPTION_MAX_LENGTH))}
-                placeholder="e.g. Seasonal cleanup and mulch installs"
-              />
-              <p className="text-xs text-muted-foreground text-right">
-                {mockProfileDescription.length}/{CREW_DESCRIPTION_MAX_LENGTH}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mock-profile-role">Role</Label>
-              <CrewRoleSelect
-                id="mock-profile-role"
-                value={mockProfileRole}
-                roles={crewOnlyRoles}
-                onValueChange={(value) => setMockProfileRole(value as "crew_lead" | "crew_member")}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setMockProfileToEdit(null);
-                setMockProfileName("");
-                setMockProfilePhone("");
-                setMockProfileDescription("");
-                setMockProfileRole("crew_member");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveMockProfile}
-              disabled={!mockProfileName.trim() || upsertMockProfileMutation.isPending}
-            >
-              {upsertMockProfileMutation.isPending ? "Saving..." : "Save Profile"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        isEdit={Boolean(mockProfileToEdit?.id)}
+        isSaving={upsertMockProfileMutation.isPending}
+        name={mockProfileName}
+        onNameChange={setMockProfileName}
+        phone={mockProfilePhone}
+        onPhoneChange={setMockProfilePhone}
+        description={mockProfileDescription}
+        onDescriptionChange={setMockProfileDescription}
+        role={mockProfileRole}
+        onRoleChange={setMockProfileRole}
+        onSave={handleSaveMockProfile}
+      />
 
       <AlertDialog open={!!mockProfileToRemove} onOpenChange={(open) => !open && setMockProfileToRemove(null)}>
         <AlertDialogContent>

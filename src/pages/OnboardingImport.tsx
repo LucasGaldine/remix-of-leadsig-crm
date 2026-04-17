@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ArrowRight, CheckCircle2, Database, HardHat, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -14,9 +14,7 @@ type ImportView = "intro" | "imports";
 
 export default function OnboardingImport() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [view, setView] = useState<ImportView>("intro");
-  const isReplay = searchParams.get("source") === "search";
 
   const [showLeadImport, setShowLeadImport] = useState(false);
   const [showClientImport, setShowClientImport] = useState(false);
@@ -28,22 +26,24 @@ export default function OnboardingImport() {
 
   const continueToTutorial = () => {
     completeOnboardingImport();
-    navigate(isReplay ? "/" : "/tutorial");
+    navigate("/tutorial");
   };
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-10">
       <PageHeader
-        title="Import Your Data"
-        subtitle={isReplay ? "Replay your import onboarding anytime" : "Step 2 of 2 before your tutorial"}
+        title=""
+        hideTitle
+        profileClickable={false}
         showNotifications={false}
         showSearch={false}
       />
 
       <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6">
         <div className="space-y-2">
-          <div className="text-sm font-medium text-muted-foreground">Step 2 of 2</div>
-          <div className="grid grid-cols-2 gap-2" aria-hidden>
+          <div className="text-sm font-medium text-muted-foreground">Step 3 of 3</div>
+          <div className="grid grid-cols-3 gap-2" aria-hidden>
+            <div className="h-2 rounded-full bg-primary" />
             <div className="h-2 rounded-full bg-primary" />
             <div className="h-2 rounded-full bg-primary" />
           </div>
@@ -57,9 +57,9 @@ export default function OnboardingImport() {
                 Import now if you already have CSV files for leads, clients, or jobs. You can always do this later from each section.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button onClick={() => setView("imports")}>Import now</Button>
-              <Button variant="outline" onClick={continueToTutorial}>Skip for now</Button>
+            <CardContent className="flex flex-row gap-3 sm:items-center">
+              <Button className="flex-1 sm:flex-none" variant="outline" onClick={continueToTutorial}>Skip for now</Button>
+              <Button className="flex-1 sm:flex-none" onClick={() => setView("imports")}>Import now</Button>
             </CardContent>
           </Card>
         ) : (

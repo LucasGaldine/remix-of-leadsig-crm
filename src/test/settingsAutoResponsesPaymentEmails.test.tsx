@@ -9,6 +9,7 @@ const { updateSettingsAsyncMock } = vi.hoisted(() => ({
 }));
 
 let mockSettings: Record<string, unknown> | null;
+let mockPricingPlan: "free" | "basic" | "premium";
 
 vi.mock("@/components/layout/PageHeader", () => ({
   PageHeader: ({ title }: { title: string }) => <header>{title}</header>,
@@ -38,6 +39,15 @@ vi.mock("@/hooks/useAccountSettings", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    currentAccount: {
+      id: "acct_1",
+      pricing_plan: mockPricingPlan,
+    },
+  }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
@@ -48,6 +58,7 @@ vi.mock("sonner", () => ({
 describe("SettingsAutoResponses payment emails", () => {
   beforeEach(() => {
     mockSettings = {};
+    mockPricingPlan = "premium";
     updateSettingsAsyncMock.mockReset();
     updateSettingsAsyncMock.mockResolvedValue({});
   });
@@ -110,6 +121,45 @@ describe("SettingsAutoResponses payment emails", () => {
     expect(payload.job_message_automation?.payment_emails).toEqual({
       estimate_approved: false,
       invoice_sent: true,
+      payment_logged: false,
+    });
+  });
+
+  it("forces payment email preferences off for free plan accounts", async () => {
+    mockPricingPlan = "free";
+    mockSettings = {
+      job_message_automation: {
+        payment_emails: {
+          estimate_approved: true,
+          invoice_sent: true,
+          payment_logged: true,
+        },
+      },
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(updateSettingsAsyncMock).toHaveBeenCalled();
+    });
+
+    const payload = updateSettingsAsyncMock.mock.calls[0]?.[0] as {
+      job_message_automation?: {
+        enabled?: boolean;
+        payment_emails?: Record<string, boolean>;
+      };
+    };
+
+    expect(payload.job_message_automation?.enabled).toBe(false);
+    expect(payload.job_message_automation?.payment_emails).toEqual({
+      estimate_approved: false,
+      invoice_sent: false,
       payment_logged: false,
     });
   });

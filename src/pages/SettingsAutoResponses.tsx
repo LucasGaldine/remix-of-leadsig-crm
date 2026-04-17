@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useAccountSettings } from "@/hooks/useAccountSettings";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 const TEMPLATE_VARIABLES = [
@@ -49,7 +50,9 @@ const offsetToMinutes = (offsetValue: number, offsetUnit: OffsetUnit): number =>
 };
 
 export default function SettingsAutoResponses() {
+  const { currentAccount } = useAuth();
   const { settings, updateSettingsAsync, isSaving } = useAccountSettings();
+  const isFreePlan = currentAccount?.pricing_plan === "free";
 
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
@@ -171,8 +174,11 @@ export default function SettingsAutoResponses() {
       : [];
     const legacyTemplate = typeof automation?.message_template === "string" ? automation.message_template.trim() : "";
 
-    setJobMessageAutomationEnabled(automation?.enabled === true);
+    setJobMessageAutomationEnabled(isFreePlan ? false : automation?.enabled === true);
     setJobMessageTemplates(
+      isFreePlan
+        ? []
+        :
       configuredTemplates.length > 0
         ? configuredTemplates
         : legacyTemplate
@@ -201,32 +207,43 @@ export default function SettingsAutoResponses() {
     setDraftOffsetUnit("days");
     setDraftDeliveryChannel("text");
     setCustomEndpointEnabled(
+      isFreePlan
+        ? false
+        :
       automation?.endpoint?.enabled === true
       || (typeof automation?.endpoint?.url === "string" && automation.endpoint.url.trim().length > 0),
     );
-    setEndpointUrl(typeof automation?.endpoint?.url === "string" ? automation.endpoint.url : "");
-    setAuthHeaderName(typeof automation?.endpoint?.auth_header_name === "string" ? automation.endpoint.auth_header_name : "");
-    setAuthHeaderValue(typeof automation?.endpoint?.auth_header_value === "string" ? automation.endpoint.auth_header_value : "");
+    setEndpointUrl(isFreePlan ? "" : (typeof automation?.endpoint?.url === "string" ? automation.endpoint.url : ""));
+    setAuthHeaderName(isFreePlan ? "" : (typeof automation?.endpoint?.auth_header_name === "string" ? automation.endpoint.auth_header_name : ""));
+    setAuthHeaderValue(isFreePlan ? "" : (typeof automation?.endpoint?.auth_header_value === "string" ? automation.endpoint.auth_header_value : ""));
     setMaxRetryAttempts(String(typeof automation?.retry?.max_attempts === "number" ? automation.retry.max_attempts : 3));
     setRetryBackoffMinutes(String(typeof automation?.retry?.backoff_minutes === "number" ? automation.retry.backoff_minutes : 5));
-    setPaymentEmails({
-      ...DEFAULT_PAYMENT_EMAILS,
-      ...(automation?.payment_emails ?? {}),
-    });
+    setPaymentEmails(
+      isFreePlan
+        ? { estimate_approved: false, invoice_sent: false, payment_logged: false }
+        : {
+            ...DEFAULT_PAYMENT_EMAILS,
+            ...(automation?.payment_emails ?? {}),
+          },
+    );
     setIsDirty(false);
-  }, [settings]);
+  }, [settings, isFreePlan]);
 
   const handleSave = async () => {
     const parsedMaxRetryAttempts = Number.parseInt(maxRetryAttempts, 10);
     const parsedRetryBackoffMinutes = Number.parseInt(retryBackoffMinutes, 10);
     const fallbackTemplate = jobMessageTemplates[0];
 
+    const paymentEmailsToSave = isFreePlan
+      ? { estimate_approved: false, invoice_sent: false, payment_logged: false }
+      : paymentEmails;
+
     try {
       await updateSettingsAsync({
         job_message_automation: {
-          enabled: jobMessageAutomationEnabled,
-          message_template: jobMessageTemplates[0]?.content ?? "",
-          message_templates: jobMessageTemplates.map((template) => ({
+          enabled: isFreePlan ? false : jobMessageAutomationEnabled,
+          message_template: isFreePlan ? "" : (jobMessageTemplates[0]?.content ?? ""),
+          message_templates: isFreePlan ? [] : jobMessageTemplates.map((template) => ({
             id: template.id,
             name: template.name,
             content: template.content,
@@ -235,24 +252,24 @@ export default function SettingsAutoResponses() {
             job_service_types: template.job_service_types,
             trigger: template.trigger,
           })),
-          job_service_types: fallbackTemplate?.job_service_types ?? [],
+          job_service_types: isFreePlan ? [] : (fallbackTemplate?.job_service_types ?? []),
           trigger: {
-            type: fallbackTemplate?.trigger.type ?? "immediate",
-            offset_minutes: fallbackTemplate ? offsetToMinutes(fallbackTemplate.trigger.offset_value, fallbackTemplate.trigger.offset_unit) : 0,
-            offset_value: fallbackTemplate?.trigger.offset_value ?? 0,
-            offset_unit: fallbackTemplate?.trigger.offset_unit ?? "days",
+            type: isFreePlan ? "immediate" : (fallbackTemplate?.trigger.type ?? "immediate"),
+            offset_minutes: isFreePlan ? 0 : (fallbackTemplate ? offsetToMinutes(fallbackTemplate.trigger.offset_value, fallbackTemplate.trigger.offset_unit) : 0),
+            offset_value: isFreePlan ? 0 : (fallbackTemplate?.trigger.offset_value ?? 0),
+            offset_unit: isFreePlan ? "days" : (fallbackTemplate?.trigger.offset_unit ?? "days"),
           },
           endpoint: {
-            enabled: customEndpointEnabled,
-            url: customEndpointEnabled ? endpointUrl.trim() : "",
-            auth_header_name: customEndpointEnabled ? authHeaderName.trim() : "",
-            auth_header_value: customEndpointEnabled ? authHeaderValue : "",
+            enabled: isFreePlan ? false : customEndpointEnabled,
+            url: isFreePlan ? "" : (customEndpointEnabled ? endpointUrl.trim() : ""),
+            auth_header_name: isFreePlan ? "" : (customEndpointEnabled ? authHeaderName.trim() : ""),
+            auth_header_value: isFreePlan ? "" : (customEndpointEnabled ? authHeaderValue : ""),
           },
           retry: {
-            max_attempts: customEndpointEnabled && Number.isFinite(parsedMaxRetryAttempts) && parsedMaxRetryAttempts > 0 ? parsedMaxRetryAttempts : 3,
-            backoff_minutes: customEndpointEnabled && Number.isFinite(parsedRetryBackoffMinutes) && parsedRetryBackoffMinutes >= 0 ? parsedRetryBackoffMinutes : 5,
+            max_attempts: isFreePlan ? 3 : (customEndpointEnabled && Number.isFinite(parsedMaxRetryAttempts) && parsedMaxRetryAttempts > 0 ? parsedMaxRetryAttempts : 3),
+            backoff_minutes: isFreePlan ? 5 : (customEndpointEnabled && Number.isFinite(parsedRetryBackoffMinutes) && parsedRetryBackoffMinutes >= 0 ? parsedRetryBackoffMinutes : 5),
           },
-          payment_emails: paymentEmails,
+          payment_emails: paymentEmailsToSave,
         },
       });
       setIsDirty(false);

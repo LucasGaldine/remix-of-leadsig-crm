@@ -136,9 +136,16 @@ Deno.serve(async (req: Request) => {
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name, company_email")
+      .select("company_name, company_email, pricing_plan")
       .eq("id", accountId)
       .maybeSingle();
+
+    if (account?.pricing_plan === "free") {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: "Auto messaging is not available on the Free plan" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const companyName = account?.company_name?.trim() || "LeadSig";
     const customerName = customer?.name?.trim() || "there";

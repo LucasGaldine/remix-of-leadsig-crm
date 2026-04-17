@@ -188,9 +188,16 @@ Deno.serve(async (req: Request) => {
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name, company_email")
+      .select("company_name, company_email, pricing_plan")
       .eq("id", customer.account_id)
       .maybeSingle();
+
+    if (account?.pricing_plan === "free") {
+      return new Response(JSON.stringify({ error: "Client portal email is not available on the Free plan" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const companyName = account?.company_name?.trim() || "LeadSig";
     const customerName = customer.name?.trim() || "there";

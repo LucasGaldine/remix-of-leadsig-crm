@@ -1,11 +1,15 @@
 export const ONBOARDING_SOURCE_STORAGE_KEY = "leadsig:onboarding-source";
+export const ONBOARDING_PROFILE_STORAGE_KEY = "leadsig:onboarding-profile";
 export const ONBOARDING_IMPORT_STORAGE_KEY = "leadsig:onboarding-import";
 export const ONBOARDING_TUTORIAL_STORAGE_KEY = "leadsig:onboarding-tutorial";
+export const ONBOARDING_PLAN_STORAGE_KEY = "leadsig:onboarding-plan";
 export const ONBOARDING_PREVIOUS_CRM_STORAGE_KEY = "leadsig:onboarding-previous-crm";
 
 type SourceState = "pending" | "completed";
+type ProfileState = "pending" | "completed";
 type ImportState = "pending" | "completed";
 type TutorialState = "pending" | "completed";
+type PlanState = "pending" | "completed";
 
 function getStoredSourceState(): SourceState | null {
   if (typeof window === "undefined") {
@@ -25,12 +29,30 @@ function getStoredImportState(): ImportState | null {
   return value === "pending" || value === "completed" ? value : null;
 }
 
+function getStoredProfileState(): ProfileState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const value = window.localStorage.getItem(ONBOARDING_PROFILE_STORAGE_KEY);
+  return value === "pending" || value === "completed" ? value : null;
+}
+
 function getStoredTutorialState(): TutorialState | null {
   if (typeof window === "undefined") {
     return null;
   }
 
   const value = window.localStorage.getItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+  return value === "pending" || value === "completed" ? value : null;
+}
+
+function getStoredPlanState(): PlanState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const value = window.localStorage.getItem(ONBOARDING_PLAN_STORAGE_KEY);
   return value === "pending" || value === "completed" ? value : null;
 }
 
@@ -42,8 +64,16 @@ export function shouldShowOnboardingSource() {
   return getStoredSourceState() === "pending";
 }
 
+export function shouldShowOnboardingProfile() {
+  return getStoredProfileState() === "pending";
+}
+
 export function shouldShowOnboardingImport() {
   return getStoredImportState() === "pending";
+}
+
+export function shouldShowOnboardingPlan() {
+  return getStoredPlanState() === "pending";
 }
 
 export function markOnboardingSourcePending() {
@@ -70,12 +100,28 @@ export function markOnboardingImportPending() {
   window.localStorage.setItem(ONBOARDING_IMPORT_STORAGE_KEY, "pending");
 }
 
+export function markOnboardingProfilePending() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(ONBOARDING_PROFILE_STORAGE_KEY, "pending");
+}
+
 export function completeOnboardingImport() {
   if (typeof window === "undefined") {
     return;
   }
 
   window.localStorage.setItem(ONBOARDING_IMPORT_STORAGE_KEY, "completed");
+}
+
+export function completeOnboardingProfile() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(ONBOARDING_PROFILE_STORAGE_KEY, "completed");
 }
 
 export function markOnboardingTutorialPending() {
@@ -92,6 +138,22 @@ export function completeOnboardingTutorial() {
   }
 
   window.localStorage.setItem(ONBOARDING_TUTORIAL_STORAGE_KEY, "completed");
+}
+
+export function markOnboardingPlanPending() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(ONBOARDING_PLAN_STORAGE_KEY, "pending");
+}
+
+export function completeOnboardingPlan() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(ONBOARDING_PLAN_STORAGE_KEY, "completed");
 }
 
 export function saveOnboardingPreviousCrm(crmName: string) {
@@ -131,8 +193,10 @@ export function getPostAuthRedirectPath({
   if (isNewSignup) {
     if (shouldStartOnboarding) {
       markOnboardingSourcePending();
+      markOnboardingProfilePending();
       markOnboardingImportPending();
       markOnboardingTutorialPending();
+      markOnboardingPlanPending();
       return "/onboarding/source";
     }
 
@@ -144,9 +208,17 @@ export function getPostAuthRedirectPath({
     return "/onboarding/source";
   }
 
+  if (shouldShowOnboardingProfile()) {
+    return "/onboarding/profile";
+  }
+
   if (shouldShowOnboardingImport()) {
     return "/onboarding/import";
   }
 
-  return shouldShowOnboardingTutorial() ? "/tutorial" : "/";
+  if (shouldShowOnboardingTutorial()) {
+    return "/tutorial";
+  }
+
+  return shouldShowOnboardingPlan() ? "/onboarding/plan" : "/";
 }

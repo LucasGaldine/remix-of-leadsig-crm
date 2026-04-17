@@ -103,6 +103,7 @@ export default function SettingsNotifications() {
   const { profile, user, currentAccount, isCrewMember, refreshProfile } = useAuth();
   const { logs: smsLogs, isLoading: smsLogsLoading, refetch: refetchSmsLogs } = useSmsLogs(5);
   const isCrew = isCrewMember();
+  const isFreePlan = currentAccount?.pricing_plan === "free";
   const visibleAlertKeys = isCrew ? crewAlertKeys : ownerAlertKeys;
 
   const hasEmail = Boolean(profile?.email || user?.email);
@@ -123,6 +124,24 @@ export default function SettingsNotifications() {
     }),
     [isCrew]
   );
+  const freePlanPrefs: NotificationPreferences = useMemo(
+    () => ({
+      channels: { push: false, email: false, sms: false },
+      alerts: {
+        new_leads: false,
+        lead_updates: false,
+        payments: false,
+        schedule_changes: false,
+        tasks: false,
+        job_assignments: false,
+        same_day_reminders: false,
+      },
+      email_events: { estimate_approved: false, invoice_sent: false, payment_logged: false },
+      quiet_hours: { enabled: false, start: "21:00", end: "07:00" },
+      digest: { frequency: "off" },
+    }),
+    [],
+  );
 
   const [channels, setChannels] = useState<Record<Channel, boolean>>(defaultPrefs.channels);
   const [alerts, setAlerts] = useState<Partial<Record<AlertKey, boolean>>>(defaultPrefs.alerts);
@@ -139,6 +158,19 @@ export default function SettingsNotifications() {
   const blocker = useUnsavedChanges(isDirty);
 
   useEffect(() => {
+    if (isFreePlan) {
+      setChannels(freePlanPrefs.channels);
+      setAlerts(freePlanPrefs.alerts);
+      setEmailEvents(freePlanPrefs.email_events);
+      setQuietHoursEnabled(freePlanPrefs.quiet_hours.enabled);
+      setQuietStart(freePlanPrefs.quiet_hours.start);
+      setQuietEnd(freePlanPrefs.quiet_hours.end);
+      setDigestFrequency(freePlanPrefs.digest.frequency);
+      setSmsConsentEnabled(false);
+      setMentionNotificationsEnabled(false);
+      return;
+    }
+
     const prefs = profile?.notification_preferences as Partial<NotificationPreferences> | null | undefined;
     if (!prefs) return;
 
@@ -151,7 +183,7 @@ export default function SettingsNotifications() {
     setDigestFrequency(prefs.digest?.frequency ?? defaultPrefs.digest.frequency);
     setSmsConsentEnabled(profile?.sms_consent_status === "opted_in");
     setMentionNotificationsEnabled(profile?.mention_notifications_enabled ?? true);
-  }, [profile?.notification_preferences, profile?.mention_notifications_enabled, profile?.sms_consent_status, defaultPrefs]);
+  }, [profile?.notification_preferences, profile?.mention_notifications_enabled, profile?.sms_consent_status, defaultPrefs, freePlanPrefs, isFreePlan]);
 
   const channelAvailability: Record<Channel, { available: boolean; reason?: string }> = {
     push: { available: false, reason: "Coming soon" },
@@ -310,16 +342,18 @@ export default function SettingsNotifications() {
       return false;
     }
 
-    const payload: NotificationPreferences = {
-      channels,
-      alerts,
-      email_events: emailEvents,
-      quiet_hours: { enabled: quietHoursEnabled, start: quietStart, end: quietEnd },
-      digest: { frequency: digestFrequency },
-    };
-    const consentStatus = smsConsentEnabled ? "opted_in" : "opted_out";
+    const payload: NotificationPreferences = isFreePlan
+      ? freePlanPrefs
+      : {
+          channels,
+          alerts,
+          email_events: emailEvents,
+          quiet_hours: { enabled: quietHoursEnabled, start: quietStart, end: quietEnd },
+          digest: { frequency: digestFrequency },
+        };
+    const consentStatus = isFreePlan ? "opted_out" : (smsConsentEnabled ? "opted_in" : "opted_out");
     const consentChanged = profile?.sms_consent_status !== consentStatus;
-    const payloadWithConsent: NotificationPreferences = !smsConsentEnabled
+    const payloadWithConsent: NotificationPreferences = !smsConsentEnabled || isFreePlan
       ? {
           ...payload,
           channels: { ...payload.channels, sms: false },
@@ -327,7 +361,7 @@ export default function SettingsNotifications() {
       : payload;
     const profileUpdate: Record<string, unknown> = {
       notification_preferences: payloadWithConsent,
-      mention_notifications_enabled: mentionNotificationsEnabled,
+      mention_notifications_enabled: isFreePlan ? false : mentionNotificationsEnabled,
     };
     if (consentChanged) {
       profileUpdate.sms_consent_status = consentStatus;
@@ -412,7 +446,7 @@ export default function SettingsNotifications() {
 
     const { error } = await supabase
       .from("profiles")
-      .update({ notification_preferences: defaultPrefs })
+      .update({ notification_preferences: isFreePlan ? freePlanPrefs : defaultPrefs })
       .eq("user_id", user.id);
 
     if (error) {
@@ -421,13 +455,14 @@ export default function SettingsNotifications() {
       return;
     }
 
-    setChannels(defaultPrefs.channels);
-    setAlerts(defaultPrefs.alerts);
-    setEmailEvents(defaultPrefs.email_events);
-    setQuietHoursEnabled(defaultPrefs.quiet_hours.enabled);
-    setQuietStart(defaultPrefs.quiet_hours.start);
-    setQuietEnd(defaultPrefs.quiet_hours.end);
-    setDigestFrequency(defaultPrefs.digest.frequency);
+    const resetPrefs = isFreePlan ? freePlanPrefs : defaultPrefs;
+    setChannels(resetPrefs.channels);
+    setAlerts(resetPrefs.alerts);
+    setEmailEvents(resetPrefs.email_events);
+    setQuietHoursEnabled(resetPrefs.quiet_hours.enabled);
+    setQuietStart(resetPrefs.quiet_hours.start);
+    setQuietEnd(resetPrefs.quiet_hours.end);
+    setDigestFrequency(resetPrefs.digest.frequency);
     setIsDirty(false);
     toast.success("Notification preferences reset to defaults");
     await refreshProfile();

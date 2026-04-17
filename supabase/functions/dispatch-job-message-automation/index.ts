@@ -108,6 +108,7 @@ Deno.serve(async (req: Request) => {
     let failed = 0;
     let scheduledForRetry = 0;
     let skipped = 0;
+    const accountPlanById = new Map<string, string | null>();
 
     for (const event of events) {
       const attemptNumber = Number(event.attempt_count ?? 0) + 1;
@@ -132,6 +133,29 @@ Deno.serve(async (req: Request) => {
 
       if (!claimed) {
         skipped += 1;
+        continue;
+      }
+
+      if (!accountPlanById.has(event.account_id)) {
+        const { data: accountRow } = await supabase
+          .from("accounts")
+          .select("pricing_plan")
+          .eq("id", event.account_id)
+          .maybeSingle();
+        accountPlanById.set(event.account_id, accountRow?.pricing_plan ?? null);
+      }
+
+      if (accountPlanById.get(event.account_id) === "free") {
+        skipped += 1;
+        await supabase
+          .from("message_automation_events")
+          .update({
+            status: "failed",
+            next_retry_at: null,
+            last_error: "Auto messaging is not available on the Free plan",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", event.id);
         continue;
       }
 

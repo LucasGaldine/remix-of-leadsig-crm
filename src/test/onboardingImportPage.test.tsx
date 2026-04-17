@@ -6,13 +6,14 @@ import OnboardingImport from "@/pages/OnboardingImport";
 import { ONBOARDING_IMPORT_STORAGE_KEY, ONBOARDING_PREVIOUS_CRM_STORAGE_KEY } from "@/lib/onboarding";
 
 const navigateMock = vi.fn();
+let mockSearchParams = new URLSearchParams();
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
   return {
     ...actual,
     useNavigate: () => navigateMock,
-    useSearchParams: () => [new URLSearchParams(), vi.fn()],
+    useSearchParams: () => [mockSearchParams, vi.fn()],
   };
 });
 
@@ -60,11 +61,22 @@ vi.mock("@/components/jobs/JobCSVImportModal", () => ({
 describe("OnboardingImport page", () => {
   beforeEach(() => {
     navigateMock.mockReset();
+    mockSearchParams = new URLSearchParams();
     window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_PREVIOUS_CRM_STORAGE_KEY);
   });
 
   it("supports skipping imports and continues to tutorial", () => {
+    render(<OnboardingImport />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Skip for now/i }));
+
+    expect(window.localStorage.getItem(ONBOARDING_IMPORT_STORAGE_KEY)).toBe("completed");
+    expect(navigateMock).toHaveBeenCalledWith("/tutorial");
+  });
+
+  it("continues to tutorial when skipping imports during replay mode", () => {
+    mockSearchParams = new URLSearchParams("source=search");
     render(<OnboardingImport />);
 
     fireEvent.click(screen.getByRole("button", { name: /Skip for now/i }));
@@ -95,10 +107,10 @@ describe("OnboardingImport page", () => {
     expect(screen.queryByText(/LeadSig is already outrunning Jobber/i)).not.toBeInTheDocument();
   });
 
-  it("shows step indicator for the second onboarding step", () => {
+  it("shows step indicator for the third onboarding step", () => {
     render(<OnboardingImport />);
 
-    expect(screen.getByText(/^Step 2 of 2$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Step 3 of 3$/i)).toBeInTheDocument();
   });
 
   it("opens each import modal from the section actions", () => {

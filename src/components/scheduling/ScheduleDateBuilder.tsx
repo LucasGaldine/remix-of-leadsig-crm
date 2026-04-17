@@ -436,7 +436,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
               value={scheduledDate}
               min={format(today, "yyyy-MM-dd")}
               onChange={(event) => handleDateInputChange(event.target.value)}
-              className="w-full"
+              className="h-10 w-full px-3 py-2"
             />
             <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
               <PopoverTrigger asChild>

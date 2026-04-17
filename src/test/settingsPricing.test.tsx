@@ -95,14 +95,14 @@ describe("SettingsPricing", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("$29")).toBeInTheDocument();
-    expect(screen.getByText("$497")).toBeInTheDocument();
-    expect(screen.getByText(/\+ \$3,000 one-time setup fee/i)).toBeInTheDocument();
+    expect(screen.getAllByText("$29").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$497").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/\+ \$3,000 one-time setup fee/i).length).toBeGreaterThan(0);
 
-    const basicTierSelect = screen.getByLabelText(/basic tier/i);
+    const basicTierSelect = screen.getAllByLabelText(/basic tier/i)[0];
     fireEvent.change(basicTierSelect, { target: { value: "growth" } });
 
-    expect(screen.getByText("$197")).toBeInTheDocument();
+    expect(screen.getAllByText("$197").length).toBeGreaterThan(0);
   });
 
   it("allows switching basic tier when current plan is basic", async () => {
@@ -119,13 +119,13 @@ describe("SettingsPricing", () => {
       </MemoryRouter>,
     );
 
-    const basicCard = screen.getByText("Basic").closest("div[class*='rounded-xl']");
+    const basicCard = screen.getAllByText("Essentials")[0].closest("div[class*='rounded-xl']");
     expect(basicCard).not.toBeNull();
 
     const basicTierSelect = within(basicCard as HTMLElement).getByLabelText(/basic tier/i);
     fireEvent.change(basicTierSelect, { target: { value: "team" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /Switch to Team/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Switch to Team/i })[0]);
     fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
 
     await waitFor(() => {
@@ -145,7 +145,7 @@ describe("SettingsPricing", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Basic/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Upgrade to Essentials/i })[0]);
     fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
 
     await waitFor(() => {
@@ -168,7 +168,7 @@ describe("SettingsPricing", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Basic/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Upgrade to Essentials/i })[0]);
     fireEvent.click(screen.getByRole("button", { name: /Confirm/i }));
 
     await waitFor(() => {
@@ -190,6 +190,6 @@ describe("SettingsPricing", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(/14-day free trial for Basic/i)).toBeInTheDocument();
+    expect(screen.getByText(/14-day free trial for Essentials/i)).toBeInTheDocument();
   });
 });
