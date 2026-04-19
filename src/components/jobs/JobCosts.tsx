@@ -5,12 +5,15 @@ import { ChevronsDown } from "lucide-react";
 
 interface JobCostsProps {
   jobId: string;
+  grouped?: boolean;
 }
 
-export const JobCosts = ({ jobId }: JobCostsProps) => {
+export const JobCosts = ({ jobId, grouped = false }: JobCostsProps) => {
   const { lineItems, isLoading, totalCost } = useJobLineItems(jobId);
   const [modalOpen, setModalOpen] = useState(false);
-  const shellClassName = "rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm";
+  const shellClassName = grouped
+    ? "p-0 text-foreground"
+    : "rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm";
   const hasLineItems = (lineItems?.length ?? 0) > 0;
 
   if (isLoading) {
@@ -38,7 +41,7 @@ export const JobCosts = ({ jobId }: JobCostsProps) => {
     <>
       <button
         onClick={() => setModalOpen(true)}
-        className={`w-full text-left cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))] ${shellClassName}`}
+        className={`w-full text-left cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))] ${grouped ? "" : "hover:shadow-md hover:scale-[1.01]"} ${shellClassName}`}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-2 items-center">

@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical } from "lucide-react";
+import { ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical, DollarSign } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
@@ -32,15 +33,7 @@ import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDial
 import { prepareLeadPhotoForUpload } from "@/lib/photoCompression";
 import { createEstimateVersionSnapshot, isEstimateVersionsUnavailableError } from "@/lib/estimateVersions";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
-
-const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
-  draft: { label: "Draft", icon: Edit2, className: "bg-secondary text-secondary-foreground" },
-  sent: { label: "Sent", icon: Send, className: "status-pending" },
-  viewed: { label: "Viewed", icon: CheckCheck, className: "status-paid" },
-  accepted: { label: "Approved", icon: Check, className: "status-confirmed" },
-  expired: { label: "Expired", icon: AlertCircle, className: "status-attention" },
-  declined: { label: "Declined", icon: AlertCircle, className: "bg-red-100 text-red-800" },
-};
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const CATEGORY_ORDER = ["equipment", "materials", "labor", "other"] as const;
 const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
@@ -185,8 +178,9 @@ export default function EstimateDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user, currentAccount } = useAuth();
+  const { isManager, user, currentAccount } = useAuth();
   const { data: estimate, isLoading } = useEstimate(id);
+  const isMobile = useIsMobile();
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [portalDialogOpen, setPortalDialogOpen] = useState(false);
@@ -206,6 +200,7 @@ export default function EstimateDetail() {
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [loadingVersions, setLoadingVersions] = useState(true);
   const [creatingVersion, setCreatingVersion] = useState(false);
+  const [openLogPaymentSignal, setOpenLogPaymentSignal] = useState(0);
   const [isCreatingVersionDraft, setIsCreatingVersionDraft] = useState(false);
   const [newVersionNameDraft, setNewVersionNameDraft] = useState("");
   const [renamingVersionId, setRenamingVersionId] = useState<string | null>(null);
@@ -490,8 +485,6 @@ export default function EstimateDetail() {
     );
   }
 
-  const config = statusConfig[estimate.status] || { label: estimate.status, icon: AlertCircle };
-  const StatusIcon = config.icon;
   const hasChangeOrders = estimate.line_items.some((item: any) => item.is_change_order);
   const isRecurringQuote = !!estimate.recurring_job_id && !estimate.job_id;
   const jobStatusLabelMap: Record<string, string> = {
@@ -1306,25 +1299,66 @@ export default function EstimateDetail() {
     setLineItems([]);
   };
 
+  const approveDisabled = (estimate.status === "accepted" && !estimate.has_pending_changes) || manualApproving;
+  const approveLabel = approveDisabled
+    ? manualApproving
+      ? "Approving..."
+      : "Approved"
+    : "Approve";
+  const canLogPayments = typeof isManager === "function" ? isManager() : false;
+  const portalLabel = portalLoading ? "Generating..." : "Client Portal";
+  const mobileQuickActions = [
+    {
+      icon: <Check className="h-5 w-5" />,
+      label: approveLabel,
+      disabled: approveDisabled,
+      onClick: () => {
+        if (!approveDisabled) setShowApproveDialog(true);
+      },
+      group: "estimate-actions",
+    },
+    {
+      icon: <Link2 className="h-5 w-5" />,
+      label: portalLabel,
+      onClick: () => {
+        if (!portalLoading) void handleOpenClientPortal();
+      },
+      group: "estimate-actions",
+    },
+    ...(estimate.customer?.id
+      ? [{
+          icon: <User className="h-5 w-5" />,
+          label: "View Client",
+          onClick: () => navigate(`/customers/${estimate.customer?.id}`),
+          group: "details",
+        }]
+      : []),
+    ...(estimate.job?.id
+      ? [{
+          icon: <Briefcase className="h-5 w-5" />,
+          label: "View Job",
+          onClick: () => navigate(`/jobs/${estimate.job?.id}`),
+          group: "details",
+        }]
+      : []),
+    ...(canLogPayments && estimate.job_id
+      ? [{
+          icon: <DollarSign className="h-5 w-5" />,
+          label: "Log Payment",
+          onClick: () => setOpenLogPaymentSignal((value) => value + 1),
+          group: "estimate-actions",
+        }]
+      : []),
+  ];
+
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <div className="min-h-screen bg-surface-sunken pb-24 [&_.text-xs]:text-base [&_.text-sm]:text-base md:[&_.text-xs]:text-xs md:[&_.text-sm]:text-sm">
       <PageHeader title="" showBack backTo="/payments" />
 
 
       <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-0">
         <div className="mb-3 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                estimate.status === "accepted"
-                  ? "status-confirmed border-[hsl(var(--status-confirmed))]/40"
-                  : "border-border bg-muted/60 text-muted-foreground"
-              )}
-            >
-              <StatusIcon className="h-3 w-3" />
-              {config.label}
-            </span>
             {estimate.has_pending_changes && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
                 <AlertCircle className="h-3 w-3 text-amber-700" />
@@ -1357,10 +1391,11 @@ export default function EstimateDetail() {
               )}
             </div>
           </div>
-          <div
-            className="flex flex-nowrap items-center justify-start gap-2"
-            data-testid="estimate-header-quick-actions"
-          >
+          {!isMobile && (
+            <div
+              className="flex flex-nowrap items-center justify-start gap-2"
+              data-testid="estimate-header-quick-actions"
+            >
               <Button
                 variant="secondary"
                 size="sm"
@@ -1385,26 +1420,23 @@ export default function EstimateDetail() {
                 <Link2 className="h-4 w-4" />
                 {portalLoading ? "Generating..." : "Client Portal"}
               </Button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="p-4 max-w-[var(--content-max-width)] m-auto">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
           <div className="space-y-4" data-testid="estimate-details-left-column">
-            <div className="card-elevated rounded-lg overflow-hidden">
-              <div className="p-4">
+            <div className="card-elevated -mx-4 overflow-hidden rounded-none md:mx-0 md:rounded-lg">
+              <div className={cn("p-4", isMobile && "pt-0")}>
                 {canManageEstimateVersions && (
-                  <div className="mb-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Estimate Versions</h3>
-                    </div>
+                  <div className={cn("space-y-3", isMobile ? "mb-2 space-y-2" : "mb-4")}>
                     {loadingVersions ? (
                       <p className="text-sm text-muted-foreground">Loading versions...</p>
                     ) : hasEstimateVersions ? (
                       <div className="space-y-3">
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 min-w-0">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 min-w-0">
                           <Tabs
                             value={selectedVersionId || estimateVersions[0]?.id}
                             onValueChange={(value) => {
@@ -1419,9 +1451,14 @@ export default function EstimateDetail() {
                                   <TabsTrigger
                                     key={version.id}
                                     value={version.id}
-                                    className="h-auto min-h-[56px] shrink-0 rounded-none border-b-2 border-transparent px-4 py-2 text-left font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                                    className={cn(
+                                      "h-auto shrink-0 rounded-none border-b-2 border-transparent font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
+                                      isMobile
+                                        ? "min-h-touch px-2 py-3 text-center text-base transition-colors whitespace-nowrap"
+                                        : "min-h-[56px] px-4 py-2 text-left"
+                                    )}
                                   >
-                                    <span className="flex min-w-0 flex-col items-start leading-tight">
+                                    <span className={cn("flex min-w-0 flex-col leading-tight", isMobile ? "items-center text-center" : "items-start")}>
                                       <span className="truncate text-sm font-medium">{version.name}</span>
                                       <span className="mt-1 text-[11px] font-normal text-muted-foreground/70">
                                         ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -1435,7 +1472,7 @@ export default function EstimateDetail() {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
                                 className="h-9 w-9 shrink-0 p-0"
                                 aria-label="Version actions"
@@ -1559,26 +1596,37 @@ export default function EstimateDetail() {
 
                 {hasOriginalEstimate && (
                   <>
-                    <div className="mb-2 flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Versions</h3>
-                    </div>
-                    <div className="flex items-end gap-2">
+                    <div className={cn("flex gap-2", isMobile ? "items-center" : "items-end")}>
                       <Tabs
                         value={showingOriginal ? "original" : "modified"}
                         onValueChange={(value) => setShowingOriginal(value === "original")}
                         className="mt-0 flex-1"
                       >
-                        <TabsList className="w-full justify-start rounded-none bg-transparent p-0">
+                        <TabsList
+                          className={cn(
+                            "rounded-none bg-transparent p-0",
+                            isMobile ? "grid w-full grid-cols-2 px-2" : "w-full justify-start"
+                          )}
+                        >
                           <TabsTrigger
                             value="modified"
-                            className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                            className={cn(
+                              "rounded-none border-b-2 border-transparent font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
+                              isMobile
+                                ? "w-full min-h-touch px-2 py-3 text-center text-base transition-colors whitespace-nowrap"
+                                : "px-4 py-3 text-sm"
+                            )}
                           >
                             Current
                           </TabsTrigger>
                           <TabsTrigger
                             value="original"
-                            className="rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                            className={cn(
+                              "rounded-none border-b-2 border-transparent font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
+                              isMobile
+                                ? "w-full min-h-touch px-2 py-3 text-center text-base transition-colors whitespace-nowrap"
+                                : "px-4 py-3 text-sm"
+                            )}
                           >
                             Original
                           </TabsTrigger>
@@ -1587,7 +1635,7 @@ export default function EstimateDetail() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             className="h-9 w-9 shrink-0 p-0"
                             aria-label="Compare version actions"
@@ -1683,7 +1731,10 @@ export default function EstimateDetail() {
                   </div>
                 ) : (
                   <div data-testid="line-items-header-row" className="mt-3 flex items-center justify-between">
-                    <h4 className="text-lg font-semibold text-foreground">Line Items</h4>
+                    <div className="flex items-center gap-3 md:gap-2">
+                      <FileText className="h-5 w-5 md:h-3.5 md:w-3.5 shrink-0 text-muted-foreground" />
+                      <h4 className="text-base uppercase tracking-wide leading-none text-muted-foreground">Line Items</h4>
+                    </div>
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
                         <Edit2 className="h-4 w-4 mr-2" />
@@ -1837,7 +1888,7 @@ export default function EstimateDetail() {
 
           <div className="space-y-4" data-testid="estimate-details-right-column">
             <button
-              className="w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+              className="hidden w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))] md:block"
               onClick={() => estimate.customer && navigate(`/customers/${estimate.customer.id}`)}
             >
               <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
@@ -1857,7 +1908,7 @@ export default function EstimateDetail() {
             </button>
 
             {isRecurringQuote ? (
-              <div className="w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm">
+              <div className="hidden w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm md:block">
                 <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
                 <div className="flex gap-2 items-center">
                     <Briefcase className="w-3 h-3" />
@@ -1882,7 +1933,7 @@ export default function EstimateDetail() {
               </div>
             ) : (
               <button
-                className="w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+                className="hidden w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))] md:block"
                 onClick={() => estimate.job && navigate(`/jobs/${estimate.job.id}`)}
               >
                 <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
@@ -1910,14 +1961,17 @@ export default function EstimateDetail() {
             )}
 
             {estimate.job_id ? (
-              <JobInvoiceCard
-                jobId={estimate.job_id}
-                customerEmail={estimate.customer?.email}
-                customerName={estimate.customer?.name}
-                estimateTotal={Number(estimate.total)}
-              />
+              <div className="hidden md:block">
+                <JobInvoiceCard
+                  jobId={estimate.job_id}
+                  customerEmail={estimate.customer?.email}
+                  customerName={estimate.customer?.name}
+                  estimateTotal={Number(estimate.total)}
+                  openLogPaymentSignal={openLogPaymentSignal}
+                />
+              </div>
             ) : (
-              <div className="card-elevated rounded-lg p-4">
+              <div className="hidden card-elevated rounded-lg p-4 md:block">
                 <h3 className="font-semibold text-foreground">Invoices</h3>
                 <p className="text-sm text-muted-foreground mt-3">
                   Invoices are available on job-based estimates.
@@ -2070,6 +2124,14 @@ export default function EstimateDetail() {
         versionName={activeVersionSnapshot?.name || null}
         onSuccess={handleEstimateSuccess}
       />
+
+      {isMobile && (
+        <FloatingActionButton
+          actions={mobileQuickActions}
+          className="md:hidden"
+          triggerIcon="wrench"
+        />
+      )}
 
       <MobileNav />
     </div>

@@ -224,23 +224,28 @@ export default function Payments() {
       )}
 
       <div className="max-w-[var(--content-max-width)] m-auto p-4">
-        <section className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+        <section className="-mx-4 md:mx-0">
           <div className="px-4 pt-4 pb-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-stretch gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
                   type="search"
                   placeholder={activeTab === "all" ? "Search payments..." : `Search ${activeTab}...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="h-14 rounded-full border-border bg-card px-5 pl-14 text-base text-foreground shadow-sm placeholder:text-muted-foreground"
                 />
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" aria-label={`Sort ${activeTab === "all" ? "all" : activeTab}`}>
-                    <ArrowUpDown className="h-4 w-4" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label={`Sort ${activeTab === "all" ? "all" : activeTab}`}
+                    className="h-14 w-14 shrink-0 rounded-full border-border bg-card shadow-sm hover:bg-card"
+                  >
+                    <ArrowUpDown className="!h-5 !w-5 !text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -289,7 +294,7 @@ export default function Payments() {
             </div>
           </div>
 
-          <div className="px-4 pt-2 pb-3 overflow-x-auto scrollbar-hide">
+          <div className="px-4 pt-2 pb-6 overflow-x-auto scrollbar-hide md:pb-3">
             <div className="flex items-center gap-2 min-w-max">
               {chipConfig.map((chip) => {
                 const Icon = chip.icon;
@@ -304,7 +309,7 @@ export default function Payments() {
                       }
                     }}
                     className={cn(
-                      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-base font-medium transition-colors md:text-sm",
                       isActive
                         ? "bg-primary text-primary-foreground"
                         : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
@@ -352,7 +357,7 @@ export default function Payments() {
             </div>
           )}
 
-          <div className="px-4 pt-5 pb-3 border-t border-border">
+          <div className="hidden px-4 pt-5 pb-3 md:block">
             <div className="inline-flex items-center gap-2">
               {activeTab === "all" ? <DollarSign className="h-3.5 w-3.5 text-muted-foreground" /> : null}
               {activeTab === "estimates" ? <FileText className="h-3.5 w-3.5 text-muted-foreground" /> : null}
@@ -364,34 +369,34 @@ export default function Payments() {
             </div>
           </div>
 
-          {(activeTab === "all" || activeTab === "estimates") && (
-            filteredEstimates.length === 0 ? (
-              activeTab === "estimates" ? (
-                <div className="px-4 pb-6">
-                  <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                    {showOnlyNeedsReview ? "No estimates need review." : "No estimates found."}
+          <div className="overflow-hidden md:rounded-2xl md:border md:border-border md:bg-card md:shadow-sm">
+            {(activeTab === "all" || activeTab === "estimates") && (
+              filteredEstimates.length === 0 ? (
+                activeTab === "estimates" ? (
+                  <div className="px-4 pb-6">
+                    <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                      {showOnlyNeedsReview ? "No estimates need review." : "No estimates found."}
+                    </div>
                   </div>
+                ) : null
+              ) : (
+                <div>
+                  {filteredEstimates.map((estimate, index) => {
+                    const isNeedsReview = estimate.estimate_visit_completed && estimate.status !== "accepted" && estimate.status !== "declined";
+                    return (
+                      <EstimateCard
+                        key={estimate.id}
+                        estimate={transformEstimate(estimate, !!isNeedsReview)}
+                        onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                        className={cn(
+                          index > 0 && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border",
+                        )}
+                      />
+                    );
+                  })}
                 </div>
-              ) : null
-            ) : (
-              <div>
-                {filteredEstimates.map((estimate, index) => {
-                  const isNeedsReview = estimate.estimate_visit_completed && estimate.status !== "accepted" && estimate.status !== "declined";
-                  return (
-                    <EstimateCard
-                      key={estimate.id}
-                      estimate={transformEstimate(estimate, !!isNeedsReview)}
-                      onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-                      className={cn(
-                        "rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-accent/40",
-                        index > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border",
-                      )}
-                    />
-                  );
-                })}
-              </div>
-            )
-          )}
+              )
+            )}
 
           {(activeTab === "all" || activeTab === "invoices") && (
             filteredInvoices.length === 0 ? (
@@ -403,7 +408,7 @@ export default function Payments() {
                 </div>
               ) : null
             ) : (
-              <div className={cn(activeTab === "all" && filteredEstimates.length > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border")}>
+              <div className={cn(activeTab === "all" && filteredEstimates.length > 0 && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border")}>
                 {activeTab === "all" ? (
                   <div className="px-4 pb-1 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Invoices</div>
                 ) : null}
@@ -440,8 +445,7 @@ export default function Payments() {
                       invoice={transformedInvoice}
                       onClick={() => navigate(`/payments/invoices/${invoice.id}`)}
                       className={cn(
-                        "rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-accent/40",
-                        index > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border",
+                        index > 0 && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border",
                       )}
                     />
                   );
@@ -460,7 +464,7 @@ export default function Payments() {
                 </div>
               ) : null
             ) : (
-              <div className={cn(activeTab === "all" && (filteredEstimates.length > 0 || filteredInvoices.length > 0) && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border")}>
+              <div className={cn(activeTab === "all" && (filteredEstimates.length > 0 || filteredInvoices.length > 0) && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border")}>
                 {activeTab === "all" ? (
                   <div className="px-4 pb-1 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Payments</div>
                 ) : null}
@@ -491,8 +495,7 @@ export default function Payments() {
                         navigate(`/payments/${payment.id}`);
                       }}
                       className={cn(
-                        "rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-accent/40",
-                        index > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border",
+                        index > 0 && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border",
                       )}
                     />
                   );
@@ -508,6 +511,7 @@ export default function Payments() {
               </div>
             </div>
           ) : null}
+          </div>
         </section>
       </div>
 

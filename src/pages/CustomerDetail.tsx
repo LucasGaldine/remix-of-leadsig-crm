@@ -114,10 +114,10 @@ function PortalLinkButton({ customerId }: { customerId: string }) {
             </Button>
           </div>
           <DialogFooter className="sm:justify-end">
-            <Button type="button" variant="outline">
+            <Button type="button" variant="outline" size="lg">
               Send by Email
             </Button>
-            <Button type="button" variant="outline">
+            <Button type="button" variant="outline" size="lg">
               Send by Text
             </Button>
           </DialogFooter>

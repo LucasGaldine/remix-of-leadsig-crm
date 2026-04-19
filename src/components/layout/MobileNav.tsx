@@ -1,10 +1,10 @@
 import {
   LayoutDashboard,
+  BarChart3,
   Magnet,
   Calendar,
   DollarSign,
   Settings,
-  Briefcase,
   Inbox,
   Bug,
   Users,
@@ -18,6 +18,7 @@ import { usePendingLeadsCount } from "@/hooks/usePendingLeads";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { BugReportModal } from "@/components/layout/BugReportModal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 
 interface NavItem {
   icon: React.ReactNode;
@@ -27,17 +28,62 @@ interface NavItem {
   requiredRole?: "manager" | "all";
 }
 
+interface NavGroup {
+  label: string;
+  requiredRole?: "manager" | "all";
+  items: NavItem[];
+}
+
 const primaryNavItems: NavItem[] = [
   { icon: <LayoutDashboard className="h-5 w-5" />, label: "Dashboard", path: "/", requiredRole: "all" },
   { icon: <Inbox className="h-5 w-5" />, label: "Inbox", path: "/inbox", requiredRole: "manager" },
   { icon: <Calendar className="h-5 w-5" />, label: "Calendar", path: "/schedule", requiredRole: "all" },
 ];
 
-const moreMenuItems: NavItem[] = [
-  { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
-  { icon: <Briefcase className="h-5 w-5" />, label: "Jobs", path: "/jobs", requiredRole: "all" },
-  { icon: <DollarSign className="h-5 w-5" />, label: "Payments", path: "/payments", requiredRole: "manager" },
-  { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
+const moreMenuItems: NavItem[] = [];
+
+const moreMenuGroups: NavGroup[] = [
+  {
+    label: "CRM",
+    requiredRole: "all",
+    items: [
+      { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
+      { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
+      { icon: <Settings className="h-5 w-5" />, label: "Lead Sources", path: "/settings/lead-sources", requiredRole: "manager" },
+    ],
+  },
+  {
+    label: "Financials",
+    requiredRole: "manager",
+    items: [
+      { icon: <DollarSign className="h-5 w-5" />, label: "Payments", path: "/payments", requiredRole: "manager" },
+      { icon: <Settings className="h-5 w-5" />, label: "Pricing Rules", path: "/settings/pricing-rules", requiredRole: "manager" },
+      { icon: <BarChart3 className="h-5 w-5" />, label: "Analytics", path: "/analytics", requiredRole: "manager" },
+    ],
+  },
+];
+
+const desktopFlyoutNavGroups: Array<NavGroup & { icon: React.ReactNode }> = [
+  {
+    label: "CRM",
+    icon: <Users className="h-5 w-5" />,
+    requiredRole: "all",
+    items: [
+      { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
+      { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
+      { icon: <Settings className="h-5 w-5" />, label: "Lead Sources", path: "/settings/lead-sources", requiredRole: "manager" },
+    ],
+  },
+  {
+    label: "Financials",
+    icon: <DollarSign className="h-5 w-5" />,
+    requiredRole: "manager",
+    items: [
+      { icon: <DollarSign className="h-5 w-5" />, label: "Payments", path: "/payments", requiredRole: "manager" },
+      { icon: <Settings className="h-5 w-5" />, label: "Pricing Rules", path: "/settings/pricing-rules", requiredRole: "manager" },
+      { icon: <BarChart3 className="h-5 w-5" />, label: "Analytics", path: "/analytics", requiredRole: "manager" },
+    ],
+  },
 ];
 
 const EDGE_ZONE = 40;
@@ -45,8 +91,8 @@ const SWIPE_THRESHOLD = 80;
 const VERTICAL_RATIO = 1.5;
 const DESKTOP_NAV_WIDTH_CLASS = "md:w-60";
 const DESKTOP_NAV_OFFSET = "15rem";
-const MOBILE_NAV_OFFSET = "4.5rem";
-const DESKTOP_MORE_OPEN_STORAGE_KEY = "mobile-nav:desktop-more-open";
+const MOBILE_NAV_OFFSET = "5rem";
+const DESKTOP_SECTION_OPEN_STORAGE_KEY = "mobile-nav:desktop-more-open";
 
 export function MobileNav() {
   const location = useLocation();
@@ -54,9 +100,9 @@ export function MobileNav() {
   const { isCrewMember } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
   const [bugReportOpen, setBugReportOpen] = useState(false);
-  const [desktopMoreOpen, setDesktopMoreOpen] = useState(() => {
+  const [desktopSectionOpen, setDesktopSectionOpen] = useState(() => {
     if (typeof window === "undefined") return true;
-    const storedValue = window.localStorage.getItem(DESKTOP_MORE_OPEN_STORAGE_KEY);
+    const storedValue = window.localStorage.getItem(DESKTOP_SECTION_OPEN_STORAGE_KEY);
     if (storedValue === "true") return true;
     if (storedValue === "false") return false;
     return true;
@@ -86,6 +132,20 @@ export function MobileNav() {
 
   const visiblePrimaryNavItems = primaryNavItems.filter(filterByRole);
   const visibleMoreMenuItems = moreMenuItems.filter(filterByRole);
+  const visibleMoreMenuGroups = moreMenuGroups
+    .filter((group) => filterByRole({ icon: null, label: group.label, path: "", requiredRole: group.requiredRole }))
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(filterByRole),
+    }))
+    .filter((group) => group.items.length > 0);
+  const visibleDesktopFlyoutGroups = desktopFlyoutNavGroups
+    .filter((group) => filterByRole({ icon: null, label: group.label, path: "", requiredRole: group.requiredRole }))
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(filterByRole),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const isActiveRoute = useCallback(
     (path: string) => {
@@ -95,7 +155,9 @@ export function MobileNav() {
     [location.pathname],
   );
 
-  const moreIsActive = visibleMoreMenuItems.some((item) => isActiveRoute(item.path));
+  const moreIsActive =
+    visibleMoreMenuItems.some((item) => isActiveRoute(item.path)) ||
+    visibleMoreMenuGroups.some((group) => group.items.some((item) => isActiveRoute(item.path)));
   const settingsIsActive = isActiveRoute("/settings");
 
   const currentIndex = visiblePrimaryNavItems.findIndex((item) => isActiveRoute(item.path));
@@ -226,8 +288,8 @@ export function MobileNav() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(DESKTOP_MORE_OPEN_STORAGE_KEY, String(desktopMoreOpen));
-  }, [desktopMoreOpen]);
+    window.localStorage.setItem(DESKTOP_SECTION_OPEN_STORAGE_KEY, String(desktopSectionOpen));
+  }, [desktopSectionOpen]);
 
   const swipeProgress = Math.abs(swipeOffset) / SWIPE_THRESHOLD;
   const showIndicator = isEdgeSwipe.current && swipeProgress > 0.1;
@@ -296,50 +358,81 @@ export function MobileNav() {
               );
             })}
 
-            <div className="space-y-2">
-              <button
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors active:bg-muted",
-                  moreIsActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-                aria-label="More"
-                onClick={() => setDesktopMoreOpen((prev) => !prev)}
-              >
-                <Ellipsis className="h-5 w-5 shrink-0" />
-                <span className="flex-1 truncate">More</span>
-                <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", desktopMoreOpen && "rotate-180")} />
-              </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-1 py-1 text-muted-foreground hover:text-foreground"
+              onClick={() => setDesktopSectionOpen((prev) => !prev)}
+              aria-label="Toggle secondary navigation"
+              aria-expanded={desktopSectionOpen}
+            >
+              <span className="h-px flex-1 bg-border" />
+              <ChevronDown className={cn("ml-2 h-4 w-4 shrink-0 transition-transform", desktopSectionOpen && "rotate-180")} />
+            </button>
 
-              {desktopMoreOpen && (
-                <div className="space-y-4">
-                  {visibleMoreMenuItems.map((item) => {
-                    const isActive = isActiveRoute(item.path);
-                    const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+            {desktopSectionOpen &&
+              visibleMoreMenuItems.map((item) => {
+              const isActive = isActiveRoute(item.path);
+              const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
 
-                    return (
-                      <button
-                        key={item.path}
-                        onClick={() => handleNavigate(item.path)}
-                        className={cn(
-                          "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors active:bg-muted",
-                          isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        <div className="relative shrink-0">
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => handleNavigate(item.path)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors",
+                    "active:bg-muted",
+                    isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <div className="relative shrink-0">{item.icon}</div>
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {badgeCount > 0 && (
+                    <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                      {badgeCount > 9 ? "9+" : badgeCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {desktopSectionOpen &&
+              visibleDesktopFlyoutGroups.map((group) => {
+              const groupIsActive = group.items.some((item) => isActiveRoute(item.path));
+
+              return (
+                <DropdownMenu key={group.label}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors active:bg-muted",
+                        groupIsActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                      aria-label={group.label}
+                    >
+                      <div className="relative shrink-0">{group.icon}</div>
+                      <span className="flex-1 truncate">{group.label}</span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="right" sideOffset={10} collisionPadding={12} className="w-64">
+                    {group.items.map((item) => {
+                      const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+
+                      return (
+                        <DropdownMenuItem key={item.path} onSelect={() => handleNavigate(item.path)} className="gap-3 px-4 py-3 text-sm">
                           {item.icon}
+                          <span className="flex-1">{item.label}</span>
                           {badgeCount > 0 && (
-                            <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-status-attention px-1 text-[9px] font-bold leading-4 text-white text-center">
+                            <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
                               {badgeCount > 9 ? "9+" : badgeCount}
                             </span>
                           )}
-                        </div>
-                        <span className="flex-1 truncate">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            })}
           </div>
 
           <div className="space-y-3 border-t border-border pt-3">
@@ -377,13 +470,13 @@ export function MobileNav() {
                 >
                   <div
                     className={cn(
-                      "relative flex items-center justify-center rounded-full transition-all",
+                      "relative flex items-center justify-center rounded-full transition-all [&_svg]:!h-6 [&_svg]:!w-6",
                       isActive ? "bg-primary/10 text-primary h-12 w-12" : "text-muted-foreground h-10 w-10",
                     )}
                   >
                     {item.icon}
                   </div>
-                  <span className={cn("text-[10px] leading-none", isActive ? "text-primary font-semibold" : "text-muted-foreground")}>
+                  <span className={cn("text-sm leading-tight", isActive ? "text-primary font-semibold" : "text-muted-foreground")}>
                     {item.label}
                   </span>
                 </button>
@@ -398,14 +491,14 @@ export function MobileNav() {
                 >
                   <div
                     className={cn(
-                      "relative flex items-center justify-center gap-0.5 rounded-full px-3 transition-all",
+                      "relative flex items-center justify-center gap-0.5 rounded-full px-3 transition-all [&_svg]:!h-6 [&_svg]:!w-6",
                       moreIsActive ? "bg-primary/10 text-primary h-12" : "text-muted-foreground h-10",
                     )}
                   >
                     <Ellipsis className="h-5 w-5" />
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    <ChevronDown className="h-4 w-4" />
                   </div>
-                  <span className={cn("text-[10px] leading-none", moreIsActive ? "text-primary font-semibold" : "text-muted-foreground")}>
+                  <span className={cn("text-sm leading-tight", moreIsActive ? "text-primary font-semibold" : "text-muted-foreground")}>
                     More
                   </span>
                 </button>
@@ -426,6 +519,31 @@ export function MobileNav() {
                     </DropdownMenuItem>
                   );
                 })}
+                {visibleMoreMenuGroups.map((group) => (
+                  <div key={group.label}>
+                    <div className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      {group.label}
+                    </div>
+                    {group.items.map((item) => {
+                      const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+
+                      return (
+                        <DropdownMenuItem key={item.path} onSelect={() => handleNavigate(item.path)} className="gap-3 px-4 py-4 text-base">
+                          {item.icon}
+                          <span className="flex-1">{item.label}</span>
+                          {badgeCount > 0 && (
+                            <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                              {badgeCount > 9 ? "9+" : badgeCount}
+                            </span>
+                          )}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </div>
+                ))}
+                <div className="px-4 py-1" aria-hidden="true">
+                  <Separator />
+                </div>
                 <DropdownMenuItem onSelect={() => handleNavigate("/settings")} className="gap-3 px-4 py-4 text-base">
                   <Settings className="h-5 w-5" />
                   <span>Settings</span>

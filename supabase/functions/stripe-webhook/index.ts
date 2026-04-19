@@ -227,9 +227,46 @@ async function handlePaymentIntentSucceeded(
     .eq("stripe_payment_intent_id", piId)
     .maybeSingle();
 
-  if (fetchError || !payment) {
-    console.log("No matching local payment for:", piId);
-    return;
+  let resolvedPayment = payment;
+  if (fetchError || !resolvedPayment) {
+    const invoiceId = paymentIntent.metadata?.invoice_id || null;
+    const customerId = paymentIntent.metadata?.customer_id || null;
+    const accountId = paymentIntent.metadata?.account_id || null;
+    const leadId = paymentIntent.metadata?.lead_id || null;
+
+    if (!invoiceId || !customerId || !accountId) {
+      console.log("No matching local payment for:", piId, "and metadata is incomplete");
+      return;
+    }
+
+    const { data: insertedPayment, error: insertError } = await supabase
+      .from("payments")
+      .insert({
+        invoice_id: invoiceId,
+        customer_id: customerId,
+        lead_id: leadId,
+        account_id: accountId,
+        amount: (paymentIntent.amount_received || paymentIntent.amount || 0) / 100,
+        method: "card",
+        status: "completed",
+        stripe_payment_intent_id: piId,
+        transaction_ref: paymentIntent.latest_charge
+          ? String(
+              typeof paymentIntent.latest_charge === "object"
+                ? paymentIntent.latest_charge.id
+                : paymentIntent.latest_charge,
+            )
+          : null,
+      })
+      .select("id, invoice_id, amount")
+      .single();
+
+    if (insertError || !insertedPayment) {
+      console.error("Failed to create fallback payment record from payment intent:", insertError?.message);
+      return;
+    }
+
+    resolvedPayment = insertedPayment;
   }
 
   const receiptUrl =
@@ -251,30 +288,49 @@ async function handlePaymentIntentSucceeded(
         : null,
       receipt_url: receiptUrl,
     })
-    .eq("id", payment.id);
+    .eq("id", resolvedPayment.id);
 
   if (updateError) {
     console.error("Failed to update payment:", updateError.message);
     return;
   }
 
-  if (payment.invoice_id) {
+  if (resolvedPayment.invoice_id) {
+    const paymentAmount = Number(
+      resolvedPayment.amount ||
+      (paymentIntent.amount_received ? paymentIntent.amount_received / 100 : 0),
+    );
+    const { data: invoiceRecord, error: invoiceFetchError } = await supabase
+      .from("invoices")
+      .select("id, balance_due")
+      .eq("id", resolvedPayment.invoice_id)
+      .maybeSingle();
+
+    if (invoiceFetchError || !invoiceRecord) {
+      console.error("Failed to fetch invoice for payment intent:", invoiceFetchError?.message);
+      return;
+    }
+
+    const currentBalance = Number(invoiceRecord.balance_due || 0);
+    const nextBalance = Math.max(0, currentBalance - paymentAmount);
+    const isPaid = nextBalance <= 0;
+
     const { error: invoiceError } = await supabase
       .from("invoices")
       .update({
-        status: "paid",
-        paid_at: new Date().toISOString(),
-        balance_due: 0,
+        status: isPaid ? "paid" : "partial",
+        paid_at: isPaid ? new Date().toISOString() : null,
+        balance_due: nextBalance,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", payment.invoice_id);
+      .eq("id", resolvedPayment.invoice_id);
 
     if (invoiceError) {
       console.error("Failed to update invoice:", invoiceError.message);
     }
   }
 
-  console.log("Payment completed:", payment.id);
+  console.log("Payment completed:", resolvedPayment.id);
 }
 
 async function handlePaymentIntentFailed(

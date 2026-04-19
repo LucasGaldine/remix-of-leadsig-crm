@@ -4,6 +4,8 @@ import {
   Square,
   Wifi,
   WifiOff,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,6 +50,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
   const [elapsed, setElapsed] = useState(0);
   const [manualMode, setManualMode] = useState(false);
   const [tableExists, setTableExists] = useState(true);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const autoClockInDoneRef = useRef(false);
   const autoClockOutDoneRef = useRef(false);
 
@@ -200,14 +203,18 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
   };
 
   const completedEntries = entries.filter((e) => e.clock_out);
+  const shouldUseCompactLoggedLayout = !activeEntry && completedEntries.length > 0;
+  const visibleHistoryEntries = historyExpanded
+    ? completedEntries
+    : completedEntries.slice(0, 1);
 
   if (!tableExists) {
     return (
-      <div className={embedded ? "py-1" : "card-elevated rounded-lg p-4"}>
-        <p className="text-sm text-muted-foreground">
-          Time tracking requires the <code className="text-xs bg-muted px-1 py-0.5 rounded">job_time_entries</code> table. Please run the setup SQL on your database.
+      <div className={embedded ? "" : "card-elevated rounded-lg p-4"}>
+        <p className="text-base md:text-sm text-muted-foreground">
+          Time tracking requires the <code className="text-base md:text-xs bg-muted px-1 py-0.5 rounded">job_time_entries</code> table. Please run the setup SQL on your database.
         </p>
-        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="mt-3 flex items-center gap-2 text-base md:text-sm text-muted-foreground">
           <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
           <span>No GPS - use manual clock in/out.</span>
         </div>
@@ -216,92 +223,150 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
   }
 
   return (
-    <div className={embedded ? "py-1" : "card-elevated rounded-lg p-4"}>
+    <div className={embedded ? "" : "card-elevated rounded-lg p-4"}>
       {/* Active session */}
       {activeEntry && (
-        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-3 ">
+        <div className="bg-muted border border-border rounded-md p-3 ">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
-                ⏱ Active Session
-              </p>
-              <p className="text-2xl font-mono font-bold text-emerald-700 dark:text-emerald-300 mt-1">
+              <p className="text-2xl font-mono font-bold text-muted-foreground mt-1">
                 {formatDuration(elapsed)}
               </p>
-              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              <p className="text-base md:text-xs text-muted-foreground">
                 Started {format(new Date(activeEntry.clock_in), "h:mm a")}
                 {activeEntry.is_auto && " (auto)"}
               </p>
             </div>
             <Button
-              variant="destructive"
-              size="sm"
-              className="gap-1"
+              variant="outline"
+              size="icon"
+              className="h-11 w-11 rounded-full border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => clockOut(false)}
+              aria-label="Clock out"
             >
-              <Square className="h-3.5 w-3.5" />
-              Clock Out
+              <Square className="h-5 w-5" />
             </Button>
           </div>
         </div>
       )}
 
-      {/* Clock In button */}
-      {!activeEntry && !loading && (
-        <div className="flex gap-2 mb-3">
+      {!activeEntry && !loading && !shouldUseCompactLoggedLayout && (
+        <div className="mb-3">
           <Button
-            size="sm"
-            className="flex-1 gap-1"
+            size="lg"
+            className="w-full"
             onClick={() => {
               setManualMode(true);
               clockIn(false);
             }}
           >
-            <Play className="h-3.5 w-3.5" />
+            <Play />
             Clock In
           </Button>
         </div>
       )}
 
-      {/* GPS info for manual toggle */}
-      {!activeEntry && geo.error && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
-          <span>No GPS - use manual clock in/out.</span>
-        </div>
-      )}
+      {shouldUseCompactLoggedLayout ? (
+        <div className="grid grid-cols-[1fr_auto] gap-x-10 gap-y-2 items-start">
+          <div className="space-y-1.5 min-w-0">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 py-0.5 text-left"
+              onClick={() => setHistoryExpanded((prev) => !prev)}
+              aria-expanded={historyExpanded}
+            >
+              <span className="text-base md:text-sm font-medium text-muted-foreground">Logged Hours</span>
+              {historyExpanded ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
 
-      {/* Past entries */}
-      {completedEntries.length > 0 && (
-        <div className="space-y-1.5 border-t border-border pt-3">
-          <p className="text-xs font-medium text-muted-foreground mb-1">History</p>
-          {completedEntries.slice(0, 5).map((e) => {
-            const dur = new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime();
-            return (
-              <div key={e.id} className="flex items-center justify-between text-sm py-1">
-                <div>
-                  <span className="text-foreground">
-                    {format(new Date(e.clock_in), "MMM d")}
-                  </span>
-                  <span className="text-muted-foreground ml-2">
-                    {format(new Date(e.clock_in), "h:mm a")} – {format(new Date(e.clock_out!), "h:mm a")}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-foreground">{formatDuration(dur)}</span>
-                  {e.is_auto && (
-                    <span title="Auto-tracked"><Wifi className="h-3 w-3 text-muted-foreground" /></span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          {completedEntries.length > 5 && (
-            <p className="text-xs text-muted-foreground text-center">
-              +{completedEntries.length - 5} more entries
-            </p>
-          )}
+            <div className="space-y-1 mt-0.5">
+              {visibleHistoryEntries.map((e) => {
+                const dur = new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime();
+                return (
+                  <div key={e.id} className="flex items-center justify-between text-base md:text-sm py-0.5">
+                    <div>
+                      <span className="text-foreground">
+                        {format(new Date(e.clock_in), "MMM d")}
+                      </span>
+                      <span className="text-muted-foreground ml-2 text-base md:text-sm">
+                        {format(new Date(e.clock_in), "h:mm a")} – {format(new Date(e.clock_out!), "h:mm a")}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-foreground">{formatDuration(dur)}</span>
+                      {e.is_auto && (
+                        <span title="Auto-tracked"><Wifi className="h-3 w-3 text-muted-foreground" /></span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center gap-2">
+            <Button
+              type="button"
+              size="icon"
+              className="h-11 w-11 rounded-full"
+              aria-label="Clock back in"
+              onClick={() => {
+                setManualMode(true);
+                clockIn(false);
+              }}
+            >
+              <Play className="h-5 w-5" />
+            </Button>
+            {geo.error && <WifiOff className="h-4 w-4 text-destructive" aria-label="No GPS available" />}
+          </div>
         </div>
+      ) : (
+        <>
+          {/* GPS info for manual toggle */}
+          {!activeEntry && geo.error && (
+            <div className="flex items-center justify-center gap-2 text-center text-base md:text-sm text-muted-foreground">
+              <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
+              <span>No GPS - use manual clock in/out.</span>
+            </div>
+          )}
+
+          {/* Past entries */}
+          {!activeEntry && completedEntries.length > 0 && (
+            <div className="space-y-1.5 border-t border-border pt-3">
+              <p className="text-base md:text-sm font-medium text-muted-foreground mb-1">Logged Hours</p>
+              {completedEntries.slice(0, 5).map((e) => {
+                const dur = new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime();
+                return (
+                  <div key={e.id} className="flex items-center justify-between text-base md:text-sm py-1">
+                    <div>
+                      <span className="text-foreground">
+                        {format(new Date(e.clock_in), "MMM d")}
+                      </span>
+                      <span className="text-muted-foreground ml-2 text-base md:text-sm">
+                        {format(new Date(e.clock_in), "h:mm a")} – {format(new Date(e.clock_out!), "h:mm a")}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-foreground">{formatDuration(dur)}</span>
+                      {e.is_auto && (
+                        <span title="Auto-tracked"><Wifi className="h-3 w-3 text-muted-foreground" /></span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {completedEntries.length > 5 && (
+                <p className="text-base md:text-sm text-muted-foreground text-center">
+                  +{completedEntries.length - 5} more entries
+                </p>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

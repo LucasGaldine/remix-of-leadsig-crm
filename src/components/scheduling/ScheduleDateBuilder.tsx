@@ -1,18 +1,17 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, addMonths, parse, isValid } from "date-fns";
-import { CalendarDays, Check, Trash2 } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { ScheduleDateTimePicker } from "@/components/scheduling/ScheduleDateTimePicker";
+import { MonthDayDateBadge } from "@/components/shared/MonthDayDateBadge";
 
 export type ScheduleEntry = {
   date: string;
@@ -22,6 +21,7 @@ export type ScheduleEntry = {
 
 type ScheduleAvailability = {
   busyDatesSet: Set<string>;
+  otherJobsBusyDatesSet: Set<string>;
   dayOffDatesSet: Set<string>;
   dayOffReasonsByDate: Record<string, string | null>;
   fullyBookedDatesSet: Set<string>;
@@ -38,25 +38,28 @@ interface ScheduleDateBuilderProps {
   schedules: ScheduleEntry[];
   onSchedulesChange: (schedules: ScheduleEntry[]) => void;
   recurringControls?: ReactNode;
+  currentLeadId?: string;
 }
 
-export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringControls }: ScheduleDateBuilderProps) {
+export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringControls, currentLeadId }: ScheduleDateBuilderProps) {
   const { currentAccount } = useAuth();
   const [calendarMonth, setCalendarMonth] = useState(new Date());
-  const [activeScheduleIndex, setActiveScheduleIndex] = useState<number | null>(null);
-  const [isAddingNextDate, setIsAddingNextDate] = useState(false);
-  const [scheduledTimeStart, setScheduledTimeStart] = useState("");
-  const [scheduledTimeEnd, setScheduledTimeEnd] = useState("");
   const [hoveredUnavailableReason, setHoveredUnavailableReason] = useState<string | null>(null);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [pendingDate, setPendingDate] = useState<string>("");
-
-  const activeSchedule = activeScheduleIndex !== null ? schedules[activeScheduleIndex] : undefined;
-  const selectedDateString = pendingDate || (activeSchedule?.date && !isAddingNextDate ? activeSchedule.date : "");
-  const selectedDate = selectedDateString
-    ? new Date(`${selectedDateString}T00:00:00`)
-    : undefined;
-  const scheduledDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
+  const [mutedDeselectedDates, setMutedDeselectedDates] = useState<Set<string>>(new Set());
+  const [defaultTimeStart, setDefaultTimeStart] = useState(() => schedules[0]?.timeStart ?? "");
+  const [defaultTimeEnd, setDefaultTimeEnd] = useState(() => schedules[0]?.timeEnd ?? "");
+  const [didInitializeFromSchedules, setDidInitializeFromSchedules] = useState(() => schedules.length > 0);
+  const [isCustomTimesOpen, setIsCustomTimesOpen] = useState(false);
+  const [customDateSet, setCustomDateSet] = useState<Set<string>>(() => {
+    if (schedules.length === 0) return new Set<string>();
+    const baseStart = schedules[0]?.timeStart ?? "";
+    const baseEnd = schedules[0]?.timeEnd ?? "";
+    return new Set(
+      schedules
+        .filter((schedule) => schedule.timeStart !== baseStart || schedule.timeEnd !== baseEnd)
+        .map((schedule) => schedule.date),
+    );
+  });
 
   const monthStart = startOfMonth(calendarMonth);
   const monthEnd = endOfMonth(addMonths(calendarMonth, 1));
@@ -69,6 +72,8 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
     }, {});
   }, [schedules]);
 
+  const scheduleDateSet = useMemo(() => new Set(schedules.map((schedule) => schedule.date)), [schedules]);
+
   const displayedSchedules = useMemo(
     () =>
       schedules
@@ -76,6 +81,40 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
         .sort((a, b) => a.schedule.date.localeCompare(b.schedule.date) || a.index - b.index),
     [schedules],
   );
+
+  const selectedDates = useMemo(
+    () => schedules.map((schedule) => parse(schedule.date, "yyyy-MM-dd", new Date())).filter((date) => isValid(date)),
+    [schedules],
+  );
+
+  useEffect(() => {
+    setCustomDateSet((current) => {
+      const validDates = new Set(schedules.map((schedule) => schedule.date));
+      return new Set(Array.from(current).filter((date) => validDates.has(date)));
+    });
+  }, [schedules]);
+
+  useEffect(() => {
+    if (didInitializeFromSchedules || schedules.length === 0) return;
+    const baseStart = schedules[0]?.timeStart ?? "";
+    const baseEnd = schedules[0]?.timeEnd ?? "";
+    setDefaultTimeStart(baseStart);
+    setDefaultTimeEnd(baseEnd);
+    setCustomDateSet(
+      new Set(
+        schedules
+          .filter((schedule) => schedule.timeStart !== baseStart || schedule.timeEnd !== baseEnd)
+          .map((schedule) => schedule.date),
+      ),
+    );
+    setDidInitializeFromSchedules(true);
+  }, [didInitializeFromSchedules, schedules]);
+
+  useEffect(() => {
+    if (customDateSet.size > 0) {
+      setIsCustomTimesOpen(true);
+    }
+  }, [customDateSet]);
 
   const { data: availabilityData } = useQuery<ScheduleAvailability | Set<string>>({
     queryKey: [
@@ -88,6 +127,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
       if (!currentAccount?.id) {
         return {
           busyDatesSet: new Set<string>(),
+          otherJobsBusyDatesSet: new Set<string>(),
           dayOffDatesSet: new Set<string>(),
           dayOffReasonsByDate: {},
           fullyBookedDatesSet: new Set<string>(),
@@ -100,7 +140,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
       const [schedulesResult, daysOffResult, accountResult] = await Promise.all([
         supabase
           .from("job_schedules")
-          .select("scheduled_date, scheduled_time_start, scheduled_time_end, job:leads!lead_id(name)")
+          .select("lead_id, scheduled_date, scheduled_time_start, scheduled_time_end, job:leads!lead_id(name)")
           .eq("account_id", currentAccount.id)
           .gte("scheduled_date", format(monthStart, "yyyy-MM-dd"))
           .lte("scheduled_date", format(monthEnd, "yyyy-MM-dd"))
@@ -124,6 +164,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
       if (accountResult.error) throw accountResult.error;
 
       const busyDatesSet = new Set<string>();
+      const otherJobsBusyDatesSet = new Set<string>();
       const existingCountsByDate: Record<string, number> = {};
       const scheduledJobsByDate: Record<string, Array<{
         name: string;
@@ -134,6 +175,9 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
       schedulesResult.data?.forEach((schedule: any) => {
         if (!schedule.scheduled_date) return;
         busyDatesSet.add(schedule.scheduled_date);
+        if (!currentLeadId || schedule.lead_id !== currentLeadId) {
+          otherJobsBusyDatesSet.add(schedule.scheduled_date);
+        }
         existingCountsByDate[schedule.scheduled_date] = (existingCountsByDate[schedule.scheduled_date] || 0) + 1;
         if (!scheduledJobsByDate[schedule.scheduled_date]) {
           scheduledJobsByDate[schedule.scheduled_date] = [];
@@ -167,6 +211,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
 
       return {
         busyDatesSet,
+        otherJobsBusyDatesSet,
         dayOffDatesSet,
         dayOffReasonsByDate,
         fullyBookedDatesSet,
@@ -181,6 +226,9 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
   const busyDatesSet = availabilityData instanceof Set
     ? availabilityData
     : (availabilityData?.busyDatesSet ?? new Set<string>());
+  const otherJobsBusyDatesSet = availabilityData instanceof Set
+    ? availabilityData
+    : (availabilityData?.otherJobsBusyDatesSet ?? busyDatesSet);
   const dayOffDatesSet = availabilityData instanceof Set
     ? new Set<string>()
     : (availabilityData?.dayOffDatesSet ?? new Set<string>());
@@ -214,19 +262,19 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
     return effective;
   }, [dailyLimit, fullyBookedDatesSet, localScheduleCountByDate, existingCountsByDate]);
 
-  const allBusyDatesSet = useMemo(() => {
-    const merged = new Set(busyDatesSet);
+  const indicatorBusyDatesSet = useMemo(() => {
+    const merged = new Set(otherJobsBusyDatesSet);
     Object.keys(localScheduleCountByDate).forEach((date) => merged.add(date));
     return merged;
-  }, [busyDatesSet, localScheduleCountByDate]);
-  const selectedDateJobs = selectedDateString ? (scheduledJobsByDate[selectedDateString] ?? []) : [];
+  }, [otherJobsBusyDatesSet, localScheduleCountByDate]);
 
   const isDateUnavailable = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
+    const isAlreadySelected = scheduleDateSet.has(dateStr);
     return (
       date < today ||
       dayOffDatesSet.has(dateStr) ||
-      effectiveFullyBookedDatesSet.has(dateStr)
+      (effectiveFullyBookedDatesSet.has(dateStr) && !isAlreadySelected)
     );
   };
 
@@ -244,143 +292,120 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
         : "This date is marked as a day off.";
     }
 
-    if (effectiveFullyBookedDatesSet.has(dateStr) && dailyLimit) {
+    if (effectiveFullyBookedDatesSet.has(dateStr) && dailyLimit && !scheduleDateSet.has(dateStr)) {
       return `Daily job limit (${dailyLimit}) reached for this date.`;
     }
 
     return null;
   };
 
-  useEffect(() => {
-    if (schedules.length === 0) {
-      setActiveScheduleIndex(null);
-      if (!isAddingNextDate) {
-        setScheduledTimeStart("");
-        setScheduledTimeEnd("");
-      }
-      return;
-    }
-
-    if (activeScheduleIndex === null && !isAddingNextDate) {
-      setActiveScheduleIndex(schedules.length - 1);
-      return;
-    }
-
-    if (activeScheduleIndex !== null && activeScheduleIndex >= schedules.length) {
-      setActiveScheduleIndex(schedules.length - 1);
-    }
-  }, [activeScheduleIndex, isAddingNextDate, schedules.length]);
-
-  useEffect(() => {
-    if (isAddingNextDate || activeScheduleIndex === null) return;
-
-    const schedule = schedules[activeScheduleIndex];
-    if (!schedule) return;
-
-    setScheduledTimeStart(schedule.timeStart || "");
-    setScheduledTimeEnd(schedule.timeEnd || "");
-    setPendingDate(schedule.date || "");
-  }, [activeScheduleIndex, isAddingNextDate, schedules]);
-
-  const canUseDate = (dateStr: string) => {
+  const canUseDate = (dateStr: string, options?: { notify?: boolean }) => {
+    const notify = options?.notify ?? true;
     const localDate = parse(dateStr, "yyyy-MM-dd", new Date());
     if (!isValid(localDate) || localDate < today) {
-      toast.error("Past dates are unavailable.");
+      if (notify) toast.error("Past dates are unavailable.");
       return false;
     }
 
     if (dayOffDatesSet.has(dateStr)) {
-      toast.error("This date is marked as a day off.");
+      if (notify) toast.error("This date is marked as a day off.");
       return false;
     }
 
-    if (effectiveFullyBookedDatesSet.has(dateStr)) {
-      toast.error("Daily job limit has been reached for this date.");
+    if (effectiveFullyBookedDatesSet.has(dateStr) && !scheduleDateSet.has(dateStr)) {
+      if (notify) toast.error("Daily job limit has been reached for this date.");
       return false;
     }
 
     return true;
   };
 
-  const handleDateSelect = (date: Date | undefined) => {
-    if (!date) return false;
-    const nextDateString = format(date, "yyyy-MM-dd");
+  const handleMultiDateSelect = (dates: Date[] | Date | undefined) => {
+    let dateStrings: string[] = [];
 
-    if (!canUseDate(nextDateString)) {
-      return false;
+    if (Array.isArray(dates)) {
+      dateStrings = dates.map((date) => format(date, "yyyy-MM-dd"));
+    } else if (dates) {
+      const clickedDate = format(dates, "yyyy-MM-dd");
+      dateStrings = scheduleDateSet.has(clickedDate)
+        ? schedules.filter((schedule) => schedule.date !== clickedDate).map((schedule) => schedule.date)
+        : [...schedules.map((schedule) => schedule.date), clickedDate];
     }
 
-    setPendingDate(nextDateString);
-    return true;
+    const normalizedDateStrings = Array.from(new Set(dateStrings))
+      .filter((dateStr) => canUseDate(dateStr, { notify: false }));
+    const nextDateSet = new Set(normalizedDateStrings);
+    const removedDates = Array.from(scheduleDateSet).filter((date) => !nextDateSet.has(date));
+    const addedDates = normalizedDateStrings.filter((date) => !scheduleDateSet.has(date));
+
+    setMutedDeselectedDates((current) => {
+      const next = new Set(current);
+      removedDates.forEach((date) => next.add(date));
+      addedDates.forEach((date) => next.delete(date));
+      return next;
+    });
+
+    const nextSchedules = normalizedDateStrings
+      .map((dateStr) => schedules.find((schedule) => schedule.date === dateStr) || {
+        date: dateStr,
+        timeStart: defaultTimeStart,
+        timeEnd: defaultTimeEnd,
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    onSchedulesChange(nextSchedules);
   };
 
-  const handleDateInputChange = (value: string) => {
-    if (!value) return;
-
-    const parsedDate = parse(value, "yyyy-MM-dd", new Date());
-    if (!isValid(parsedDate) || format(parsedDate, "yyyy-MM-dd") !== value) {
-      toast.error("Please enter a valid date.");
-      return;
-    }
-
-    setCalendarMonth(parsedDate);
-    handleDateSelect(parsedDate);
-  };
-
-  const addSchedule = () => {
-    const clearScheduleFields = () => {
-      setIsAddingNextDate(true);
-      setActiveScheduleIndex(null);
-      setScheduledTimeStart("");
-      setScheduledTimeEnd("");
-      setPendingDate("");
-      setIsCalendarOpen(false);
-    };
-
-    if (pendingDate) {
-      onSchedulesChange([
-        ...schedules,
-        {
-          date: pendingDate,
-          timeStart: scheduledTimeStart,
-          timeEnd: scheduledTimeEnd,
-        },
-      ]);
-      clearScheduleFields();
-      return;
-    }
-
-    clearScheduleFields();
-  };
-
-  const removeSchedule = (index: number) => {
-    onSchedulesChange(schedules.filter((_, scheduleIndex) => scheduleIndex !== index));
-    if (schedules.length <= 1) {
-      setActiveScheduleIndex(null);
-      setIsAddingNextDate(false);
-      setPendingDate("");
-      return;
-    }
-
-    if (activeScheduleIndex === null) return;
-    if (activeScheduleIndex === index) {
-      setActiveScheduleIndex(Math.max(0, index - 1));
-      return;
-    }
-    if (activeScheduleIndex > index) {
-      setActiveScheduleIndex(activeScheduleIndex - 1);
-    }
-  };
-
-  const updateActiveScheduleTime = (field: "timeStart" | "timeEnd", value: string) => {
-    if (activeScheduleIndex === null || isAddingNextDate) return;
+  const updateScheduleTime = (index: number, field: "timeStart" | "timeEnd", value: string) => {
     onSchedulesChange(
-      schedules.map((schedule, index) =>
-        index === activeScheduleIndex
+      schedules.map((schedule, scheduleIndex) =>
+        scheduleIndex === index
           ? { ...schedule, [field]: value }
           : schedule,
       ),
     );
+  };
+
+  const updateDefaultTime = (field: "timeStart" | "timeEnd", value: string) => {
+    if (field === "timeStart") {
+      setDefaultTimeStart(value);
+    } else {
+      setDefaultTimeEnd(value);
+    }
+
+    onSchedulesChange(
+      schedules.map((schedule) => {
+        if (customDateSet.has(schedule.date)) return schedule;
+        return {
+          ...schedule,
+          [field]: value,
+        };
+      }),
+    );
+  };
+
+  const toggleDateCustomTime = (date: string) => {
+    const isCustom = customDateSet.has(date);
+    const nextCustomSet = new Set(customDateSet);
+
+    if (isCustom) {
+      nextCustomSet.delete(date);
+      onSchedulesChange(
+        schedules.map((schedule) =>
+          schedule.date === date
+            ? {
+              ...schedule,
+              timeStart: defaultTimeStart,
+              timeEnd: defaultTimeEnd,
+            }
+            : schedule,
+        ),
+      );
+    } else {
+      nextCustomSet.add(date);
+    }
+
+    setCustomDateSet(nextCustomSet);
   };
 
   return (
@@ -392,135 +417,145 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
           </div>
         )}
 
-        <div className="max-h-[12.5rem] overflow-y-auto rounded-md border border-border">
+        <div className="p-2">
+          <Calendar
+            mode="multiple"
+            selected={selectedDates}
+            onSelect={handleMultiDateSelect}
+            onMonthChange={setCalendarMonth}
+            month={calendarMonth}
+            disabled={isDateUnavailable}
+            onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
+            onDayMouseLeave={() => setHoveredUnavailableReason(null)}
+            className={cn("mx-auto w-fit rounded-md pointer-events-auto")}
+            modifiers={{
+              busy: (date) =>
+                date >= today && indicatorBusyDatesSet.has(format(date, "yyyy-MM-dd")),
+              mutedDeselected: (date) => {
+                const dateStr = format(date, "yyyy-MM-dd");
+                return mutedDeselectedDates.has(dateStr) && !scheduleDateSet.has(dateStr);
+              },
+              fullyBooked: (date) => {
+                const dateStr = format(date, "yyyy-MM-dd");
+                return effectiveFullyBookedDatesSet.has(dateStr) && !scheduleDateSet.has(dateStr);
+              },
+              dayOff: (date) => {
+                const dateStr = format(date, "yyyy-MM-dd");
+                return dayOffDatesSet.has(dateStr);
+              },
+            }}
+            modifiersClassNames={{
+              busy:
+                "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
+              mutedDeselected:
+                "rounded-full bg-foreground/15 text-foreground",
+              fullyBooked: "opacity-50 line-through",
+              dayOff: "opacity-50 line-through text-destructive",
+            }}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-3 pb-2">
+            <div className="space-y-2">
+              <Label htmlFor="schedule-default-start">Start Time</Label>
+              <Input
+                id="schedule-default-start"
+                type="time"
+                value={defaultTimeStart}
+                onChange={(event) => updateDefaultTime("timeStart", event.target.value)}
+                className="h-10 px-3 py-2"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-default-end">End Time</Label>
+              <Input
+                id="schedule-default-end"
+                type="time"
+                value={defaultTimeEnd}
+                onChange={(event) => updateDefaultTime("timeEnd", event.target.value)}
+                className="h-10 px-3 py-2"
+              />
+            </div>
+          </div>
+
           {schedules.length > 0 ? (
-            displayedSchedules.map(({ schedule, index }) => {
-              const [year, month, day] = schedule.date.split("-").map(Number);
-              const localDate = new Date(year, month - 1, day);
-              return (
-                <div
-                  key={`${schedule.date}-${index}`}
-                  className="flex items-center justify-between p-3 bg-muted cursor-pointer border-b border-border last:border-b-0"
-                  onClick={() => {
-                    setIsAddingNextDate(false);
-                    setActiveScheduleIndex(index);
-                  }}
+            <Collapsible open={isCustomTimesOpen} onOpenChange={setIsCustomTimesOpen} className="space-y-2">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 px-1 py-2 text-sm font-semibold text-muted-foreground/70 hover:text-muted-foreground/80 transition-colors"
                 >
-                  <div className="text-sm">
-                    <div className="font-medium">{format(localDate, "EEEE, MMM d, yyyy")}</div>
-                    {schedule.timeStart && schedule.timeEnd && (
-                      <div className="text-xs text-muted-foreground">
-                        {schedule.timeStart} - {schedule.timeEnd}
+                  <span>Custom times</span>
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", isCustomTimesOpen && "rotate-180")} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className={cn(schedules.length > 3 && "max-h-[10.5rem] overflow-y-auto pr-1")}>
+                  {displayedSchedules.map(({ schedule, index }) => {
+                    const parsedDate = parse(schedule.date, "yyyy-MM-dd", new Date());
+                    const isCustomTime = customDateSet.has(schedule.date);
+                    return (
+                      <div key={`${schedule.date}-${index}`} className="py-3">
+                        <div className="grid grid-cols-[auto_1fr] items-start gap-3">
+                          <div>
+                            {isValid(parsedDate) ? (
+                              <MonthDayDateBadge date={parsedDate} size="sm" />
+                            ) : (
+                              <div className="text-sm text-muted-foreground">{schedule.date}</div>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleDateCustomTime(schedule.date)}
+                              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              {isCustomTime ? "Use default time" : "Set custom time"}
+                            </button>
+                            {isCustomTime && (
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                  <Label htmlFor={`schedule-start-${index}`} className="sr-only">Custom Start Time</Label>
+                                  <Input
+                                    id={`schedule-start-${index}`}
+                                    type="time"
+                                    value={schedule.timeStart}
+                                    onChange={(event) => updateScheduleTime(index, "timeStart", event.target.value)}
+                                    className="h-10 px-3 py-2"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor={`schedule-end-${index}`} className="sr-only">Custom End Time</Label>
+                                  <Input
+                                    id={`schedule-end-${index}`}
+                                    type="time"
+                                    value={schedule.timeEnd}
+                                    onChange={(event) => updateScheduleTime(index, "timeEnd", event.target.value)}
+                                    className="h-10 px-3 py-2"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => removeSchedule(index)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                    );
+                  })}
                 </div>
-              );
-            })
+              </CollapsibleContent>
+            </Collapsible>
           ) : (
-            <div className="bg-muted p-3 text-sm text-muted-foreground">
+            <div className="bg-muted rounded-md p-3 text-sm text-muted-foreground">
               No dates added
             </div>
           )}
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="schedule-date-input">Date</Label>
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              id="schedule-date-input"
-              type="date"
-              value={scheduledDate}
-              min={format(today, "yyyy-MM-dd")}
-              onChange={(event) => handleDateInputChange(event.target.value)}
-              className="h-10 w-full px-3 py-2"
-            />
-            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="outline" className="w-full gap-2">
-                  <CalendarDays className="h-4 w-4" />
-                  View Calendar
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <div className="w-[20rem]">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      if (!date) return;
-                      if (handleDateSelect(date)) {
-                        setIsCalendarOpen(false);
-                      }
-                    }}
-                    onMonthChange={setCalendarMonth}
-                    disabled={isDateUnavailable}
-                    onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
-                    onDayMouseLeave={() => setHoveredUnavailableReason(null)}
-                    className={cn("w-fit rounded-md border pointer-events-auto")}
-                    modifiers={{
-                      busy: (date) => allBusyDatesSet.has(format(date, "yyyy-MM-dd")),
-                      fullyBooked: (date) => {
-                        const dateStr = format(date, "yyyy-MM-dd");
-                        return effectiveFullyBookedDatesSet.has(dateStr);
-                      },
-                      dayOff: (date) => {
-                        const dateStr = format(date, "yyyy-MM-dd");
-                        return dayOffDatesSet.has(dateStr);
-                      },
-                    }}
-                    modifiersClassNames={{
-                      busy:
-                        "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:rounded-full after:bg-primary",
-                      fullyBooked: "opacity-50 line-through",
-                      dayOff: "opacity-50 line-through text-destructive",
-                    }}
-                    month={calendarMonth}
-                  />
-
-                  <div className="border-t border-border p-3">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {selectedDateString
-                        ? `Jobs on ${format(new Date(`${selectedDateString}T00:00:00`), "MMM d, yyyy")}`
-                        : "Jobs on selected day"}
-                    </p>
-                    {selectedDateString ? (
-                      selectedDateJobs.length > 0 ? (
-                        <div className="mt-2 space-y-1.5 max-h-28 overflow-y-auto">
-                          {selectedDateJobs.map((job, index) => (
-                            <div key={`${job.name}-${job.scheduledTimeStart}-${index}`} className="text-sm">
-                              <span className="font-medium">{job.name}</span>
-                              {job.scheduledTimeStart && (
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  {job.scheduledTimeStart}
-                                  {job.scheduledTimeEnd ? ` - ${job.scheduledTimeEnd}` : ""}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-xs text-muted-foreground">No jobs scheduled for this day.</p>
-                      )
-                    ) : (
-                      <p className="mt-2 text-xs text-muted-foreground">Select a day to view scheduled jobs.</p>
-                    )}
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-
         <div className="space-y-3">
           {dayOffDatesSet.size > 0 && (
             <div className="text-xs text-muted-foreground space-y-1">
-              {dayOffDatesSet.size > 0 && (
-                <p>Dates marked as day off are unavailable.</p>
-              )}
+              <p>Dates marked as day off are unavailable.</p>
             </div>
           )}
 
@@ -529,55 +564,6 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
               {hoveredUnavailableReason}
             </p>
           )}
-        </div>
-
-        <div className="space-y-3">
-          <ScheduleDateTimePicker
-            selectedDate={selectedDate}
-            onSelectDate={handleDateSelect}
-            calendarMonth={calendarMonth}
-            onCalendarMonthChange={setCalendarMonth}
-            showCalendar={false}
-            onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
-            onDayMouseLeave={() => setHoveredUnavailableReason(null)}
-            disabledDate={isDateUnavailable}
-            scheduledTimeStart={scheduledTimeStart}
-            onScheduledTimeStartChange={(value) => {
-              setScheduledTimeStart(value);
-              updateActiveScheduleTime("timeStart", value);
-            }}
-            scheduledTimeEnd={scheduledTimeEnd}
-            onScheduledTimeEndChange={(value) => {
-              setScheduledTimeEnd(value);
-              updateActiveScheduleTime("timeEnd", value);
-            }}
-            busyDatesSet={allBusyDatesSet}
-            modifiers={{
-              fullyBooked: (date) => {
-                const dateStr = format(date, "yyyy-MM-dd");
-                return effectiveFullyBookedDatesSet.has(dateStr);
-              },
-              dayOff: (date) => {
-                const dateStr = format(date, "yyyy-MM-dd");
-                return dayOffDatesSet.has(dateStr);
-              },
-            }}
-            modifiersClassNames={{
-              fullyBooked: "opacity-50 line-through",
-              dayOff: "opacity-50 line-through text-destructive",
-            }}
-            calendarClassName={cn("rounded-md")}
-          />
-
-          <Button
-            onClick={addSchedule}
-            variant="secondary"
-            className="w-full"
-            aria-label="Add Schedule Date"
-            disabled={!pendingDate}
-          >
-            <Check className="h-4 w-4" />
-          </Button>
         </div>
       </div>
     </div>

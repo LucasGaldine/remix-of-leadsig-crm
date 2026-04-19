@@ -82,8 +82,8 @@ export function AddPhotosModal({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-xl md:text-lg">{title}</DialogTitle>
+          <DialogDescription className="text-base md:text-sm">
             Select up to {maxFiles} photos. Supported formats: JPEG, PNG, WebP, HEIC.
           </DialogDescription>
         </DialogHeader>
@@ -99,9 +99,9 @@ export function AddPhotosModal({
                 "transition-colors cursor-pointer"
               )}
             >
-              <Camera className="h-10 w-10" />
-              <span className="text-sm font-medium">Browse photos to upload</span>
-              <span className="text-xs">JPEG, PNG, WebP, or HEIC up to 10MB</span>
+              <Camera className="h-10 w-10 md:h-8 md:w-8" />
+              <span className="text-base md:text-sm font-medium">Browse photos to upload</span>
+              <span className="text-base md:text-xs">JPEG, PNG, WebP, or HEIC up to 10MB</span>
             </button>
           ) : (
             <div className="space-y-3">
@@ -118,9 +118,9 @@ export function AddPhotosModal({
                     />
                     <button
                       onClick={() => removeFile(index)}
-                      className="absolute top-2 right-2 p-1 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
+                      className="absolute top-2 right-2 p-1.5 md:p-1 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4 md:h-3.5 md:w-3.5" />
                     </button>
                   </div>
                 ))}
@@ -135,13 +135,13 @@ export function AddPhotosModal({
                       "transition-colors cursor-pointer"
                     )}
                   >
-                    <Camera className="h-6 w-6" />
-                    <span className="text-xs font-medium">Add More</span>
+                    <Camera className="h-6 w-6 md:h-5 md:w-5" />
+                    <span className="text-base md:text-xs font-medium">Add More</span>
                   </button>
                 )}
               </div>
 
-              <p className="text-xs text-muted-foreground text-center">
+              <p className="text-base md:text-xs text-muted-foreground text-center">
                 {selectedFiles.length} of {maxFiles} photos selected
               </p>
             </div>
@@ -158,16 +158,24 @@ export function AddPhotosModal({
         />
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => handleClose(false)} disabled={saving}>
+          <Button
+            size="lg"
+            variant="outline"
+            className="text-base md:h-10 md:px-4 md:py-2 md:text-sm"
+            onClick={() => handleClose(false)}
+            disabled={saving}
+          >
             Cancel
           </Button>
           <Button
+            size="lg"
+            className="text-base md:h-10 md:px-4 md:py-2 md:text-sm"
             onClick={handleSave}
             disabled={selectedFiles.length === 0 || saving}
           >
             {saving ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-5 w-5 md:h-4 md:w-4 mr-2 animate-spin" />
                 Saving...
               </>
             ) : (

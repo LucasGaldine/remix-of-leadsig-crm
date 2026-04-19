@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -35,7 +35,7 @@ vi.mock("@/hooks/useStripeConnect", () => ({
 }));
 
 describe("log payment tap to pay entry", () => {
-  it("shows tap to pay as coming soon in the shared log payment modal", () => {
+  it("does not show tap to pay in the shared log payment modal", () => {
     const onOpenTapToPay = vi.fn();
 
     render(
@@ -49,12 +49,7 @@ describe("log payment tap to pay entry", () => {
       />,
     );
 
-    const tapToPayButton = screen.getByRole("button", { name: /Tap to Pay/i });
-    expect(tapToPayButton).toBeDisabled();
-    expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
-
-    fireEvent.click(tapToPayButton);
-
+    expect(screen.queryByRole("button", { name: /Tap to Pay/i })).not.toBeInTheDocument();
     expect(onOpenTapToPay).not.toHaveBeenCalled();
   });
 

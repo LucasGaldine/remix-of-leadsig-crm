@@ -77,26 +77,24 @@ vi.mock("@/components/ui/calendar", () => ({
 }));
 
 describe("ScheduleDateBuilder availability guards", () => {
-  it("disables full-capacity dates and blocks adding them", () => {
+  it("disables full-capacity dates and blocks selecting them", () => {
     onSchedulesChangeMock.mockClear();
     toastErrorMock.mockClear();
 
     render(<ScheduleDateBuilder schedules={[]} onSchedulesChange={onSchedulesChangeMock} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
     expect(screen.getByText("target-disabled")).toBeInTheDocument();
 
     fireEvent.mouseEnter(screen.getByRole("button", { name: /hover date/i }));
     expect(screen.getByText("Daily job limit (3) reached for this date.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /pick date/i }));
-    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
 
-    expect(onSchedulesChangeMock).not.toHaveBeenCalled();
-    expect(toastErrorMock).toHaveBeenCalledWith("Daily job limit has been reached for this date.");
+    expect(screen.getByText(/No dates added/i)).toBeInTheDocument();
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
-  it("adds schedules only on check click and clears date/time fields after saving", () => {
+  it("toggles dates from the always-visible calendar and supports default plus per-date custom times", () => {
     const SchedulingHarness = () => {
       const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
       return <ScheduleDateBuilder schedules={schedules} onSchedulesChange={setSchedules} />;
@@ -104,28 +102,35 @@ describe("ScheduleDateBuilder availability guards", () => {
 
     render(<SchedulingHarness />);
 
-    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
     fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
-    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
-    expect(screen.getByText(/Jan 11, 2030/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Date$/i)).toHaveValue("");
-    expect(screen.getByLabelText(/start time/i)).toHaveValue("");
-    expect(screen.getByLabelText(/end time/i)).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: /custom times/i }));
+    expect(screen.getByText("JAN")).toBeInTheDocument();
+    expect(screen.getByText("11")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
+    const defaultStartInput = screen.getByLabelText(/^start time$/i);
+    const defaultEndInput = screen.getByLabelText(/^end time$/i);
+    fireEvent.change(defaultStartInput, { target: { value: "09:00" } });
+    fireEvent.change(defaultEndInput, { target: { value: "11:00" } });
+    expect(defaultStartInput).toHaveValue("09:00");
+    expect(defaultEndInput).toHaveValue("11:00");
+
     fireEvent.click(screen.getByRole("button", { name: /pick third date/i }));
-    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
-    expect(screen.getByText(/Jan 12, 2030/i)).toBeInTheDocument();
-    expect(screen.getByText(/Jan 11, 2030/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Date$/i)).toHaveValue("");
-    expect(screen.getByLabelText(/start time/i)).toHaveValue("");
-    expect(screen.getByLabelText(/end time/i)).toHaveValue("");
+    expect(screen.getByText("12")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
-    fireEvent.click(screen.getByRole("button", { name: /view calendar/i }));
+    const customTimesToggle = screen.getByRole("button", { name: /custom times/i });
+    if (customTimesToggle.getAttribute("aria-expanded") === "false") {
+      fireEvent.click(customTimesToggle);
+    }
+    fireEvent.click(screen.getAllByRole("button", { name: /set custom time/i })[0]);
+    const customStartInput = screen.getByLabelText(/custom start time/i);
+    const customEndInput = screen.getByLabelText(/custom end time/i);
+    fireEvent.change(customStartInput, { target: { value: "10:00" } });
+    fireEvent.change(customEndInput, { target: { value: "12:00" } });
+    expect(customStartInput).toHaveValue("10:00");
+    expect(customEndInput).toHaveValue("12:00");
+
     fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
-    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
-    expect(screen.getByText(/Jan 12, 2030/i)).toBeInTheDocument();
-    expect(screen.queryAllByText(/Jan 11, 2030/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText("11")).not.toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
   });
 });

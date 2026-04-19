@@ -93,7 +93,7 @@ describe("SettingsCompanyProfile logo uploader", () => {
 
     expect(payInvoiceButton).toHaveStyle({
       backgroundColor: "#334155",
-      color: "#0f172a",
+      color: "#ffffff",
     });
   });
 

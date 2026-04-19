@@ -495,11 +495,11 @@ export default function SettingsCompanyProfile() {
                     setIsDirty(true);
                   }}
                   onBlur={() => setPortalTextColor(normalizeClientPortalTextColor(portalTextColor))}
-                  placeholder="#0f172a"
+                  placeholder="#ffffff"
                   disabled={isSaving}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use a hex color like #0f172a. Invalid values reset to the default text color.
+                  Use a hex color like #ffffff. Invalid values reset to the default text color.
                 </p>
               </div>
             </div>

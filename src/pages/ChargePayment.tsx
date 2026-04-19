@@ -52,8 +52,10 @@ export default function ChargePayment() {
   const location = useLocation();
   const preselectedInvoice = location.state?.invoice;
   const preselectedMethod = location.state?.selectedMethod as PaymentMethod | undefined;
+  const returnTo = location.state?.returnTo as string | undefined;
   const {
     status: stripeStatus,
+    loading: stripeStatusLoading,
     isReady: stripeReady,
     createPaymentSession,
     startOnboarding,
@@ -132,9 +134,22 @@ export default function ChargePayment() {
         description: `Payment for ${selectedCustomerData.jobName}`,
       });
 
-      if (result?.url) {
-        window.open(result.url, "_blank");
-        toast.success("Payment page opened in new tab");
+      const checkoutUrl =
+        result?.url ||
+        result?.checkoutUrl ||
+        result?.checkout_url ||
+        result?.stripeCheckoutUrl ||
+        result?.stripe_checkout_url;
+
+      if (checkoutUrl) {
+        window.location.replace(checkoutUrl);
+      } else {
+        if (result?.clientSecret) {
+          toast.error("Payment endpoint returned a legacy response. Deploy the updated stripe-connect-payment function.");
+        } else {
+          toast.error("Unable to open Stripe checkout.");
+        }
+        console.error("Unexpected stripe-connect-payment response:", result);
       }
     } finally {
       setProcessingCard(false);
@@ -151,7 +166,7 @@ export default function ChargePayment() {
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
-      <PageHeader title="Charge Payment" showBack backTo="/payments" />
+      <PageHeader title="Charge Payment" showBack backTo={returnTo || "/payments"} />
 
       <main className="px-4 py-4">
         {/* Step 1: Select Customer */}
@@ -288,7 +303,23 @@ export default function ChargePayment() {
             {/* Card Payment via Stripe */}
             {selectedMethod === "card" && (
               <div className="card-elevated rounded-lg p-4">
-                {stripeReady ? (
+                {stripeStatusLoading ? (
+                  <>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-2 rounded-lg bg-secondary">
+                        <Loader2 className="h-5 w-5 text-secondary-foreground animate-spin" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">Checking Stripe connection</p>
+                        <p className="text-sm text-muted-foreground">Loading payment availability...</p>
+                      </div>
+                    </div>
+                    <Button className="w-full gap-2" disabled>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading...
+                    </Button>
+                  </>
+                ) : stripeReady ? (
                   <>
                     <div className="flex items-center gap-3 mb-4">
                       <div className="p-2 rounded-lg bg-[hsl(var(--status-confirmed-bg))]">

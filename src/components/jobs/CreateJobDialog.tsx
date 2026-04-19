@@ -60,6 +60,7 @@ type CrewConflictDetail = {
   scheduledTimeStart: string | null;
   scheduledTimeEnd: string | null;
 };
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const MANUAL_STEPS: ManualStep[] = [
   "client",
@@ -150,10 +151,12 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
       const parsedCrew = crewMembers.map((member) => parseCrewAssigneeId(member.user_id));
       const realCrewIds = parsedCrew
         .filter((member) => member.type === "user" && member.userId)
-        .map((member) => member.userId as string);
+        .map((member) => member.userId as string)
+        .filter((id) => UUID_REGEX.test(id));
       const mockCrewIds = parsedCrew
         .filter((member) => member.type === "mock" && member.mockProfileId)
-        .map((member) => member.mockProfileId as string);
+        .map((member) => member.mockProfileId as string)
+        .filter((id) => UUID_REGEX.test(id));
 
       const assignmentRows: any[] = [];
 
@@ -195,31 +198,6 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
       const conflictMap: Record<string, number[]> = {};
       const conflictDetailsMap: Record<string, Record<number, CrewConflictDetail>> = {};
-      const leadIds = Array.from(
-        new Set(
-          assignmentRows
-            .flatMap((assignment) => {
-              const scheduleRows = Array.isArray((assignment as any).job_schedules)
-                ? (assignment as any).job_schedules
-                : [(assignment as any).job_schedules];
-              return scheduleRows
-                .map((scheduleRow: any) => scheduleRow?.lead_id)
-                .filter((leadId: unknown): leadId is string => Boolean(leadId));
-            }),
-        ),
-      );
-      const jobTitleByLeadId: Record<string, string> = {};
-
-      if (leadIds.length > 0) {
-        const { data: leadsData } = await supabase
-          .from("leads")
-          .select("id, title")
-          .in("id", leadIds);
-        for (const lead of leadsData || []) {
-          jobTitleByLeadId[lead.id] = lead.title || "Another job";
-        }
-      }
-
       for (const [scheduleIndex, schedule] of addedSchedules.entries()) {
         for (const assignment of assignmentRows) {
           const scheduleRows = Array.isArray((assignment as any).job_schedules)
@@ -257,7 +235,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
             }
             if (!conflictDetailsMap[crewId][scheduleIndex]) {
               conflictDetailsMap[crewId][scheduleIndex] = {
-                jobTitle: jobTitleByLeadId[scheduleRow.lead_id] || "Another job",
+                jobTitle: "Another job",
                 scheduledDate: scheduleRow.scheduled_date,
                 scheduledTimeStart: scheduleRow.scheduled_time_start,
                 scheduledTimeEnd: scheduleRow.scheduled_time_end,
@@ -470,10 +448,12 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
         const parsedCrewIds = uniqueCrewIds.map((crewId) => parseCrewAssigneeId(crewId));
         const realCrewIds = parsedCrewIds
           .filter((crew) => crew.type === "user" && crew.userId)
-          .map((crew) => crew.userId as string);
+          .map((crew) => crew.userId as string)
+          .filter((id) => UUID_REGEX.test(id));
         const mockCrewIds = parsedCrewIds
           .filter((crew) => crew.type === "mock" && crew.mockProfileId)
-          .map((crew) => crew.mockProfileId as string);
+          .map((crew) => crew.mockProfileId as string)
+          .filter((id) => UUID_REGEX.test(id));
         const existingAssignments: any[] = [];
 
         if (realCrewIds.length > 0) {

@@ -4,12 +4,15 @@ export const ONBOARDING_IMPORT_STORAGE_KEY = "leadsig:onboarding-import";
 export const ONBOARDING_TUTORIAL_STORAGE_KEY = "leadsig:onboarding-tutorial";
 export const ONBOARDING_PLAN_STORAGE_KEY = "leadsig:onboarding-plan";
 export const ONBOARDING_PREVIOUS_CRM_STORAGE_KEY = "leadsig:onboarding-previous-crm";
+export const SIGNUP_SOURCE_STORAGE_KEY = "leadsig:signup-source";
+export const POST_ONBOARDING_SKOOL_MODAL_STORAGE_KEY = "leadsig:post-onboarding-skool-modal";
 
 type SourceState = "pending" | "completed";
 type ProfileState = "pending" | "completed";
 type ImportState = "pending" | "completed";
 type TutorialState = "pending" | "completed";
 type PlanState = "pending" | "completed";
+type SignupSource = "elo" | "default";
 
 function getStoredSourceState(): SourceState | null {
   if (typeof window === "undefined") {
@@ -181,6 +184,47 @@ export function getOnboardingPreviousCrm() {
 
   const trimmedValue = value.trim();
   return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+export function setSignupSource(source: SignupSource) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(SIGNUP_SOURCE_STORAGE_KEY, source);
+}
+
+export function getSignupSource(): SignupSource | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const value = window.localStorage.getItem(SIGNUP_SOURCE_STORAGE_KEY);
+  return value === "elo" || value === "default" ? value : null;
+}
+
+export function markPostOnboardingSkoolModalPending() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(POST_ONBOARDING_SKOOL_MODAL_STORAGE_KEY, "pending");
+}
+
+export function shouldShowPostOnboardingSkoolModal() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.localStorage.getItem(POST_ONBOARDING_SKOOL_MODAL_STORAGE_KEY) === "pending";
+}
+
+export function clearPostOnboardingSkoolModalPending() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(POST_ONBOARDING_SKOOL_MODAL_STORAGE_KEY);
 }
 
 export function getPostAuthRedirectPath({

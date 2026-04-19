@@ -8,6 +8,8 @@ import {
   parseCrewAssigneeId,
 } from '@/lib/crewIdentifiers';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export interface JobAssignment {
   id: string;
   lead_id: string;
@@ -45,30 +47,37 @@ export function useJobAssignments(leadId: string | undefined) {
       const userIds = assignmentsData
         .map(a => a.user_id)
         .filter((id): id is string => Boolean(id));
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, email, phone')
-        .in('user_id', userIds);
-
-      if (profilesError) throw profilesError;
+      let profilesData: Array<{ user_id: string; full_name: string | null; email: string | null; phone: string | null }> = [];
+      if (userIds.length > 0) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, email, phone')
+          .in('user_id', userIds);
+        if (error) throw error;
+        profilesData = data || [];
+      }
 
       const mockProfileIds = assignmentsData
         .map(a => a.mock_crew_profile_id)
         .filter((id): id is string => Boolean(id));
-      const { data: mockProfilesData, error: mockProfilesError } = await supabase
-        .from('mock_crew_profiles')
-        .select('id, full_name, phone')
-        .in('id', mockProfileIds);
+      let mockProfilesData: Array<{ id: string; full_name: string | null; phone: string | null }> = [];
+      if (mockProfileIds.length > 0) {
+        const { data, error: mockProfilesError } = await supabase
+          .from('mock_crew_profiles')
+          .select('id, full_name, phone')
+          .in('id', mockProfileIds);
 
-      const mockProfilesTableMissing =
-        mockProfilesError &&
-        String(mockProfilesError.message || "")
-          .toLowerCase()
-          .includes("mock_crew_profiles");
-      if (mockProfilesError && !mockProfilesTableMissing) throw mockProfilesError;
+        const mockProfilesTableMissing =
+          mockProfilesError &&
+          String(mockProfilesError.message || "")
+            .toLowerCase()
+            .includes("mock_crew_profiles");
+        if (mockProfilesError && !mockProfilesTableMissing) throw mockProfilesError;
+        mockProfilesData = data || [];
+      }
 
-      const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
-      const mockProfilesMap = new Map((mockProfilesData || []).map(p => [p.id, p]));
+      const profilesMap = new Map(profilesData.map(p => [p.user_id, p]));
+      const mockProfilesMap = new Map(mockProfilesData.map(p => [p.id, p]));
 
       return assignmentsData.map(assignment => {
         const profile = assignment.user_id
@@ -139,6 +148,12 @@ export function useJobAssignments(leadId: string | undefined) {
       }
 
       const parsedAssignee = parseCrewAssigneeId(assigneeId);
+      if (parsedAssignee.type === 'user' && (!parsedAssignee.userId || !UUID_REGEX.test(parsedAssignee.userId))) {
+        throw new Error('Invalid crew member selected');
+      }
+      if (parsedAssignee.type === 'mock' && (!parsedAssignee.mockProfileId || !UUID_REGEX.test(parsedAssignee.mockProfileId))) {
+        throw new Error('Invalid crew member selected');
+      }
       let assigneeName = "This crew member";
 
       if (parsedAssignee.type === "user" && parsedAssignee.userId) {
@@ -185,17 +200,6 @@ export function useJobAssignments(leadId: string | undefined) {
       if (checkError) throw checkError;
 
       if (existingAssignments && existingAssignments.length > 0) {
-        const leadIds = existingAssignments
-          .map(a => a.job_schedules?.lead_id)
-          .filter((id): id is string => !!id);
-
-        const { data: leadsData } = await supabase
-          .from('leads')
-          .select('id, title')
-          .in('id', leadIds);
-
-        const leadsMap = new Map(leadsData?.map(l => [l.id, l.title]) || []);
-
         for (const targetSchedule of targetSchedules) {
           for (const existing of existingAssignments) {
             const existingSchedule = existing.job_schedules;
@@ -223,7 +227,7 @@ export function useJobAssignments(leadId: string | undefined) {
                   ? ` from ${existingSchedule.scheduled_time_start} - ${existingSchedule.scheduled_time_end}`
                   : '';
 
-                const jobTitle = leadsMap.get(existingSchedule.lead_id) || 'another job';
+                const jobTitle = 'another job';
 
                 throw new Error(
                   `${assigneeName} is already assigned to "${jobTitle}" on ${dateStr}${timeStr}`

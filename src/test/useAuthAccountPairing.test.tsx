@@ -3,6 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 let authStateChangeHandler: ((event: string, session: any) => void) | null = null;
+const accountMembersSelectMock = vi.fn();
 
 const membershipsData = [
   {
@@ -21,6 +22,7 @@ const membershipsData = [
       settings: null,
       invite_code: "OLDCODE",
       pricing_plan: "basic",
+      pricing_tier: "growth",
       default_tax_rate: 0,
       default_profit_margin: 0,
       default_surcharge: 0,
@@ -59,7 +61,7 @@ vi.mock("@/integrations/supabase/client", () => {
 
       if (table === "account_members") {
         return {
-          select: vi.fn(() => ({
+          select: accountMembersSelectMock.mockImplementation(() => ({
             eq: vi.fn(() => ({
               eq: vi.fn(() => ({
                 order: vi.fn().mockResolvedValue({ data: membershipsData }),
@@ -90,6 +92,24 @@ function AuthStateProbe() {
 }
 
 describe("useAuth account pairing", () => {
+  it("requests pricing_tier when loading account membership data", async () => {
+    render(
+      <AuthProvider>
+        <AuthStateProbe />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      authStateChangeHandler?.("SIGNED_IN", { user: { id: "old-user" } });
+    });
+
+    await waitFor(() => {
+      expect(accountMembersSelectMock).toHaveBeenCalled();
+    });
+
+    expect(accountMembersSelectMock.mock.calls[0][0]).toContain("pricing_tier");
+  });
+
   it("falls back to the first active membership when stored account id is stale", async () => {
     localStorage.setItem("currentAccountId", "deleted-account");
 

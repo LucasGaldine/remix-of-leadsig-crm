@@ -1032,7 +1032,7 @@ export default function LeadDetail() {
                         <span tabIndex={0} aria-label={`Schedule visit unavailable: ${scheduleVisitDisabledReason}`} className="inline-flex">
                           <Button disabled size="lg" className="pointer-events-none">
                             <FileTextIcon className="h-4 w-4 shrink-0" />
-                            Schedule Visit
+                            Schedule Job
                           </Button>
                         </span>
                       </PopoverTrigger>
@@ -1048,7 +1048,7 @@ export default function LeadDetail() {
               ) : (
                 <Button onClick={() => setCreateEstimateDialogOpen(true)}>
                   <FileTextIcon className="h-4 w-4 shrink-0" />
-                  Schedule Visit
+                  Schedule Job
                 </Button>
               )
             )}

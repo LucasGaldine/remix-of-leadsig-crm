@@ -1,5 +1,5 @@
 export const DEFAULT_CLIENT_PORTAL_COLOR = "#334155";
-export const DEFAULT_CLIENT_PORTAL_TEXT_COLOR = "#0f172a";
+export const DEFAULT_CLIENT_PORTAL_TEXT_COLOR = "#ffffff";
 
 function normalizeHexColor(value: string | null | undefined, fallbackColor: string): string {
   if (!value) return fallbackColor;

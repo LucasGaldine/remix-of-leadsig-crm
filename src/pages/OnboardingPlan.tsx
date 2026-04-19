@@ -27,7 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { type BasicTier, type PlanKey } from "@/lib/billingPlans";
 import { getBasicTierDisplayName, planOrder, pricingPlans, PricingPlanCard } from "@/components/pricing/PricingPlanCard";
-import { completeOnboardingPlan } from "@/lib/onboarding";
+import { completeOnboardingPlan, markPostOnboardingSkoolModalPending } from "@/lib/onboarding";
 
 export default function OnboardingPlan() {
   const navigate = useNavigate();
@@ -51,6 +51,7 @@ export default function OnboardingPlan() {
 
   const handleContinue = () => {
     completeOnboardingPlan();
+    markPostOnboardingSkoolModalPending();
     navigate("/");
   };
 

@@ -158,95 +158,19 @@ export default function Schedule() {
       {/* View Controls */}
       <div className="bg-card px-4 py-3 space-y-3">
         <div className="flex items-center justify-start gap-2 overflow-x-auto pb-1 md:justify-between md:overflow-visible md:gap-3 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-          <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-            <SelectTrigger className="w-28 shrink-0 md:hidden">
-              <CalendarIcon className="h-4 w-4 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="week">Week</SelectItem>
-              <SelectItem value="month">Month</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto hidden md:block">
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
             <TabsList>
-              <TabsTrigger value="week" className="gap-2">
+              <TabsTrigger value="week" className="gap-2 text-lg md:text-sm">
                 <CalendarIcon className="h-4 w-4" />
                 Week
               </TabsTrigger>
-              <TabsTrigger value="month" className="gap-2">
+              <TabsTrigger value="month" className="gap-2 text-lg md:text-sm">
                 <CalendarIcon className="h-4 w-4" />
                 Month
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
-          {canViewCrewHours && (
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <Button variant="outline" size="sm" className="shrink-0 max-w-full gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span className="font-semibold">
-                    {crewHours.reduce((sum, crew) => sum + crew.total_hours, 0).toFixed(1)}h
-                  </span>
-                  <span className="text-muted-foreground">|</span>
-                  <CalendarIcon className="h-4 w-4" />
-                  <span className="font-semibold">
-                    {crewHours.reduce((sum, crew) => sum + crew.job_count, 0)} jobs
-                  </span>
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="absolute right-4 mt-2 z-10">
-                <Card className="w-80 shadow-lg">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">
-                      {selectedCrewMember ? "Crew Member Summary" : "Crew Summary"}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {crewHours.slice(0, selectedCrewMember ? 1 : 10).map((crew) => (
-                        <div key={crew.user_id} className="flex items-center justify-between text-sm border-b pb-2 last:border-b-0 last:pb-0">
-                          <span className="font-medium">{crew.full_name}</span>
-                          <div className="flex items-center gap-3 text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {crew.total_hours.toFixed(1)}h
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <CalendarIcon className="h-3 w-3" />
-                              {crew.job_count}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-
-          {canViewCrewHours && (
-            <Select
-              value={selectedCrewMember || "all"}
-              onValueChange={(v) => setSelectedCrewMember(v === "all" ? null : v)}
-            >
-              <SelectTrigger className="w-[150px] shrink-0 sm:w-[180px]">
-                <Users className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Crew</SelectItem>
-                {teamMembers.map((member) => (
-                  <SelectItem key={member.user_id} value={member.user_id}>
-                    {member.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
         </div>
       </div>
 
@@ -260,7 +184,7 @@ export default function Schedule() {
             >
               <ChevronLeft className="h-5 w-5 text-muted-foreground" />
             </button>
-            <span className="text-sm font-medium text-muted-foreground">
+            <span className="text-base font-medium text-muted-foreground md:text-sm">
               {format(selectedDate, "MMMM yyyy")}
             </span>
             <button
@@ -298,7 +222,7 @@ export default function Schedule() {
                   >
                     <span
                       className={cn(
-                        "text-2xs font-medium uppercase text-muted-foreground md:hidden",
+                        "text-xl font-medium uppercase text-muted-foreground md:hidden",
                         isSelected && "text-primary"
                       )}
                     >
@@ -306,7 +230,7 @@ export default function Schedule() {
                     </span>
                     <span
                       className={cn(
-                        "hidden text-2xs font-medium uppercase text-muted-foreground md:block",
+                        "hidden text-base font-medium uppercase text-muted-foreground md:block",
                         isSelected && "text-primary"
                       )}
                     >
@@ -314,7 +238,7 @@ export default function Schedule() {
                     </span>
                     <span
                       className={cn(
-                        "mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-lg font-semibold transition-colors",
+                        "mt-0.5 flex h-10 w-10 items-center justify-center rounded-full text-xl font-semibold transition-colors md:h-8 md:w-8 md:text-base",
                         isSelected
                           ? "bg-primary text-primary-foreground"
                           : isToday
@@ -376,7 +300,7 @@ export default function Schedule() {
                     key={`${day.toISOString()}-${index}`}
                     onClick={() => setSelectedDate(day)}
                     className={cn(
-                      "aspect-square flex flex-col items-center justify-center rounded-lg transition-colors text-sm",
+                      "aspect-square flex flex-col items-center justify-center rounded-lg transition-colors text-base",
                       isSelected
                         ? "bg-primary text-primary-foreground"
                         : isCurrentMonth
@@ -424,6 +348,76 @@ export default function Schedule() {
 
       {/* Jobs List */}
       <main className="px-4 py-4 max-w-[var(--content-max-width)] m-auto mt-4">
+        {canViewCrewHours && (
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <Select
+              value={selectedCrewMember || "all"}
+              onValueChange={(v) => setSelectedCrewMember(v === "all" ? null : v)}
+            >
+              <SelectTrigger className="h-12 w-auto shrink-0 !justify-start gap-2 border-0 bg-transparent px-0 text-muted-foreground shadow-none ring-0 focus:ring-0 focus:ring-offset-0 [&>span]:text-lg [&>span]:font-normal md:[&>span]:text-sm [&>svg]:h-5 [&>svg]:w-5">
+                <Users className="h-5 w-5 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-lg">All Crew</SelectItem>
+                {teamMembers.map((member) => (
+                  <SelectItem key={member.user_id} value={member.user_id} className="text-lg">
+                    {member.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="relative">
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-12 shrink-0 items-center gap-2 text-lg font-normal text-muted-foreground md:text-sm"
+                  >
+                    <Clock className="h-4 w-4" />
+                    <span className="font-normal">
+                      {crewHours.reduce((sum, crew) => sum + crew.total_hours, 0).toFixed(1)}h
+                    </span>
+                    <span className="text-muted-foreground">|</span>
+                    <CalendarIcon className="h-4 w-4" />
+                    <span className="font-normal">
+                      {crewHours.reduce((sum, crew) => sum + crew.job_count, 0)} jobs
+                    </span>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="absolute left-0 mt-2 z-10">
+                  <Card className="w-80 shadow-lg">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium">
+                        {selectedCrewMember ? "Crew Member Summary" : "Crew Summary"}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {crewHours.slice(0, selectedCrewMember ? 1 : 10).map((crew) => (
+                          <div key={crew.user_id} className="flex items-center justify-between text-sm border-b pb-2 last:border-b-0 last:pb-0">
+                            <span className="font-medium">{crew.full_name}</span>
+                            <div className="flex items-center gap-3 text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {crew.total_hours.toFixed(1)}h
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <CalendarIcon className="h-3 w-3" />
+                                {crew.job_count}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          </div>
+        )}
+
         {selectedDayOff && (
           <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
             <p className="text-sm font-medium text-destructive">Day Off</p>
@@ -439,19 +433,11 @@ export default function Schedule() {
           </div>
         ) : (
           <>
-            <Card className="overflow-hidden border-border/80 shadow-sm">
-              <div className="flex items-center justify-between border-b border-border px-4 py-4">
-                <h2 className="text-lg font-semibold text-foreground">
+            <Card className="-mx-4 overflow-hidden rounded-none border-x-0 border-border/80 shadow-sm md:mx-0 md:rounded-lg md:border-x">
+              <div className="flex items-center border-b border-border px-4 py-4">
+                <h2 className="text-1 font-semibold text-foreground md:text-lg">
                   {format(selectedDate, "EEEE, MMMM d")}
                 </h2>
-                <span className="text-sm text-muted-foreground">
-                  {todaysJobs.length} {todaysJobs.length === 1 ? "job" : "jobs"}
-                  {selectedProjected.length > 0 && (
-                    <span className="text-emerald-600">
-                      {" "}+ {selectedProjected.length} recurring
-                    </span>
-                  )}
-                </span>
               </div>
               {todaysJobs.length > 0 ? (
                 <div className="divide-y divide-border">
@@ -473,6 +459,8 @@ export default function Schedule() {
                           : undefined
                       }
                       showQuickActions
+                      mobileDashboardEmphasis
+                      mobileDashboardAction="navigate"
                       className="rounded-none border-0 bg-transparent shadow-none hover:bg-accent/40"
                     />
                   ))}

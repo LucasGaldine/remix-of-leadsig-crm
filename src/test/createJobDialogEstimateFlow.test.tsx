@@ -281,7 +281,7 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
+    fireEvent.change(screen.getByLabelText("Assign crew member"), { target: { value: "alex" } });
     fireEvent.click(screen.getByRole("button", { name: /alex crew/i }));
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
@@ -496,7 +496,7 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
+    fireEvent.change(screen.getByLabelText("Assign crew member"), { target: { value: "alex" } });
     fireEvent.click(screen.getByRole("button", { name: /alex crew/i }));
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
@@ -540,7 +540,7 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
+    fireEvent.change(screen.getByLabelText("Assign crew member"), { target: { value: "alex" } });
     const crewButton = screen.getByRole("button", { name: /alex crew/i });
 
     await waitFor(() => {
@@ -577,7 +577,7 @@ describe("CreateJobDialog estimate flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /add mock schedule/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "alex" } });
+    fireEvent.change(screen.getByLabelText("Assign crew member"), { target: { value: "alex" } });
     fireEvent.click(screen.getByRole("button", { name: /alex crew/i }));
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));

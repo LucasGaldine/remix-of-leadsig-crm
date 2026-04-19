@@ -13,9 +13,10 @@ import { z } from 'zod';
 import { usePasswordStrength } from '@/hooks/usePasswordStrength';
 import { PasswordStrengthIndicator } from '@/components/auth/PasswordStrengthIndicator';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
-import { getPostAuthRedirectPath } from '@/lib/onboarding';
+import { getPostAuthRedirectPath, setSignupSource } from '@/lib/onboarding';
 import { extractAffiliateReferralCode } from '@/lib/affiliate';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
@@ -29,14 +30,24 @@ const roleLabels: Record<AppRole, string> = {
   crew_member: 'Crew Member',
 };
 
-export default function Auth() {
+type AuthProps = {
+  signupVariant?: 'default' | 'elo';
+};
+
+export default function Auth({ signupVariant = 'default' }: AuthProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, signIn, signUp, isLoading: authLoading } = useAuth();
   const affiliateReferralCode = extractAffiliateReferralCode(location.search);
+  const signupSource = new URLSearchParams(location.search).get('source')?.toLowerCase();
+  const isEloSignup = signupVariant === 'elo' || signupSource === 'elo';
   
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
+  const [eloSkoolEmail, setEloSkoolEmail] = useState('');
+  const [eloSignupGateCompleted, setEloSignupGateCompleted] = useState(!isEloSignup);
+  const [skoolAccountStatus, setSkoolAccountStatus] = useState<'free' | 'premium' | null>(null);
+  const [isCheckingSkoolStatus, setIsCheckingSkoolStatus] = useState(false);
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [selectedRole, setSelectedRole] = useState<AppRole>('sales');
@@ -58,13 +69,14 @@ export default function Auth() {
     }
   }, [signupCompanyMode]);
   const [errors, setErrors] = useState<{
+    eloSkoolEmail?: string;
     email?: string;
     password?: string;
     fullName?: string;
     companyCode?: string;
     companyName?: string;
   }>({});
-  const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin');
+  const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(isEloSignup ? 'signup' : 'signin');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   
   // Password strength validation for signup
@@ -78,11 +90,25 @@ export default function Auth() {
     }
   }, [user, authLoading, navigate]);
 
+  useEffect(() => {
+    if (isEloSignup) {
+      setActiveTab('signup');
+      setEloSignupGateCompleted(false);
+    } else {
+      setEloSignupGateCompleted(true);
+    }
+  }, [isEloSignup]);
+
   const resetSignupFlow = () => {
     setSignupStep(1);
     setSignupCompanyMode(null);
     setSelectedRole('sales');
     setSmsConsentEnabled(false);
+    if (isEloSignup) {
+      setEloSkoolEmail('');
+      setEloSignupGateCompleted(false);
+      setSkoolAccountStatus(null);
+    }
   };
 
   const validateForm = (isSignUp: boolean): boolean => {
@@ -201,26 +227,45 @@ export default function Auth() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isEloSignup && !eloSignupGateCompleted) return;
     if (!validateForm(true)) return;
 
     setIsLoading(true);
-    const { error } = await signUp(
-      email,
-      password,
-      fullName,
-      selectedRole,
-      isCreatingCompany
-        ? { companyName, companyPhone, companyAddress }
-        : { companyCode },
-      {
-        status: smsConsentEnabled ? 'opted_in' : 'opted_out',
-        capturedAt: new Date().toISOString(),
-        source: 'signup_form',
-        textVersion: SMS_CONSENT_TEXT_VERSION,
-      },
-      phone,
-      affiliateReferralCode
-    );
+    const signupPlanOverride =
+      isEloSignup && skoolAccountStatus === 'premium'
+        ? { plan: 'basic' as const, tier: 'growth' as const }
+        : undefined;
+    const signupPayload = isCreatingCompany
+      ? { companyName, companyPhone, companyAddress }
+      : { companyCode };
+    const signupSmsConsent = {
+      status: smsConsentEnabled ? 'opted_in' : 'opted_out',
+      capturedAt: new Date().toISOString(),
+      source: 'signup_form' as const,
+      textVersion: SMS_CONSENT_TEXT_VERSION,
+    };
+    const { error } = signupPlanOverride
+      ? await signUp(
+          email,
+          password,
+          fullName,
+          selectedRole,
+          signupPayload,
+          signupSmsConsent,
+          phone,
+          affiliateReferralCode,
+          signupPlanOverride,
+        )
+      : await signUp(
+          email,
+          password,
+          fullName,
+          selectedRole,
+          signupPayload,
+          signupSmsConsent,
+          phone,
+          affiliateReferralCode,
+        );
     setIsLoading(false);
 
     if (error) {
@@ -233,9 +278,56 @@ export default function Auth() {
         toast.error(error.message);
       }
     } else {
+      setSignupSource(isEloSignup ? "elo" : "default");
       toast.success('Account created successfully!');
       navigate(getPostAuthRedirectPath({ isNewSignup: true, shouldStartOnboarding: isCreatingCompany }));
     }
+  };
+
+  const handleEloSkoolEmailContinue = async () => {
+    const nextErrors: typeof errors = {};
+    const normalizedEmail = eloSkoolEmail.trim();
+
+    try {
+      emailSchema.parse(normalizedEmail);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        nextErrors.eloSkoolEmail = e.errors[0].message;
+      }
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    if (!skoolAccountStatus) {
+      setIsCheckingSkoolStatus(true);
+      const { data, error } = await supabase.functions.invoke('gohighlevel-membership-status', {
+        body: { email: normalizedEmail },
+      });
+      setIsCheckingSkoolStatus(false);
+
+      if (error) {
+        toast.error(error.message || 'Unable to check account status right now');
+        return;
+      }
+
+      const status = (data as { status?: unknown } | null)?.status;
+      if (status !== 'free' && status !== 'premium') {
+        toast.error('Could not determine account status. Please try again.');
+        return;
+      }
+
+      setSkoolAccountStatus(status);
+      setEmail(normalizedEmail);
+      setErrors({});
+      return;
+    }
+
+    setEmail(normalizedEmail);
+    setEloSignupGateCompleted(true);
+    setErrors({});
   };
 
   if (authLoading) {
@@ -259,9 +351,11 @@ export default function Auth() {
             <img src="/header_logo.png" alt="LeadSig logo" className="h-8 w-auto object-contain" />
             <span className="text-2xl font-bold">LeadSig</span>
           </div>
-          <CardTitle className="text-2xl">Welcome</CardTitle>
+          <CardTitle className="text-2xl">{isEloSignup ? 'Create your account' : 'Welcome'}</CardTitle>
           <CardDescription>
-            Sign in to your account or create a new one
+            {isEloSignup
+              ? 'Start with the email you used for your Skool account'
+              : 'Sign in to your account or create a new one'}
           </CardDescription>
         </CardHeader>
 
@@ -271,6 +365,7 @@ export default function Auth() {
           )}
         >
           <Tabs value={activeTab} onValueChange={(v) => {
+            if (isEloSignup) return;
             const nextTab = v as 'signin' | 'signup';
             setActiveTab(nextTab);
             if (nextTab === 'signup') {
@@ -278,12 +373,14 @@ export default function Auth() {
               setErrors({});
             }
           }} className={cn("w-full", activeTab === "signup" && "flex-1 min-h-0 flex flex-col overflow-hidden")}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Log In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
+            {!isEloSignup && (
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="signin">Log In</TabsTrigger>
+                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              </TabsList>
+            )}
             
-            <TabsContent value="signin">
+            {!isEloSignup && <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="signin-email" >Email</Label>
@@ -346,11 +443,44 @@ export default function Auth() {
                 </Button>
 
               </form>
-            </TabsContent>
+            </TabsContent>}
             
             <TabsContent value="signup" className="flex-1 min-h-0 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
               <form onSubmit={handleSignUp} className="pt-4 flex flex-1 min-h-0 flex-col">
                 <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                  {isEloSignup && !eloSignupGateCompleted ? (
+                    <div className="space-y-3">
+                      <Label htmlFor="elo-skool-email">What email did you use for your Skool account?</Label>
+                      <Input
+                        id="elo-skool-email"
+                        type="email"
+                        placeholder="you@skool.com"
+                        value={eloSkoolEmail}
+                        onChange={(e) => {
+                          setEloSkoolEmail(e.target.value);
+                          setSkoolAccountStatus(null);
+                        }}
+                        disabled={isLoading}
+                      />
+                      {errors.eloSkoolEmail && (
+                        <p className="text-sm text-destructive">{errors.eloSkoolEmail}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        We will use this email to verify your paid community status in GoHighLevel.
+                      </p>
+                      {skoolAccountStatus && (
+                        <p
+                          className={cn(
+                            'text-sm font-medium',
+                            skoolAccountStatus === 'premium' ? 'text-emerald-600' : 'text-amber-600',
+                          )}
+                        >
+                          Account status: {skoolAccountStatus === 'premium' ? 'Premium' : 'Free'}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <>
                   {affiliateReferralCode && (
                     <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">
                       Referral code applied: <span className="font-semibold">{affiliateReferralCode}</span>
@@ -594,9 +724,26 @@ export default function Auth() {
                       </div>
                     </>
                   )}
+                    </>
+                  )}
                 </div>
 
                 <div className="flex gap-3 py-3 shrink-0 bg-card">
+                  {isEloSignup && !eloSignupGateCompleted ? (
+                    <Button
+                      type="button"
+                      className="flex-1"
+                      onClick={handleEloSkoolEmailContinue}
+                      disabled={isLoading || isCheckingSkoolStatus}
+                    >
+                      {isCheckingSkoolStatus
+                        ? 'Checking account status...'
+                        : skoolAccountStatus
+                          ? 'Continue to Sign Up'
+                          : 'Check account status first'}
+                    </Button>
+                  ) : (
+                    <>
                   {signupStep > 1 && (
                     <Button
                       type="button"
@@ -633,16 +780,27 @@ export default function Auth() {
                       )}
                     </Button>
                   )}
+                    </>
+                  )}
                 </div>
               </form>
             </TabsContent>
           </Tabs>
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Want to earn referral commissions?{" "}
-            <Link to="/affiliate" className="font-medium text-primary hover:underline">
-              Become an affiliate
-            </Link>
-          </p>
+          {isEloSignup ? (
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              Already have an account?{" "}
+              <Link to="/auth" className="font-medium text-primary hover:underline">
+                Log In
+              </Link>
+            </p>
+          ) : (
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              Want to earn referral commissions?{" "}
+              <Link to="/affiliate" className="font-medium text-primary hover:underline">
+                Become an affiliate
+              </Link>
+            </p>
+          )}
         </CardContent>
       </Card>
 

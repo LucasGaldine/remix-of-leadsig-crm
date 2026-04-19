@@ -18,6 +18,13 @@ export const searchPages: SearchPage[] = [
     keywords: ["home", "main", "overview", "stats", "metrics"],
   },
   {
+    name: "Analytics",
+    path: "/analytics",
+    icon: "layout-dashboard",
+    description: "Performance charts and trends",
+    keywords: ["analytics", "charts", "reporting", "insights", "metrics"],
+  },
+  {
     name: "Leads",
     path: "/leads",
     icon: "users",
@@ -100,6 +107,13 @@ export const searchPages: SearchPage[] = [
     icon: "book-open",
     description: "Run the pricing plan selection onboarding step again",
     keywords: ["pricing", "plan", "subscription", "onboarding", "billing", "replay"],
+  },
+  {
+    name: "Join Skool",
+    path: "/?skoolModal=1",
+    icon: "book-open",
+    description: "Open the Skool community access modal",
+    keywords: ["skool", "community", "premium skool", "join skool", "training"],
   },
   {
     name: "Lead Sources",

@@ -45,7 +45,7 @@ describe("MobileNav layout", () => {
     expect(screen.getByText(/^Settings$/i)).toBeInTheDocument();
   });
 
-  it("renders Dashboard, Inbox, Calendar, and More as top-level nav items", () => {
+  it("renders Dashboard, Inbox, Calendar, CRM, and Financials as top-level nav items", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <MobileNav />
@@ -55,6 +55,8 @@ describe("MobileNav layout", () => {
     expect(screen.getAllByRole("button", { name: /^Dashboard$/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /^Inbox$/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /^Calendar$/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /^CRM$/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /^Financials$/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /^More$/i }).length).toBeGreaterThan(0);
   });
 
@@ -66,7 +68,7 @@ describe("MobileNav layout", () => {
     );
 
     const moreButtons = screen.getAllByRole("button", { name: /^More$/i });
-    fireEvent.click(moreButtons[1]);
+    fireEvent.click(moreButtons[0]);
 
     expect(screen.getByText(/^Settings$/i)).toBeInTheDocument();
     expect(screen.getByText(/^Report a Bug$/i)).toBeInTheDocument();
@@ -83,25 +85,17 @@ describe("MobileNav layout", () => {
     expect(screen.queryByRole("button", { name: /next page/i })).not.toBeInTheDocument();
   });
 
-  it("persists desktop More open state across remounts", () => {
-    const { unmount } = render(
+  it("keeps CRM submenu pages hidden in desktop sidebar until CRM is opened", () => {
+    render(
       <MemoryRouter initialEntries={["/"]}>
         <MobileNav />
       </MemoryRouter>,
     );
 
-    const moreButtons = screen.getAllByRole("button", { name: /^More$/i });
-    fireEvent.click(moreButtons[0]);
-    expect(screen.queryByRole("button", { name: /^Leads$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Leads$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Clients$/i)).not.toBeInTheDocument();
 
-    unmount();
-
-    render(
-      <MemoryRouter initialEntries={["/schedule"]}>
-        <MobileNav />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByRole("button", { name: /^Leads$/i })).not.toBeInTheDocument();
+    const crmButtons = screen.getAllByRole("button", { name: /^CRM$/i });
+    expect(crmButtons[0]).toHaveAttribute("aria-haspopup", "menu");
   });
 });

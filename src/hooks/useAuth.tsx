@@ -4,6 +4,10 @@ import { supabase } from '@/integrations/supabase/client';
 
 export type AppRole = 'owner' | 'admin' | 'sales' | 'crew_lead' | 'crew_member';
 export type SmsConsentStatus = 'opted_in' | 'opted_out';
+export type SignupPlanOverride = {
+  plan: 'free' | 'basic' | 'premium';
+  tier?: 'solo' | 'team' | 'growth' | null;
+};
 
 export interface SmsConsentPayload {
   status: SmsConsentStatus;
@@ -71,7 +75,8 @@ interface AuthContextType {
     companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
     smsConsent: SmsConsentPayload,
     phone?: string,
-    affiliateReferralCode?: string | null
+    affiliateReferralCode?: string | null,
+    signupPlanOverride?: SignupPlanOverride
   ) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
@@ -122,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           settings,
           invite_code,
           pricing_plan,
+          pricing_tier,
           default_tax_rate,
           default_profit_margin,
           default_surcharge
@@ -212,7 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     companyInfo: { companyCode?: string; companyName?: string; companyPhone?: string; companyAddress?: string },
     smsConsent: SmsConsentPayload,
     phone?: string,
-    affiliateReferralCode?: string | null
+    affiliateReferralCode?: string | null,
+    signupPlanOverride?: SignupPlanOverride
   ) => {
     try {
       let targetAccountId: string | null = null;
@@ -244,6 +251,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             company_address: companyInfo.companyAddress || null,
             target_account_id: targetAccountId,
             affiliate_referral_code: affiliateReferralCode || null,
+            initial_pricing_plan: signupPlanOverride?.plan ?? null,
+            initial_pricing_tier: signupPlanOverride?.tier ?? null,
             sms_consent_status: smsConsent.status,
             sms_consent_captured_at: smsConsent.capturedAt,
             sms_consent_source: smsConsent.source,

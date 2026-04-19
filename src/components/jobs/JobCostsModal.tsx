@@ -42,6 +42,19 @@ interface EditingLineItem {
   category: LineItemCategory;
 }
 
+const UNIT_OPTIONS = [
+  { value: "item", label: "Item" },
+  { value: "each", label: "Each" },
+  { value: "hour", label: "Hour" },
+  { value: "sq ft", label: "Sq Ft" },
+  { value: "linear ft", label: "Linear Ft" },
+  { value: "day", label: "Day" },
+] as const;
+
+const DEFAULT_UNIT = "each";
+const isSupportedUnit = (unit: string) => UNIT_OPTIONS.some((option) => option.value === unit);
+const normalizeUnit = (unit?: string | null) => (unit && isSupportedUnit(unit) ? unit : DEFAULT_UNIT);
+
 const CATEGORY_OPTIONS: { value: LineItemCategory; label: string }[] = [
   { value: "equipment", label: "Equipment" },
   { value: "materials", label: "Materials" },
@@ -76,7 +89,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
     name: "",
     description: "",
     quantity: "1",
-    unit: "each",
+    unit: DEFAULT_UNIT,
     unit_price: "0",
     category: "other" as LineItemCategory,
   });
@@ -164,7 +177,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       name: item.name,
       description: item.description || "",
       quantity: String(item.quantity),
-      unit: item.unit,
+      unit: normalizeUnit(item.unit),
       unit_price: String(item.unit_price),
       category: item.category || 'other',
     });
@@ -186,7 +199,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       name: editingData.name,
       description: editingData.description || null,
       quantity,
-      unit: editingData.unit,
+      unit: normalizeUnit(editingData.unit),
       unit_price: unitPrice,
       total: quantity * unitPrice,
       category: editingData.category,
@@ -207,7 +220,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       name: newItem.name,
       description: newItem.description || null,
       quantity,
-      unit: newItem.unit,
+      unit: normalizeUnit(newItem.unit),
       unit_price: unitPrice,
       total: quantity * unitPrice,
       sort_order: maxSortOrder + 1,
@@ -219,7 +232,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
       name: "",
       description: "",
       quantity: "1",
-      unit: "each",
+      unit: DEFAULT_UNIT,
       unit_price: "0",
       category: "other" as LineItemCategory,
     });
@@ -338,12 +351,20 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Unit</label>
-          <Input
-            value={data.unit}
-            onChange={(e) => setData({ ...data, unit: e.target.value })}
+          <Select
+            value={normalizeUnit(data.unit)}
+            onValueChange={(value) => setData({ ...data, unit: value })}
             disabled={isDisabled}
-            className="h-8 text-sm"
-          />
+          >
+            <SelectTrigger className="h-8 text-sm" id="job-costs-mobile-item-unit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {UNIT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Unit Price</label>
@@ -537,7 +558,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                     handleAdd,
                     () => {
                       setIsAdding(false);
-                      setNewItem({ name: "", description: "", quantity: "1", unit: "each", unit_price: "0", category: "other" as LineItemCategory });
+                      setNewItem({ name: "", description: "", quantity: "1", unit: DEFAULT_UNIT, unit_price: "0", category: "other" as LineItemCategory });
                     },
                     !newItem.name.trim(),
                     editingLocked,
@@ -610,12 +631,20 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                                 disabled={editingLocked}
                                 className="h-8 w-16"
                               />
-                              <Input
-                                value={editingData.unit}
-                                onChange={(e) => setEditingData({ ...editingData, unit: e.target.value })}
+                              <Select
+                                value={normalizeUnit(editingData.unit)}
+                                onValueChange={(value) => setEditingData({ ...editingData, unit: value })}
                                 disabled={editingLocked}
-                                className="h-8 w-20"
-                              />
+                              >
+                                <SelectTrigger className="h-8 w-24" id="job-costs-desktop-edit-unit">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {UNIT_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -748,12 +777,20 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                               disabled={editingLocked}
                               className="h-8 w-16"
                             />
-                            <Input
-                              value={newItem.unit}
-                              onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                            <Select
+                              value={normalizeUnit(newItem.unit)}
+                              onValueChange={(value) => setNewItem({ ...newItem, unit: value })}
                               disabled={editingLocked}
-                              className="h-8 w-20"
-                            />
+                            >
+                              <SelectTrigger className="h-8 w-24" id="job-costs-desktop-new-unit">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {UNIT_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -785,7 +822,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
                               variant="ghost"
                               onClick={() => {
                                 setIsAdding(false);
-                                setNewItem({ name: "", description: "", quantity: "1", unit: "each", unit_price: "0", category: "other" as LineItemCategory });
+                                setNewItem({ name: "", description: "", quantity: "1", unit: DEFAULT_UNIT, unit_price: "0", category: "other" as LineItemCategory });
                               }}
                               className="h-8 w-8 p-0"
                             >

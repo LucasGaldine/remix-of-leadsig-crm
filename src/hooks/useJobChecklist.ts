@@ -7,6 +7,7 @@ export type ChecklistItemCategory = (typeof CHECKLIST_ITEM_CATEGORIES)[number];
 
 export interface ChecklistItemMetadata {
   category?: ChecklistItemCategory;
+  job_line_item_id?: string;
 }
 
 export function getChecklistItemCategory(
@@ -79,10 +80,12 @@ export function useJobChecklist(jobId: string | undefined) {
       label,
       sort_order,
       metadata,
+      is_completed,
     }: {
       label: string;
       sort_order: number;
       metadata?: ChecklistItemMetadata | null;
+      is_completed?: boolean;
     }) => {
       if (!jobId || !currentAccount?.id) throw new Error("Missing context");
 
@@ -93,6 +96,7 @@ export function useJobChecklist(jobId: string | undefined) {
           account_id: currentAccount.id,
           label,
           sort_order,
+          is_completed: is_completed ?? false,
           metadata: metadata || null,
         });
 
@@ -108,14 +112,23 @@ export function useJobChecklist(jobId: string | undefined) {
       id,
       label,
       metadata,
+      sort_order,
     }: {
       id: string;
-      label: string;
+      label?: string;
       metadata?: ChecklistItemMetadata | null;
+      sort_order?: number;
     }) => {
+      const updates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (label !== undefined) updates.label = label;
+      if (metadata !== undefined) updates.metadata = metadata || null;
+      if (sort_order !== undefined) updates.sort_order = sort_order;
+
       const { error } = await supabase
         .from("job_checklist_items")
-        .update({ label, metadata: metadata || null, updated_at: new Date().toISOString() })
+        .update(updates)
         .eq("id", id);
 
       if (error) throw error;

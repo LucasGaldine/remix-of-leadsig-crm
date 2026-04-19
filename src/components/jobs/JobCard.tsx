@@ -1,7 +1,8 @@
-import { Briefcase, MessageSquare, Navigation, Phone } from "lucide-react";
+import { Briefcase, ChevronRight, MessageSquare, Navigation, Phone } from "lucide-react";
 import { format } from "date-fns";
 import { Database } from "@/types/database";
 import { UnifiedActivityCard, type ActivityTone } from "@/components/activity/UnifiedActivityCard";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type JobStatus = Database["public"]["Enums"]["unified_status"];
 type DbJob = Database["public"]["Tables"]["leads"]["Row"];
@@ -36,6 +37,9 @@ interface JobCardProps {
   onMessage?: () => void;
   onNavigate?: () => void;
   showQuickActions?: boolean;
+  mobileDashboardEmphasis?: boolean;
+  mobileDashboardAction?: "start" | "navigate";
+  mobileLayout?: "inbox" | "compact";
   className?: string;
 }
 
@@ -66,7 +70,19 @@ const jobStatusConfig: Record<string, { label: string; tone: ActivityTone }> = {
   completed: { label: "Completed", tone: "confirmed" },
 };
 
-export function JobCard({ job, onClick, onCall, onMessage, onNavigate, showQuickActions = false, className }: JobCardProps) {
+export function JobCard({
+  job,
+  onClick,
+  onCall,
+  onMessage,
+  onNavigate,
+  showQuickActions = false,
+  mobileDashboardEmphasis = false,
+  mobileDashboardAction = "start",
+  mobileLayout = "inbox",
+  className,
+}: JobCardProps) {
+  const isMobile = useIsMobile();
   const badgeStatus = (job.display_status || job.status) as string;
   const isUnassigned =
     Boolean(job.has_unassigned_schedule) &&
@@ -79,27 +95,84 @@ export function JobCard({ job, onClick, onCall, onMessage, onNavigate, showQuick
       ? { label: "Needs Invoice", tone: "attention" }
       : jobStatusConfig[badgeStatus] || { label: badgeStatus || "Active", tone: "neutral" };
 
-  const subtitle = `${formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date)} | ${
+  const subtitleText = `${formatScheduledDateRange(job.scheduled_date, job.last_scheduled_date)} | ${
     job.service_type || "No service type"
   }`;
+  const quickActions = !showQuickActions
+    ? []
+    : isMobile
+      ? mobileDashboardEmphasis
+        ? [
+            {
+              label: mobileDashboardAction === "navigate" ? "Navigate" : "Start Job",
+              icon:
+                mobileDashboardAction === "navigate" ? (
+                  <Navigation className="!h-4 !w-4" style={{ width: 16, height: 16 }} />
+                ) : (
+                  <ChevronRight className="!h-6 !w-6" style={{ width: 24, height: 24 }} />
+                ),
+              onClick: mobileDashboardAction === "navigate" ? onNavigate : onClick,
+              disabled: mobileDashboardAction === "navigate" ? !onNavigate : !onClick,
+              showLabel: true,
+              variant: "secondary" as const,
+              size: "xxl" as const,
+            },
+          ]
+        : [
+            {
+              label: "Navigate",
+              icon: <Navigation />,
+              onClick: onNavigate,
+              disabled: !onNavigate,
+            },
+          ]
+      : [
+          {
+            label: "Call",
+            icon: <Phone />,
+            onClick: onCall,
+            disabled: !onCall,
+          },
+          {
+            label: "Text",
+            icon: <MessageSquare />,
+            onClick: onMessage,
+            disabled: !onMessage,
+          },
+          {
+            label: "Navigate",
+            icon: <Navigation />,
+            onClick: onNavigate,
+            disabled: !onNavigate,
+          },
+        ];
 
   return (
     <UnifiedActivityCard
-      icon={<Briefcase className="h-5 w-5 text-emerald-600" />}
-      title={job.customer?.name || job.name || "Unnamed Job"}
-      subtitle={subtitle}
+      icon={
+        <Briefcase
+          className={mobileDashboardEmphasis ? "h-7 w-7 text-emerald-600 md:h-5 md:w-5" : "h-5 w-5 text-emerald-600"}
+        />
+      }
+      title={
+        mobileDashboardEmphasis ? (
+          <span className="text-1 md:text-base">{job.customer?.name || job.name || "Unnamed Job"}</span>
+        ) : (
+          job.customer?.name || job.name || "Unnamed Job"
+        )
+      }
+      subtitle={
+        mobileDashboardEmphasis ? (
+          <span className="hidden md:inline">{subtitleText}</span>
+        ) : (
+          subtitleText
+        )
+      }
       statusLabel={status.label}
       tone={status.tone}
+      mobileLayout={mobileLayout}
       onClick={onClick}
-      quickActions={
-        showQuickActions
-          ? [
-              { label: "Call", icon: <Phone className="h-4 w-4" />, onClick: onCall, disabled: !onCall },
-              { label: "Text", icon: <MessageSquare className="h-4 w-4" />, onClick: onMessage, disabled: !onMessage },
-              { label: "Navigate", icon: <Navigation className="h-4 w-4" />, onClick: onNavigate, disabled: !onNavigate },
-            ]
-          : []
-      }
+      quickActions={quickActions}
       className={className}
     />
   );

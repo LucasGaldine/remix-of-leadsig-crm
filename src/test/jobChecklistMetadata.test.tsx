@@ -5,15 +5,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { JobChecklist } from "@/components/jobs/JobChecklist";
 import type { ChecklistItem } from "@/hooks/useJobChecklist";
+import type { JobLineItem } from "@/hooks/useJobLineItems";
+import type { LineItemTemplate } from "@/lib/lineItemTemplates";
 
 const checklistState = {
   items: [] as ChecklistItem[],
+  lineItems: [] as JobLineItem[],
 };
 
 const toggleMutateAsyncMock = vi.fn();
 const addMutateAsyncMock = vi.fn();
 const updateMutateAsyncMock = vi.fn();
 const deleteMutateAsyncMock = vi.fn();
+const addLineItemMutateAsyncMock = vi.fn();
+const updateLineItemMutateAsyncMock = vi.fn();
+const deleteLineItemMutateMock = vi.fn();
+const templateState = {
+  templates: [] as LineItemTemplate[],
+};
 
 vi.mock("@/hooks/useJobChecklist", () => ({
   getChecklistItemCategory: (metadata: { category?: string } | null | undefined) => {
@@ -31,6 +40,27 @@ vi.mock("@/hooks/useJobChecklist", () => ({
     updateItem: { mutateAsync: updateMutateAsyncMock },
     deleteItem: { mutateAsync: deleteMutateAsyncMock },
   }),
+}));
+
+vi.mock("@/hooks/useJobLineItems", () => ({
+  useJobLineItems: () => ({
+    lineItems: checklistState.lineItems,
+    isLoading: false,
+    addLineItem: { mutateAsync: addLineItemMutateAsyncMock },
+    updateLineItem: { mutateAsync: updateLineItemMutateAsyncMock },
+    deleteLineItem: { mutate: deleteLineItemMutateMock },
+  }),
+}));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    currentAccount: { id: "acct_1" },
+  }),
+}));
+
+vi.mock("@/lib/lineItemTemplates", () => ({
+  migrateLegacyTemplatesToDatabase: vi.fn().mockResolvedValue(undefined),
+  getLineItemTemplates: vi.fn(async () => templateState.templates),
 }));
 
 vi.mock("sonner", () => ({
@@ -105,6 +135,11 @@ describe("JobChecklist metadata categories", () => {
     addMutateAsyncMock.mockReset();
     updateMutateAsyncMock.mockReset();
     deleteMutateAsyncMock.mockReset();
+    addLineItemMutateAsyncMock.mockReset();
+    updateLineItemMutateAsyncMock.mockReset();
+    deleteLineItemMutateMock.mockReset();
+    checklistState.lineItems = [];
+    templateState.templates = [];
   });
 
   it("renders separate Tasks, Tools, and Materials sections and keeps legacy/null items in Tasks without task badges or inner cards", () => {
@@ -132,15 +167,32 @@ describe("JobChecklist metadata categories", () => {
         metadata: { category: "tool" },
       },
       {
-        id: "material",
+        id: "material-legacy",
         job_id: "job_1",
         account_id: "acct_1",
-        label: "Mulch",
+        label: "Old material row",
         is_completed: false,
         sort_order: 2,
         created_at: "2026-04-01T00:00:00.000Z",
         updated_at: "2026-04-01T00:00:00.000Z",
         metadata: { category: "material" },
+      },
+    ];
+    checklistState.lineItems = [
+      {
+        id: "line-material-1",
+        lead_id: "job_1",
+        name: "Mulch",
+        description: null,
+        quantity: 2,
+        unit: "bags",
+        unit_price: 9.5,
+        total: 19,
+        sort_order: 0,
+        account_id: "acct_1",
+        estimate_line_item_id: null,
+        category: "materials",
+        created_at: "2026-04-01T00:00:00.000Z",
       },
     ];
 
@@ -154,16 +206,12 @@ describe("JobChecklist metadata categories", () => {
     expect(within(toolsSection).getByText("Hedge trimmer")).toBeInTheDocument();
     expect(within(materialsSection).getByText("Mulch")).toBeInTheDocument();
 
-    expect(screen.getByText("Tool")).toBeInTheDocument();
-    expect(screen.getByText("Material")).toBeInTheDocument();
-    expect(within(tasksSection).queryByText("Task")).not.toBeInTheDocument();
-
     expect(tasksSection.querySelector(".rounded-md.border.border-border.bg-card")).toBeNull();
     expect(toolsSection.querySelector(".rounded-md.border.border-border.bg-card")).toBeNull();
     expect(materialsSection.querySelector(".rounded-md.border.border-border.bg-card")).toBeNull();
   });
 
-  it("shows a single footer add-task control in edit mode and persists non-standard metadata", async () => {
+  it("shows per-section add controls in edit mode and persists non-standard metadata", async () => {
     checklistState.items = [
       {
         id: "existing",
@@ -182,10 +230,9 @@ describe("JobChecklist metadata categories", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /edit/i }));
 
-    expect(screen.queryByRole("button", { name: /add task checklist item/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /add tool checklist item/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /add material checklist item/i })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^add task$/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^add tool$/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^add material$/i })).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /^add task$/i }));
 
@@ -244,5 +291,58 @@ describe("JobChecklist metadata categories", () => {
       label: "Bring supplies",
       metadata: { category: "material" },
     });
+  });
+
+  it("uses canonical unit options when adding a material line item", async () => {
+    templateState.templates = [
+      {
+        id: "tmpl-material",
+        name: "River rock",
+        description: "3/4 inch decorative",
+        quantity: "2",
+        unit: "linear ft",
+        unit_price: "12.5",
+        category: "materials",
+        created_at: "2026-04-01T00:00:00.000Z",
+      },
+      {
+        id: "tmpl-labor",
+        name: "River rock labor",
+        description: "Install labor",
+        quantity: "1",
+        unit: "hour",
+        unit_price: "80",
+        category: "labor",
+        created_at: "2026-04-01T00:00:00.000Z",
+      },
+    ];
+    addLineItemMutateAsyncMock.mockResolvedValueOnce({ id: "job-line-1" });
+
+    render(<JobChecklist jobId="job_1" isManager />);
+
+    fireEvent.click(screen.getByRole("button", { name: /add checklist items/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add material$/i }));
+    fireEvent.change(screen.getByLabelText(/material name/i), {
+      target: { value: "River rock" },
+    });
+
+    fireEvent.focus(screen.getByLabelText(/material name/i));
+    expect(await screen.findByRole("button", { name: /river rock/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /river rock labor/i })).not.toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("button", { name: /river rock/i }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /add checklist item/i }));
+    });
+
+    expect(addLineItemMutateAsyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "River rock",
+        quantity: 2,
+        unit: "linear ft",
+        unit_price: 12.5,
+        description: "3/4 inch decorative",
+      }),
+    );
   });
 });

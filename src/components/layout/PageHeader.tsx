@@ -82,17 +82,19 @@ export function PageHeader({
       >
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <img
-              src="/header_logo.png"
-              alt="Header logo"
-              className="h-12 w-auto object-cover shrink-0 md:hidden"
-            />
+            {!showBack && (
+              <img
+                src="/header_logo.png"
+                alt="Header logo"
+                className="h-12 w-auto object-cover shrink-0 md:hidden"
+              />
+            )}
             {showBack && (
               <button
                 onClick={handleBack}
                 className="p-2 -ml-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
               >
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-6 w-6 md:h-5 md:w-5" />
               </button>
             )}
             {!hideTitle && (
@@ -110,7 +112,7 @@ export function PageHeader({
             {showSearch && (
               <button
                 onClick={handleSearchClick}
-                className="p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
+                className="hidden p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch items-center justify-center md:flex"
               >
                 <Search className="h-5 w-5" />
               </button>
@@ -120,13 +122,15 @@ export function PageHeader({
                 onClick={() => setPanelOpen(true)}
                 className="relative p-2 rounded-lg hover:bg-muted active:bg-muted/80 min-h-touch min-w-touch flex items-center justify-center"
               >
-                <Bell className="h-5 w-5" />
+                <Bell className="h-6 w-6 md:h-5 md:w-5" />
                 {unreadCount > 0 && (
                   <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
                 )}
               </button>
             )}
-            <UserMenu clickable={profileClickable} />
+            <div className="hidden md:block">
+              <UserMenu clickable={profileClickable} />
+            </div>
           </div>
         </div>
 

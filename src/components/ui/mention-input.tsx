@@ -4,6 +4,7 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AtSign, Mic, Square, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type SpeechRecognitionResultLike = {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -55,10 +56,11 @@ interface MentionInputProps {
   placeholder?: string;
   rows?: number;
   teamMembers: TeamMember[];
+  textareaClassName?: string;
 }
 
 export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
-  ({ value, onChange, placeholder, rows = 3, teamMembers }, ref) => {
+  ({ value, onChange, placeholder, rows = 3, teamMembers, textareaClassName }, ref) => {
     const [showMentions, setShowMentions] = useState(false);
     const [mentionSearch, setMentionSearch] = useState("");
     const [cursorPosition, setCursorPosition] = useState(0);
@@ -238,7 +240,7 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={rows}
-          className="pr-12 pb-12"
+          className={cn("pr-12 pb-12", textareaClassName)}
         />
         <Button
           type="button"

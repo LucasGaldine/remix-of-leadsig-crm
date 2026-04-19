@@ -14,4 +14,10 @@ describe("global search bug report entry", () => {
 
     expect(results.some((page) => page.path === "/settings/company")).toBe(true);
   });
+
+  it("finds skool modal action from skool query", () => {
+    const results = filterSearchPages("skool", "owner");
+
+    expect(results.some((page) => page.path === "/?skoolModal=1")).toBe(true);
+  });
 });

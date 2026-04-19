@@ -18,6 +18,10 @@ const { navigateMock, signInMock, signUpMock } = vi.hoisted(() => ({
   signUpMock: vi.fn(),
 }));
 
+const { invokeFunctionMock } = vi.hoisted(() => ({
+  invokeFunctionMock: vi.fn(),
+}));
+
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
   return {
@@ -41,6 +45,14 @@ vi.mock("@/hooks/usePasswordStrength", () => ({
     requirements: { notCommon: true },
     feedback: [],
   }),
+}));
+
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    functions: {
+      invoke: invokeFunctionMock,
+    },
+  },
 }));
 
 vi.mock("@/components/auth/PasswordStrengthIndicator", () => ({
@@ -132,6 +144,8 @@ describe("Auth signup flow", () => {
     signInMock.mockReset();
     signUpMock.mockReset();
     navigateMock.mockReset();
+    invokeFunctionMock.mockReset();
+    invokeFunctionMock.mockResolvedValue({ data: { status: "premium" }, error: null });
     window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_PROFILE_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
@@ -332,6 +346,93 @@ describe("Auth signup flow", () => {
         }),
         "",
         null,
+      );
+    });
+  });
+
+  it("starts Elo signups by asking for the Skool account email", () => {
+    render(
+      <MemoryRouter>
+        <Auth signupVariant="elo" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText(/what email did you use for your skool account/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Full Name/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Check account status first/i })).toBeInTheDocument();
+  });
+
+  it("checks Skool account status before allowing Elo signup continuation", async () => {
+    render(
+      <MemoryRouter>
+        <Auth signupVariant="elo" />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what email did you use for your skool account/i), {
+      target: { value: "member@skool.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Check account status first/i }));
+
+    await waitFor(() => {
+      expect(invokeFunctionMock).toHaveBeenCalledWith("gohighlevel-membership-status", {
+        body: { email: "member@skool.com" },
+      });
+    });
+
+    expect(screen.getByText(/Account status: Premium/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Continue to Sign Up/i }));
+
+    expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Email/i)).toHaveValue("member@skool.com");
+  });
+
+  it("applies Essentials Growth override for Elo paid-community signups", async () => {
+    signUpMock.mockResolvedValue({ error: null });
+    invokeFunctionMock.mockResolvedValue({ data: { status: "premium", hasPaidCommunityTag: true }, error: null });
+
+    render(
+      <MemoryRouter>
+        <Auth signupVariant="elo" />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what email did you use for your skool account/i), {
+      target: { value: "member@skool.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Check account status first/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Account status: Premium/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Continue to Sign Up/i }));
+    fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Create a new company/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+    fireEvent.change(screen.getByLabelText(/Company Name/i), { target: { value: "LeadSig Landscaping" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Create Company & Account$/i }));
+
+    await waitFor(() => {
+      expect(signUpMock).toHaveBeenCalledWith(
+        "member@skool.com",
+        "StrongPassword123!",
+        "Taylor Smith",
+        "owner",
+        expect.objectContaining({ companyName: "LeadSig Landscaping" }),
+        expect.objectContaining({
+          status: "opted_out",
+          source: "signup_form",
+          textVersion: "2026-04-09-v1",
+          capturedAt: expect.any(String),
+        }),
+        "",
+        null,
+        { plan: "basic", tier: "growth" },
       );
     });
   });

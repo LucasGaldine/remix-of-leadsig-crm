@@ -7,7 +7,7 @@ const cardVariants = cva("rounded-lg border bg-card text-card-foreground shadow-
   variants: {
     variant: {
       default: "",
-      activity: "px-4 py-3 transition-colors hover:bg-accent/40",
+      activity: "px-4 py-7 md:py-3 transition-colors hover:bg-accent/40",
     },
   },
   defaultVariants: {

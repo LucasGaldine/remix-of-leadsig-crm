@@ -87,7 +87,7 @@ describe("CreateJobCrewAssignmentStep", () => {
       />,
     );
 
-    fireEvent.focus(screen.getByLabelText("Find Crew Member"));
+    fireEvent.focus(screen.getByLabelText("Assign crew member"));
     fireEvent.click(screen.getAllByRole("button", { name: /Alex Johnson/i })[0]);
     expect(onActiveCrewIdChange).toHaveBeenCalledWith("crew_1");
 
@@ -119,11 +119,11 @@ describe("CreateJobCrewAssignmentStep", () => {
     );
 
     expect(screen.queryByRole("button", { name: /Alex Johnson/i })).not.toBeInTheDocument();
-    fireEvent.focus(screen.getByLabelText("Find Crew Member"));
+    fireEvent.focus(screen.getByLabelText("Assign crew member"));
     expect(screen.getByRole("button", { name: /Alex Johnson/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Kevin Mock/i })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Find Crew Member"), { target: { value: "kev" } });
+    fireEvent.change(screen.getByLabelText("Assign crew member"), { target: { value: "kev" } });
     expect(onSearchChange).toHaveBeenCalledWith("kev");
 
     rerender(
@@ -178,6 +178,6 @@ describe("CreateJobCrewAssignmentStep", () => {
 
     expect(screen.getByText(/Unavailable: already assigned at this time/i)).toBeInTheDocument();
     expect(screen.getByText(/Mulch Install · Apr 20, 2026 · 09:00 - 11:00/i)).toBeInTheDocument();
-    expect(screen.getByText(/Monday, Apr 20, 2026/i)).toHaveClass("line-through");
+    expect(screen.getByText(/No crew assigned/i)).toBeInTheDocument();
   });
 });

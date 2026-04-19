@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileCheck, Banknote, Landmark, ArrowRightLeft, Loader2, Smartphone } from "lucide-react";
+import { FileCheck, Banknote, Landmark, ArrowRightLeft, Loader2, Send, CreditCard } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,14 @@ interface OtherPaymentOptionsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   totalAmount: number;
+  invoicedAmount?: number;
+  onSendInvoice?: () => void | Promise<void>;
+  sendingInvoice?: boolean;
+  sendInvoiceDisabled?: boolean;
+  sendInvoiceHelperText?: string;
+  onInPersonPayment?: () => void | Promise<void>;
+  inPersonPaymentDisabled?: boolean;
+  inPersonPaymentHelperText?: string;
   onMarkAsSent?: () => Promise<void>;
   onRecordPayment: (method: PaymentOption, amount: number) => Promise<void>;
   onOpenTapToPay?: (amount: number) => void;
@@ -34,6 +42,14 @@ export function OtherPaymentOptionsModal({
   open,
   onOpenChange,
   totalAmount,
+  invoicedAmount = 0,
+  onSendInvoice,
+  sendingInvoice = false,
+  sendInvoiceDisabled = false,
+  sendInvoiceHelperText,
+  onInPersonPayment,
+  inPersonPaymentDisabled = false,
+  inPersonPaymentHelperText,
   onMarkAsSent,
   onRecordPayment,
   onOpenTapToPay,
@@ -42,7 +58,19 @@ export function OtherPaymentOptionsModal({
 }: OtherPaymentOptionsModalProps) {
   const [selectedMethod, setSelectedMethod] = useState<PaymentOption | null>(null);
   const [amount, setAmount] = useState("");
-  const busy = markingAsSent || recordingPayment;
+  const busy = markingAsSent || recordingPayment || sendingInvoice;
+  const formattedInvoicedAmount = Number(invoicedAmount || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const formattedTotalAmount = Number(totalAmount || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   const handleClose = () => {
     if (busy) return;
@@ -128,6 +156,68 @@ export function OtherPaymentOptionsModal({
           <DialogTitle>Payment Options</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 pt-2">
+          <div className="px-1 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Invoiced</p>
+                <p className="text-2xl font-semibold leading-tight text-foreground">+{formattedInvoicedAmount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Total</p>
+                <p className="text-2xl font-semibold leading-tight text-foreground">{formattedTotalAmount}</p>
+              </div>
+            </div>
+          </div>
+
+          {onInPersonPayment && (
+            <button
+              type="button"
+              onClick={async () => {
+                await onInPersonPayment();
+              }}
+              disabled={busy || inPersonPaymentDisabled}
+              className={cn(
+                "w-full flex items-center gap-3 p-4 rounded-lg border text-left",
+                "transition-colors active:scale-[0.98]",
+                "bg-primary text-primary-foreground border-primary hover:bg-primary/90",
+                (busy || inPersonPaymentDisabled) && "opacity-60 cursor-not-allowed hover:bg-primary",
+              )}
+            >
+              <div className="p-2 rounded-lg bg-primary-foreground/15">
+                <CreditCard className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-primary-foreground">In Person Payment</p>
+              </div>
+            </button>
+          )}
+
+          {onSendInvoice && (
+            <button
+              type="button"
+              onClick={async () => {
+                await onSendInvoice();
+              }}
+              disabled={busy || sendInvoiceDisabled}
+              className={cn(
+                "w-full flex items-center gap-3 p-4 rounded-lg border border-border text-left",
+                "hover:bg-secondary/50 transition-colors active:scale-[0.98]",
+                (busy || sendInvoiceDisabled) && "opacity-60 cursor-not-allowed hover:bg-transparent",
+              )}
+            >
+              <div className="p-2 rounded-lg bg-secondary">
+                {sendingInvoice ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-secondary-foreground" />
+                ) : (
+                  <Send className="h-5 w-5 text-secondary-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-foreground">{sendingInvoice ? "Opening..." : "Send Invoice"}</p>
+              </div>
+            </button>
+          )}
+
           {onMarkAsSent && (
             <button
               onClick={onMarkAsSent}
@@ -170,24 +260,6 @@ export function OtherPaymentOptionsModal({
             </button>
           ))}
 
-          {onOpenTapToPay && (
-            <button
-              type="button"
-              disabled
-              className={cn(
-                "w-full flex items-center gap-3 p-4 rounded-lg border border-border text-left",
-                "opacity-60 cursor-not-allowed"
-              )}
-            >
-              <div className="p-2 rounded-lg bg-secondary">
-                <Smartphone className="h-5 w-5 text-secondary-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-foreground">Tap to Pay</p>
-                <p className="text-sm text-muted-foreground">Coming soon</p>
-              </div>
-            </button>
-          )}
         </div>
       </DialogContent>
     </Dialog>

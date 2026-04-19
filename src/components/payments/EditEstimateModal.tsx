@@ -23,6 +23,7 @@ import {
   type LineItemTemplate,
 } from "@/lib/lineItemTemplates";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
+import { Link } from "react-router-dom";
 
 function formatDollar(value: number): string {
   return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -304,7 +305,10 @@ function ExpandedLineItem({
             ) : (
               <div className="absolute top-full left-0 right-0 z-30 mt-1 border border-border rounded-md bg-background p-2 shadow-md">
                 <p className="text-xs text-muted-foreground">
-                  No template match. Click <span className="font-medium text-foreground">Save as template</span> to reuse this item later.
+                  No template match. Adjust templates in{" "}
+                  <Link to="/settings/pricing-rules" className="font-medium text-foreground underline-offset-2 hover:underline">
+                    Settings → Pricing Rules
+                  </Link>.
                 </p>
               </div>
             )

@@ -11,6 +11,7 @@ import { shouldAnimateMainPageTransition } from "@/lib/pageTransition";
 import { supabaseConfigError } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Schedule from "./pages/Schedule";
+import Analytics from "./pages/Analytics";
 import Leads from "./pages/Leads";
 import LeadDetail from "./pages/LeadDetail";
 import Jobs from "./pages/Jobs";
@@ -168,6 +169,7 @@ const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       { path: "/auth", element: <Auth /> },
+      { path: "/signup/elo", element: <Auth signupVariant="elo" /> },
       { path: "/reset-password", element: <ResetPassword /> },
       { path: "/approve-estimate", element: <EstimateApproval /> },
       { path: "/client/job", element: <ClientJobPortal /> },
@@ -185,6 +187,7 @@ const router = createBrowserRouter([
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
       { path: "/facebook-callback", element: <Protected><FacebookCallback /></Protected> },
       { path: "/", element: <Protected><Index /></Protected> },
+      { path: "/analytics", element: <Protected><Analytics /></Protected> },
       { path: "/schedule", element: <Protected><Schedule /></Protected> },
       { path: "/leads", element: <Protected><Leads /></Protected> },
       { path: "/leads/pending-approval", element: <Protected><LeadsPendingApproval /></Protected> },

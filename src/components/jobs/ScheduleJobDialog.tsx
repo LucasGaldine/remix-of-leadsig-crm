@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { format } from "date-fns";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -11,6 +12,8 @@ import { CreateJobCrewAssignmentStep } from "@/components/jobs/CreateJobCrewAssi
 import { supabase } from "@/integrations/supabase/client";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 interface ScheduleJobDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -18,6 +21,12 @@ interface ScheduleJobDialogProps {
   jobName?: string;
   hasSchedules?: boolean;
   onMakeRecurring?: () => void;
+  jobSchedules?: Array<{
+    id: string;
+    scheduled_date: string;
+    scheduled_time_start?: string | null;
+    scheduled_time_end?: string | null;
+  }>;
 }
 
 type CrewConflictDetail = {
@@ -33,9 +42,10 @@ export function ScheduleJobDialog({
   jobId, 
   jobName,
   hasSchedules = false,
-  onMakeRecurring 
+  onMakeRecurring,
+  jobSchedules,
 }: ScheduleJobDialogProps) {
-  const { scheduleJob, isScheduling } = useScheduleJob();
+  const { scheduleJob, isScheduling, deleteSchedule, updateSchedule } = useScheduleJob();
   const { currentAccount, user } = useAuth();
   const { data: crewMembers = [] } = useTeamMembers();
   const { assignCrewAsync, isAssigning } = useJobAssignments(jobId);
@@ -48,8 +58,39 @@ export function ScheduleJobDialog({
     Record<string, Record<number, CrewConflictDetail>>
   >({});
   const [crewSearchQuery, setCrewSearchQuery] = useState("");
+  const [selectedCrewIds, setSelectedCrewIds] = useState<string[]>([]);
   const [activeCrewId, setActiveCrewId] = useState<string>("");
   const [isLoadingCrewConflicts, setIsLoadingCrewConflicts] = useState(false);
+  const todayDateKey = format(new Date(), "yyyy-MM-dd");
+  const resolvedJobSchedules = useMemo(() => jobSchedules ?? [], [jobSchedules]);
+  const initialScheduleEntries = useMemo<ScheduleEntry[]>(
+    () =>
+      resolvedJobSchedules
+        .map((schedule) => ({
+          date: schedule.scheduled_date,
+          timeStart: schedule.scheduled_time_start || "",
+          timeEnd: schedule.scheduled_time_end || "",
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .filter((schedule, index, array) => index === array.findIndex((entry) => entry.date === schedule.date)),
+    [resolvedJobSchedules],
+  );
+  const editableInitialScheduleEntries = useMemo(
+    () => initialScheduleEntries.filter((schedule) => schedule.date >= todayDateKey),
+    [initialScheduleEntries, todayDateKey],
+  );
+  const editableInitialScheduleIdByDate = useMemo(
+    () =>
+      resolvedJobSchedules.reduce<Record<string, string>>((acc, schedule) => {
+        if (schedule.scheduled_date < todayDateKey) return acc;
+        if (!acc[schedule.scheduled_date]) {
+          acc[schedule.scheduled_date] = schedule.id;
+        }
+        return acc;
+      }, {}),
+    [resolvedJobSchedules, todayDateKey],
+  );
+  const isEditingSchedules = initialScheduleEntries.length > 0;
   const crewStepSchedules = builderSchedules;
   const crewMemberIdsKey = crewMembers
     .map((member) => member.user_id)
@@ -67,6 +108,19 @@ export function ScheduleJobDialog({
       (member.email || "").toLowerCase().includes(query),
     );
   }, [crewMembers, crewSearchQuery]);
+  const validCrewIdSet = useMemo(() => new Set(crewMembers.map((member) => member.user_id)), [crewMembers]);
+
+  useEffect(() => {
+    if (!open) return;
+    setBuilderSchedules(editableInitialScheduleEntries);
+    setStep("schedule");
+    setCrewByScheduleIndex({});
+    setCrewConflictByMember({});
+    setCrewConflictDetailsByMember({});
+    setCrewSearchQuery("");
+    setSelectedCrewIds([]);
+    setActiveCrewId("");
+  }, [open, editableInitialScheduleEntries]);
 
   useEffect(() => {
     if (!open || step !== "crew-assignment") return;
@@ -86,10 +140,12 @@ export function ScheduleJobDialog({
       const parsedCrew = crewMembers.map((member) => parseCrewAssigneeId(member.user_id));
       const realCrewIds = parsedCrew
         .filter((member) => member.type === "user" && member.userId)
-        .map((member) => member.userId as string);
+        .map((member) => member.userId as string)
+        .filter((id) => UUID_REGEX.test(id));
       const mockCrewIds = parsedCrew
         .filter((member) => member.type === "mock" && member.mockProfileId)
-        .map((member) => member.mockProfileId as string);
+        .map((member) => member.mockProfileId as string)
+        .filter((id) => UUID_REGEX.test(id));
 
       const assignmentRows: any[] = [];
 
@@ -129,31 +185,6 @@ export function ScheduleJobDialog({
 
       const conflictMap: Record<string, number[]> = {};
       const conflictDetailsMap: Record<string, Record<number, CrewConflictDetail>> = {};
-      const leadIds = Array.from(
-        new Set(
-          assignmentRows
-            .flatMap((assignment) => {
-              const scheduleRows = Array.isArray((assignment as any).job_schedules)
-                ? (assignment as any).job_schedules
-                : [(assignment as any).job_schedules];
-              return scheduleRows
-                .map((scheduleRow: any) => scheduleRow?.lead_id)
-                .filter((leadId: unknown): leadId is string => Boolean(leadId));
-            }),
-        ),
-      );
-      const jobTitleByLeadId: Record<string, string> = {};
-
-      if (leadIds.length > 0) {
-        const { data: leadsData } = await supabase
-          .from("leads")
-          .select("id, title")
-          .in("id", leadIds);
-        for (const lead of leadsData || []) {
-          jobTitleByLeadId[lead.id] = lead.title || "Another job";
-        }
-      }
-
       for (const [scheduleIndex, schedule] of crewStepSchedules.entries()) {
         for (const assignment of assignmentRows) {
           const scheduleRows = Array.isArray((assignment as any).job_schedules)
@@ -193,7 +224,7 @@ export function ScheduleJobDialog({
             }
             if (!conflictDetailsMap[crewId][scheduleIndex]) {
               conflictDetailsMap[crewId][scheduleIndex] = {
-                jobTitle: jobTitleByLeadId[scheduleRow.lead_id] || "Another job",
+                jobTitle: "Another job",
                 scheduledDate: scheduleRow.scheduled_date,
                 scheduledTimeStart: scheduleRow.scheduled_time_start,
                 scheduledTimeEnd: scheduleRow.scheduled_time_end,
@@ -255,34 +286,67 @@ export function ScheduleJobDialog({
       && crewStepSchedules.every((_, scheduleIndex) => isCrewConflictedOnDay(scheduleIndex, crewId));
   };
 
-  const toggleCrewSelectionForSchedule = (scheduleIndex: number, crewId: string) => {
+  const toggleSelectedCrewDay = (scheduleIndex: number) => {
+    if (selectedCrewIds.length === 0) return;
+    const eligibleCrewIds = selectedCrewIds.filter((crewId) => !isCrewConflictedOnDay(scheduleIndex, crewId));
+    if (eligibleCrewIds.length === 0) return;
+
+    const allEligibleAssigned = eligibleCrewIds.every((crewId) => isCrewAssignedToDay(scheduleIndex, crewId));
+
     setCrewByScheduleIndex((current) => {
       const existing = current[scheduleIndex] || [];
-      const nextForSchedule = existing.includes(crewId)
-        ? existing.filter((id) => id !== crewId)
-        : [...existing, crewId];
+      const existingSet = new Set(existing);
+
+      if (allEligibleAssigned) {
+        eligibleCrewIds.forEach((crewId) => existingSet.delete(crewId));
+      } else {
+        eligibleCrewIds.forEach((crewId) => existingSet.add(crewId));
+      }
 
       return {
         ...current,
-        [scheduleIndex]: nextForSchedule,
+        [scheduleIndex]: Array.from(existingSet),
       };
     });
   };
 
-  const toggleSelectedCrewDay = (scheduleIndex: number) => {
-    if (!activeCrewId) return;
-    if (isCrewConflictedOnDay(scheduleIndex, activeCrewId)) return;
-    toggleCrewSelectionForSchedule(scheduleIndex, activeCrewId);
+  const addSelectedCrew = (crewId: string) => {
+    if (!validCrewIdSet.has(crewId)) return;
+    setSelectedCrewIds((current) => (
+      current.includes(crewId) ? current : [...current, crewId]
+    ));
+  };
+
+  const removeCrewFromAllSchedules = (crewId: string) => {
+    setSelectedCrewIds((current) => {
+      const next = current.filter((id) => id !== crewId);
+      if (activeCrewId === crewId) {
+        setActiveCrewId(next[0] || "");
+      }
+      return next;
+    });
+
+    setCrewByScheduleIndex((current) => {
+      const next: Record<number, string[]> = {};
+      Object.entries(current).forEach(([rawIndex, crewIds]) => {
+        const scheduleIndex = Number(rawIndex);
+        const filtered = crewIds.filter((id) => id !== crewId);
+        if (filtered.length > 0) {
+          next[scheduleIndex] = filtered;
+        }
+      });
+      return next;
+    });
   };
 
   const handleSchedule = async () => {
-    if (builderSchedules.length === 0) {
+    if (builderSchedules.length === 0 && !isEditingSchedules) {
       toast.error("Please add at least one schedule date");
       return;
     }
 
     for (const [scheduleIndex, _schedule] of builderSchedules.entries()) {
-      const selectedCrewIds = crewByScheduleIndex[scheduleIndex] || [];
+      const selectedCrewIds = (crewByScheduleIndex[scheduleIndex] || []).filter((crewId) => validCrewIdSet.has(crewId));
       const hasConflict = selectedCrewIds.some((crewId) => isCrewConflictedOnDay(scheduleIndex, crewId));
       if (hasConflict) {
         toast.error("One or more selected crew members are unavailable for this date and time.");
@@ -290,30 +354,104 @@ export function ScheduleJobDialog({
       }
     }
 
+    const initialByDate = new Map(editableInitialScheduleEntries.map((schedule) => [schedule.date, schedule]));
+    const currentByDate = new Map(builderSchedules.map((schedule) => [schedule.date, schedule]));
+    const addedDateSet = new Set(
+      builderSchedules
+        .filter((schedule) => !initialByDate.has(schedule.date))
+        .map((schedule) => schedule.date),
+    );
+
+    for (const [date, initialSchedule] of initialByDate.entries()) {
+      if (currentByDate.has(date)) continue;
+      const scheduleId = editableInitialScheduleIdByDate[date];
+      if (!scheduleId) continue;
+      try {
+        await deleteSchedule.mutateAsync({ id: scheduleId, lead_id: jobId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to update schedule";
+        toast.error(message);
+        return;
+      }
+    }
+
+    for (const [date, currentSchedule] of currentByDate.entries()) {
+      const initialSchedule = initialByDate.get(date);
+      if (!initialSchedule) continue;
+
+      if (initialSchedule.timeStart === currentSchedule.timeStart && initialSchedule.timeEnd === currentSchedule.timeEnd) {
+        continue;
+      }
+
+      const scheduleId = editableInitialScheduleIdByDate[date];
+      if (!scheduleId) continue;
+
+      try {
+        await updateSchedule.mutateAsync({
+          id: scheduleId,
+          scheduled_time_start: currentSchedule.timeStart || null,
+          scheduled_time_end: currentSchedule.timeEnd || null,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to update schedule";
+        toast.error(message);
+        return;
+      }
+    }
+
+    const scheduleIdByDate: Record<string, string> = { ...editableInitialScheduleIdByDate };
     let assignmentFailed = false;
     for (const [scheduleIndex, schedule] of builderSchedules.entries()) {
+      if (!addedDateSet.has(schedule.date)) continue;
+
       const result = await scheduleJob({
         leadId: jobId,
         scheduledDate: schedule.date,
         startTime: schedule.timeStart || undefined,
         endTime: schedule.timeEnd || undefined,
+        suppressSuccessToast: true,
       });
 
       if (!result.ok || !result.scheduleId) {
         return;
       }
 
-      const selectedCrewIds = crewByScheduleIndex[scheduleIndex] || [];
+      scheduleIdByDate[schedule.date] = result.scheduleId;
+    }
+
+    for (const [rawIndex, selectedCrew] of Object.entries(crewByScheduleIndex)) {
+      const scheduleIndex = Number(rawIndex);
+      const schedule = builderSchedules[scheduleIndex];
+      if (!schedule) continue;
+
+      const scheduleId = scheduleIdByDate[schedule.date];
+      if (!scheduleId) continue;
+
+      const selectedCrewIds = selectedCrew.filter((crewId) => validCrewIdSet.has(crewId));
+
+      const { error: clearError } = await supabase
+        .from("job_assignments")
+        .delete()
+        .eq("lead_id", jobId)
+        .eq("job_schedule_id", scheduleId);
+
+      if (clearError) {
+        assignmentFailed = true;
+        continue;
+      }
+
       if (selectedCrewIds.length > 0 && currentAccount?.id && user?.id) {
         for (const crewId of selectedCrewIds) {
           try {
-            await assignCrewAsync({ assigneeId: crewId, scheduleId: result.scheduleId });
+            await assignCrewAsync({ assigneeId: crewId, scheduleId });
           } catch {
             assignmentFailed = true;
           }
         }
       }
     }
+
+    toast.success(isEditingSchedules ? "Schedule updated successfully!" : "Schedule added successfully!");
 
     if (assignmentFailed) {
       toast.error("Schedule added, but one or more crew assignments failed. Please review crew assignments.");
@@ -325,12 +463,13 @@ export function ScheduleJobDialog({
     setCrewConflictByMember({});
     setCrewConflictDetailsByMember({});
     setCrewSearchQuery("");
+    setSelectedCrewIds([]);
     setActiveCrewId("");
     onOpenChange(false);
   };
 
   const handleContinue = () => {
-    if (builderSchedules.length === 0) {
+    if (builderSchedules.length === 0 && !isEditingSchedules) {
       toast.error("Please add at least one schedule date");
       return;
     }
@@ -345,6 +484,7 @@ export function ScheduleJobDialog({
       setCrewConflictByMember({});
       setCrewConflictDetailsByMember({});
       setCrewSearchQuery("");
+      setSelectedCrewIds([]);
       setActiveCrewId("");
     }
     onOpenChange(newOpen);
@@ -359,8 +499,12 @@ export function ScheduleJobDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader className="sr-only">
-          <DialogTitle>Add Schedule Date</DialogTitle>
-          <DialogDescription>Schedule a date and optionally assign one or more crew members.</DialogDescription>
+          <DialogTitle>{isEditingSchedules ? "Edit Schedule" : "Add Schedule Date"}</DialogTitle>
+          <DialogDescription>
+            {isEditingSchedules
+              ? "Edit scheduled dates and times for this job."
+              : "Schedule a date and optionally assign one or more crew members."}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           {step === "schedule" ? (
@@ -369,6 +513,7 @@ export function ScheduleJobDialog({
               onSchedulesChange={(schedules) => {
                 setBuilderSchedules(schedules);
               }}
+              currentLeadId={jobId}
               recurringControls={onMakeRecurring ? (
                 <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
                   <div className="pointer-events-none absolute inset-1 grid grid-cols-2 gap-1">
@@ -396,6 +541,8 @@ export function ScheduleJobDialog({
               filteredCrewMembers={filteredCrewMembers}
               crewSearchQuery={crewSearchQuery}
               onCrewSearchQueryChange={setCrewSearchQuery}
+              selectedCrewIds={selectedCrewIds}
+              onAddSelectedCrew={addSelectedCrew}
               activeCrewId={activeCrewId}
               onActiveCrewIdChange={setActiveCrewId}
               crewConflictByMember={crewConflictByMember}
@@ -407,6 +554,7 @@ export function ScheduleJobDialog({
                 crewConflictDetailsByMember[crewId]?.[scheduleIndex] || null
               }
               onToggleSelectedCrewDay={toggleSelectedCrewDay}
+              onRemoveSelectedCrew={removeCrewFromAllSchedules}
             />
           )}
         </div>
@@ -417,7 +565,11 @@ export function ScheduleJobDialog({
               <Button variant="outline" onClick={() => handleOpenChange(false)} className="w-full">
                 Cancel
               </Button>
-              <Button onClick={handleContinue} disabled={builderSchedules.length === 0 || isScheduling} className="w-full">
+              <Button
+                onClick={handleContinue}
+                disabled={(!isEditingSchedules && builderSchedules.length === 0) || isScheduling}
+                className="w-full"
+              >
                 Continue
               </Button>
             </>
@@ -428,10 +580,10 @@ export function ScheduleJobDialog({
               </Button>
               <Button
                 onClick={handleSchedule}
-                disabled={builderSchedules.length === 0 || isScheduling || isAssigning || isLoadingCrewConflicts}
+                disabled={(!isEditingSchedules && builderSchedules.length === 0) || isScheduling || isAssigning || isLoadingCrewConflicts}
                 className="w-full"
               >
-                {isScheduling || isAssigning ? "Scheduling..." : "Add Schedule"}
+                {isScheduling || isAssigning ? "Scheduling..." : isEditingSchedules ? "Save Schedule" : "Add Schedule"}
               </Button>
             </>
           )}

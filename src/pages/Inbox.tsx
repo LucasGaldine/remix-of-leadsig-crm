@@ -235,7 +235,7 @@ export default function Inbox() {
         id: estimate.id,
         type: "estimate",
         title: estimate.customer?.name || estimate.job?.name || "Estimate",
-        subtitle: `${formatDate(estimate.created_at)} | ${currency.format(Number(estimate.total || 0))} | Estimate`,
+        subtitle: `${currency.format(Number(estimate.total || 0))} | Estimate`,
         status: status.label,
         tone: status.tone,
         timestamp: toTimestamp(estimate.created_at),
@@ -340,23 +340,28 @@ export default function Inbox() {
       <PageHeader title="Inbox" subtitle={`${sortedItems.length} records`} hideTitle />
 
       <div className="max-w-[var(--content-max-width)] m-auto p-4">
-        <section className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+        <section className="-mx-4 md:mx-0">
           <div className="px-4 pt-4 pb-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-stretch gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="Search inbox..."
-                  className="pl-10"
+                  className="h-14 rounded-full border-border bg-card px-5 pl-14 text-base text-foreground shadow-sm placeholder:text-muted-foreground"
                 />
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" aria-label="Sort inbox">
-                    <ArrowUpDown className="h-4 w-4" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Sort inbox"
+                    className="h-14 w-14 shrink-0 rounded-full border-border bg-card shadow-sm hover:bg-card"
+                  >
+                    <ArrowUpDown className="!h-5 !w-5 !text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -373,7 +378,7 @@ export default function Inbox() {
             </div>
           </div>
 
-          <div className="px-4 pt-2 pb-3 overflow-x-auto scrollbar-hide">
+          <div className="px-4 pt-2 pb-6 overflow-x-auto scrollbar-hide md:pb-3">
             <div className="flex items-center gap-2 min-w-max">
               {chipConfig.map((chip) => {
                 const Icon = chip.icon;
@@ -383,7 +388,7 @@ export default function Inbox() {
                     key={chip.value}
                     onClick={() => setActiveFilter(chip.value)}
                     className={cn(
-                      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-base font-medium transition-colors md:text-sm",
                       isActive
                         ? "bg-primary text-primary-foreground"
                         : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
@@ -398,59 +403,62 @@ export default function Inbox() {
             </div>
           </div>
 
-          <div className="px-4 pt-5 pb-3 border-t border-border">
+          <div className="hidden px-4 pt-5 pb-3 md:block">
             <div className="inline-flex items-center gap-2">
               <InboxIcon className="h-3.5 w-3.5 text-muted-foreground" />
               <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Recent Activity</p>
             </div>
           </div>
 
-          {isLoading ? (
-            <div className="px-4 pb-6">
-              <div className="flex items-center justify-center py-10">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div className="overflow-hidden md:rounded-2xl md:border md:border-border md:bg-card md:shadow-sm">
+
+            {isLoading ? (
+              <div className="px-4 pb-6">
+                <div className="flex items-center justify-center py-10">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                </div>
               </div>
-            </div>
-          ) : sortedItems.length === 0 ? (
-            <div className="px-4 pb-6">
-              <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                No matching activity found.
+            ) : sortedItems.length === 0 ? (
+              <div className="px-4 pb-6">
+                <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  No matching activity found.
+                </div>
               </div>
-            </div>
-          ) : (
-            <div>
-              {sortedItems.map((item, index) => {
-                const iconData = rowIconConfig[item.type];
-                const RowIcon = iconData.icon;
-                return (
-                  <button
-                    key={`${item.type}-${item.id}`}
-                    onClick={() => navigate(item.path)}
-                    className={cn(
-                      "w-full px-4 py-3 text-left transition-colors hover:bg-accent/40",
-                      index > 0 && "relative before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-border",
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className={cn("mt-0.5", iconData.className)}>
-                          <RowIcon className="h-5 w-5" />
+            ) : (
+              <div>
+                {sortedItems.map((item, index) => {
+                  const iconData = rowIconConfig[item.type];
+                  const RowIcon = iconData.icon;
+                  return (
+                    <button
+                      key={`${item.type}-${item.id}`}
+                      onClick={() => navigate(item.path)}
+                      className={cn(
+                        "w-full border-t border-border bg-card px-4 py-8 text-left transition-colors hover:bg-accent/40 md:border-0 md:bg-transparent md:py-3",
+                        index > 0 && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className={cn("mt-0.5", iconData.className)}>
+                            <RowIcon className="h-7 w-7 md:h-5 md:w-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-1 md:text-base">{item.title}</p>
+                            <p className="truncate text-sm text-muted-foreground">{item.subtitle}</p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-foreground">{item.title}</p>
-                          <p className="truncate text-sm text-muted-foreground">{item.subtitle}</p>
+                        <div className={cn("inline-flex items-center gap-2 text-base font-medium text-right md:text-sm", toneClass[item.tone])}>
+                          <span>{item.status}</span>
+                          <span className={cn("h-2.5 w-2.5 rounded-full", item.tone === "confirmed" ? "bg-[hsl(var(--status-confirmed))]" : item.tone === "attention" ? "bg-[hsl(var(--status-attention))]" : item.tone === "pending" ? "bg-[hsl(var(--status-pending))]" : "bg-muted-foreground/50")} />
                         </div>
                       </div>
-                      <div className={cn("inline-flex items-center gap-2 text-sm font-medium text-right", toneClass[item.tone])}>
-                        <span>{item.status}</span>
-                        <span className={cn("h-2.5 w-2.5 rounded-full", item.tone === "confirmed" ? "bg-[hsl(var(--status-confirmed))]" : item.tone === "attention" ? "bg-[hsl(var(--status-attention))]" : item.tone === "pending" ? "bg-[hsl(var(--status-pending))]" : "bg-muted-foreground/50")} />
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </section>
       </div>
 

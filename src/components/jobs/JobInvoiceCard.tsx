@@ -37,9 +37,18 @@ interface JobInvoiceCardProps {
   customerEmail?: string | null;
   customerName?: string | null;
   estimateTotal?: number | null;
+  openLogPaymentSignal?: number;
+  grouped?: boolean;
 }
 
-export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTotal }: JobInvoiceCardProps) {
+export function JobInvoiceCard({
+  jobId,
+  customerEmail,
+  customerName,
+  estimateTotal,
+  openLogPaymentSignal = 0,
+  grouped = false,
+}: JobInvoiceCardProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { user, currentAccount } = useAuth();
@@ -81,6 +90,11 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
   useEffect(() => {
     fetchInvoices();
   }, [jobId]);
+
+  useEffect(() => {
+    if (openLogPaymentSignal <= 0) return;
+    setShowLogPaymentModal(true);
+  }, [openLogPaymentSignal]);
 
   useEffect(() => {
     if (dialogOpen && estimateTotal !== null && estimateTotal !== undefined) {
@@ -384,6 +398,123 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
     void openTapToPay();
   };
 
+  const handleOpenInPersonPayment = async () => {
+    if (!user || !currentAccount) {
+      toast.error("Authentication required");
+      return;
+    }
+
+    const openInvoice = selectInvoiceForLoggedPayment(invoices);
+    let invoiceId = openInvoice?.id || null;
+    let invoiceCustomerId = openInvoice?.customer_id || null;
+    let invoiceBalanceDue = Number(openInvoice?.balance_due || 0);
+
+    if (!invoiceId || invoiceBalanceDue <= 0) {
+      const amountToInvoice = roundCurrencyAmount(Number(remainingAmount ?? totalToInvoice));
+      if (!amountToInvoice || amountToInvoice <= 0) {
+        toast.error("No remaining balance available to charge.");
+        return;
+      }
+
+      const { data: jobRecord, error: jobError } = await supabase
+        .from("leads")
+        .select("customer_id")
+        .eq("id", jobId)
+        .single();
+
+      if (jobError || !jobRecord?.customer_id) {
+        toast.error("This job is missing a customer. Update the customer before charging.");
+        return;
+      }
+
+      const { data: estimate } = await supabase
+        .from("estimates")
+        .select("id")
+        .eq("job_id", jobId)
+        .maybeSingle();
+
+      const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
+        p_account_id: currentAccount.id,
+      });
+
+      const dueDate = new Date().toISOString().split("T")[0];
+      const { data: newInvoice, error: newInvoiceError } = await supabase
+        .from("invoices")
+        .insert({
+          customer_id: jobRecord.customer_id,
+          lead_id: jobId,
+          estimate_id: estimate?.id || null,
+          invoice_number: invoiceNumber.data || 1,
+          subtotal: amountToInvoice,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          total: amountToInvoice,
+          balance_due: amountToInvoice,
+          notes: "Created for in-person card payment",
+          status: "draft",
+          due_date: dueDate,
+          created_by: user.id,
+          account_id: currentAccount.id,
+        })
+        .select("id, customer_id, balance_due")
+        .single();
+
+      if (newInvoiceError || !newInvoice?.id) {
+        console.error("Failed to create in-person payment invoice:", newInvoiceError);
+        toast.error("Failed to prepare invoice for in-person payment.");
+        return;
+      }
+
+      const { error: lineItemError } = await supabase.from("invoice_line_items").insert({
+        invoice_id: newInvoice.id,
+        name: "In-person card payment",
+        description: "In-person card payment",
+        quantity: 1,
+        unit: "item",
+        unit_price: amountToInvoice,
+        total: amountToInvoice,
+        sort_order: 0,
+        account_id: currentAccount.id,
+      });
+
+      if (lineItemError) {
+        console.error("Failed to create line item for in-person payment invoice:", lineItemError);
+        toast.error("Failed to prepare invoice line item.");
+        return;
+      }
+
+      invoiceId = newInvoice.id;
+      invoiceCustomerId = newInvoice.customer_id;
+      invoiceBalanceDue = Number(newInvoice.balance_due || amountToInvoice);
+      await fetchInvoices();
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    }
+
+    if (!invoiceCustomerId) {
+      toast.error("This invoice is missing a customer. Update the job customer before charging.");
+      return;
+    }
+
+    setShowLogPaymentModal(false);
+    navigate("/payments/charge", {
+      state: {
+        invoice: {
+          id: invoiceId,
+          invoiceId,
+          customerId: invoiceCustomerId,
+          customerName: customerName || "Customer",
+          balanceDue: invoiceBalanceDue,
+          jobId,
+          jobName: customerName || "Invoice Payment",
+          email: customerEmail || "",
+        },
+        selectedMethod: "card",
+        returnTo: `/jobs/${jobId}`,
+      },
+    });
+  };
+
   const statusColors: Record<string, string> = {
     sent: "text-amber-600",
     paid: "text-emerald-600",
@@ -391,6 +522,14 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
     overdue: "text-destructive",
     draft: "text-muted-foreground",
   };
+  const isFullyInvoiced = Boolean(estimateTotal && remainingAmount !== null && remainingAmount <= 0);
+  const estimateNeedsApproval = Boolean(estimateStatus && estimateStatus !== "accepted");
+  const sendInvoiceDisabled = loading || isFullyInvoiced || estimateNeedsApproval;
+  const sendInvoiceHelperText = isFullyInvoiced
+    ? "Estimate fully invoiced"
+    : estimateNeedsApproval
+      ? "The estimate must be approved before sending an invoice"
+      : undefined;
 
   return (
     <>
@@ -398,7 +537,9 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
         <div
           role="button"
           tabIndex={0}
-          className="rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+          className={grouped
+            ? "p-0 text-foreground cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))]"
+            : "rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[hsl(var(--status-confirmed))"}
           onClick={() => setShowAllInvoicesModal(true)}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -619,7 +760,15 @@ export function JobInvoiceCard({ jobId, customerEmail, customerName, estimateTot
       <OtherPaymentOptionsModal
         open={showLogPaymentModal}
         onOpenChange={setShowLogPaymentModal}
-        totalAmount={estimateTotal || 0}
+        totalAmount={totalToInvoice}
+        invoicedAmount={totalInvoiced}
+        onSendInvoice={() => {
+          setShowLogPaymentModal(false);
+          handleOpenDialog();
+        }}
+        sendInvoiceDisabled={sendInvoiceDisabled}
+        sendInvoiceHelperText={sendInvoiceHelperText}
+        onInPersonPayment={handleOpenInPersonPayment}
         onRecordPayment={handleRecordPayment}
         onOpenTapToPay={handleOpenTapToPay}
         recordingPayment={recordingPayment}
