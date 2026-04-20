@@ -44,32 +44,46 @@ vi.mock("sonner", () => ({
 vi.mock("@/components/ui/calendar", () => ({
   Calendar: ({
     disabled,
-    onSelect,
+    modifiers,
+    onDayClick,
     onDayMouseEnter,
+    onDayMouseLeave,
   }: {
     disabled?: (date: Date) => boolean;
-    onSelect?: (date: Date) => void;
-    onDayMouseEnter?: (date: Date) => void;
+    modifiers?: {
+      mutedDeselected?: (date: Date) => boolean;
+    };
+    onDayClick?: (date: Date, activeModifiers: unknown, event: { buttons?: number }) => void;
+    onDayMouseEnter?: (date: Date, activeModifiers: unknown, event: { buttons?: number }) => void;
+    onDayMouseLeave?: (date: Date, activeModifiers: unknown, event: { buttons?: number }) => void;
   }) => {
     const target = new Date(2030, 0, 10);
     const altTarget = new Date(2030, 0, 11);
     const thirdTarget = new Date(2030, 0, 12);
     const isDisabled = disabled?.(target);
+    const altMuted = modifiers?.mutedDeselected?.(altTarget) ?? false;
 
     return (
       <div>
         <div>{isDisabled ? "target-disabled" : "target-enabled"}</div>
-        <button type="button" onClick={() => onSelect?.(target)}>
+        <div>{altMuted ? "alt-muted" : "alt-normal"}</div>
+        <button type="button" onClick={() => onDayClick?.(target, {}, { buttons: 0 })}>
           Pick date
         </button>
-        <button type="button" onClick={() => onSelect?.(altTarget)}>
+        <button type="button" onClick={() => onDayClick?.(altTarget, {}, { buttons: 0 })}>
           Pick alt date
         </button>
-        <button type="button" onClick={() => onSelect?.(thirdTarget)}>
+        <button type="button" onClick={() => onDayClick?.(thirdTarget, {}, { buttons: 0 })}>
           Pick third date
         </button>
-        <button type="button" onMouseEnter={() => onDayMouseEnter?.(target)}>
+        <button type="button" onMouseEnter={() => onDayMouseEnter?.(target, {}, { buttons: 0 })}>
           Hover date
+        </button>
+        <button type="button" onMouseEnter={() => onDayMouseEnter?.(thirdTarget, {}, { buttons: 1 })}>
+          Drag over third date
+        </button>
+        <button type="button" onMouseLeave={() => onDayMouseLeave?.(thirdTarget, {}, { buttons: 0 })}>
+          Leave day
         </button>
       </div>
     );
@@ -132,5 +146,58 @@ describe("ScheduleDateBuilder availability guards", () => {
     fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
     expect(screen.queryByText("11")).not.toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("supports drag-selecting additional dates", () => {
+    const SchedulingHarness = () => {
+      const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
+      return <ScheduleDateBuilder schedules={schedules} onSchedulesChange={setSchedules} />;
+    };
+
+    render(<SchedulingHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
+    fireEvent.mouseDown(window, { button: 0 });
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /drag over third date/i }));
+    fireEvent.mouseUp(window, { button: 0 });
+    fireEvent.mouseLeave(screen.getByRole("button", { name: /leave day/i }));
+    fireEvent.click(screen.getByRole("button", { name: /custom times/i }));
+
+    expect(screen.getByText("11")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("allows selecting a date marked busy/full when ignoring existing-schedule constraints", () => {
+    const SchedulingHarness = () => {
+      const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
+      return (
+        <ScheduleDateBuilder
+          schedules={schedules}
+          onSchedulesChange={setSchedules}
+          ignoreExistingScheduleConstraints
+        />
+      );
+    };
+
+    render(<SchedulingHarness />);
+
+    expect(screen.getByText("target-enabled")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /pick date/i }));
+    fireEvent.click(screen.getByRole("button", { name: /custom times/i }));
+    expect(screen.getByText("10")).toBeInTheDocument();
+  });
+
+  it("does not mark a newly selected then deselected date as previously scheduled", () => {
+    const SchedulingHarness = () => {
+      const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
+      return <ScheduleDateBuilder schedules={schedules} onSchedulesChange={setSchedules} />;
+    };
+
+    render(<SchedulingHarness />);
+
+    expect(screen.getByText("alt-normal")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
+    fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
+    expect(screen.getByText("alt-normal")).toBeInTheDocument();
   });
 });

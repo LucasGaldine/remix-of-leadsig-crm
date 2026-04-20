@@ -49,6 +49,7 @@ import { extractMentions, parseMentionsForDisplay } from "@/lib/mentionParser";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
 import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallback";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
+import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 import { applyCustomerContactToJob } from "@/lib/jobCustomerCache";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
@@ -164,6 +165,7 @@ export default function JobDetail() {
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const { data: teamMembers = [] } = useTeamMembers();
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(teamMembers);
   const [hasInvoice, setHasInvoice] = useState(false);
   const [lineItemsEstimateDialogOpen, setLineItemsEstimateDialogOpen] = useState(false);
   const [portalDialogOpen, setPortalDialogOpen] = useState(false);
@@ -1216,11 +1218,11 @@ export default function JobDetail() {
   );
   const remainingChecklistCount = checklistItems.filter((item) => !item.is_completed).length;
   const hasScheduleScopedAssignments = jobAssignments.some((assignment) => Boolean(assignment.job_schedule_id));
-  const isUnassigned = schedules.length === 0
+  const isUnassigned = !isSinglePersonCompany && (schedules.length === 0
     ? jobAssignments.length === 0
     : hasScheduleScopedAssignments
       ? schedules.some((schedule) => !schedule.suppress_unassigned && !assignedScheduleIds.has(schedule.id))
-      : schedules.some((schedule) => !schedule.suppress_unassigned) && jobAssignments.length === 0;
+      : schedules.some((schedule) => !schedule.suppress_unassigned) && jobAssignments.length === 0);
   const deleteJobConfig = getDetailDeleteConfig({
     entity: "job",
     name: job.name || "this job",
@@ -1563,12 +1565,17 @@ export default function JobDetail() {
                           schedule.scheduled_time_start,
                           schedule.scheduled_time_end
                         );
+                        const hasSecondaryScheduleContent =
+                          outsideHours
+                          || Boolean(scheduleTimeRange)
+                          || scheduleAssignments.length > 0
+                          || !isSinglePersonCompany;
 
                         const scheduleDate = new Date(schedule.scheduled_date + "T00:00:00");
                         const scheduleDateLabel = format(scheduleDate, "EEE, MMM d");
                         const scheduleCardContent = (
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex min-w-0 flex-1 items-start gap-3">
+                          <div className={cn("flex justify-between gap-2", hasSecondaryScheduleContent ? "items-start" : "items-center")}>
+                            <div className={cn("flex min-w-0 flex-1 gap-3", hasSecondaryScheduleContent ? "items-start" : "items-center")}>
                               <MonthDayDateBadge date={scheduleDate} />
 
                               <div className="min-w-0 flex-1">
@@ -1596,11 +1603,11 @@ export default function JobDetail() {
                                       </Badge>
                                     ))}
                                   </div>
-                                ) : (
+                                ) : !isSinglePersonCompany ? (
                                   <p className="mt-0.5 text-base md:text-sm text-muted-foreground">
                                     No crew assigned
                                   </p>
-                                )}
+                                ) : null}
                               </div>
                             </div>
                             {isManager() && (
@@ -1617,7 +1624,7 @@ export default function JobDetail() {
                             type="button"
                             onClick={() => openEditCrewDialog(schedule.id)}
                             className="w-full rounded-xl text-left transition-colors hover:bg-muted/40 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            aria-label={`Edit schedule and crew for ${scheduleDateLabel}`}
+                            aria-label={`${isSinglePersonCompany ? "Edit schedule" : "Edit schedule and crew"} for ${scheduleDateLabel}`}
                           >
                             {scheduleCardContent}
                           </button>
@@ -2280,9 +2287,11 @@ export default function JobDetail() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Crew</DialogTitle>
+            <DialogTitle>{isSinglePersonCompany ? "Edit Schedule" : "Edit Crew"}</DialogTitle>
             <DialogDescription>
-              Update this scheduled date, crew assignment, or assigned-state override.
+              {isSinglePersonCompany
+                ? "Update this scheduled date or assigned-state override."
+                : "Update this scheduled date, crew assignment, or assigned-state override."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2339,49 +2348,53 @@ export default function JobDetail() {
               </div>
             </div>
 
-            {teamMembers.length > 0 ? (
-              <div className="max-h-72 overflow-y-auto border rounded-md">
-                {teamMembers.map((member) => {
-                  const memberId = `edit-crew-${member.user_id}`;
-                  const isSelected = editingCrewUserIds.includes(member.user_id);
-                  return (
-                    <div
-                      key={member.user_id}
-                      className={cn(
-                        "flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0",
-                        editingSuppressUnassigned && "opacity-60",
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          id={memberId}
-                          checked={isSelected}
-                          disabled={editingSuppressUnassigned}
-                          onCheckedChange={() => toggleEditingCrewUser(member.user_id)}
-                        />
-                        <Label
-                          htmlFor={memberId}
+            {!isSinglePersonCompany && (
+              <>
+                {teamMembers.length > 0 ? (
+                  <div className="max-h-72 overflow-y-auto border rounded-md">
+                    {teamMembers.map((member) => {
+                      const memberId = `edit-crew-${member.user_id}`;
+                      const isSelected = editingCrewUserIds.includes(member.user_id);
+                      return (
+                        <div
+                          key={member.user_id}
                           className={cn(
-                            "text-sm font-normal leading-none",
-                            editingSuppressUnassigned ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+                            "flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0",
+                            editingSuppressUnassigned && "opacity-60",
                           )}
                         >
-                          {member.full_name || "Unnamed"}
-                        </Label>
-                      </div>
-                      <Badge variant="outline" className="text-xs py-0">
-                        {member.role ? member.role.replace("_", " ") : "team"}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No crew members available</p>
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id={memberId}
+                              checked={isSelected}
+                              disabled={editingSuppressUnassigned}
+                              onCheckedChange={() => toggleEditingCrewUser(member.user_id)}
+                            />
+                            <Label
+                              htmlFor={memberId}
+                              className={cn(
+                                "text-sm font-normal leading-none",
+                                editingSuppressUnassigned ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+                              )}
+                            >
+                              {member.full_name || "Unnamed"}
+                            </Label>
+                          </div>
+                          <Badge variant="outline" className="text-xs py-0">
+                            {member.role ? member.role.replace("_", " ") : "team"}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No crew members available</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {editingCrewUserIds.length} crew member{editingCrewUserIds.length === 1 ? "" : "s"} selected
+                </p>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">
-              {editingCrewUserIds.length} crew member{editingCrewUserIds.length === 1 ? "" : "s"} selected
-            </p>
           </div>
           <DialogFooter className="flex-row flex-wrap justify-end gap-2 sm:justify-end">
             {!jobAny.recurring_job_id && (

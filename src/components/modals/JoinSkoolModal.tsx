@@ -1,3 +1,4 @@
+import { BookOpen, ClipboardList, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -7,62 +8,62 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { hasLandscapingSkoolAccess, type BasicTier, type PlanKey } from "@/lib/billingPlans";
 
 interface JoinSkoolModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  plan: PlanKey;
-  tier: BasicTier | null;
   joinUrl?: string | null;
 }
 
 export function JoinSkoolModal({
   open,
   onOpenChange,
-  plan,
-  tier,
   joinUrl = null,
 }: JoinSkoolModalProps) {
-  const hasPremiumSkoolAccess = hasLandscapingSkoolAccess(plan, tier);
-  const hasFreeAccount = plan === "free";
-
-  const accessMessage = hasPremiumSkoolAccess
-    ? "You unlocked Premium Skool access with your plan. Enjoy the full training library, advanced playbooks, and priority community support."
-    : hasFreeAccount
-      ? "Your Free account includes free access to the Skool community."
-      : "You can join the free Skool community now. Upgrade to Essentials Growth or Pro for Premium Skool access.";
+  const resolvedJoinUrl = joinUrl ?? "https://www.skool.com/elo";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <img
-            src="/skool-logo.svg"
-            alt="Skool logo"
-            className="h-8 w-auto"
-          />
-          <DialogTitle>Join the Skool Community</DialogTitle>
-          <DialogDescription className="space-y-2">
-            <span className="block">
-              Join the LeadSig Skool community to get training, implementation tips, and support from other contractors.
-            </span>
-            <span className="block font-medium text-foreground">{accessMessage}</span>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader className="items-start text-left sm:text-left">
+          <div className="flex items-center gap-3">
+            <img
+              src="/skool-icon.png"
+              alt="Skool logo"
+              className="h-9 w-9 rounded-xl"
+            />
+            <DialogTitle>Join the Skool Community</DialogTitle>
+          </div>
+          <DialogDescription className="space-y-4 text-left">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">FREE</span>
+              <span className="text-base text-foreground">Included with your LeadSig account.</span>
+            </div>
+            <ul className="space-y-3 py-3">
+              <li className="flex items-center gap-3">
+                <BookOpen className="h-5 w-5 shrink-0 text-primary" />
+                <span className="text-base font-medium text-foreground">Step-by-step training</span>
+              </li>
+              <li className="flex items-center gap-3">
+                <ClipboardList className="h-5 w-5 shrink-0 text-primary" />
+                <span className="text-base font-medium text-foreground">Implementation playbooks</span>
+              </li>
+              <li className="flex items-center gap-3">
+                <Users className="h-5 w-5 shrink-0 text-primary" />
+                <span className="text-base font-medium text-foreground">Direct support from other contractors</span>
+              </li>
+            </ul>
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="grid w-full grid-cols-2 gap-3">
+          <Button size="lg" className="w-full" variant="outline" onClick={() => onOpenChange(false)}>
             Maybe later
           </Button>
-          {joinUrl ? (
-            <Button asChild>
-              <a href={joinUrl} target="_blank" rel="noreferrer">
-                Join Skool
-              </a>
-            </Button>
-          ) : (
-            <Button onClick={() => onOpenChange(false)}>Got it</Button>
-          )}
+          <Button size="lg" className="w-full" asChild>
+            <a href={resolvedJoinUrl} target="_blank" rel="noreferrer">
+              Join now
+            </a>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

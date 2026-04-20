@@ -51,6 +51,25 @@ describe("JobCard", () => {
     expect(screen.getByText("Unassigned")).toBeInTheDocument();
   });
 
+  it("hides unassigned status when disabled by parent context", () => {
+    render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...baseJob,
+            has_unassigned_schedule: true,
+            status: "scheduled",
+            display_status: "scheduled",
+          }}
+          hideUnassignedStatus
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+  });
+
   it("shows needs invoice on completed jobs without invoices", () => {
     render(
       <MemoryRouter>

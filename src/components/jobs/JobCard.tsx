@@ -32,6 +32,7 @@ export interface Job extends DbJob {
 
 interface JobCardProps {
   job: Job;
+  hideUnassignedStatus?: boolean;
   onClick?: () => void;
   onCall?: () => void;
   onMessage?: () => void;
@@ -72,6 +73,7 @@ const jobStatusConfig: Record<string, { label: string; tone: ActivityTone }> = {
 
 export function JobCard({
   job,
+  hideUnassignedStatus = false,
   onClick,
   onCall,
   onMessage,
@@ -85,6 +87,7 @@ export function JobCard({
   const isMobile = useIsMobile();
   const badgeStatus = (job.display_status || job.status) as string;
   const isUnassigned =
+    !hideUnassignedStatus &&
     Boolean(job.has_unassigned_schedule) &&
     (badgeStatus === "unscheduled" || badgeStatus === "scheduled" || badgeStatus === "in_progress");
   const needsInvoice = job.status === "completed" && !job.has_invoice && !job.is_estimate_visit;

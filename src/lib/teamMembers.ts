@@ -1,3 +1,5 @@
+import { isMockCrewAssigneeId } from "@/lib/crewIdentifiers";
+
 export interface TeamMemberLike {
   user_id: string;
   full_name?: string | null;
@@ -25,4 +27,12 @@ export function getTeamMemberDisplayName(member: TeamMemberLike) {
   }
 
   return "Team member";
+}
+
+export function countRealTeamMembers(members: Pick<TeamMemberLike, "user_id">[]) {
+  return members.filter((member) => !isMockCrewAssigneeId(member.user_id)).length;
+}
+
+export function isSinglePersonCompany(members: Pick<TeamMemberLike, "user_id">[]) {
+  return countRealTeamMembers(members) <= 1;
 }

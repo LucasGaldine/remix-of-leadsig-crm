@@ -26,7 +26,6 @@ import {
   getSignupSource,
   shouldShowPostOnboardingSkoolModal,
 } from "@/lib/onboarding";
-import { type BasicTier, type PlanKey } from "@/lib/billingPlans";
 
 
 function getGreeting(): string {
@@ -51,7 +50,7 @@ export default function Index() {
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { user, isCrewMember, profile, currentAccount } = useAuth();
+  const { user, isCrewMember, profile } = useAuth();
   const { toast } = useToast();
   const [showSkoolModal, setShowSkoolModal] = useState(false);
   const { sections } = useDashboardPreferences();
@@ -166,8 +165,6 @@ export default function Index() {
     return <CrewDashboard />;
   }
 
-  const currentPlan: PlanKey = (currentAccount?.pricing_plan as PlanKey) ?? "free";
-  const currentTier: BasicTier | null = (currentAccount as { pricing_tier?: BasicTier | null } | null)?.pricing_tier ?? null;
   const joinSkoolUrl = import.meta.env.VITE_SKOOL_JOIN_URL ?? null;
 
   return (
@@ -175,8 +172,6 @@ export default function Index() {
       <JoinSkoolModal
         open={showSkoolModal}
         onOpenChange={setShowSkoolModal}
-        plan={currentPlan}
-        tier={currentTier}
         joinUrl={joinSkoolUrl}
       />
       <PageHeader

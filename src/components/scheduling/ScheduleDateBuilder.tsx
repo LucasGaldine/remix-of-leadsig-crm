@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, addMonths, parse, isValid } from "date-fns";
 import { ChevronDown } from "lucide-react";
@@ -39,10 +39,18 @@ interface ScheduleDateBuilderProps {
   onSchedulesChange: (schedules: ScheduleEntry[]) => void;
   recurringControls?: ReactNode;
   currentLeadId?: string;
+  ignoreExistingScheduleConstraints?: boolean;
 }
 
-export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringControls, currentLeadId }: ScheduleDateBuilderProps) {
+export function ScheduleDateBuilder({
+  schedules,
+  onSchedulesChange,
+  recurringControls,
+  currentLeadId,
+  ignoreExistingScheduleConstraints = false,
+}: ScheduleDateBuilderProps) {
   const { currentAccount } = useAuth();
+  const calendarWrapperRef = useRef<HTMLDivElement>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [hoveredUnavailableReason, setHoveredUnavailableReason] = useState<string | null>(null);
   const [mutedDeselectedDates, setMutedDeselectedDates] = useState<Set<string>>(new Set());
@@ -50,6 +58,15 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
   const [defaultTimeEnd, setDefaultTimeEnd] = useState(() => schedules[0]?.timeEnd ?? "");
   const [didInitializeFromSchedules, setDidInitializeFromSchedules] = useState(() => schedules.length > 0);
   const [isCustomTimesOpen, setIsCustomTimesOpen] = useState(false);
+  const initiallyScheduledDateSetRef = useRef(new Set(schedules.map((schedule) => schedule.date)));
+  const isPrimaryPointerDownRef = useRef(false);
+  const dragModeRef = useRef<"add" | "remove" | null>(null);
+  const dragVisitedDatesRef = useRef<Set<string>>(new Set());
+  const dragMutatedSelectionRef = useRef(false);
+  const applyDragSelectionRef = useRef<(date: Date) => void>(() => undefined);
+  const lastHoveredDayRef = useRef<Date | null>(null);
+  const scheduleDateSetRef = useRef(new Set<string>());
+  const schedulesRef = useRef<ScheduleEntry[]>(schedules);
   const [customDateSet, setCustomDateSet] = useState<Set<string>>(() => {
     if (schedules.length === 0) return new Set<string>();
     const baseStart = schedules[0]?.timeStart ?? "";
@@ -86,6 +103,70 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
     () => schedules.map((schedule) => parse(schedule.date, "yyyy-MM-dd", new Date())).filter((date) => isValid(date)),
     [schedules],
   );
+
+  useEffect(() => {
+    schedulesRef.current = schedules;
+  }, [schedules]);
+
+  useEffect(() => {
+    scheduleDateSetRef.current = new Set(scheduleDateSet);
+  }, [scheduleDateSet]);
+
+  const resetDragSelectionState = useCallback(() => {
+    dragModeRef.current = null;
+    dragVisitedDatesRef.current.clear();
+    dragMutatedSelectionRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const handleMouseDown = (event: MouseEvent) => {
+      if (event.button === 0) {
+        isPrimaryPointerDownRef.current = true;
+
+        const target = event.target as HTMLElement | null;
+        const dayButton = target?.closest?.("button[role='gridcell']");
+        const wrapper = calendarWrapperRef.current;
+        if (!dayButton || !wrapper || !wrapper.contains(dayButton)) return;
+        if (!lastHoveredDayRef.current) return;
+
+        applyDragSelectionRef.current(lastHoveredDayRef.current);
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.isPrimary && event.button === 0) {
+        isPrimaryPointerDownRef.current = true;
+      }
+    };
+
+    const handleMouseUp = () => {
+      isPrimaryPointerDownRef.current = false;
+      resetDragSelectionState();
+    };
+
+    const handlePointerUp = () => {
+      isPrimaryPointerDownRef.current = false;
+      resetDragSelectionState();
+    };
+
+    const handleWindowBlur = () => {
+      isPrimaryPointerDownRef.current = false;
+      resetDragSelectionState();
+    };
+
+    window.addEventListener("mousedown", handleMouseDown, true);
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      window.removeEventListener("mousedown", handleMouseDown, true);
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [resetDragSelectionState]);
 
   useEffect(() => {
     setCustomDateSet((current) => {
@@ -249,6 +330,10 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
     : (availabilityData?.fullyBookedDatesSet ?? new Set<string>());
 
   const effectiveFullyBookedDatesSet = useMemo(() => {
+    if (ignoreExistingScheduleConstraints) {
+      return new Set<string>();
+    }
+
     if (!dailyLimit) return new Set(fullyBookedDatesSet);
 
     const effective = new Set(fullyBookedDatesSet);
@@ -260,13 +345,17 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
     });
 
     return effective;
-  }, [dailyLimit, fullyBookedDatesSet, localScheduleCountByDate, existingCountsByDate]);
+  }, [dailyLimit, fullyBookedDatesSet, ignoreExistingScheduleConstraints, localScheduleCountByDate, existingCountsByDate]);
 
   const indicatorBusyDatesSet = useMemo(() => {
+    if (ignoreExistingScheduleConstraints) {
+      return new Set(Object.keys(localScheduleCountByDate));
+    }
+
     const merged = new Set(otherJobsBusyDatesSet);
     Object.keys(localScheduleCountByDate).forEach((date) => merged.add(date));
     return merged;
-  }, [otherJobsBusyDatesSet, localScheduleCountByDate]);
+  }, [ignoreExistingScheduleConstraints, otherJobsBusyDatesSet, localScheduleCountByDate]);
 
   const isDateUnavailable = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
@@ -274,7 +363,7 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
     return (
       date < today ||
       dayOffDatesSet.has(dateStr) ||
-      (effectiveFullyBookedDatesSet.has(dateStr) && !isAlreadySelected)
+      (!ignoreExistingScheduleConstraints && effectiveFullyBookedDatesSet.has(dateStr) && !isAlreadySelected)
     );
   };
 
@@ -292,14 +381,19 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
         : "This date is marked as a day off.";
     }
 
-    if (effectiveFullyBookedDatesSet.has(dateStr) && dailyLimit && !scheduleDateSet.has(dateStr)) {
+    if (
+      !ignoreExistingScheduleConstraints &&
+      effectiveFullyBookedDatesSet.has(dateStr) &&
+      dailyLimit &&
+      !scheduleDateSet.has(dateStr)
+    ) {
       return `Daily job limit (${dailyLimit}) reached for this date.`;
     }
 
     return null;
   };
 
-  const canUseDate = (dateStr: string, options?: { notify?: boolean }) => {
+  const canUseDate = useCallback((dateStr: string, options?: { notify?: boolean }) => {
     const notify = options?.notify ?? true;
     const localDate = parse(dateStr, "yyyy-MM-dd", new Date());
     if (!isValid(localDate) || localDate < today) {
@@ -312,48 +406,150 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
       return false;
     }
 
-    if (effectiveFullyBookedDatesSet.has(dateStr) && !scheduleDateSet.has(dateStr)) {
+    if (
+      !ignoreExistingScheduleConstraints &&
+      effectiveFullyBookedDatesSet.has(dateStr) &&
+      !scheduleDateSet.has(dateStr)
+    ) {
       if (notify) toast.error("Daily job limit has been reached for this date.");
       return false;
     }
 
     return true;
-  };
+  }, [dayOffDatesSet, effectiveFullyBookedDatesSet, ignoreExistingScheduleConstraints, scheduleDateSet, today]);
 
-  const handleMultiDateSelect = (dates: Date[] | Date | undefined) => {
-    let dateStrings: string[] = [];
-
-    if (Array.isArray(dates)) {
-      dateStrings = dates.map((date) => format(date, "yyyy-MM-dd"));
-    } else if (dates) {
-      const clickedDate = format(dates, "yyyy-MM-dd");
-      dateStrings = scheduleDateSet.has(clickedDate)
-        ? schedules.filter((schedule) => schedule.date !== clickedDate).map((schedule) => schedule.date)
-        : [...schedules.map((schedule) => schedule.date), clickedDate];
-    }
-
-    const normalizedDateStrings = Array.from(new Set(dateStrings))
-      .filter((dateStr) => canUseDate(dateStr, { notify: false }));
-    const nextDateSet = new Set(normalizedDateStrings);
-    const removedDates = Array.from(scheduleDateSet).filter((date) => !nextDateSet.has(date));
-    const addedDates = normalizedDateStrings.filter((date) => !scheduleDateSet.has(date));
+  const applyDateSelection = useCallback((nextDateSet: Set<string>) => {
+    const normalizedDateStrings = Array.from(nextDateSet)
+      .filter((dateStr) => canUseDate(dateStr, { notify: false }))
+      .sort((a, b) => a.localeCompare(b));
+    const normalizedDateSet = new Set(normalizedDateStrings);
+    const previousDateSet = scheduleDateSetRef.current;
+    const removedDates = Array.from(previousDateSet).filter((date) => !normalizedDateSet.has(date));
+    const addedDates = normalizedDateStrings.filter((date) => !previousDateSet.has(date));
 
     setMutedDeselectedDates((current) => {
       const next = new Set(current);
-      removedDates.forEach((date) => next.add(date));
+      removedDates.forEach((date) => {
+        if (initiallyScheduledDateSetRef.current.has(date)) {
+          next.add(date);
+        }
+      });
       addedDates.forEach((date) => next.delete(date));
       return next;
     });
 
+    const currentSchedules = schedulesRef.current;
     const nextSchedules = normalizedDateStrings
-      .map((dateStr) => schedules.find((schedule) => schedule.date === dateStr) || {
+      .map((dateStr) => currentSchedules.find((schedule) => schedule.date === dateStr) || {
         date: dateStr,
         timeStart: defaultTimeStart,
         timeEnd: defaultTimeEnd,
       })
       .sort((a, b) => a.date.localeCompare(b.date));
 
+    scheduleDateSetRef.current = normalizedDateSet;
     onSchedulesChange(nextSchedules);
+  }, [canUseDate, defaultTimeEnd, defaultTimeStart, onSchedulesChange]);
+
+  const toggleDate = useCallback((date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    const nextDateSet = new Set(scheduleDateSetRef.current);
+    if (nextDateSet.has(dateStr)) {
+      nextDateSet.delete(dateStr);
+    } else {
+      nextDateSet.add(dateStr);
+    }
+    applyDateSelection(nextDateSet);
+  }, [applyDateSelection]);
+
+  const applyDragSelection = useCallback((date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    if (!canUseDate(dateStr, { notify: false })) return;
+    if (dragVisitedDatesRef.current.has(dateStr)) return;
+
+    if (!dragModeRef.current) {
+      dragModeRef.current = scheduleDateSetRef.current.has(dateStr) ? "remove" : "add";
+    }
+
+    dragVisitedDatesRef.current.add(dateStr);
+
+    const nextDateSet = new Set(scheduleDateSetRef.current);
+    if (dragModeRef.current === "add") {
+      if (nextDateSet.has(dateStr)) return;
+      nextDateSet.add(dateStr);
+    } else {
+      if (!nextDateSet.has(dateStr)) return;
+      nextDateSet.delete(dateStr);
+    }
+
+    dragMutatedSelectionRef.current = true;
+    applyDateSelection(nextDateSet);
+  }, [applyDateSelection, canUseDate]);
+
+  useEffect(() => {
+    applyDragSelectionRef.current = applyDragSelection;
+  }, [applyDragSelection]);
+
+  const handleDayClick: React.ComponentProps<typeof Calendar>["onDayClick"] = (day) => {
+    if (dragMutatedSelectionRef.current) {
+      const dayStr = format(day, "yyyy-MM-dd");
+      const wasVisitedDuringDrag = dragVisitedDatesRef.current.has(dayStr);
+      resetDragSelectionState();
+      if (wasVisitedDuringDrag) return;
+      toggleDate(day);
+      return;
+    }
+
+    toggleDate(day);
+  };
+
+  const handleDayMouseEnter: React.ComponentProps<typeof Calendar>["onDayMouseEnter"] = (day, _activeModifiers, event) => {
+    lastHoveredDayRef.current = day;
+    setHoveredUnavailableReason(getDateUnavailableReason(day));
+
+    if (isPrimaryPointerDownRef.current && event.buttons !== 1) {
+      isPrimaryPointerDownRef.current = false;
+      resetDragSelectionState();
+      return;
+    }
+
+    if (isPrimaryPointerDownRef.current || event.buttons === 1) {
+      applyDragSelection(day);
+      return;
+    }
+
+    if (dragModeRef.current) {
+      resetDragSelectionState();
+    }
+  };
+
+  const handleDayMouseLeave: React.ComponentProps<typeof Calendar>["onDayMouseLeave"] = () => {
+    lastHoveredDayRef.current = null;
+    setHoveredUnavailableReason(null);
+
+    if (dragModeRef.current && !isPrimaryPointerDownRef.current) {
+      resetDragSelectionState();
+    }
+  };
+
+  const handleDayPointerEnter: React.ComponentProps<typeof Calendar>["onDayPointerEnter"] = (day, _activeModifiers, event) => {
+    lastHoveredDayRef.current = day;
+    setHoveredUnavailableReason(getDateUnavailableReason(day));
+
+    if (isPrimaryPointerDownRef.current && event.buttons !== 1) {
+      isPrimaryPointerDownRef.current = false;
+      resetDragSelectionState();
+      return;
+    }
+
+    if (isPrimaryPointerDownRef.current || event.buttons === 1) {
+      applyDragSelection(day);
+      return;
+    }
+
+    if (dragModeRef.current) {
+      resetDragSelectionState();
+    }
   };
 
   const updateScheduleTime = (index: number, field: "timeStart" | "timeEnd", value: string) => {
@@ -417,16 +613,17 @@ export function ScheduleDateBuilder({ schedules, onSchedulesChange, recurringCon
           </div>
         )}
 
-        <div className="p-2">
+        <div ref={calendarWrapperRef} className="p-2">
           <Calendar
             mode="multiple"
             selected={selectedDates}
-            onSelect={handleMultiDateSelect}
+            onDayClick={handleDayClick}
             onMonthChange={setCalendarMonth}
             month={calendarMonth}
             disabled={isDateUnavailable}
-            onDayMouseEnter={(day) => setHoveredUnavailableReason(getDateUnavailableReason(day))}
-            onDayMouseLeave={() => setHoveredUnavailableReason(null)}
+            onDayMouseEnter={handleDayMouseEnter}
+            onDayMouseLeave={handleDayMouseLeave}
+            onDayPointerEnter={handleDayPointerEnter}
             className={cn("mx-auto w-fit rounded-md pointer-events-auto")}
             modifiers={{
               busy: (date) =>

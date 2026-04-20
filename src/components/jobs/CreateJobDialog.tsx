@@ -38,6 +38,7 @@ import { CreateJobCrewAssignmentStep } from "@/components/jobs/CreateJobCrewAssi
 import { CreateJobEstimateStepContent } from "@/components/jobs/CreateJobEstimateStepContent";
 import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
 import { RecurrenceFrequency, useConvertToRecurring } from "@/hooks/useRecurringJobs";
+import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -67,6 +68,13 @@ const MANUAL_STEPS: ManualStep[] = [
   "job-information",
   "assign-and-schedule",
   "crew-assignment",
+  "estimate-line-items",
+];
+
+const MANUAL_STEPS_SINGLE_PERSON: ManualStep[] = [
+  "client",
+  "job-information",
+  "assign-and-schedule",
   "estimate-line-items",
 ];
 
@@ -126,6 +134,18 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
   const scheduleConflictKey = addedSchedules
     .map((schedule) => `${schedule.date}:${schedule.timeStart || ""}:${schedule.timeEnd || ""}`)
     .join("|");
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(crewMembers);
+  const manualSteps = isSinglePersonCompany ? MANUAL_STEPS_SINGLE_PERSON : MANUAL_STEPS;
+
+  useEffect(() => {
+    if (!isSinglePersonCompany || manualStep !== "crew-assignment") return;
+    setManualStep("estimate-line-items");
+    setCrewByScheduleIndex({});
+    setCrewConflictByMember({});
+    setCrewConflictDetailsByMember({});
+    setCrewSearchQuery("");
+    setActiveCrewId("");
+  }, [isSinglePersonCompany, manualStep]);
 
   useEffect(() => {
     if (!open) return;
@@ -762,7 +782,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     }
   };
 
-  const currentStepIndex = MANUAL_STEPS.indexOf(manualStep);
+  const currentStepIndex = Math.max(manualSteps.indexOf(manualStep), 0);
   const isFinalStep = manualStep === "estimate-line-items";
   const canContinueFromClientStep =
     (clientMode === "existing" && Boolean(selectedCustomer)) ||
@@ -772,13 +792,13 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     if (manualStep === "client" && !canContinueFromClientStep) {
       return;
     }
-    const nextIndex = Math.min(currentStepIndex + 1, MANUAL_STEPS.length - 1);
-    setManualStep(MANUAL_STEPS[nextIndex]);
+    const nextIndex = Math.min(currentStepIndex + 1, manualSteps.length - 1);
+    setManualStep(manualSteps[nextIndex]);
   };
 
   const goToPreviousStep = () => {
     const previousIndex = Math.max(currentStepIndex - 1, 0);
-    setManualStep(MANUAL_STEPS[previousIndex]);
+    setManualStep(manualSteps[previousIndex]);
   };
 
   const handleSkipAndCreate = () => {
@@ -949,7 +969,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
           <DialogHeader>
             <DialogTitle>{stepTitle}</DialogTitle>
             <p className="text-xs text-muted-foreground">
-              Step {currentStepIndex + 1} of {MANUAL_STEPS.length}
+              Step {currentStepIndex + 1} of {manualSteps.length}
             </p>
           </DialogHeader>
 
@@ -1097,6 +1117,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                 <ScheduleDateBuilder
                   schedules={addedSchedules}
                   onSchedulesChange={setAddedSchedules}
+                  ignoreExistingScheduleConstraints={isSinglePersonCompany}
                   recurringControls={(
                     <div className="space-y-2">
                       <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
@@ -1168,7 +1189,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
               </div>
             )}
 
-            {manualStep === "crew-assignment" && (
+            {!isSinglePersonCompany && manualStep === "crew-assignment" && (
               <CreateJobCrewAssignmentStep
                 addedSchedules={addedSchedules}
                 crewMembers={crewMembers}

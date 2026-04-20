@@ -53,7 +53,10 @@ vi.mock("@/hooks/useJobSchedules", () => ({
 
 vi.mock("@/hooks/useTeamMembers", () => ({
   useTeamMembers: () => ({
-    data: [],
+    data: [
+      { user_id: "owner_1", full_name: "Owner One", email: "owner@example.com" },
+      { user_id: "crew_1", full_name: "Crew One", email: "crew@example.com" },
+    ],
   }),
 }));
 

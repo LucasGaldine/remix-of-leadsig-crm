@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 
+const CREW_ONE_ID = "11111111-1111-4111-8111-111111111111";
+const CREW_TWO_ID = "22222222-2222-4222-8222-222222222222";
+
 const {
   createJobMutateAsync,
   onOpenChangeMock,
@@ -85,7 +88,12 @@ vi.mock("@/hooks/useRecurringJobs", () => ({
 }));
 
 vi.mock("@/hooks/useTeamMembers", () => ({
-  useTeamMembers: () => ({ data: [{ user_id: "crew_1", full_name: "Alex Crew", email: "alex@example.com" }] }),
+  useTeamMembers: () => ({
+    data: [
+      { user_id: CREW_ONE_ID, full_name: "Alex Crew", email: "alex@example.com" },
+      { user_id: CREW_TWO_ID, full_name: "Jamie Crew", email: "jamie@example.com" },
+    ],
+  }),
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -521,7 +529,7 @@ describe("CreateJobDialog estimate flow", () => {
         return buildJobAssignmentsTableMock({
           conflicts: [
             {
-              user_id: "crew_1",
+              user_id: CREW_ONE_ID,
               job_schedules: {
                 scheduled_date: "2030-01-10",
                 scheduled_time_start: "09:00",
@@ -558,7 +566,7 @@ describe("CreateJobDialog estimate flow", () => {
         return buildJobAssignmentsTableMock({
           conflicts: [
             {
-              user_id: "crew_1",
+              user_id: CREW_ONE_ID,
               job_schedules: {
                 scheduled_date: "2030-01-10",
                 scheduled_time_start: "09:00",

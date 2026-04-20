@@ -11,6 +11,7 @@ import { ScheduleDateBuilder, type ScheduleEntry } from "@/components/scheduling
 import { CreateJobCrewAssignmentStep } from "@/components/jobs/CreateJobCrewAssignmentStep";
 import { supabase } from "@/integrations/supabase/client";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
+import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -61,6 +62,7 @@ export function ScheduleJobDialog({
   const [selectedCrewIds, setSelectedCrewIds] = useState<string[]>([]);
   const [activeCrewId, setActiveCrewId] = useState<string>("");
   const [isLoadingCrewConflicts, setIsLoadingCrewConflicts] = useState(false);
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(crewMembers);
   const todayDateKey = format(new Date(), "yyyy-MM-dd");
   const resolvedJobSchedules = useMemo(() => jobSchedules ?? [], [jobSchedules]);
   const initialScheduleEntries = useMemo<ScheduleEntry[]>(
@@ -121,6 +123,11 @@ export function ScheduleJobDialog({
     setSelectedCrewIds([]);
     setActiveCrewId("");
   }, [open, editableInitialScheduleEntries]);
+
+  useEffect(() => {
+    if (!isSinglePersonCompany || step !== "crew-assignment") return;
+    setStep("schedule");
+  }, [isSinglePersonCompany, step]);
 
   useEffect(() => {
     if (!open || step !== "crew-assignment") return;
@@ -473,6 +480,10 @@ export function ScheduleJobDialog({
       toast.error("Please add at least one schedule date");
       return;
     }
+    if (isSinglePersonCompany) {
+      void handleSchedule();
+      return;
+    }
     setStep("crew-assignment");
   };
 
@@ -503,16 +514,19 @@ export function ScheduleJobDialog({
           <DialogDescription>
             {isEditingSchedules
               ? "Edit scheduled dates and times for this job."
-              : "Schedule a date and optionally assign one or more crew members."}
+              : isSinglePersonCompany
+                ? "Schedule a date for this job."
+                : "Schedule a date and optionally assign one or more crew members."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          {step === "schedule" ? (
+          {step === "schedule" || isSinglePersonCompany ? (
             <ScheduleDateBuilder
               schedules={builderSchedules}
               onSchedulesChange={(schedules) => {
                 setBuilderSchedules(schedules);
               }}
+              ignoreExistingScheduleConstraints={isSinglePersonCompany}
               currentLeadId={jobId}
               recurringControls={onMakeRecurring ? (
                 <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
@@ -570,7 +584,7 @@ export function ScheduleJobDialog({
                 disabled={(!isEditingSchedules && builderSchedules.length === 0) || isScheduling}
                 className="w-full"
               >
-                Continue
+                {isSinglePersonCompany ? (isEditingSchedules ? "Save Schedule" : "Add Schedule") : "Continue"}
               </Button>
             </>
           ) : (

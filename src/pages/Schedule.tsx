@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { openMapsWithAddress } from "@/lib/openMaps";
+import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 
 type ViewMode = 'week' | 'month';
 
@@ -39,6 +40,7 @@ export default function Schedule() {
 
   const { isManager, role, user } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(teamMembers);
 
   const [showMyJobsOnly, setShowMyJobsOnly] = useState<boolean>(() => {
     const saved = localStorage.getItem('schedule-view-preference');
@@ -445,6 +447,7 @@ export default function Schedule() {
                     <JobCard
                       key={job.id}
                       job={job}
+                      hideUnassignedStatus={isSinglePersonCompany}
                       onClick={() => navigate(`/jobs/${job.id}`)}
                       onCall={job.phone || job.customer?.phone ? () => openPhoneCall(job.phone || job.customer?.phone) : undefined}
                       onMessage={job.phone || job.customer?.phone ? () => openTextMessage(job.phone || job.customer?.phone) : undefined}

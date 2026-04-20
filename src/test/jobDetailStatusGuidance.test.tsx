@@ -235,7 +235,10 @@ describe("JobDetail status guidance", () => {
     ];
     testState.assignments = [{ id: "assign_1", user_id: "crew_1" }];
     testState.checklistItems = [];
-    testState.teamMembers = [];
+    testState.teamMembers = [
+      { user_id: "owner_1", full_name: "Owner One", email: "owner@example.com" },
+      { user_id: "crew_1", full_name: "Crew One", email: "crew@example.com" },
+    ];
     deleteScheduleMutateAsyncMock.mockReset();
     deleteScheduleMutateAsyncMock.mockResolvedValue(undefined);
   });
@@ -622,6 +625,139 @@ describe("JobDetail status guidance", () => {
 
     await screen.findByRole("button", { name: /open job status guide for scheduled/i });
     expect(screen.getByText("Unassigned")).toBeInTheDocument();
+  });
+
+  it("hides unassigned badge when the company has only one real member", async () => {
+    testState.schedules = [
+      { id: "sched_1", scheduled_date: "2026-03-25" },
+      { id: "sched_2", scheduled_date: "2026-03-26" },
+    ];
+    testState.assignments = [
+      { id: "assign_1", user_id: "owner_1", job_schedule_id: "sched_1" },
+    ];
+    testState.teamMembers = [{ user_id: "owner_1", full_name: "Owner One", email: "owner@example.com" }];
+
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+    expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+  });
+
+  it("hides no-crew copy and crew assignment controls for single-person companies", async () => {
+    testState.schedules = [
+      {
+        id: "sched_1",
+        scheduled_date: "2026-03-25",
+        scheduled_time_start: "08:00",
+        scheduled_time_end: "12:00",
+      },
+    ];
+    testState.assignments = [];
+    testState.teamMembers = [{ user_id: "owner_1", full_name: "Owner One", email: "owner@example.com" }];
+
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+    expect(screen.queryByText("No crew assigned")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /edit schedule for/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    const modal = within(dialog);
+    expect(modal.getByText("Edit Schedule")).toBeInTheDocument();
+    expect(modal.queryByText("Owner One")).not.toBeInTheDocument();
+    expect(modal.queryByText(/crew member.*selected/i)).not.toBeInTheDocument();
   });
 
   it("shows job information in a collapsed header dropdown and keeps detail content in a single left-column card", async () => {

@@ -6,12 +6,14 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { ArrowUpDown, Users, TriangleAlert as AlertTriangle, DollarSign, Building2, User, Check, Search, Briefcase } from "lucide-react";
 import { useJobs, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { sortJobItems, type JobSortOption } from "@/lib/pageSorting";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 
 export default function Jobs() {
   const navigate = useNavigate();
@@ -37,8 +39,16 @@ export default function Jobs() {
 
   const { data: allJobs = [], isLoading } = useJobs(filter);
   const { data: revenue = 0 } = useJobRevenue();
+  const { data: teamMembers = [] } = useTeamMembers();
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(teamMembers);
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  useEffect(() => {
+    if (isSinglePersonCompany && selectedStatus === "unassigned") {
+      setSelectedStatus("all");
+    }
+  }, [isSinglePersonCompany, selectedStatus]);
 
   const jobs = useMemo(() => {
     let filteredJobs = allJobs;
@@ -93,7 +103,11 @@ export default function Jobs() {
       if (counts[displayStatus] !== undefined) {
         counts[displayStatus]++;
       }
-      if (job.has_unassigned_schedule && (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress")) {
+      if (
+        !isSinglePersonCompany &&
+        job.has_unassigned_schedule &&
+        (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress")
+      ) {
         counts.unassigned++;
       }
       if (job.status === "completed" && !job.has_invoice && !job.is_estimate_visit) {
@@ -106,7 +120,7 @@ export default function Jobs() {
     });
 
     return counts;
-  }, [allJobs, today]);
+  }, [allJobs, isSinglePersonCompany, today]);
 
   const statusTabs = [
     { value: "all", label: "All", count: statusCounts.all },
@@ -299,6 +313,7 @@ export default function Jobs() {
                   <JobCard
                     key={job.id}
                     job={job}
+                    hideUnassignedStatus={isSinglePersonCompany}
                     onClick={() => navigate(`/jobs/${job.id}`)}
                     className={cn(
                       index > 0 && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border",
