@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Camera, Trash2, AlertTriangle } from "lucide-react";
+import { User, Camera, Trash2, AlertTriangle, CalendarDays, CheckCircle2, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useGoogleCalendar } from "@/hooks/useGoogleCalendar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -45,6 +46,17 @@ export default function SettingsProfile() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
+  const {
+    isConnected: gcalConnected,
+    connectedEmail: gcalEmail,
+    isLoadingGoogleCalendar: gcalLoading,
+    isConnecting: gcalConnecting,
+    isDisconnecting: gcalDisconnecting,
+    isSyncing: gcalSyncing,
+    connect: gcalConnect,
+    disconnect: gcalDisconnect,
+    syncAll: gcalSyncAll,
+  } = useGoogleCalendar();
 
   const [formData, setFormData] = useState({
     full_name: "",
@@ -338,6 +350,82 @@ export default function SettingsProfile() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Personal Information */}
+        <div className="card-elevated rounded-lg p-6">
+          <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" />
+            Google Calendar
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            This calendar connection is tied to your user profile. Job updates sync automatically in the background.
+          </p>
+          {gcalLoading ? (
+            <div className="text-sm text-muted-foreground">Loading calendar connection...</div>
+          ) : gcalConnected ? (
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-center gap-2 flex-1">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                  <div>
+                    <div className="text-sm font-medium">Connected</div>
+                    {gcalEmail ? <div className="text-xs text-muted-foreground">{gcalEmail}</div> : null}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => gcalDisconnect()}
+                  disabled={gcalDisconnecting || gcalSyncing}
+                >
+                  {gcalDisconnecting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Disconnecting...
+                    </>
+                  ) : (
+                    "Disconnect"
+                  )}
+                </Button>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border bg-secondary/30 p-3">
+                <p className="text-xs text-muted-foreground flex-1">
+                  Auto-sync runs on its own. Use manual sync only if you want to force a full re-sync right now.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => gcalSyncAll()}
+                  disabled={gcalSyncing || gcalDisconnecting}
+                >
+                  {gcalSyncing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    "Sync now"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <p className="text-sm text-muted-foreground flex-1">
+                Connect your Google account to sync your assigned jobs to your calendar.
+              </p>
+              <Button onClick={() => gcalConnect()} disabled={gcalConnecting}>
+                {gcalConnecting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  "Connect Google Calendar"
+                )}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Personal Information */}

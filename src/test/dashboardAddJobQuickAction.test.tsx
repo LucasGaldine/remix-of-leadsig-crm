@@ -21,6 +21,10 @@ vi.mock("@/hooks/useDashboardLeads", () => ({
   useActiveJobs: () => ({ data: [], isLoading: false }),
 }));
 
+vi.mock("@/hooks/useTeamMembers", () => ({
+  useTeamMembers: () => ({ data: [] }),
+}));
+
 vi.mock("@/hooks/useCustomersNeedingAttention", () => ({
   useCustomersNeedingAttention: () => ({ data: [], isLoading: false }),
 }));

@@ -38,3 +38,12 @@ verify_jwt = false
 
 [functions.gohighlevel-membership-status]
 verify_jwt = false
+
+[functions.send-job-automation-message]
+verify_jwt = false
+
+[functions.dispatch-job-message-automation]
+verify_jwt = false
+
+[functions.send-sms]
+verify_jwt = false

@@ -141,7 +141,7 @@ export default function Settings() {
       items: [
         {
           icon: <Webhook className="h-5 w-5" />,
-          label: "Lead Automations",
+          label: "Webhooks",
           description: "Webhook hooks and API automations",
           onClick: () => navigate("/settings/lead-automations"),
           requiredPlan: "basic",
@@ -196,7 +196,7 @@ export default function Settings() {
           label: "Profile",
           description: profile?.full_name || profile?.email || "Your account settings",
           onClick: () => navigate("/settings/profile"),
-          searchTerms: ["profile", "account", "name", "email", "password", "avatar", "personal info", "full name", "phone", "timezone", "change password", "current password", "new password", "profile picture", "photo", "delete account", "role"],
+          searchTerms: ["profile", "account", "name", "email", "password", "avatar", "personal info", "full name", "phone", "timezone", "change password", "current password", "new password", "profile picture", "photo", "delete account", "role", "google calendar", "calendar sync", "calendar integration"],
         },
         {
           icon: <Bell className="h-5 w-5" />,

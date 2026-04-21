@@ -4,8 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsAutoResponses from "@/pages/SettingsAutoResponses";
 
-const { updateSettingsAsyncMock } = vi.hoisted(() => ({
+const { updateSettingsAsyncMock, toastErrorMock, toastSuccessMock, invokeFunctionMock } = vi.hoisted(() => ({
   updateSettingsAsyncMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
+  invokeFunctionMock: vi.fn(),
 }));
 
 let mockSettings: Record<string, unknown> | null;
@@ -48,10 +51,18 @@ vi.mock("@/hooks/useAuth", () => ({
   }),
 }));
 
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    functions: {
+      invoke: invokeFunctionMock,
+    },
+  },
+}));
+
 vi.mock("sonner", () => ({
   toast: {
-    success: vi.fn(),
-    error: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
   },
 }));
 
@@ -60,7 +71,11 @@ describe("SettingsAutoResponses payment emails", () => {
     mockSettings = {};
     mockPricingPlan = "premium";
     updateSettingsAsyncMock.mockReset();
+    toastErrorMock.mockReset();
+    toastSuccessMock.mockReset();
+    invokeFunctionMock.mockReset();
     updateSettingsAsyncMock.mockResolvedValue({});
+    invokeFunctionMock.mockResolvedValue({ data: { success: true }, error: null });
   });
 
   it("defaults payment email toggles to enabled", () => {
@@ -162,5 +177,159 @@ describe("SettingsAutoResponses payment emails", () => {
       invoice_sent: false,
       payment_logged: false,
     });
+  });
+
+  it("hydrates connected Twilio fields from automation settings", () => {
+    mockSettings = {
+      job_message_automation: {
+        enabled: true,
+        message_templates: [
+          {
+            id: "template-1",
+            name: "Template 1",
+            content: "Hello",
+            is_finished: true,
+            delivery_channel: "text",
+            job_service_types: [],
+            trigger: { type: "immediate", offset_value: 0, offset_unit: "days" },
+          },
+        ],
+        twilio: {
+          account_sid: "AC1234567890abcdef1234567890abcd",
+          auth_token: "twilio_auth_token",
+          from_number: "+15550001111",
+        },
+      },
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText(/twilio account sid/i)).toHaveValue("AC1234567890abcdef1234567890abcd");
+    expect(screen.getByLabelText(/twilio auth token/i)).toHaveValue("twilio_auth_token");
+    expect(screen.getByLabelText(/connected twilio sender number/i)).toHaveValue("+15550001111");
+  });
+
+  it("requires connected twilio credentials for text templates before saving", async () => {
+    mockSettings = {
+      job_message_automation: {
+        enabled: true,
+        message_templates: [
+          {
+            id: "template-1",
+            name: "Template 1",
+            content: "Hello",
+            is_finished: true,
+            delivery_channel: "text",
+            job_service_types: [],
+            trigger: { type: "immediate", offset_value: 0, offset_unit: "days" },
+          },
+        ],
+        twilio: {
+          from_number: "",
+        },
+      },
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith("Connect your Twilio account SID, auth token, and sender number to send automated text messages.");
+    });
+    expect(updateSettingsAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it("saves connected twilio credentials into job message automation settings", async () => {
+    mockSettings = {
+      job_message_automation: {
+        enabled: true,
+        message_templates: [
+          {
+            id: "template-1",
+            name: "Template 1",
+            content: "Hello",
+            is_finished: true,
+            delivery_channel: "text",
+            job_service_types: [],
+            trigger: { type: "immediate", offset_value: 0, offset_unit: "days" },
+          },
+        ],
+      },
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/twilio account sid/i), { target: { value: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } });
+    fireEvent.change(screen.getByLabelText(/twilio auth token/i), { target: { value: "twilio_secret_token" } });
+    fireEvent.change(screen.getByLabelText(/connected twilio sender number/i), { target: { value: "+15554443333" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(updateSettingsAsyncMock).toHaveBeenCalled();
+    });
+
+    const payload = updateSettingsAsyncMock.mock.calls[0]?.[0] as {
+      job_message_automation?: {
+        twilio?: { account_sid?: string; auth_token?: string; from_number?: string };
+      };
+    };
+
+    expect(payload.job_message_automation?.twilio).toEqual({
+      account_sid: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      auth_token: "twilio_secret_token",
+      from_number: "+15554443333",
+    });
+  });
+
+  it("opens a send-test-message modal and sends to the entered phone number", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /send test message/i }));
+    fireEvent.change(screen.getByLabelText(/destination phone number/i), { target: { value: "(555) 222-3344" } });
+    fireEvent.click(screen.getByRole("button", { name: /^send message$/i }));
+
+    await waitFor(() => {
+      expect(invokeFunctionMock).toHaveBeenCalledWith("send-job-automation-test-message", {
+        body: {
+          account_id: "acct_1",
+          to: "+15552223344",
+        },
+      });
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith("Test message sent to +15552223344");
+  });
+
+  it("requires a valid destination phone number before sending a test message", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /send test message/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^send message$/i }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith("Enter a valid phone number to send the test message.");
+    });
+    expect(invokeFunctionMock).not.toHaveBeenCalled();
   });
 });

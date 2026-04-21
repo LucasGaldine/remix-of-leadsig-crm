@@ -16,7 +16,6 @@ import { useCreateJob, useDeleteJob } from "@/hooks/useJobs";
 import { useCreateCustomer, type Customer, type CreateCustomerInput } from "@/hooks/useCustomers";
 import { toast } from "sonner";
 import { ClientSelector } from "@/components/clients/ClientSelector";
-import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { resolveCreateJobAddress } from "@/lib/createJobAddress";
 import { buildDefaultJobName } from "@/lib/defaultJobName";
 import { JobCSVImportModal } from "@/components/jobs/JobCSVImportModal";
@@ -39,6 +38,8 @@ import { CreateJobEstimateStepContent } from "@/components/jobs/CreateJobEstimat
 import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
 import { RecurrenceFrequency, useConvertToRecurring } from "@/hooks/useRecurringJobs";
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
+import { useServiceTypeOptions } from "@/hooks/useServiceTypeOptions";
+import { ServiceTypeSelect } from "@/components/shared/ServiceTypeSelect";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -109,6 +110,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
   const [jobName, setJobName] = useState("");
   const [serviceType, setServiceType] = useState("");
+  const serviceTypeOptions = useServiceTypeOptions(open);
   const [jobAddress, setJobAddress] = useState("");
   const [description, setDescription] = useState("");
   const [addedSchedules, setAddedSchedules] = useState<ScheduleEntry[]>([]);
@@ -864,7 +866,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     }));
 
     setJobName((current) => parsed.jobName || current);
-    setServiceType((current) => matchServiceType(parsed.serviceType, SERVICE_TYPES) || current);
+    setServiceType((current) => matchServiceType(parsed.serviceType, serviceTypeOptions) || current);
     setJobAddress((current) => parsed.jobAddress || current);
     resetAddressVerification();
     setDescription((current) => parsed.description || current);
@@ -1059,18 +1061,13 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
                 <div className="space-y-2">
                   <Label htmlFor="serviceType">Service Type</Label>
-                  <Select value={serviceType} onValueChange={setServiceType}>
-                    <SelectTrigger id="serviceType" className="h-12 text-base border-border rounded-lg">
-                      <SelectValue placeholder="Select service type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SERVICE_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ServiceTypeSelect
+                    id="serviceType"
+                    value={serviceType}
+                    onValueChange={setServiceType}
+                    options={serviceTypeOptions}
+                    className="h-12 text-base border-border rounded-lg"
+                  />
                 </div>
 
                 <div className="space-y-2">

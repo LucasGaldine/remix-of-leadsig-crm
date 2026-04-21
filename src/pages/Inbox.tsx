@@ -26,7 +26,9 @@ import { useJobs } from "@/hooks/useJobs";
 import { useEstimates } from "@/hooks/useEstimates";
 import { useInvoices } from "@/hooks/useInvoices";
 import { usePayments } from "@/hooks/usePayments";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { cn } from "@/lib/utils";
+import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 
 type InboxType = "client" | "lead" | "job" | "estimate" | "invoice" | "payment";
 type InboxFilter = "all" | InboxType;
@@ -174,6 +176,8 @@ export default function Inbox() {
   const { data: estimates = [], isLoading: estimatesLoading } = useEstimates({ limit: 100 });
   const { data: invoices = [], isLoading: invoicesLoading } = useInvoices({ limit: 100 });
   const { data: payments = [], isLoading: paymentsLoading } = usePayments({ limit: 100 });
+  const { data: teamMembers = [] } = useTeamMembers();
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(teamMembers);
 
   const isLoading = customersLoading || leadsLoading || jobsLoading || estimatesLoading || invoicesLoading || paymentsLoading;
 
@@ -208,6 +212,7 @@ export default function Inbox() {
     const jobItems: InboxItem[] = (jobs as any[]).map((job) => {
       const displayStatus = job.display_status || job.status;
       const isUnassigned =
+        !isSinglePersonCompany &&
         Boolean(job.has_unassigned_schedule) &&
         (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress");
       const needsInvoice = job.status === "completed" && !job.has_invoice && !job.is_estimate_visit;
@@ -278,7 +283,7 @@ export default function Inbox() {
     return [...clientItems, ...leadItems, ...jobItems, ...estimateItems, ...invoiceItems, ...paymentItems].sort(
       (a, b) => b.timestamp - a.timestamp,
     );
-  }, [customers, leads, jobs, estimates, invoices, payments]);
+  }, [customers, leads, jobs, estimates, invoices, isSinglePersonCompany, payments]);
 
   const counts = useMemo(() => {
     const base = { client: 0, lead: 0, job: 0, estimate: 0, invoice: 0, payment: 0 };

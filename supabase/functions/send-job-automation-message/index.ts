@@ -17,6 +17,35 @@ function normalizePhone(value: string): string {
   return `+${digits}`;
 }
 
+function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; authToken: string; fromNumber: string } | null {
+  if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return null;
+
+  const settings = rawSettings as Record<string, unknown>;
+  const automation = settings.job_message_automation;
+  if (!automation || typeof automation !== "object" || Array.isArray(automation)) return null;
+
+  const twilio = (automation as Record<string, unknown>).twilio;
+  if (!twilio || typeof twilio !== "object" || Array.isArray(twilio)) return null;
+
+  const accountSid = (twilio as Record<string, unknown>).account_sid;
+  const authToken = (twilio as Record<string, unknown>).auth_token;
+  const fromNumber = (twilio as Record<string, unknown>).from_number;
+
+  if (typeof accountSid !== "string" || typeof authToken !== "string" || typeof fromNumber !== "string") return null;
+
+  const trimmedAccountSid = accountSid.trim();
+  const trimmedAuthToken = authToken.trim();
+  const normalizedFromNumber = normalizePhone(fromNumber.trim());
+
+  if (!trimmedAccountSid || !trimmedAuthToken || !normalizedFromNumber) return null;
+
+  return {
+    accountSid: trimmedAccountSid,
+    authToken: trimmedAuthToken,
+    fromNumber: normalizedFromNumber,
+  };
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -136,7 +165,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name, company_email, pricing_plan")
+      .select("company_name, company_email, pricing_plan, settings")
       .eq("id", accountId)
       .maybeSingle();
 
@@ -159,22 +188,26 @@ Deno.serve(async (req: Request) => {
     };
 
     if (channel === "text" || channel === "both") {
-      const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-      const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-      const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER");
+      const connectedTwilio = getConnectedTwilioConfig(account?.settings);
       const toPhone = normalizePhone(customer?.phone?.trim() || "");
 
-      if (!twilioSid || !twilioToken || !twilioFrom) {
-        summary.sms_error = "Twilio credentials not configured";
+      if (!connectedTwilio) {
+        return new Response(JSON.stringify({
+          error: "Connected Twilio credentials are required for auto messaging text delivery",
+          details: "Set job_message_automation.twilio.account_sid, auth_token, and from_number before sending automated texts.",
+        }), {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       } else if (!toPhone) {
         summary.sms_error = "Customer phone missing";
       } else {
         const smsResult = await sendTwilioSms({
           to: toPhone,
           body: message,
-          accountSid: twilioSid,
-          authToken: twilioToken,
-          fromNumber: twilioFrom,
+          accountSid: connectedTwilio.accountSid,
+          authToken: connectedTwilio.authToken,
+          fromNumber: connectedTwilio.fromNumber,
         });
         if (smsResult.success) {
           summary.sms_sent = true;

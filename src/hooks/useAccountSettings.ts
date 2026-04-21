@@ -49,6 +49,11 @@ export type AccountSettings = {
       max_attempts?: number;
       backoff_minutes?: number;
     };
+    twilio?: {
+      account_sid?: string;
+      auth_token?: string;
+      from_number?: string;
+    };
     payment_emails?: {
       estimate_approved?: boolean;
       invoice_sent?: boolean;
@@ -62,6 +67,16 @@ export type AccountSettings = {
     lat?: number | null;
     lng?: number | null;
   }> | null;
+  google_calendar?: {
+    connected?: boolean;
+    access_token?: string;
+    refresh_token?: string;
+    token_expiry?: string;
+    calendar_id?: string;
+    connected_email?: string;
+    oauth_nonce?: string;
+    oauth_nonce_created_at?: string;
+  } | null;
 } | null;
 
 export function useAccountSettings() {

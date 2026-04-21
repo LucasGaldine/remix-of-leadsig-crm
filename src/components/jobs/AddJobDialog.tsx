@@ -4,16 +4,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { findOrCreateCustomer } from "@/lib/findOrCreateCustomer";
 import { buildDefaultJobName } from "@/lib/defaultJobName";
 import { useAddressVerification } from "@/hooks/useAddressVerification";
 import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
+import { useServiceTypeOptions } from "@/hooks/useServiceTypeOptions";
+import { ServiceTypeSelect } from "@/components/shared/ServiceTypeSelect";
 
 
 interface AddJobDialogProps {
@@ -25,6 +25,7 @@ interface AddJobDialogProps {
 export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogProps) {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
+  const serviceTypeOptions = useServiceTypeOptions(open);
   const { verify, verifying, result: addressResult, reset: resetVerification } = useAddressVerification();
   
   const [formData, setFormData] = useState({
@@ -186,21 +187,13 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
             <div className="space-y-3">
               <div>
                 <Label htmlFor="serviceType">Service Type</Label>
-                <Select 
+                <ServiceTypeSelect
+                  id="serviceType"
                   value={formData.serviceType} 
                   onValueChange={(v) => handleChange("serviceType", v)}
-                >
-                  <SelectTrigger id="serviceType" className="mt-1.5">
-                    <SelectValue placeholder="Select service type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SERVICE_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={serviceTypeOptions}
+                  className="mt-1.5"
+                />
               </div>
 
               <div>

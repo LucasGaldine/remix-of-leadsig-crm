@@ -21,6 +21,8 @@ import { MainPageQuickActions } from "@/components/layout/MainPageQuickActions";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { OPEN_GLOBAL_SEARCH_EVENT } from "@/lib/keyboardShortcuts";
 import { JoinSkoolModal } from "@/components/modals/JoinSkoolModal";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 import {
   clearPostOnboardingSkoolModalPending,
   getSignupSource,
@@ -54,6 +56,8 @@ export default function Index() {
   const { toast } = useToast();
   const [showSkoolModal, setShowSkoolModal] = useState(false);
   const { sections } = useDashboardPreferences();
+  const { data: teamMembers = [] } = useTeamMembers();
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(teamMembers);
   const { data: qualifiedLeadsData = [], isLoading: leadsLoading, refetch: refetchLeads } = useQualifiedLeads();
   const { data: pendingApprovalsData = [], isLoading: approvalsLoading } = usePendingApprovalEstimates();
   const { data: activeJobsData = [], isLoading: activeJobsLoading } = useActiveJobs();
@@ -296,6 +300,7 @@ export default function Index() {
                         ) : null}
                         <JobCard
                           job={job}
+                          hideUnassignedStatus={isSinglePersonCompany}
                           onClick={() => navigate(`/jobs/${job.id}`)}
                           onCall={job.phone || job.customer?.phone ? () => openPhoneCall(job.phone || job.customer?.phone) : undefined}
                           onMessage={job.phone || job.customer?.phone ? () => openTextMessage(job.phone || job.customer?.phone) : undefined}

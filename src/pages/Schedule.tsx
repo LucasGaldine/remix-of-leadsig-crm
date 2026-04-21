@@ -21,8 +21,19 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { openMapsWithAddress } from "@/lib/openMaps";
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
+import { useGoogleCalendar } from "@/hooks/useGoogleCalendar";
 
 type ViewMode = 'week' | 'month';
+
+function formatCompactAgo(timestamp: number): string {
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 export default function Schedule() {
   const navigate = useNavigate();
@@ -38,9 +49,18 @@ export default function Schedule() {
   const monthStart = startOfMonth(selectedDate);
   const monthEnd = endOfMonth(selectedDate);
 
-  const { isManager, role, user } = useAuth();
+  const { isManager, role, user, currentAccount } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
   const isSinglePersonCompany = isSinglePersonCompanyByMembers(teamMembers);
+  const {
+    isConnected: isGoogleCalendarConnected,
+    isLoadingGoogleCalendar,
+    isConnecting: isGoogleCalendarConnecting,
+    connect: connectGoogleCalendar,
+    isSyncing: isGoogleCalendarSyncing,
+    syncAllAsync: syncGoogleCalendarAllAsync,
+  } = useGoogleCalendar();
+  const [lastCalendarSyncAt, setLastCalendarSyncAt] = useState<number | null>(null);
 
   const [showMyJobsOnly, setShowMyJobsOnly] = useState<boolean>(() => {
     const saved = localStorage.getItem('schedule-view-preference');
@@ -77,6 +97,34 @@ export default function Schedule() {
   const projectedDates = projectedData?.dates ?? new Set<string>();
   const projectedByDate = projectedData?.byDate ?? new Map();
   const selectedProjected = projectedByDate.get(selectedDateStr) || [];
+  const calendarSyncStorageKey = useMemo(() => {
+    if (!user?.id || !currentAccount?.id) return null;
+    return `gcal-auto-sync-last-${user.id}-${currentAccount.id}`;
+  }, [currentAccount?.id, user?.id]);
+
+  useEffect(() => {
+    if (!calendarSyncStorageKey) {
+      setLastCalendarSyncAt(null);
+      return;
+    }
+
+    const updateLastSync = () => {
+      const raw = localStorage.getItem(calendarSyncStorageKey);
+      const parsed = raw ? Number(raw) : NaN;
+      setLastCalendarSyncAt(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+    };
+
+    updateLastSync();
+    const intervalId = window.setInterval(updateLastSync, 60_000);
+    window.addEventListener("focus", updateLastSync);
+    window.addEventListener("storage", updateLastSync);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", updateLastSync);
+      window.removeEventListener("storage", updateLastSync);
+    };
+  }, [calendarSyncStorageKey]);
 
   const daysOffMap = useMemo(() => {
     const map = new Map<string, { reason: string | null }>();
@@ -139,6 +187,15 @@ export default function Schedule() {
     }
   };
 
+  const handleManualCalendarSync = async () => {
+    if (!currentAccount?.id) return;
+    await syncGoogleCalendarAllAsync();
+    if (!calendarSyncStorageKey) return;
+    const now = Date.now();
+    localStorage.setItem(calendarSyncStorageKey, String(now));
+    setLastCalendarSyncAt(now);
+  };
+
   const openPhoneCall = (phone?: string | null) => {
     if (!phone) return;
     window.open(`tel:${phone}`);
@@ -158,8 +215,8 @@ export default function Schedule() {
       />
 
       {/* View Controls */}
-      <div className="bg-card px-4 py-3 space-y-3">
-        <div className="flex items-center justify-start gap-2 overflow-x-auto pb-1 md:justify-between md:overflow-visible md:gap-3 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+      <div className="bg-card py-3 space-y-3">
+        <div className="mx-auto flex items-center justify-start gap-2 px-1 pb-1 md:max-w-4xl md:gap-3">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
             <TabsList>
               <TabsTrigger value="week" className="gap-2 text-lg md:text-sm">
@@ -172,6 +229,44 @@ export default function Schedule() {
               </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          <div className="ml-auto">
+            {isLoadingGoogleCalendar ? (
+              <Button variant="outline" size="sm" disabled>
+                Calendar...
+              </Button>
+            ) : isGoogleCalendarConnected ? (
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => void handleManualCalendarSync()}
+                disabled={isGoogleCalendarSyncing}
+              >
+                {isGoogleCalendarSyncing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <CalendarIcon className="h-4 w-4" />
+                    {lastCalendarSyncAt
+                      ? `Synced ${formatCompactAgo(lastCalendarSyncAt)}`
+                      : "Sync now"}
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => connectGoogleCalendar()}
+                disabled={isGoogleCalendarConnecting}
+              >
+                {isGoogleCalendarConnecting ? "Connecting..." : "Connect Calendar"}
+              </Button>
+            )}
+          </div>
 
         </div>
       </div>

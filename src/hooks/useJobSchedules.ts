@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { syncScheduleToCalendar, deleteScheduleFromCalendar } from "./useGoogleCalendar";
 
 export interface JobSchedule {
   id: string;
@@ -114,12 +115,13 @@ export function useAddJobSchedule() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["job-schedules", variables.lead_id] });
       queryClient.invalidateQueries({ queryKey: ["job", variables.lead_id] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["crew-hours"] });
+      syncScheduleToCalendar(data.id);
     },
   });
 }
@@ -202,6 +204,7 @@ export function useUpdateJobSchedule() {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["crew-hours"] });
+      syncScheduleToCalendar(data.id);
     },
   });
 }
@@ -211,13 +214,19 @@ export function useDeleteJobSchedule() {
 
   return useMutation({
     mutationFn: async ({ id, lead_id }: { id: string; lead_id: string }) => {
+      const { data: existing } = await supabase
+        .from("job_schedules")
+        .select("google_event_id, account_id")
+        .eq("id", id)
+        .single();
+
       const { error } = await supabase
         .from("job_schedules")
         .delete()
         .eq("id", id);
 
       if (error) throw error;
-      return { id, lead_id };
+      return { id, lead_id, googleEventId: existing?.google_event_id ?? null, accountId: existing?.account_id ?? null };
     },
     onSuccess: (variables) => {
       queryClient.invalidateQueries({ queryKey: ["job-schedules", variables.lead_id] });
@@ -225,6 +234,9 @@ export function useDeleteJobSchedule() {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["crew-hours"] });
+      if (variables.googleEventId && variables.accountId) {
+        deleteScheduleFromCalendar(variables.googleEventId, variables.accountId);
+      }
     },
   });
 }

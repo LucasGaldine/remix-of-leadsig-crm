@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronsUpDown, Loader2, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Mail, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PlanGate } from "@/components/features/PlanGate";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,6 +18,7 @@ import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useAccountSettings } from "@/hooks/useAccountSettings";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const TEMPLATE_VARIABLES = [
@@ -47,6 +49,14 @@ const offsetToMinutes = (offsetValue: number, offsetUnit: OffsetUnit): number =>
   if (offsetUnit === "hours") return offsetValue * 60;
   if (offsetUnit === "days") return offsetValue * 24 * 60;
   return offsetValue * 30 * 24 * 60;
+};
+
+const normalizePhone = (value: string): string => {
+  const digits = value.replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return `+${digits}`;
 };
 
 export default function SettingsAutoResponses() {
@@ -86,6 +96,12 @@ export default function SettingsAutoResponses() {
   const [authHeaderValue, setAuthHeaderValue] = useState("");
   const [maxRetryAttempts, setMaxRetryAttempts] = useState("3");
   const [retryBackoffMinutes, setRetryBackoffMinutes] = useState("5");
+  const [twilioAccountSid, setTwilioAccountSid] = useState("");
+  const [twilioAuthToken, setTwilioAuthToken] = useState("");
+  const [twilioFromNumber, setTwilioFromNumber] = useState("");
+  const [testMessageModalOpen, setTestMessageModalOpen] = useState(false);
+  const [testMessagePhoneNumber, setTestMessagePhoneNumber] = useState("");
+  const [isSendingTestMessage, setIsSendingTestMessage] = useState(false);
   const [serviceTypePopoverOpen, setServiceTypePopoverOpen] = useState(false);
   const [paymentEmails, setPaymentEmails] = useState<Record<PaymentEmailKey, boolean>>(DEFAULT_PAYMENT_EMAILS);
 
@@ -218,6 +234,21 @@ export default function SettingsAutoResponses() {
     setAuthHeaderValue(isFreePlan ? "" : (typeof automation?.endpoint?.auth_header_value === "string" ? automation.endpoint.auth_header_value : ""));
     setMaxRetryAttempts(String(typeof automation?.retry?.max_attempts === "number" ? automation.retry.max_attempts : 3));
     setRetryBackoffMinutes(String(typeof automation?.retry?.backoff_minutes === "number" ? automation.retry.backoff_minutes : 5));
+    setTwilioAccountSid(
+      isFreePlan
+        ? ""
+        : (typeof automation?.twilio?.account_sid === "string" ? automation.twilio.account_sid : ""),
+    );
+    setTwilioAuthToken(
+      isFreePlan
+        ? ""
+        : (typeof automation?.twilio?.auth_token === "string" ? automation.twilio.auth_token : ""),
+    );
+    setTwilioFromNumber(
+      isFreePlan
+        ? ""
+        : (typeof automation?.twilio?.from_number === "string" ? automation.twilio.from_number : ""),
+    );
     setPaymentEmails(
       isFreePlan
         ? { estimate_approved: false, invoice_sent: false, payment_logged: false }
@@ -233,10 +264,26 @@ export default function SettingsAutoResponses() {
     const parsedMaxRetryAttempts = Number.parseInt(maxRetryAttempts, 10);
     const parsedRetryBackoffMinutes = Number.parseInt(retryBackoffMinutes, 10);
     const fallbackTemplate = jobMessageTemplates[0];
+    const trimmedTwilioAccountSid = twilioAccountSid.trim();
+    const trimmedTwilioAuthToken = twilioAuthToken.trim();
+    const trimmedTwilioFromNumber = twilioFromNumber.trim();
+    const hasTextDeliveryTemplate = jobMessageTemplates.some(
+      (template) => template.is_finished && (template.delivery_channel === "text" || template.delivery_channel === "both"),
+    );
 
     const paymentEmailsToSave = isFreePlan
       ? { estimate_approved: false, invoice_sent: false, payment_logged: false }
       : paymentEmails;
+
+    if (
+      !isFreePlan &&
+      jobMessageAutomationEnabled &&
+      hasTextDeliveryTemplate &&
+      (!trimmedTwilioAccountSid || !trimmedTwilioAuthToken || !trimmedTwilioFromNumber)
+    ) {
+      toast.error("Connect your Twilio account SID, auth token, and sender number to send automated text messages.");
+      return false;
+    }
 
     try {
       await updateSettingsAsync({
@@ -261,13 +308,18 @@ export default function SettingsAutoResponses() {
           },
           endpoint: {
             enabled: isFreePlan ? false : customEndpointEnabled,
-            url: isFreePlan ? "" : (customEndpointEnabled ? endpointUrl.trim() : ""),
+            url: isFreePlan ? "" : (customEndpointEnabled ? endpointUrl.trim() : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-job-automation-message`),
             auth_header_name: isFreePlan ? "" : (customEndpointEnabled ? authHeaderName.trim() : ""),
             auth_header_value: isFreePlan ? "" : (customEndpointEnabled ? authHeaderValue : ""),
           },
           retry: {
             max_attempts: isFreePlan ? 3 : (customEndpointEnabled && Number.isFinite(parsedMaxRetryAttempts) && parsedMaxRetryAttempts > 0 ? parsedMaxRetryAttempts : 3),
             backoff_minutes: isFreePlan ? 5 : (customEndpointEnabled && Number.isFinite(parsedRetryBackoffMinutes) && parsedRetryBackoffMinutes >= 0 ? parsedRetryBackoffMinutes : 5),
+          },
+          twilio: {
+            account_sid: isFreePlan ? "" : trimmedTwilioAccountSid,
+            auth_token: isFreePlan ? "" : trimmedTwilioAuthToken,
+            from_number: isFreePlan ? "" : trimmedTwilioFromNumber,
           },
           payment_emails: paymentEmailsToSave,
         },
@@ -401,6 +453,52 @@ export default function SettingsAutoResponses() {
     setIsDirty(true);
   };
 
+  const handleSendTestMessage = async () => {
+    if (!currentAccount?.id) {
+      toast.error("You need to be signed in to send a test message.");
+      return;
+    }
+
+    if (isDirty) {
+      toast.error("Save your auto messaging changes before sending a test message.");
+      return;
+    }
+
+    const to = normalizePhone(testMessagePhoneNumber.trim());
+    if (!to || to.length < 12) {
+      toast.error("Enter a valid phone number to send the test message.");
+      return;
+    }
+
+    setIsSendingTestMessage(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-job-automation-test-message", {
+        body: {
+          account_id: currentAccount.id,
+          to,
+        },
+      });
+
+      if (error) {
+        toast.error(error.message || "Failed to send test message.");
+        return;
+      }
+
+      if (data?.success !== true) {
+        toast.error(typeof data?.error === "string" ? data.error : "Failed to send test message.");
+        return;
+      }
+
+      toast.success(`Test message sent to ${to}`);
+      setTestMessagePhoneNumber("");
+      setTestMessageModalOpen(false);
+    } catch {
+      toast.error("Could not reach the messaging service. Please try again.");
+    } finally {
+      setIsSendingTestMessage(false);
+    }
+  };
+
   return (
     <PlanGate
       requiredPlan="premium"
@@ -417,6 +515,75 @@ export default function SettingsAutoResponses() {
         />
 
         <main className="mx-auto w-full max-w-4xl px-4 py-6 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <img src="/twilio-logo.svg" alt="" aria-hidden="true" className="h-5 w-5" />
+                Connect your Twilio number
+              </CardTitle>
+              <CardDescription>
+                Auto messaging sends from this connected Twilio number. LeadSig&apos;s number is only used for account notifications.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="job-message-twilio-account-sid">Twilio Account SID</Label>
+                  <Input
+                    id="job-message-twilio-account-sid"
+                    aria-label="Twilio account sid"
+                    value={twilioAccountSid}
+                    onChange={(event) => {
+                      setTwilioAccountSid(event.target.value);
+                      setIsDirty(true);
+                    }}
+                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="job-message-twilio-auth-token">Twilio Auth Token</Label>
+                  <Input
+                    id="job-message-twilio-auth-token"
+                    aria-label="Twilio auth token"
+                    type="password"
+                    value={twilioAuthToken}
+                    onChange={(event) => {
+                      setTwilioAuthToken(event.target.value);
+                      setIsDirty(true);
+                    }}
+                    placeholder="Your Twilio auth token"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job-message-twilio-from-number">Twilio sender number</Label>
+                <Input
+                  id="job-message-twilio-from-number"
+                  aria-label="Connected twilio sender number"
+                  type="tel"
+                  value={twilioFromNumber}
+                  onChange={(event) => {
+                    setTwilioFromNumber(event.target.value);
+                    setIsDirty(true);
+                  }}
+                  placeholder="+15551234567"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => setTestMessageModalOpen(true)}
+                  disabled={isSendingTestMessage}
+                >
+                  <Mail className="h-4 w-4" />
+                  Send test message
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="space-y-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -826,7 +993,10 @@ export default function SettingsAutoResponses() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Payment Emails</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Payment Emails
+              </CardTitle>
               <CardDescription>
                 Send customer emails when payment-related milestones happen.
               </CardDescription>
@@ -888,6 +1058,35 @@ export default function SettingsAutoResponses() {
 
         <MobileNav />
         <UnsavedChangesDialog blocker={blocker} onSaveAndLeave={handleSave} />
+        <Dialog open={testMessageModalOpen} onOpenChange={setTestMessageModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Send test message</DialogTitle>
+              <DialogDescription>
+                Enter the phone number that should receive a test text from your connected Twilio number.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="job-message-test-phone">Destination phone number</Label>
+              <Input
+                id="job-message-test-phone"
+                type="tel"
+                value={testMessagePhoneNumber}
+                onChange={(event) => setTestMessagePhoneNumber(event.target.value)}
+                placeholder="+15551234567"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setTestMessageModalOpen(false)} disabled={isSendingTestMessage}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleSendTestMessage} disabled={isSendingTestMessage}>
+                {isSendingTestMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Send message
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </PlanGate>
   );

@@ -26,6 +26,7 @@ interface Profile {
   timezone: string | null;
   notification_preferences: Record<string, any> | null;
   dashboard_preferences: { cards: string[] } | null;
+  google_calendar: Record<string, any> | null;
   mention_notifications_enabled: boolean;
   sms_consent_status: 'unknown' | SmsConsentStatus;
   sms_consent_captured_at: string | null;

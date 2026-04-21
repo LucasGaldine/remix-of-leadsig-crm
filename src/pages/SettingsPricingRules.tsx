@@ -8,14 +8,15 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { 
-  DEFAULT_PRICING_RULES, 
-  SERVICE_LABELS, 
-  ServiceType 
+import {
+  DEFAULT_PRICING_RULES,
+  SERVICE_LABELS,
+  ServiceType,
 } from "@/hooks/useQuickEstimate";
 import {
   createLineItemTemplate,
@@ -41,6 +42,35 @@ interface PricingRule {
   notes?: string;
 }
 
+interface ServiceTypeDraft {
+  name: string;
+  unit_type: string;
+  base_labor_rate: string;
+  material_rate: string;
+  waste_factor: string;
+  overhead_multiplier: string;
+  profit_margin: string;
+  notes: string;
+}
+
+const slugifyServiceType = (name: string) => {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return slug || "service_type";
+};
+
+const titleCaseServiceType = (serviceType: string) => {
+  return serviceType
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 export default function SettingsPricingRules() {
   const { user, currentAccount, refreshProfile } = useAuth();
 
@@ -48,14 +78,27 @@ export default function SettingsPricingRules() {
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
-  const [rules, setRules] = useState<Record<ServiceType, PricingRule>>({} as Record<ServiceType, PricingRule>);
-  const pricingServiceTypes = Object.keys(DEFAULT_PRICING_RULES) as ServiceType[];
-  const [activeTab, setActiveTab] = useState<ServiceType>(pricingServiceTypes[0] || "pavers");
+  const defaultServiceTypes = Object.keys(DEFAULT_PRICING_RULES) as ServiceType[];
+  const [rules, setRules] = useState<Record<string, PricingRule>>({});
+  const [serviceTypeOrder, setServiceTypeOrder] = useState<string[]>([]);
+  const [editingServiceType, setEditingServiceType] = useState<string | null>(null);
+  const [showServiceTypeForm, setShowServiceTypeForm] = useState(false);
+  const [serviceTypeDraft, setServiceTypeDraft] = useState<ServiceTypeDraft>({
+    name: "",
+    unit_type: "sq_ft",
+    base_labor_rate: "0",
+    material_rate: "0",
+    waste_factor: "10",
+    overhead_multiplier: "1.15",
+    profit_margin: "20",
+    notes: "",
+  });
   const [taxRate, setTaxRate] = useState<string>("");
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
   const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
   const [showTemplateImportModal, setShowTemplateImportModal] = useState(false);
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [templateDraft, setTemplateDraft] = useState({
     name: "",
@@ -67,7 +110,7 @@ export default function SettingsPricingRules() {
   });
 
   useEffect(() => {
-    fetchRules();
+    void fetchRules();
   }, [user?.id, currentAccount?.id]);
 
   useEffect(() => {
@@ -97,6 +140,215 @@ export default function SettingsPricingRules() {
     };
   }, [currentAccount?.id]);
 
+  const isDefaultServiceType = (serviceType: string): serviceType is ServiceType => {
+    return defaultServiceTypes.includes(serviceType as ServiceType);
+  };
+
+  const isProtectedServiceType = (serviceType: string) => serviceType === "other";
+
+  const getServiceTypeLabel = (serviceType: string) => {
+    if (isDefaultServiceType(serviceType)) {
+      return SERVICE_LABELS[serviceType];
+    }
+
+    return titleCaseServiceType(serviceType);
+  };
+
+  const resetServiceTypeDraft = () => {
+    setServiceTypeDraft({
+      name: "",
+      unit_type: "sq_ft",
+      base_labor_rate: "0",
+      material_rate: "0",
+      waste_factor: "10",
+      overhead_multiplier: "1.15",
+      profit_margin: "20",
+      notes: "",
+    });
+    setEditingServiceType(null);
+    setShowServiceTypeForm(false);
+  };
+
+  const startCreateServiceType = () => {
+    setServiceTypeDraft({
+      name: "",
+      unit_type: "sq_ft",
+      base_labor_rate: "0",
+      material_rate: "0",
+      waste_factor: "10",
+      overhead_multiplier: "1.15",
+      profit_margin: "20",
+      notes: "",
+    });
+    setEditingServiceType(null);
+    setShowServiceTypeForm(true);
+  };
+
+  const startEditServiceType = (serviceType: string) => {
+    const rule = rules[serviceType];
+    if (!rule) return;
+
+    setEditingServiceType(serviceType);
+    setServiceTypeDraft({
+      name: getServiceTypeLabel(serviceType),
+      unit_type: rule.unit_type,
+      base_labor_rate: String(rule.base_labor_rate),
+      material_rate: String(rule.material_rate),
+      waste_factor: String(rule.waste_factor),
+      overhead_multiplier: String(rule.overhead_multiplier),
+      profit_margin: String(rule.profit_margin),
+      notes: rule.notes || "",
+    });
+    setShowServiceTypeForm(true);
+  };
+
+  const saveServiceTypeDraft = async () => {
+    if (!user?.id || !currentAccount?.id) {
+      toast.error("No account selected");
+      return;
+    }
+
+    const name = serviceTypeDraft.name.trim();
+    if (!name) {
+      toast.error("Service type name is required");
+      return;
+    }
+
+    const previousKey = editingServiceType;
+    const isEditingDefault = previousKey ? isDefaultServiceType(previousKey) : false;
+    const nextKey = previousKey
+      ? (isEditingDefault ? previousKey : slugifyServiceType(name))
+      : slugifyServiceType(name);
+
+    if (!previousKey && rules[nextKey]) {
+      toast.error("A service type with that name already exists");
+      return;
+    }
+
+    if (previousKey && nextKey !== previousKey && rules[nextKey]) {
+      toast.error("A service type with that name already exists");
+      return;
+    }
+
+    const previousRule = previousKey ? rules[previousKey] : undefined;
+    const baseRule = previousRule || {
+      ...DEFAULT_PRICING_RULES.other,
+      user_id: user.id,
+      account_id: currentAccount?.id,
+    };
+
+    const nextRule: PricingRule = {
+      ...baseRule,
+      service_type: nextKey,
+      unit_type: serviceTypeDraft.unit_type || "sq_ft",
+      base_labor_rate: parseFloat(serviceTypeDraft.base_labor_rate) || 0,
+      material_rate: parseFloat(serviceTypeDraft.material_rate) || 0,
+      waste_factor: parseFloat(serviceTypeDraft.waste_factor) || 0,
+      overhead_multiplier: parseFloat(serviceTypeDraft.overhead_multiplier) || 1,
+      profit_margin: parseFloat(serviceTypeDraft.profit_margin) || 0,
+      notes: serviceTypeDraft.notes || undefined,
+    };
+
+    try {
+      if (previousRule?.id) {
+        const { error } = await supabase
+          .from("pricing_rules")
+          .update({
+            service_type: nextRule.service_type,
+            base_labor_rate: nextRule.base_labor_rate,
+            material_rate: nextRule.material_rate,
+            waste_factor: nextRule.waste_factor,
+            overhead_multiplier: nextRule.overhead_multiplier,
+            profit_margin: nextRule.profit_margin,
+            unit_type: nextRule.unit_type,
+            notes: nextRule.notes,
+          })
+          .eq("id", previousRule.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("pricing_rules")
+          .insert({
+            user_id: user.id,
+            account_id: currentAccount.id,
+            service_type: nextRule.service_type,
+            base_labor_rate: nextRule.base_labor_rate,
+            material_rate: nextRule.material_rate,
+            waste_factor: nextRule.waste_factor,
+            overhead_multiplier: nextRule.overhead_multiplier,
+            profit_margin: nextRule.profit_margin,
+            unit_type: nextRule.unit_type,
+            notes: nextRule.notes,
+          });
+
+        if (error) throw error;
+      }
+
+      toast.success(previousKey ? "Service type updated" : "Service type added");
+      resetServiceTypeDraft();
+      await fetchRules();
+    } catch (error) {
+      console.error("Error saving service type:", error);
+      toast.error("Failed to save service type");
+    }
+  };
+
+  const deleteServiceType = async (serviceType: string) => {
+    if (isProtectedServiceType(serviceType)) {
+      toast.error("'Other' service type cannot be deleted");
+      return;
+    }
+
+    const rule = rules[serviceType];
+    if (!rule) return;
+
+    try {
+      if (rule.id) {
+        const { error } = await supabase
+          .from("pricing_rules")
+          .delete()
+          .eq("id", rule.id);
+
+        if (error) throw error;
+      } else {
+        setRules((prev) => {
+          const next = { ...prev };
+          delete next[serviceType];
+          return next;
+        });
+        setServiceTypeOrder((prev) => prev.filter((value) => value !== serviceType));
+      }
+
+      if (editingServiceType === serviceType) {
+        resetServiceTypeDraft();
+      }
+
+      toast.success("Service type removed");
+      await fetchRules();
+    } catch (error) {
+      console.error("Error deleting service type:", error);
+      toast.error("Failed to delete service type");
+    }
+  };
+
+  const resetToDefaults = (serviceType: ServiceType) => {
+    if (!user?.id) return;
+
+    setRules((prev) => ({
+      ...prev,
+      [serviceType]: {
+        ...DEFAULT_PRICING_RULES[serviceType],
+        id: prev[serviceType]?.id,
+        user_id: user.id,
+        account_id: currentAccount?.id,
+      } as PricingRule,
+    }));
+
+    setIsDirty(true);
+    toast.success("Reset to defaults - save to apply");
+  };
+
   const refreshTemplates = async () => {
     if (!currentAccount?.id) return;
     const templates = await getLineItemTemplates(currentAccount.id);
@@ -113,10 +365,20 @@ export default function SettingsPricingRules() {
       category: "other",
     });
     setEditingTemplateId(null);
+    setShowTemplateForm(false);
   };
 
   const startCreateTemplate = () => {
-    resetTemplateDraft();
+    setTemplateDraft({
+      name: "",
+      description: "",
+      quantity: "1",
+      unit: "each",
+      unit_price: "0",
+      category: "other",
+    });
+    setEditingTemplateId(null);
+    setShowTemplateForm(true);
   };
 
   const startEditTemplate = (template: LineItemTemplate) => {
@@ -129,6 +391,7 @@ export default function SettingsPricingRules() {
       unit_price: template.unit_price || "0",
       category: template.category || "other",
     });
+    setShowTemplateForm(true);
   };
 
   const saveTemplateDraft = async () => {
@@ -207,34 +470,47 @@ export default function SettingsPricingRules() {
       return;
     }
 
-    // Initialize with defaults and merge with saved rules
-    const initialRules: Record<ServiceType, PricingRule> = {} as Record<ServiceType, PricingRule>;
-    
-    pricingServiceTypes.forEach((serviceType) => {
-      const savedRule = data?.find((r) => r.service_type === serviceType);
-      if (savedRule) {
-        initialRules[serviceType] = savedRule as PricingRule;
-      } else {
-        initialRules[serviceType] = {
-          ...DEFAULT_PRICING_RULES[serviceType],
-          user_id: user.id,
-        } as PricingRule;
-      }
+    const initialRules: Record<string, PricingRule> = {};
+
+    (data || []).forEach((rule) => {
+      initialRules[rule.service_type] = rule as PricingRule;
     });
 
-    setRules(initialRules);
-    setLoading(false);
-  };
+    // Keep "other" available as a required fallback service type.
+    if (!initialRules.other) {
+      initialRules.other = {
+        ...DEFAULT_PRICING_RULES.other,
+        user_id: user.id,
+        account_id: currentAccount.id,
+      } as PricingRule;
+    }
 
-  const updateRule = (serviceType: ServiceType, field: keyof PricingRule, value: number | string) => {
-    setRules((prev) => ({
-      ...prev,
-      [serviceType]: {
-        ...prev[serviceType],
-        [field]: value,
-      },
-    }));
-    setIsDirty(true);
+    const defaultServiceTypeOrder = defaultServiceTypes.filter((serviceType) => Boolean(initialRules[serviceType]));
+    const customServiceTypeOrder = Object.keys(initialRules).filter(
+      (serviceType) => !isDefaultServiceType(serviceType),
+    );
+
+    const orderedServiceTypes = [
+      ...defaultServiceTypeOrder.filter((serviceType) => serviceType !== "other"),
+      "other",
+      ...customServiceTypeOrder.filter((serviceType) => serviceType !== "other"),
+    ];
+
+    setRules(initialRules);
+    setServiceTypeOrder(orderedServiceTypes);
+    setEditingServiceType(null);
+    setShowServiceTypeForm(false);
+    setServiceTypeDraft({
+      name: "",
+      unit_type: "sq_ft",
+      base_labor_rate: "0",
+      material_rate: "0",
+      waste_factor: "10",
+      overhead_multiplier: "1.15",
+      profit_margin: "20",
+      notes: "",
+    });
+    setLoading(false);
   };
 
   const saveRules = async () => {
@@ -246,7 +522,8 @@ export default function SettingsPricingRules() {
       const parsedTax = parseFloat(taxRate) || 0;
       const parsedProfitMargin = parseFloat(profitMargin) || 0;
       const parsedSurcharge = parseFloat(surcharge) || 0;
-      const { error: taxError } = await supabase
+
+      const { error: defaultsError } = await supabase
         .from("accounts")
         .update({
           default_tax_rate: parsedTax,
@@ -255,34 +532,35 @@ export default function SettingsPricingRules() {
         })
         .eq("id", currentAccount.id);
 
-      if (taxError) throw taxError;
+      if (defaultsError) throw defaultsError;
 
-      for (const serviceType of pricingServiceTypes) {
+      for (const serviceType of serviceTypeOrder) {
         const rule = rules[serviceType];
+        if (!rule) continue;
 
         if (rule.id) {
-          // Update existing rule
           const { error } = await supabase
             .from("pricing_rules")
             .update({
+              service_type: rule.service_type,
               base_labor_rate: rule.base_labor_rate,
               material_rate: rule.material_rate,
               waste_factor: rule.waste_factor,
               overhead_multiplier: rule.overhead_multiplier,
               profit_margin: rule.profit_margin,
+              unit_type: rule.unit_type,
               notes: rule.notes,
             })
             .eq("id", rule.id);
 
           if (error) throw error;
         } else {
-          // Insert new rule
           const { error } = await supabase
             .from("pricing_rules")
             .insert({
               user_id: user.id,
               account_id: currentAccount.id,
-              service_type: serviceType,
+              service_type: rule.service_type,
               base_labor_rate: rule.base_labor_rate,
               material_rate: rule.material_rate,
               waste_factor: rule.waste_factor,
@@ -299,7 +577,7 @@ export default function SettingsPricingRules() {
       setIsDirty(false);
       toast.success("Pricing rules saved");
       await refreshProfile();
-      fetchRules();
+      await fetchRules();
       return true;
     } catch (error) {
       console.error("Error saving rules:", error);
@@ -309,24 +587,6 @@ export default function SettingsPricingRules() {
       setSaving(false);
     }
   };
-
-  const resetToDefaults = (serviceType: ServiceType) => {
-    if (!user?.id) return;
-    
-    setRules((prev) => ({
-      ...prev,
-      [serviceType]: {
-        ...DEFAULT_PRICING_RULES[serviceType],
-        id: prev[serviceType]?.id,
-        user_id: user.id,
-      } as PricingRule,
-    }));
-    setIsDirty(true);
-    toast.success("Reset to defaults - save to apply");
-  };
-
-  const currentRule = rules[activeTab];
-  const isLinearFeet = currentRule?.unit_type === "linear_ft";
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -344,398 +604,192 @@ export default function SettingsPricingRules() {
             </div>
           ) : (
             <div className="space-y-4">
-            <div className="card-elevated rounded-lg p-4 space-y-4">
-              <div>
-                <h3 className="font-medium">Estimate Defaults</h3>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Applied automatically to new estimates (editable per estimate)
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between">
+              <div className="card-elevated rounded-lg p-4 space-y-4">
                 <div>
-                  <h4 className="font-medium">Default Tax Rate</h4>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Applied automatically to new estimates
-                  </p>
-                </div>
-                <div className="relative w-28">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={taxRate}
-                    onChange={(e) => {
-                      setTaxRate(e.target.value);
-                      setIsDirty(true);
-                    }}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">Default Profit Margin</h4>
+                  <h3 className="font-medium">Estimate Defaults</h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     Applied automatically to new estimates (editable per estimate)
                   </p>
                 </div>
-                <div className="relative w-28">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={profitMargin}
-                    onChange={(e) => {
-                      setProfitMargin(e.target.value);
-                      setIsDirty(true);
-                    }}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">Default Surcharge</h4>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Applied automatically to new estimates (editable per estimate)
-                  </p>
-                </div>
-                <div className="relative w-28">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={surcharge}
-                    onChange={(e) => {
-                      setSurcharge(e.target.value);
-                      setIsDirty(true);
-                    }}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="card-elevated rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium">Line Item Templates</h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Manage reusable templates shown in Quick Add.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setShowTemplateImportModal(true)}>
-                    <Upload className="h-4 w-4 mr-1" />
-                    Import CSV
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={startCreateTemplate}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Template
-                  </Button>
-                </div>
-              </div>
-
-              {(editingTemplateId !== null || templateDraft.name || templateDraft.description) && (
-                <div className="rounded-lg border border-border p-3 space-y-3 bg-background">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="sm:col-span-2">
-                      <Label htmlFor="template-name">Title *</Label>
-                      <Input
-                        id="template-name"
-                        value={templateDraft.name}
-                        onChange={(event) =>
-                          setTemplateDraft((prev) => ({ ...prev, name: event.target.value }))
-                        }
-                        placeholder="e.g., Black Mulch"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Label htmlFor="template-description">Description</Label>
-                      <Input
-                        id="template-description"
-                        value={templateDraft.description}
-                        onChange={(event) =>
-                          setTemplateDraft((prev) => ({ ...prev, description: event.target.value }))
-                        }
-                        placeholder="Optional description"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="template-quantity">Quantity</Label>
-                      <Input
-                        id="template-quantity"
-                        type="number"
-                        step="0.01"
-                        value={templateDraft.quantity}
-                        onChange={(event) =>
-                          setTemplateDraft((prev) => ({ ...prev, quantity: event.target.value }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="template-price">Unit Price</Label>
-                      <Input
-                        id="template-price"
-                        type="number"
-                        step="0.01"
-                        value={templateDraft.unit_price}
-                        onChange={(event) =>
-                          setTemplateDraft((prev) => ({ ...prev, unit_price: event.target.value }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="template-unit">Unit</Label>
-                      <Select
-                        value={templateDraft.unit}
-                        onValueChange={(value) =>
-                          setTemplateDraft((prev) => ({ ...prev, unit: value }))
-                        }
-                      >
-                        <SelectTrigger id="template-unit">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="each">Each</SelectItem>
-                          <SelectItem value="item">Item</SelectItem>
-                          <SelectItem value="sq ft">Sq Ft</SelectItem>
-                          <SelectItem value="linear ft">Linear Ft</SelectItem>
-                          <SelectItem value="hour">Hour</SelectItem>
-                          <SelectItem value="day">Day</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="template-category">Category</Label>
-                      <Select
-                        value={templateDraft.category}
-                        onValueChange={(value) =>
-                          setTemplateDraft((prev) => ({ ...prev, category: value }))
-                        }
-                      >
-                        <SelectTrigger id="template-category">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="equipment">Equipment</SelectItem>
-                          <SelectItem value="materials">Materials</SelectItem>
-                          <SelectItem value="labor">Labor</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button type="button" size="sm" onClick={saveTemplateDraft}>
-                      <Save className="h-4 w-4 mr-1" />
-                      {editingTemplateId ? "Update Template" : "Save Template"}
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={resetTemplateDraft}>
-                      <X className="h-4 w-4 mr-1" />
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {lineItemTemplates.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No templates yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {lineItemTemplates.map((template) => (
-                    <div key={template.id} className="rounded-lg border border-border p-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{template.name}</p>
-                        {template.description ? (
-                          <p className="text-sm text-muted-foreground mt-0.5">{template.description}</p>
-                        ) : null}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {template.quantity} x ${Number(template.unit_price || 0).toFixed(2)} / {template.unit}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button type="button" variant="ghost" size="icon" onClick={() => startEditTemplate(template)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => deleteTemplate(template.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Service Type Picker */}
-            <div className="card-elevated rounded-lg p-4 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="pricing-service-type">Service Type</Label>
-                <Select value={activeTab} onValueChange={(value) => setActiveTab(value as ServiceType)}>
-                  <SelectTrigger id="pricing-service-type" className="mt-1.5">
-                    <SelectValue placeholder="Select service type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pricingServiceTypes.map((service) => (
-                      <SelectItem key={service} value={service}>
-                        {SERVICE_LABELS[service]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {currentRule && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium">{SERVICE_LABELS[activeTab]}</h3>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => resetToDefaults(activeTab)}
-                    >
-                      <RotateCcw className="h-4 w-4 mr-1" />
-                      Reset
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="labor-rate">
-                        Labor Rate (per {isLinearFeet ? "linear ft" : "sq ft"})
-                      </Label>
-                      <div className="relative mt-1.5">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                        <Input
-                          id="labor-rate"
-                          type="number"
-                          step="0.01"
-                          value={currentRule.base_labor_rate}
-                          onChange={(e) => updateRule(activeTab, "base_labor_rate", parseFloat(e.target.value) || 0)}
-                          className="pl-7"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="material-rate">
-                        Material Rate (per {isLinearFeet ? "linear ft" : "sq ft"})
-                      </Label>
-                      <div className="relative mt-1.5">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                        <Input
-                          id="material-rate"
-                          type="number"
-                          step="0.01"
-                          value={currentRule.material_rate}
-                          onChange={(e) => updateRule(activeTab, "material_rate", parseFloat(e.target.value) || 0)}
-                          className="pl-7"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="waste-factor">Waste Factor (%)</Label>
-                      <div className="relative mt-1.5">
-                        <Input
-                          id="waste-factor"
-                          type="number"
-                          step="1"
-                          value={currentRule.waste_factor}
-                          onChange={(e) => updateRule(activeTab, "waste_factor", parseFloat(e.target.value) || 0)}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="overhead">Overhead Multiplier</Label>
-                      <Input
-                        id="overhead"
-                        type="number"
-                        step="0.01"
-                        value={currentRule.overhead_multiplier}
-                        onChange={(e) => updateRule(activeTab, "overhead_multiplier", parseFloat(e.target.value) || 1)}
-                        className="mt-1.5"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        1.15 = 15% overhead
-                      </p>
-                    </div>
-
-                    <div className="col-span-2">
-                      <Label htmlFor="profit-margin">Profit Margin (%)</Label>
-                      <div className="relative mt-1.5">
-                        <Input
-                          id="profit-margin"
-                          type="number"
-                          step="1"
-                          value={currentRule.profit_margin}
-                          onChange={(e) => updateRule(activeTab, "profit_margin", parseFloat(e.target.value) || 0)}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Example Calculation */}
-                  <div className="border-t border-border pt-4">
-                    <p className="text-sm font-medium mb-2">Example: 100 {isLinearFeet ? "linear ft" : "sq ft"}</p>
-                    <div className="bg-secondary/50 rounded-lg p-3 space-y-1 text-sm">
-                      {(() => {
-                        const qty = 100;
-                        const labor = qty * currentRule.base_labor_rate;
-                        const material = qty * currentRule.material_rate * (1 + currentRule.waste_factor / 100);
-                        const subtotal = (labor + material) * currentRule.overhead_multiplier;
-                        const total = subtotal * (1 + currentRule.profit_margin / 100);
-                        const low = total * 0.9;
-                        const high = total * 1.15;
-                        
-                        return (
-                          <>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Labor</span>
-                              <span>${labor.toFixed(0)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Materials (+ {currentRule.waste_factor}% waste)</span>
-                              <span>${material.toFixed(0)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">+ Overhead ({((currentRule.overhead_multiplier - 1) * 100).toFixed(0)}%)</span>
-                              <span>${((labor + material) * (currentRule.overhead_multiplier - 1)).toFixed(0)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">+ Profit ({currentRule.profit_margin}%)</span>
-                              <span>${(subtotal * currentRule.profit_margin / 100).toFixed(0)}</span>
-                            </div>
-                            <div className="border-t border-border pt-2 mt-2 flex justify-between font-medium">
-                              <span>Estimate Range</span>
-                              <span className="text-primary">${low.toFixed(0)} – ${high.toFixed(0)}</span>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Notes */}
-                  {currentRule.notes && (
-                    <p className="text-xs text-muted-foreground italic">
-                      {currentRule.notes}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">Default Tax Rate</h4>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Applied automatically to new estimates
                     </p>
-                  )}
-                </>
-              )}
-            </div>
+                  </div>
+                  <div className="relative w-28">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={taxRate}
+                      onChange={(event) => {
+                        setTaxRate(event.target.value);
+                        setIsDirty(true);
+                      }}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">Default Profit Margin</h4>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Applied automatically to new estimates (editable per estimate)
+                    </p>
+                  </div>
+                  <div className="relative w-28">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={profitMargin}
+                      onChange={(event) => {
+                        setProfitMargin(event.target.value);
+                        setIsDirty(true);
+                      }}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">Default Surcharge</h4>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Applied automatically to new estimates (editable per estimate)
+                    </p>
+                  </div>
+                  <div className="relative w-28">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={surcharge}
+                      onChange={(event) => {
+                        setSurcharge(event.target.value);
+                        setIsDirty(true);
+                      }}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card-elevated rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Line Item Templates</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Manage reusable templates shown in Quick Add.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowTemplateImportModal(true)}>
+                      <Upload className="h-4 w-4 mr-1" />
+                      Import CSV
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={startCreateTemplate}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Template
+                    </Button>
+                  </div>
+                </div>
+
+                {lineItemTemplates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No templates yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                    {lineItemTemplates.map((template) => (
+                      <div key={template.id} className="rounded-lg border border-border p-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{template.name}</p>
+                          {template.description ? (
+                            <p className="text-sm text-muted-foreground mt-0.5">{template.description}</p>
+                          ) : null}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {template.quantity} x ${Number(template.unit_price || 0).toFixed(2)} / {template.unit}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button type="button" variant="ghost" size="icon" onClick={() => startEditTemplate(template)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => deleteTemplate(template.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="card-elevated rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Service Types</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Manage default and custom service types used in pricing rules.
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={startCreateServiceType}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Service Type
+                  </Button>
+                </div>
+
+                {serviceTypeOrder.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No service types yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                    {serviceTypeOrder.map((serviceType) => {
+                      const rule = rules[serviceType];
+                      if (!rule) return null;
+
+                      const isLinearFeet = rule.unit_type === "linear_ft";
+                      const isDefault = isDefaultServiceType(serviceType);
+                      const isProtected = isProtectedServiceType(serviceType);
+
+                      return (
+                        <div key={serviceType} className="rounded-lg border border-border p-3 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{getServiceTypeLabel(serviceType)}</p>
+                            <p className="text-sm text-muted-foreground mt-0.5">
+                              {isDefault ? "Default service type" : "Custom service type"}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              ${rule.base_labor_rate.toFixed(2)} labor + ${rule.material_rate.toFixed(2)} materials / {isLinearFeet ? "linear ft" : "sq ft"} • {rule.profit_margin}% profit
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button type="button" variant="ghost" size="icon" onClick={() => startEditServiceType(serviceType)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {!isProtected && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => deleteServiceType(serviceType)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -752,6 +806,276 @@ export default function SettingsPricingRules() {
           void refreshTemplates();
         }}
       />
+      <Dialog
+        open={showTemplateForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetTemplateDraft();
+          } else {
+            setShowTemplateForm(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingTemplateId ? "Edit Template" : "Add Template"}</DialogTitle>
+            <DialogDescription>
+              Configure reusable line item template details.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Label htmlFor="template-name">Title *</Label>
+              <Input
+                id="template-name"
+                value={templateDraft.name}
+                onChange={(event) =>
+                  setTemplateDraft((prev) => ({ ...prev, name: event.target.value }))
+                }
+                placeholder="e.g., Black Mulch"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="template-description">Description</Label>
+              <Input
+                id="template-description"
+                value={templateDraft.description}
+                onChange={(event) =>
+                  setTemplateDraft((prev) => ({ ...prev, description: event.target.value }))
+                }
+                placeholder="Optional description"
+              />
+            </div>
+            <div>
+              <Label htmlFor="template-quantity">Quantity</Label>
+              <Input
+                id="template-quantity"
+                type="number"
+                step="0.01"
+                value={templateDraft.quantity}
+                onChange={(event) =>
+                  setTemplateDraft((prev) => ({ ...prev, quantity: event.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="template-price">Unit Price</Label>
+              <Input
+                id="template-price"
+                type="number"
+                step="0.01"
+                value={templateDraft.unit_price}
+                onChange={(event) =>
+                  setTemplateDraft((prev) => ({ ...prev, unit_price: event.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="template-unit">Unit</Label>
+              <Select
+                value={templateDraft.unit}
+                onValueChange={(value) =>
+                  setTemplateDraft((prev) => ({ ...prev, unit: value }))
+                }
+              >
+                <SelectTrigger id="template-unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="each">Each</SelectItem>
+                  <SelectItem value="item">Item</SelectItem>
+                  <SelectItem value="sq ft">Sq Ft</SelectItem>
+                  <SelectItem value="linear ft">Linear Ft</SelectItem>
+                  <SelectItem value="hour">Hour</SelectItem>
+                  <SelectItem value="day">Day</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="template-category">Category</Label>
+              <Select
+                value={templateDraft.category}
+                onValueChange={(value) =>
+                  setTemplateDraft((prev) => ({ ...prev, category: value }))
+                }
+              >
+                <SelectTrigger id="template-category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="equipment">Equipment</SelectItem>
+                  <SelectItem value="materials">Materials</SelectItem>
+                  <SelectItem value="labor">Labor</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button type="button" onClick={saveTemplateDraft}>
+              <Save className="h-4 w-4 mr-1" />
+              {editingTemplateId ? "Update Template" : "Save Template"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={resetTemplateDraft}>
+              <X className="h-4 w-4 mr-1" />
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={showServiceTypeForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetServiceTypeDraft();
+          } else {
+            setShowServiceTypeForm(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingServiceType ? "Edit Service Type" : "Add Service Type"}</DialogTitle>
+            <DialogDescription>
+              Configure pricing defaults for this service type.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Label htmlFor="service-type-name">Service Type Name *</Label>
+              <Input
+                id="service-type-name"
+                value={serviceTypeDraft.name}
+                onChange={(event) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, name: event.target.value }))
+                }
+                placeholder="e.g., Irrigation"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="service-type-unit">Unit Type</Label>
+              <Select
+                value={serviceTypeDraft.unit_type}
+                onValueChange={(value) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, unit_type: value }))
+                }
+              >
+                <SelectTrigger id="service-type-unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sq_ft">Square Feet</SelectItem>
+                  <SelectItem value="linear_ft">Linear Feet</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="service-type-labor">Labor Rate</Label>
+              <Input
+                id="service-type-labor"
+                type="number"
+                step="0.01"
+                value={serviceTypeDraft.base_labor_rate}
+                onChange={(event) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, base_labor_rate: event.target.value }))
+                }
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="service-type-material">Material Rate</Label>
+              <Input
+                id="service-type-material"
+                type="number"
+                step="0.01"
+                value={serviceTypeDraft.material_rate}
+                onChange={(event) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, material_rate: event.target.value }))
+                }
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="service-type-waste">Waste Factor (%)</Label>
+              <Input
+                id="service-type-waste"
+                type="number"
+                step="0.01"
+                value={serviceTypeDraft.waste_factor}
+                onChange={(event) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, waste_factor: event.target.value }))
+                }
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="service-type-overhead">Overhead Multiplier</Label>
+              <Input
+                id="service-type-overhead"
+                type="number"
+                step="0.01"
+                value={serviceTypeDraft.overhead_multiplier}
+                onChange={(event) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, overhead_multiplier: event.target.value }))
+                }
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="service-type-profit">Profit Margin (%)</Label>
+              <Input
+                id="service-type-profit"
+                type="number"
+                step="0.01"
+                value={serviceTypeDraft.profit_margin}
+                onChange={(event) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, profit_margin: event.target.value }))
+                }
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label htmlFor="service-type-notes">Notes</Label>
+              <Input
+                id="service-type-notes"
+                value={serviceTypeDraft.notes}
+                onChange={(event) =>
+                  setServiceTypeDraft((prev) => ({ ...prev, notes: event.target.value }))
+                }
+                placeholder="Optional notes"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button type="button" onClick={saveServiceTypeDraft}>
+              <Save className="h-4 w-4 mr-1" />
+              {editingServiceType ? "Update Service Type" : "Save Service Type"}
+            </Button>
+
+            {editingServiceType && isDefaultServiceType(editingServiceType) && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => resetToDefaults(editingServiceType)}
+              >
+                <RotateCcw className="h-4 w-4 mr-1" />
+                Reset to Default
+              </Button>
+            )}
+
+            <Button type="button" variant="ghost" onClick={resetServiceTypeDraft}>
+              <X className="h-4 w-4 mr-1" />
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

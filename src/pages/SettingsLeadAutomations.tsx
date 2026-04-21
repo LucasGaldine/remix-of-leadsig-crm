@@ -49,7 +49,7 @@ export default function SettingsLeadAutomations() {
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
-        title="Lead Automations"
+        title="Webhooks"
         subtitle="Webhook hooks and API automations"
         showBack
         backTo="/settings"
