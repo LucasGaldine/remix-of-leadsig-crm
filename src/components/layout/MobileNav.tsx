@@ -10,6 +10,7 @@ import {
   Users,
   Ellipsis,
   ChevronDown,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -40,7 +41,9 @@ const primaryNavItems: NavItem[] = [
   { icon: <Calendar className="h-5 w-5" />, label: "Calendar", path: "/schedule", requiredRole: "all" },
 ];
 
-const moreMenuItems: NavItem[] = [];
+const moreMenuItems: NavItem[] = [
+  { icon: <Globe className="h-5 w-5" />, label: "Website", path: "/website", requiredRole: "manager" },
+];
 
 const moreMenuGroups: NavGroup[] = [
   {

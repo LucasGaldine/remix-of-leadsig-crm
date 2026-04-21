@@ -574,6 +574,70 @@ export default function SettingsPricingRules() {
         }
       }
 
+      // Keep website calculator services/rates aligned with Pricing Rules.
+      const { data: accountRow, error: accountReadError } = await supabase
+        .from("accounts")
+        .select("settings")
+        .eq("id", currentAccount.id)
+        .single();
+
+      if (accountReadError) throw accountReadError;
+
+      const currentSettings = (accountRow?.settings as Record<string, unknown> | null) ?? {};
+      const currentWebsite = (currentSettings.website as Record<string, unknown> | undefined) ?? {};
+      const existingServices = Array.isArray(currentWebsite.services)
+        ? (currentWebsite.services as Array<Record<string, unknown>>)
+        : [];
+
+      const existingByName = new Map(
+        existingServices
+          .map((service) => {
+            const name = String(service.name ?? "").trim();
+            return [name, service] as const;
+          })
+          .filter(([name]) => name.length > 0),
+      );
+
+      const websiteServices = serviceTypeOrder.flatMap((serviceType) => {
+        const rule = rules[serviceType];
+        if (!rule) return [];
+
+        const name = getServiceTypeLabel(serviceType);
+        if (name === "Other") return [];
+
+        const existing = existingByName.get(name);
+        const computedRate =
+          (Number(rule.base_labor_rate) + Number(rule.material_rate)) *
+          (1 + Number(rule.waste_factor) / 100) *
+          Number(rule.overhead_multiplier) *
+          (1 + Number(rule.profit_margin) / 100);
+
+        return [{
+          id: serviceType,
+          name,
+          description: String(existing?.description ?? ""),
+          icon: String(existing?.icon ?? "CheckCircle2"),
+          price_per_unit: Number(computedRate.toFixed(2)),
+          unit_type: String(rule.unit_type || "sq_ft"),
+        }];
+      });
+
+      const { error: accountUpdateError } = await supabase
+        .from("accounts")
+        .update({
+          settings: {
+            ...currentSettings,
+            website: {
+              ...currentWebsite,
+              services: websiteServices,
+            },
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", currentAccount.id);
+
+      if (accountUpdateError) throw accountUpdateError;
+
       setIsDirty(false);
       toast.success("Pricing rules saved");
       await refreshProfile();

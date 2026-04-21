@@ -63,6 +63,8 @@ import OnboardingImport from "./pages/OnboardingImport";
 import OnboardingPlan from "./pages/OnboardingPlan";
 import AffiliateSignup from "./pages/AffiliateSignup";
 import Admin from "./pages/Admin";
+import Website from "./pages/Website";
+import SitePage from "./pages/SitePage";
 
 const queryClient = new QueryClient();
 
@@ -179,6 +181,7 @@ const router = createBrowserRouter([
       { path: "/sms-consent", element: <SmsConsent /> },
       { path: "/data-deletion", element: <DataDeletion /> },
       { path: "/affiliate", element: <AffiliateSignup /> },
+      { path: "/site/:accountId", element: <SitePage /> },
       { path: "/onboarding/source", element: <Protected><OnboardingSource /></Protected> },
       { path: "/onboarding/profile", element: <Protected><OnboardingProfile /></Protected> },
       { path: "/onboarding/import", element: <Protected><OnboardingImport /></Protected> },
@@ -223,6 +226,7 @@ const router = createBrowserRouter([
       { path: "/customers", element: <Protected><Customers /></Protected> },
       { path: "/customers/:id", element: <Protected><CustomerDetail /></Protected> },
       { path: "/admin", element: <Protected><Admin /></Protected> },
+      { path: "/website", element: <Protected><Website /></Protected> },
       { path: "*", element: <NotFound /> },
     ],
   },
