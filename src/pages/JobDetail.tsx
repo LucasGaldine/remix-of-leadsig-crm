@@ -59,7 +59,6 @@ import { getEstimateCardTotal } from "@/lib/estimateCardTotals";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ServiceTypeSelect } from "@/components/shared/ServiceTypeSelect";
 import { useServiceTypeOptions } from "@/hooks/useServiceTypeOptions";
-import { useAccountSettings } from "@/hooks/useAccountSettings";
 
 const JOB_STATUS_GUIDANCE = [
   {
@@ -126,7 +125,6 @@ export default function JobDetail() {
   });
 
   const queryClient = useQueryClient();
-  const { settings: accountSettings } = useAccountSettings();
   const { data: job, isLoading, error } = useJob(id);
   const { data: schedules = [], isLoading: schedulesLoading } = useJobSchedules(id);
   const { businessHours } = useBusinessHours();
@@ -720,6 +718,84 @@ export default function JobDetail() {
       }
     } finally {
       setPortalEmailSending(false);
+    }
+  };
+
+  const handleTextPortalLink = async () => {
+    const fallbackPhone = (portalClientPhone || job?.customer?.phone || "").trim();
+    const fallbackToSmsApp = () => {
+      if (!fallbackPhone) {
+        toast.error("Add a customer phone number before sending a text.");
+        return;
+      }
+      window.open(`sms:${fallbackPhone}`, "_blank");
+      setPortalDialogOpen(false);
+    };
+
+    if (!currentAccount?.id || !job) {
+      fallbackToSmsApp();
+      return;
+    }
+
+    try {
+      let resolvedPortalLink = portalLink;
+      if (!resolvedPortalLink) {
+        const portalData = await resolveCustomerPortalLink();
+        resolvedPortalLink = portalData.link;
+        setPortalLink(portalData.link);
+        setPortalClientPhone(portalData.phone);
+        setPortalClientEmail(portalData.email);
+      }
+
+      const { data, error } = await supabase.functions.invoke("send-job-automation-message", {
+        body: {
+          account_id: currentAccount.id,
+          lead: {
+            id: job.id,
+            account_id: currentAccount.id,
+          },
+          message: `Here is the client portal for your project with ${currentAccount?.company_name || "our company"}: ${resolvedPortalLink}`,
+          template: {
+            delivery_channel: "text",
+          },
+        },
+      });
+
+      const errorMessage = String(error?.message || "");
+      if (errorMessage) {
+        if (isTwilioNotConfiguredErrorMessage(errorMessage) || errorMessage.toLowerCase().includes("twilio")) {
+          setIsTwilioConfigured(false);
+          fallbackToSmsApp();
+          return;
+        }
+        throw new Error(errorMessage || "Failed to send client portal text");
+      }
+
+      const smsSent = data && typeof data === "object" && "sms_sent" in data ? Boolean(data.sms_sent) : false;
+      const smsError =
+        data && typeof data === "object" && "sms_error" in data
+          ? String(data.sms_error || "")
+          : "";
+      const skipReason =
+        data && typeof data === "object" && "reason" in data
+          ? String(data.reason || "")
+          : "";
+
+      if (!smsSent) {
+        const reason = smsError || skipReason || "Failed to send client portal text";
+        if (isTwilioNotConfiguredErrorMessage(reason) || reason.toLowerCase().includes("twilio")) {
+          setIsTwilioConfigured(false);
+          fallbackToSmsApp();
+          return;
+        }
+        throw new Error(reason);
+      }
+
+      toast.success("Portal link text sent to the client");
+      setPortalDialogOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to send client portal text";
+      toast.error(message);
     }
   };
 
@@ -2072,6 +2148,7 @@ export default function JobDetail() {
         portalLink={portalLink}
         copied={portalCopied}
         onCopy={handleCopyPortalLink}
+        onTextClient={handleTextPortalLink}
         onEmailClient={handleEmailPortalLink}
         emailSending={portalEmailSending}
         emailSent={portalEmailSent}

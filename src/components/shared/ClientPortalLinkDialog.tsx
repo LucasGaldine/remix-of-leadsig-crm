@@ -10,6 +10,7 @@ interface ClientPortalLinkDialogProps {
   portalLink: string;
   copied: boolean;
   onCopy: () => Promise<void> | void;
+  onTextClient?: () => Promise<void> | void;
   onEmailClient?: () => Promise<void> | void;
   emailSending?: boolean;
   emailSent?: boolean;
@@ -25,6 +26,7 @@ export function ClientPortalLinkDialog({
   portalLink,
   copied,
   onCopy,
+  onTextClient,
   onEmailClient,
   emailSending = false,
   emailSent = false,
@@ -38,13 +40,17 @@ export function ClientPortalLinkDialog({
   const canTextClient = allowTextClient && normalizedClientPhone.length > 0;
   const canEmailClient = allowEmailClient && normalizedClientEmail.length > 0;
 
-  const handleTextClient = () => {
+  const handleTextClient = async () => {
     if (!allowTextClient) {
       toast.error("Sending portal links by text is not available on the Free plan.");
       return;
     }
     if (!canTextClient) {
       toast.error("Add a customer phone number before sending a text.");
+      return;
+    }
+    if (onTextClient) {
+      await onTextClient();
       return;
     }
     window.open(`sms:${normalizedClientPhone}`, "_blank");

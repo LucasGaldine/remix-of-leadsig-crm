@@ -28,8 +28,8 @@ describe("ClientPortalLinkDialog", () => {
       />,
     );
 
-    const textButton = screen.getByRole("button", { name: /text client/i });
-    const emailButton = screen.getByRole("button", { name: /email client/i });
+    const textButton = screen.getByRole("button", { name: /send via text/i });
+    const emailButton = screen.getByRole("button", { name: /send via email/i });
 
     expect(textButton.className).toContain("flex-1");
     expect(emailButton.className).toContain("flex-1");
@@ -53,8 +53,8 @@ describe("ClientPortalLinkDialog", () => {
       />,
     );
 
-    const textButton = screen.getByRole("button", { name: /text client/i });
-    const emailButton = screen.getByRole("button", { name: /email client/i });
+    const textButton = screen.getByRole("button", { name: /send via text/i });
+    const emailButton = screen.getByRole("button", { name: /send via email/i });
 
     expect(textButton).toHaveAttribute("aria-disabled", "true");
     expect(emailButton).toHaveAttribute("aria-disabled", "true");
@@ -64,6 +64,32 @@ describe("ClientPortalLinkDialog", () => {
 
     expect(toastErrorMock).toHaveBeenCalledWith("Add a customer phone number before sending a text.");
     expect(toastErrorMock).toHaveBeenCalledWith("Add a customer email before sending an email.");
+  });
+
+  it("uses the text callback when provided and does not open sms directly", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const onTextClient = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ClientPortalLinkDialog
+        open
+        onOpenChange={vi.fn()}
+        portalLink="https://example.com/client/job?token=abc"
+        copied={false}
+        onCopy={vi.fn()}
+        onTextClient={onTextClient}
+        onEmailClient={vi.fn()}
+        clientPhone="5551234567"
+        clientEmail="client@example.com"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /send via text/i }));
+
+    expect(onTextClient).toHaveBeenCalledTimes(1);
+    expect(openSpy).not.toHaveBeenCalledWith("sms:5551234567", "_blank");
+
+    openSpy.mockRestore();
   });
 
   it("opens sms and calls the email send callback when actions are clicked", async () => {
@@ -83,8 +109,8 @@ describe("ClientPortalLinkDialog", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /text client/i }));
-    fireEvent.click(screen.getByRole("button", { name: /email client/i }));
+    fireEvent.click(screen.getByRole("button", { name: /send via text/i }));
+    fireEvent.click(screen.getByRole("button", { name: /send via email/i }));
 
     expect(openSpy).toHaveBeenCalledWith("sms:5551234567", "_blank");
     expect(onEmailClient).toHaveBeenCalledTimes(1);
@@ -107,7 +133,7 @@ describe("ClientPortalLinkDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /email client/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /send via email/i })).toBeEnabled();
 
     rerender(
       <ClientPortalLinkDialog
