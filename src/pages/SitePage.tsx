@@ -18,6 +18,10 @@ interface AccountData {
   settings: Record<string, unknown> | null;
 }
 
+interface PublicSiteLookup extends AccountData {
+  published: boolean;
+}
+
 export default function SitePage() {
   const { accountId } = useParams<{ accountId: string }>();
   const [account, setAccount] = useState<AccountData | null>(null);
@@ -32,26 +36,20 @@ export default function SitePage() {
     }
 
     supabase
-      .from("accounts")
-      .select("company_name, company_phone, company_email, company_address, logo_url, settings")
-      .eq("id", accountId)
-      .maybeSingle()
+      .rpc("get_public_site", { account_uuid: accountId })
       .then(({ data, error }) => {
-        if (error || !data) {
+        const site = (Array.isArray(data) ? data[0] : data) as PublicSiteLookup | null;
+        if (error || !site) {
           setStatus("not-found");
           return;
         }
 
-        const websiteConfig = (data.settings as Record<string, unknown>)?.website as
-          | WebsiteConfig
-          | undefined;
-
-        if (!websiteConfig?.published) {
+        if (!site.published) {
           setStatus("unpublished");
           return;
         }
 
-        setAccount(data as AccountData);
+        setAccount(site);
         setStatus("ready");
       });
   }, [accountId]);
