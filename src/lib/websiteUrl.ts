@@ -1,13 +1,4 @@
-export function buildClientPortalUrl(token: string, jobId?: string): string {
-  const params = new URLSearchParams({ token });
-  if (jobId) {
-    params.set("jobId", jobId);
-  }
-  return `/client/job?${params.toString()}`;
-}
-
-type BuildClientPortalShareUrlOptions = {
-  jobId?: string;
+type BuildWebsitePublicUrlOptions = {
   customDomain?: string | null;
   baseUrl?: string | null;
 };
@@ -29,22 +20,19 @@ function normalizeCustomDomainBaseUrl(customDomain?: string | null): string | nu
   }
 }
 
-export function buildClientPortalShareUrl(
-  token: string,
-  jobIdOrOptions?: string | BuildClientPortalShareUrlOptions,
+export function buildWebsitePublicUrl(
+  accountId: string,
+  options?: BuildWebsitePublicUrlOptions,
 ): string {
-  const options =
-    typeof jobIdOrOptions === "string"
-      ? ({ jobId: jobIdOrOptions } satisfies BuildClientPortalShareUrlOptions)
-      : (jobIdOrOptions ?? {});
+  const sanitizedAccountId = accountId.trim();
+  const directPath = `/site/${sanitizedAccountId}`;
 
-  const directPath = buildClientPortalUrl(token, options.jobId);
-  const fromCustomDomain = normalizeCustomDomainBaseUrl(options.customDomain);
+  const fromCustomDomain = normalizeCustomDomainBaseUrl(options?.customDomain);
   if (fromCustomDomain) {
-    return `${fromCustomDomain.replace(/\/$/, "")}${directPath}`;
+    return `${fromCustomDomain.replace(/\/$/, "")}/`;
   }
 
-  const fromExplicitBase = options.baseUrl?.trim();
+  const fromExplicitBase = options?.baseUrl?.trim();
   if (fromExplicitBase) {
     return `${fromExplicitBase.replace(/\/$/, "")}${directPath}`;
   }

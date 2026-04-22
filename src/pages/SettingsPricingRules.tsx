@@ -303,6 +303,16 @@ export default function SettingsPricingRules() {
     const rule = rules[serviceType];
     if (!rule) return;
 
+    const previousRules = rules;
+    const previousOrder = serviceTypeOrder;
+
+    setRules((prev) => {
+      const next = { ...prev };
+      delete next[serviceType];
+      return next;
+    });
+    setServiceTypeOrder((prev) => prev.filter((value) => value !== serviceType));
+
     try {
       if (rule.id) {
         const { error } = await supabase
@@ -311,13 +321,6 @@ export default function SettingsPricingRules() {
           .eq("id", rule.id);
 
         if (error) throw error;
-      } else {
-        setRules((prev) => {
-          const next = { ...prev };
-          delete next[serviceType];
-          return next;
-        });
-        setServiceTypeOrder((prev) => prev.filter((value) => value !== serviceType));
       }
 
       if (editingServiceType === serviceType) {
@@ -325,9 +328,10 @@ export default function SettingsPricingRules() {
       }
 
       toast.success("Service type removed");
-      await fetchRules();
     } catch (error) {
       console.error("Error deleting service type:", error);
+      setRules(previousRules);
+      setServiceTypeOrder(previousOrder);
       toast.error("Failed to delete service type");
     }
   };

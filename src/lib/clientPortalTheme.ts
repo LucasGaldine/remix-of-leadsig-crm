@@ -1,5 +1,6 @@
 export const DEFAULT_CLIENT_PORTAL_COLOR = "#334155";
 export const DEFAULT_CLIENT_PORTAL_TEXT_COLOR = "#ffffff";
+export const DEFAULT_CLIENT_PORTAL_HIGHLIGHT_COLOR = "#f59e0b";
 
 function normalizeHexColor(value: string | null | undefined, fallbackColor: string): string {
   if (!value) return fallbackColor;
@@ -24,6 +25,10 @@ export function normalizeClientPortalColor(value: string | null | undefined): st
 
 export function normalizeClientPortalTextColor(value: string | null | undefined): string {
   return normalizeHexColor(value, DEFAULT_CLIENT_PORTAL_TEXT_COLOR);
+}
+
+export function normalizeClientPortalHighlightColor(value: string | null | undefined): string {
+  return normalizeHexColor(value, DEFAULT_CLIENT_PORTAL_HIGHLIGHT_COLOR);
 }
 
 export function hexToRgba(hexColor: string, alpha = 1): string {

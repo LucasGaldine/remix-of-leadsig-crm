@@ -8,24 +8,58 @@ export type WebsiteService = {
   name: string;
   description: string;
   icon?: string;
+  image_url?: string | null;
   price_per_unit?: number;
   unit_type?: string;
 };
 
+export type WebsiteHiringRole = {
+  id: string;
+  title: string;
+  location?: string;
+  employment_type?: string;
+  description?: string;
+};
+
+export type WebsiteTestimonial = {
+  id: string;
+  heading: string;
+  quote: string;
+  author: string;
+  location: string;
+  photo_url?: string | null;
+};
+
 export type WebsiteConfig = {
   published?: boolean;
+  custom_domain?: string;
+  hiring_roles?: WebsiteHiringRole[];
   font?: string;
   body_font?: string;
   hero?: {
     headline?: string;
     subheadline?: string;
     cta_text?: string;
+    header_image_url?: string | null;
   };
   calculator_enabled?: boolean;
   services?: WebsiteService[];
-  about?: {
-    text?: string;
+  services_section?: {
+    header?: string;
+    subheading?: string;
   };
+  testimonials_section?: {
+    header?: string;
+    subheading?: string;
+  };
+  about?: {
+    heading?: string;
+    subheading?: string;
+    text?: string;
+    before_image_url?: string | null;
+    after_image_url?: string | null;
+  };
+  testimonials?: WebsiteTestimonial[];
 };
 
 export function useWebsiteSettings() {

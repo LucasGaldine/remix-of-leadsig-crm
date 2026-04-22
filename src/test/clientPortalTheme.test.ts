@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   darkenHexColor,
   DEFAULT_CLIENT_PORTAL_COLOR,
+  DEFAULT_CLIENT_PORTAL_HIGHLIGHT_COLOR,
   normalizeClientPortalColor,
+  normalizeClientPortalHighlightColor,
 } from "@/lib/clientPortalTheme";
 
 describe("clientPortalTheme", () => {
@@ -16,6 +18,12 @@ describe("clientPortalTheme", () => {
     expect(normalizeClientPortalColor("not-a-color")).toBe(DEFAULT_CLIENT_PORTAL_COLOR);
     expect(normalizeClientPortalColor("")).toBe(DEFAULT_CLIENT_PORTAL_COLOR);
     expect(normalizeClientPortalColor(null)).toBe(DEFAULT_CLIENT_PORTAL_COLOR);
+  });
+
+  it("normalizes highlight color values and falls back when invalid", () => {
+    expect(normalizeClientPortalHighlightColor("#EA580C")).toBe("#ea580c");
+    expect(normalizeClientPortalHighlightColor("#0af")).toBe("#00aaff");
+    expect(normalizeClientPortalHighlightColor("invalid")).toBe(DEFAULT_CLIENT_PORTAL_HIGHLIGHT_COLOR);
   });
 
   it("returns a darker hex color", () => {

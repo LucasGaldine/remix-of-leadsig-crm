@@ -3,6 +3,9 @@ import {
   Globe,
   Eye,
   Pencil,
+  BarChart3,
+  TrendingUp,
+  Users,
   Copy,
   Check,
   ExternalLink,
@@ -23,8 +26,10 @@ import {
   Sparkles,
   Star,
   CheckCircle2,
+  X,
   type LucideIcon,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 export const UNIT_OPTIONS = [
   { value: "sq_ft",     label: "Square Feet (sq ft)" },
@@ -60,9 +65,11 @@ const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
   { name: "Sparkles", icon: Sparkles },
   { name: "Star", icon: Star },
 ];
+
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { StickyActionBar } from "@/components/settings/StickyActionBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,18 +80,126 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useWebsiteSettings } from "@/hooks/useWebsiteSettings";
+import { useWebsiteSettings, type WebsiteTestimonial } from "@/hooks/useWebsiteSettings";
 import { formatServiceTypeOption } from "@/hooks/useServiceTypeOptions";
 import { LandingPageView } from "@/components/website/LandingPageView";
 import {
   normalizeClientPortalColor,
+  normalizeClientPortalHighlightColor,
   normalizeClientPortalTextColor,
 } from "@/lib/clientPortalTheme";
 import { toast } from "sonner";
+import {
+  getWebsiteAboutImageStoragePath,
+  getWebsiteHeroImageStoragePath,
+  getWebsiteServiceImageStoragePath,
+  getWebsiteTestimonialImageStoragePath,
+  getWebsiteHeroImageValidationError,
+} from "@/lib/websiteHeroImage";
+import { buildWebsitePublicUrl } from "@/lib/websiteUrl";
+
+const DOMAIN_PATTERN = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
+
+const DEFAULT_TESTIMONIALS: WebsiteTestimonial[] = [
+  {
+    id: "testimonial-1",
+    heading: "Easy, Transparent Process",
+    quote: "The whole process was simple from start to finish. Communication stayed clear the entire time.",
+    author: "Sarah M.",
+    location: "Homeowner",
+    photo_url: null,
+  },
+  {
+    id: "testimonial-2",
+    heading: "On Time and Professional",
+    quote: "They arrived on time, worked efficiently, and left everything spotless when the job was done.",
+    author: "David R.",
+    location: "Property Manager",
+    photo_url: null,
+  },
+  {
+    id: "testimonial-3",
+    heading: "High-Quality Results",
+    quote: "Every detail was handled with care. The quality of the finished work exceeded expectations.",
+    author: "Priya K.",
+    location: "Local Business Owner",
+    photo_url: null,
+  },
+];
+
+function normalizeTestimonials(input?: WebsiteTestimonial[] | null): WebsiteTestimonial[] {
+  return DEFAULT_TESTIMONIALS.map((fallback, index) => {
+    const existing = input?.[index];
+    return {
+      id: existing?.id || fallback.id,
+      heading: existing?.heading ?? fallback.heading,
+      quote: existing?.quote ?? fallback.quote,
+      author: existing?.author ?? fallback.author,
+      location: existing?.location ?? fallback.location,
+      photo_url: existing?.photo_url ?? fallback.photo_url,
+    };
+  });
+}
+
+function normalizeDomainInput(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.$/, "");
+}
+
+async function uploadProfileStorageObject(
+  filePath: string,
+  file: File,
+  accessToken: string,
+): Promise<string> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase configuration");
+  }
+
+  const baseUrl = supabaseUrl.replace(/\/+$/, "");
+  const objectPath = filePath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const uploadUrl = `${baseUrl}/storage/v1/object/profiles/${objectPath}`;
+
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "x-upsert": "true",
+      "cache-control": "3600",
+      "content-type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+
+  if (!response.ok) {
+    let errorMessage = `Storage upload failed (${response.status})`;
+    try {
+      const payload = await response.json();
+      if (payload?.message) {
+        errorMessage = `${errorMessage}: ${payload.message}`;
+      }
+    } catch {
+      // Ignore JSON parse errors for empty/non-JSON responses.
+    }
+    throw new Error(errorMessage);
+  }
+
+  return `${baseUrl}/storage/v1/object/public/profiles/${objectPath}`;
+}
 
 export default function Website() {
   const navigate = useNavigate();
-  const { currentAccount } = useAuth();
+  const { currentAccount, refreshProfile } = useAuth();
   const { websiteConfig, isLoading, updateWebsiteAsync, isSaving } = useWebsiteSettings();
   const [pricingRuleServices, setPricingRuleServices] = useState<Array<{
     service_type: string;
@@ -97,18 +212,47 @@ export default function Website() {
   const [headline, setHeadline] = useState("");
   const [subheadline, setSubheadline] = useState("");
   const [ctaText, setCtaText] = useState("");
+  const [heroImageUrl, setHeroImageUrl] = useState("");
+  const [heroImagePreviewUrl, setHeroImagePreviewUrl] = useState("");
+  const [selectedHeroImageFile, setSelectedHeroImageFile] = useState<File | null>(null);
+  const [isUploadingHeroImage, setIsUploadingHeroImage] = useState(false);
+  const [servicesHeader, setServicesHeader] = useState("");
+  const [servicesSubheading, setServicesSubheading] = useState("");
+  const [testimonialsHeader, setTestimonialsHeader] = useState("");
+  const [testimonialsSubheading, setTestimonialsSubheading] = useState("");
+  const [aboutHeading, setAboutHeading] = useState("");
+  const [aboutSubheading, setAboutSubheading] = useState("");
   const [aboutText, setAboutText] = useState("");
+  const [aboutBeforeImageUrl, setAboutBeforeImageUrl] = useState("");
+  const [aboutAfterImageUrl, setAboutAfterImageUrl] = useState("");
+  const [aboutBeforeImagePreviewUrl, setAboutBeforeImagePreviewUrl] = useState("");
+  const [aboutAfterImagePreviewUrl, setAboutAfterImagePreviewUrl] = useState("");
+  const [selectedAboutBeforeImageFile, setSelectedAboutBeforeImageFile] = useState<File | null>(null);
+  const [selectedAboutAfterImageFile, setSelectedAboutAfterImageFile] = useState<File | null>(null);
+  const [testimonials, setTestimonials] = useState<WebsiteTestimonial[]>(normalizeTestimonials());
+  const [testimonialPhotoUrls, setTestimonialPhotoUrls] = useState<Record<string, string>>({});
+  const [testimonialPhotoPreviews, setTestimonialPhotoPreviews] = useState<Record<string, string>>({});
+  const [selectedTestimonialPhotoFiles, setSelectedTestimonialPhotoFiles] = useState<Record<string, File | null>>({});
   const [font, setFont] = useState<string>("");
   const [bodyFont, setBodyFont] = useState<string>("");
   const [calculatorEnabled, setCalculatorEnabled] = useState(false);
   // keyed by service type name → description / icon
   const [serviceDescriptions, setServiceDescriptions] = useState<Record<string, string>>({});
   const [serviceIcons, setServiceIcons] = useState<Record<string, string>>({});
+  const [serviceImageUrls, setServiceImageUrls] = useState<Record<string, string>>({});
+  const [serviceImagePreviews, setServiceImagePreviews] = useState<Record<string, string>>({});
+  const [selectedServiceImageFiles, setSelectedServiceImageFiles] = useState<Record<string, File | null>>({});
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [portalColor, setPortalColor] = useState("");
+  const [portalTextColor, setPortalTextColor] = useState("");
+  const [portalHighlightColor, setPortalHighlightColor] = useState("");
+  const [customDomain, setCustomDomain] = useState("");
+  const [activeTab, setActiveTab] = useState("edit");
 
-  const themeColor = normalizeClientPortalColor(currentAccount?.settings?.client_portal_color);
-  const themeTextColor = normalizeClientPortalTextColor(currentAccount?.settings?.client_portal_text_color);
+  const normalizedPortalColor = normalizeClientPortalColor(portalColor);
+  const normalizedPortalTextColor = normalizeClientPortalTextColor(portalTextColor);
+  const normalizedPortalHighlightColor = normalizeClientPortalHighlightColor(portalHighlightColor);
 
   useEffect(() => {
     if (!isLoading && websiteConfig) {
@@ -120,49 +264,150 @@ export default function Website() {
       setHeadline(websiteConfig.hero?.headline || "");
       setSubheadline(websiteConfig.hero?.subheadline || "");
       setCtaText(websiteConfig.hero?.cta_text || "");
+      const initialHeroImage = websiteConfig.hero?.header_image_url || "";
+      setHeroImageUrl(initialHeroImage);
+      setHeroImagePreviewUrl(initialHeroImage);
+      setSelectedHeroImageFile(null);
+      setServicesHeader(websiteConfig.services_section?.header || "");
+      setServicesSubheading(websiteConfig.services_section?.subheading || "");
+      setTestimonialsHeader(websiteConfig.testimonials_section?.header || "");
+      setTestimonialsSubheading(websiteConfig.testimonials_section?.subheading || "");
+      setAboutHeading(websiteConfig.about?.heading || "");
+      setAboutSubheading(websiteConfig.about?.subheading || "");
       setAboutText(websiteConfig.about?.text || "");
+      const initialAboutBeforeImage = websiteConfig.about?.before_image_url || "";
+      const initialAboutAfterImage = websiteConfig.about?.after_image_url || "";
+      setAboutBeforeImageUrl(initialAboutBeforeImage);
+      setAboutAfterImageUrl(initialAboutAfterImage);
+      setAboutBeforeImagePreviewUrl(initialAboutBeforeImage);
+      setAboutAfterImagePreviewUrl(initialAboutAfterImage);
+      setSelectedAboutBeforeImageFile(null);
+      setSelectedAboutAfterImageFile(null);
+      const initialTestimonials = normalizeTestimonials(websiteConfig.testimonials);
+      setTestimonials(initialTestimonials);
+      const savedTestimonialPhotos: Record<string, string> = {};
+      for (const testimonial of initialTestimonials) {
+        if (testimonial.photo_url) {
+          savedTestimonialPhotos[testimonial.id] = testimonial.photo_url;
+        }
+      }
+      setTestimonialPhotoUrls(savedTestimonialPhotos);
+      setTestimonialPhotoPreviews(savedTestimonialPhotos);
+      setSelectedTestimonialPhotoFiles({});
+      setCustomDomain(websiteConfig.custom_domain || "");
 
       // Restore saved descriptions and icons by matching stored service names
       const savedDesc: Record<string, string> = {};
       const savedIcons: Record<string, string> = {};
+      const savedImages: Record<string, string> = {};
       for (const s of websiteConfig.services ?? []) {
         savedDesc[s.name] = s.description;
         if (s.icon) savedIcons[s.name] = s.icon;
+        if (s.image_url) savedImages[s.name] = s.image_url;
       }
       setServiceDescriptions(savedDesc);
       setServiceIcons(savedIcons);
+      setServiceImageUrls(savedImages);
+      setServiceImagePreviews(savedImages);
+      setSelectedServiceImageFiles({});
       setIsDirty(false);
     }
   }, [isLoading, websiteConfig]);
 
   useEffect(() => {
+    setPortalColor(normalizeClientPortalColor(currentAccount?.settings?.client_portal_color));
+    setPortalTextColor(normalizeClientPortalTextColor(currentAccount?.settings?.client_portal_text_color));
+    setPortalHighlightColor(normalizeClientPortalHighlightColor(currentAccount?.settings?.client_portal_highlight_color));
+  }, [
+    currentAccount?.settings?.client_portal_color,
+    currentAccount?.settings?.client_portal_text_color,
+    currentAccount?.settings?.client_portal_highlight_color,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (heroImagePreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(heroImagePreviewUrl);
+      }
+    };
+  }, [heroImagePreviewUrl]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(serviceImagePreviews).forEach((previewUrl) => {
+        if (previewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      });
+    };
+  }, [serviceImagePreviews]);
+
+  useEffect(() => {
+    return () => {
+      if (aboutBeforeImagePreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(aboutBeforeImagePreviewUrl);
+      }
+      if (aboutAfterImagePreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(aboutAfterImagePreviewUrl);
+      }
+    };
+  }, [aboutBeforeImagePreviewUrl, aboutAfterImagePreviewUrl]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(testimonialPhotoPreviews).forEach((previewUrl) => {
+        if (previewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      });
+    };
+  }, [testimonialPhotoPreviews]);
+
+  useEffect(() => {
     if (!currentAccount?.id) return;
     supabase
       .from("pricing_rules")
-      .select("service_type, base_labor_rate, material_rate, waste_factor, overhead_multiplier, profit_margin, unit_type")
+      .select("service_type, base_labor_rate, material_rate, waste_factor, overhead_multiplier, profit_margin, unit_type, updated_at")
       .eq("account_id", currentAccount.id)
+      .order("updated_at", { ascending: false })
       .then(({ data }) => {
         if (!data) {
           setPricingRuleServices([]);
           return;
         }
 
-        const next = data.map((rule) => {
+        const byServiceType = new Map<string, {
+          service_type: string;
+          display_name: string;
+          unit_type: string;
+          price_per_unit: number;
+        }>();
+
+        for (const rule of data) {
           const serviceType = String(rule.service_type || "").trim();
+          const serviceTypeKey = serviceType.toLowerCase();
+          if (!serviceType || byServiceType.has(serviceTypeKey)) continue;
+
+          const baseLaborRate = Number(rule.base_labor_rate ?? 0);
+          const materialRate = Number(rule.material_rate ?? 0);
+          const wasteFactor = Number(rule.waste_factor ?? 0);
+          const overheadMultiplier = Number(rule.overhead_multiplier ?? 1);
+          const profitMargin = Number(rule.profit_margin ?? 0);
           const computedRate =
-            (Number(rule.base_labor_rate) + Number(rule.material_rate)) *
-            (1 + Number(rule.waste_factor) / 100) *
-            Number(rule.overhead_multiplier) *
-            (1 + Number(rule.profit_margin) / 100);
-          return {
+            (baseLaborRate + materialRate) *
+            (1 + wasteFactor / 100) *
+            overheadMultiplier *
+            (1 + profitMargin / 100);
+
+          byServiceType.set(serviceTypeKey, {
             service_type: serviceType,
             display_name: formatServiceTypeOption(serviceType),
             unit_type: String(rule.unit_type || "sq_ft"),
-            price_per_unit: Number(computedRate.toFixed(2)),
-          };
-        }).filter((service) => service.service_type.length > 0);
+            price_per_unit: Number.isFinite(computedRate) ? Number(computedRate.toFixed(2)) : 0,
+          });
+        }
 
-        setPricingRuleServices(next);
+        setPricingRuleServices(Array.from(byServiceType.values()));
       });
   }, [currentAccount?.id]);
 
@@ -178,9 +423,25 @@ export default function Website() {
     document.head.appendChild(link);
   }, []);
 
+  const customDomainNormalized = normalizeDomainInput(customDomain);
   const siteUrl = currentAccount
-    ? `${window.location.origin}/site/${currentAccount.id}`
+    ? buildWebsitePublicUrl(currentAccount.id, { customDomain: customDomainNormalized || null })
     : "";
+  const hasCustomDomain = customDomainNormalized.length > 0;
+  const customDomainValid = !hasCustomDomain || DOMAIN_PATTERN.test(customDomainNormalized);
+  const dnsTargetHost = (() => {
+    const configuredSiteUrl = import.meta.env.VITE_SITE_URL?.trim();
+    if (configuredSiteUrl) {
+      try {
+        return new URL(configuredSiteUrl).hostname;
+      } catch {
+        return window.location.hostname;
+      }
+    }
+    return window.location.hostname;
+  })();
+  const apexDomain = customDomainNormalized.replace(/^www\./, "");
+  const wwwHost = apexDomain ? `www.${apexDomain}` : "www.yourdomain.com";
 
   const handleCopyLink = async () => {
     try {
@@ -200,34 +461,447 @@ export default function Website() {
       name: service.display_name,
       description: serviceDescriptions[service.display_name] || "",
       icon: serviceIcons[service.display_name] || "CheckCircle2",
+      image_url: serviceImagePreviews[service.display_name] || serviceImageUrls[service.display_name] || null,
       price_per_unit: service.price_per_unit,
       unit_type: service.unit_type,
     }));
 
+  const handleServiceImageUpload = (serviceName: string, file?: File | null) => {
+    if (!file) return;
+
+    const validationError = getWebsiteHeroImageValidationError(file);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const previousPreview = serviceImagePreviews[serviceName];
+    if (previousPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(previousPreview);
+    }
+
+    setSelectedServiceImageFiles((prev) => ({ ...prev, [serviceName]: file }));
+    setServiceImagePreviews((prev) => ({ ...prev, [serviceName]: objectUrl }));
+    setIsDirty(true);
+  };
+
+  const handleHeroImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validationError = getWebsiteHeroImageValidationError(file);
+    if (validationError) {
+      toast.error(validationError);
+      e.target.value = "";
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    if (heroImagePreviewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(heroImagePreviewUrl);
+    }
+
+    setSelectedHeroImageFile(file);
+    setHeroImagePreviewUrl(objectUrl);
+    setIsDirty(true);
+    toast.success("Hero image ready to save");
+    e.target.value = "";
+  };
+
+  const handleAboutImageUpload = (variant: "before" | "after", file?: File | null) => {
+    if (!file) return;
+
+    const validationError = getWebsiteHeroImageValidationError(file);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const currentPreview =
+      variant === "before" ? aboutBeforeImagePreviewUrl : aboutAfterImagePreviewUrl;
+    if (currentPreview.startsWith("blob:")) {
+      URL.revokeObjectURL(currentPreview);
+    }
+
+    if (variant === "before") {
+      setSelectedAboutBeforeImageFile(file);
+      setAboutBeforeImagePreviewUrl(objectUrl);
+    } else {
+      setSelectedAboutAfterImageFile(file);
+      setAboutAfterImagePreviewUrl(objectUrl);
+    }
+
+    setIsDirty(true);
+    toast.success(`${variant === "before" ? "Before" : "After"} image ready to save`);
+  };
+
+  const updateTestimonialField = (
+    testimonialId: string,
+    field: "heading" | "quote" | "author" | "location",
+    value: string,
+  ) => {
+    setTestimonials((prev) =>
+      prev.map((testimonial) =>
+        testimonial.id === testimonialId ? { ...testimonial, [field]: value } : testimonial,
+      ),
+    );
+    markDirty();
+  };
+
+  const handleTestimonialPhotoUpload = (testimonialId: string, file?: File | null) => {
+    if (!file) return;
+
+    const validationError = getWebsiteHeroImageValidationError(file);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const previousPreview = testimonialPhotoPreviews[testimonialId];
+    if (previousPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(previousPreview);
+    }
+
+    setSelectedTestimonialPhotoFiles((prev) => ({ ...prev, [testimonialId]: file }));
+    setTestimonialPhotoPreviews((prev) => ({ ...prev, [testimonialId]: objectUrl }));
+    setTestimonials((prev) =>
+      prev.map((testimonial) =>
+        testimonial.id === testimonialId ? { ...testimonial, photo_url: objectUrl } : testimonial,
+      ),
+    );
+    setIsDirty(true);
+    toast.success("Customer photo ready to save");
+  };
+
   const handleSave = async () => {
-    await updateWebsiteAsync({
-      published,
-      font: font || undefined,
-      body_font: bodyFont || undefined,
-      calculator_enabled: calculatorEnabled,
-      hero: { headline, subheadline, cta_text: ctaText },
-      about: { text: aboutText },
-      services: builtServices,
-    });
-    setIsDirty(false);
+    if (!currentAccount?.id) return;
+    if (!customDomainValid) {
+      toast.error("Enter a valid custom domain");
+      return;
+    }
+
+    try {
+      const {
+        data: { session: existingSession },
+        error: getSessionError,
+      } = await supabase.auth.getSession();
+      if (getSessionError) throw getSessionError;
+
+      if (!existingSession?.access_token) {
+        const {
+          data: refreshData,
+          error: refreshSessionError,
+        } = await supabase.auth.refreshSession();
+        if (refreshSessionError || !refreshData.session?.access_token) {
+          throw refreshSessionError ?? new Error("Session expired. Please sign in again.");
+        }
+      }
+      const {
+        data: { session: activeSession },
+        error: activeSessionError,
+      } = await supabase.auth.getSession();
+      if (activeSessionError || !activeSession?.access_token) {
+        throw activeSessionError ?? new Error("Session expired. Please sign in again.");
+      }
+
+      let uploadedHeroImageUrl = heroImageUrl || null;
+      let uploadedAboutBeforeImageUrl = aboutBeforeImageUrl || null;
+      let uploadedAboutAfterImageUrl = aboutAfterImageUrl || null;
+      const uploadedTestimonialPhotoUrls = { ...testimonialPhotoUrls };
+
+      if (selectedHeroImageFile && currentAccount?.id) {
+        setIsUploadingHeroImage(true);
+        const fileExt = selectedHeroImageFile.name.split(".").pop() || "jpg";
+        const filePath = getWebsiteHeroImageStoragePath(currentAccount.id, Date.now(), fileExt);
+
+        uploadedHeroImageUrl = await uploadProfileStorageObject(
+          filePath,
+          selectedHeroImageFile,
+          activeSession.access_token,
+        );
+      }
+
+      if (selectedAboutBeforeImageFile && currentAccount?.id) {
+        const fileExt = selectedAboutBeforeImageFile.name.split(".").pop() || "jpg";
+        const filePath = getWebsiteAboutImageStoragePath(currentAccount.id, "before", Date.now(), fileExt);
+        uploadedAboutBeforeImageUrl = await uploadProfileStorageObject(
+          filePath,
+          selectedAboutBeforeImageFile,
+          activeSession.access_token,
+        );
+      }
+
+      if (selectedAboutAfterImageFile && currentAccount?.id) {
+        const fileExt = selectedAboutAfterImageFile.name.split(".").pop() || "jpg";
+        const filePath = getWebsiteAboutImageStoragePath(currentAccount.id, "after", Date.now(), fileExt);
+        uploadedAboutAfterImageUrl = await uploadProfileStorageObject(
+          filePath,
+          selectedAboutAfterImageFile,
+          activeSession.access_token,
+        );
+      }
+
+      const uploadedServiceImageUrls = { ...serviceImageUrls };
+      if (currentAccount?.id) {
+        for (const [serviceName, serviceImageFile] of Object.entries(selectedServiceImageFiles)) {
+          if (!serviceImageFile) continue;
+
+          const fileExt = serviceImageFile.name.split(".").pop() || "jpg";
+          const filePath = getWebsiteServiceImageStoragePath(
+            currentAccount.id,
+            serviceName,
+            Date.now(),
+            fileExt,
+          );
+
+          uploadedServiceImageUrls[serviceName] = await uploadProfileStorageObject(
+            filePath,
+            serviceImageFile,
+            activeSession.access_token,
+          );
+        }
+      }
+
+      if (currentAccount?.id) {
+        for (const [testimonialId, testimonialImageFile] of Object.entries(selectedTestimonialPhotoFiles)) {
+          if (!testimonialImageFile) continue;
+
+          const fileExt = testimonialImageFile.name.split(".").pop() || "jpg";
+          const filePath = getWebsiteTestimonialImageStoragePath(
+            currentAccount.id,
+            testimonialId,
+            Date.now(),
+            fileExt,
+          );
+
+          uploadedTestimonialPhotoUrls[testimonialId] = await uploadProfileStorageObject(
+            filePath,
+            testimonialImageFile,
+            activeSession.access_token,
+          );
+        }
+      }
+
+      const servicesForSave = pricingRuleServices
+        .filter((service) => service.display_name !== "Other")
+        .map((service) => ({
+          id: service.service_type,
+          name: service.display_name,
+          description: serviceDescriptions[service.display_name] || "",
+          icon: serviceIcons[service.display_name] || "CheckCircle2",
+          image_url: uploadedServiceImageUrls[service.display_name] || null,
+          price_per_unit: service.price_per_unit,
+          unit_type: service.unit_type,
+        }));
+
+      const testimonialsForSave = testimonials.map((testimonial) => ({
+        ...testimonial,
+        photo_url: uploadedTestimonialPhotoUrls[testimonial.id] || null,
+      }));
+
+      await updateWebsiteAsync({
+        published,
+        custom_domain: customDomainNormalized || undefined,
+        font: font || undefined,
+        body_font: bodyFont || undefined,
+        calculator_enabled: calculatorEnabled,
+        hero: {
+          headline,
+          subheadline,
+          cta_text: ctaText,
+          header_image_url: uploadedHeroImageUrl,
+        },
+        services_section: {
+          header: servicesHeader,
+          subheading: servicesSubheading,
+        },
+        testimonials_section: {
+          header: testimonialsHeader,
+          subheading: testimonialsSubheading,
+        },
+        about: {
+          heading: aboutHeading,
+          subheading: aboutSubheading,
+          text: aboutText,
+          before_image_url: uploadedAboutBeforeImageUrl,
+          after_image_url: uploadedAboutAfterImageUrl,
+        },
+        services: servicesForSave,
+        testimonials: testimonialsForSave,
+      });
+
+      const { data: accountData, error: loadAccountError } = await supabase
+        .from("accounts")
+        .select("settings")
+        .eq("id", currentAccount.id)
+        .single();
+
+      if (loadAccountError) throw loadAccountError;
+
+      const existingSettings = (accountData?.settings as Record<string, unknown>) ?? {};
+      const { error: updateAccountError } = await supabase
+        .from("accounts")
+        .update({
+          settings: {
+            ...existingSettings,
+            client_portal_color: normalizeClientPortalColor(portalColor),
+            client_portal_text_color: normalizeClientPortalTextColor(portalTextColor),
+            client_portal_highlight_color: normalizeClientPortalHighlightColor(portalHighlightColor),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", currentAccount.id);
+
+      if (updateAccountError) throw updateAccountError;
+
+      setPortalColor(normalizeClientPortalColor(portalColor));
+      setPortalTextColor(normalizeClientPortalTextColor(portalTextColor));
+      setPortalHighlightColor(normalizeClientPortalHighlightColor(portalHighlightColor));
+      setHeroImageUrl(uploadedHeroImageUrl || "");
+      setHeroImagePreviewUrl(uploadedHeroImageUrl || "");
+      setSelectedHeroImageFile(null);
+      setAboutBeforeImageUrl(uploadedAboutBeforeImageUrl || "");
+      setAboutAfterImageUrl(uploadedAboutAfterImageUrl || "");
+      setAboutBeforeImagePreviewUrl(uploadedAboutBeforeImageUrl || "");
+      setAboutAfterImagePreviewUrl(uploadedAboutAfterImageUrl || "");
+      setSelectedAboutBeforeImageFile(null);
+      setSelectedAboutAfterImageFile(null);
+      setServiceImageUrls(uploadedServiceImageUrls);
+      setServiceImagePreviews(uploadedServiceImageUrls);
+      setSelectedServiceImageFiles({});
+      setTestimonials(testimonialsForSave);
+      setTestimonialPhotoUrls(uploadedTestimonialPhotoUrls);
+      setTestimonialPhotoPreviews(uploadedTestimonialPhotoUrls);
+      setSelectedTestimonialPhotoFiles({});
+      setIsDirty(false);
+      await refreshProfile();
+    } catch (error) {
+      const {
+        data: { user: activeUser },
+      } = await supabase.auth.getUser();
+      console.error("Error saving website settings:", {
+        error,
+        activeUserId: activeUser?.id ?? null,
+        currentAccountId: currentAccount?.id ?? null,
+      });
+      toast.error("Failed to save website settings");
+    } finally {
+      setIsUploadingHeroImage(false);
+    }
   };
 
   const markDirty = () => setIsDirty(true);
 
   const liveConfig = {
     published,
+    custom_domain: customDomainNormalized || undefined,
     font: font || undefined,
     body_font: bodyFont || undefined,
     calculator_enabled: calculatorEnabled,
-    hero: { headline, subheadline, cta_text: ctaText },
-    about: { text: aboutText },
+    hero: {
+      headline,
+      subheadline,
+      cta_text: ctaText,
+      header_image_url: heroImagePreviewUrl || heroImageUrl || null,
+    },
+    services_section: {
+      header: servicesHeader,
+      subheading: servicesSubheading,
+    },
+    testimonials_section: {
+      header: testimonialsHeader,
+      subheading: testimonialsSubheading,
+    },
+    about: {
+      heading: aboutHeading,
+      subheading: aboutSubheading,
+      text: aboutText,
+      before_image_url: aboutBeforeImagePreviewUrl || aboutBeforeImageUrl || null,
+      after_image_url: aboutAfterImagePreviewUrl || aboutAfterImageUrl || null,
+    },
     services: builtServices,
+    testimonials: testimonials.map((testimonial) => ({
+      ...testimonial,
+      photo_url:
+        testimonialPhotoPreviews[testimonial.id] ||
+        testimonialPhotoUrls[testimonial.id] ||
+        null,
+    })),
   };
+
+  const { data: trafficAnalytics, isLoading: trafficLoading } = useQuery({
+    queryKey: ["website-traffic-analytics", currentAccount?.id],
+    queryFn: async () => {
+      if (!currentAccount?.id) {
+        return {
+          totalLeads: 0,
+          leadsLast30Days: 0,
+          approvedLeads: 0,
+          conversionRate: 0,
+          weeklyCounts: [] as Array<{ label: string; count: number }>,
+        };
+      }
+
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const sixWeeksAgo = new Date();
+      sixWeeksAgo.setDate(sixWeeksAgo.getDate() - 41);
+
+      const { data, error } = await supabase
+        .from("leads")
+        .select("created_at, approval_status")
+        .eq("account_id", currentAccount.id)
+        .eq("source", "website")
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      const rows = data ?? [];
+      const totalLeads = rows.length;
+      const approvedLeads = rows.filter((row: any) => row.approval_status === "approved").length;
+      const leadsLast30Days = rows.filter((row: any) => new Date(row.created_at) >= thirtyDaysAgo).length;
+      const conversionRate = totalLeads > 0 ? Math.round((approvedLeads / totalLeads) * 100) : 0;
+
+      const weekBuckets: Array<{ start: Date; end: Date; label: string; count: number }> = [];
+      const start = new Date(sixWeeksAgo);
+      start.setHours(0, 0, 0, 0);
+      for (let i = 0; i < 6; i++) {
+        const bucketStart = new Date(start);
+        bucketStart.setDate(start.getDate() + i * 7);
+        const bucketEnd = new Date(bucketStart);
+        bucketEnd.setDate(bucketStart.getDate() + 7);
+        weekBuckets.push({
+          start: bucketStart,
+          end: bucketEnd,
+          label: `${bucketStart.getMonth() + 1}/${bucketStart.getDate()}`,
+          count: 0,
+        });
+      }
+
+      rows.forEach((row: any) => {
+        const createdAt = new Date(row.created_at);
+        for (const bucket of weekBuckets) {
+          if (createdAt >= bucket.start && createdAt < bucket.end) {
+            bucket.count += 1;
+            break;
+          }
+        }
+      });
+
+      return {
+        totalLeads,
+        leadsLast30Days,
+        approvedLeads,
+        conversionRate,
+        weeklyCounts: weekBuckets.map(({ label, count }) => ({ label, count })),
+      };
+    },
+    enabled: !!currentAccount?.id,
+  });
 
   if (isLoading) {
     return (
@@ -287,10 +961,6 @@ export default function Website() {
                     </Button>
                   </>
                 )}
-                <Button onClick={handleSave} disabled={isSaving || !isDirty} size="sm" className="gap-2">
-                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                  {isSaving ? "Saving…" : "Save"}
-                </Button>
               </div>
             </div>
 
@@ -303,8 +973,12 @@ export default function Website() {
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="edit">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full">
+            <TabsTrigger value="traffic" className="flex-1 gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Traffic
+            </TabsTrigger>
             <TabsTrigger value="edit" className="flex-1 gap-2">
               <Pencil className="h-4 w-4" />
               Edit
@@ -315,9 +989,145 @@ export default function Website() {
             </TabsTrigger>
           </TabsList>
 
+          <TabsContent value="traffic" className="mt-4 space-y-4">
+            {trafficLoading ? (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading site analytics...
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Card>
+                    <CardContent className="pt-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">Website Leads</p>
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold">{trafficAnalytics?.totalLeads ?? 0}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">Last 30 Days</p>
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold">{trafficAnalytics?.leadsLast30Days ?? 0}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">Approved Leads</p>
+                        <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold">{trafficAnalytics?.approvedLeads ?? 0}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">Conversion Rate</p>
+                        <Globe className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold">{trafficAnalytics?.conversionRate ?? 0}%</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Lead Trend (Last 6 Weeks)</CardTitle>
+                    <CardDescription>Website submissions grouped by week.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {trafficAnalytics?.weeklyCounts?.length ? (
+                      <div className="space-y-3">
+                        {trafficAnalytics.weeklyCounts.map((point) => {
+                          const maxCount = Math.max(
+                            1,
+                            ...trafficAnalytics.weeklyCounts.map((week) => week.count),
+                          );
+                          const widthPct = Math.max(6, Math.round((point.count / maxCount) * 100));
+                          return (
+                            <div key={point.label} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{point.label}</span>
+                                <span>{point.count}</span>
+                              </div>
+                              <div className="h-2 rounded-full bg-muted">
+                                <div
+                                  className="h-2 rounded-full bg-primary"
+                                  style={{ width: `${widthPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No website traffic data yet.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
           {/* ── EDIT TAB ── */}
           <TabsContent value="edit" className="mt-4 space-y-4">
             {/* Typography */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Custom Domain & DNS</CardTitle>
+                <CardDescription>Connect your domain and point DNS records to your hosted website.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="custom-domain">Custom Domain</Label>
+                  <Input
+                    id="custom-domain"
+                    value={customDomain}
+                    onChange={(e) => { setCustomDomain(e.target.value); markDirty(); }}
+                    onBlur={() => setCustomDomain(normalizeDomainInput(customDomain))}
+                    placeholder="www.yourcompany.com"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter only the domain (for example: `www.yourcompany.com`).
+                  </p>
+                  {!customDomainValid && (
+                    <p className="text-xs text-red-600">
+                      Use a valid domain like `www.yourcompany.com`.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+                  <p className="text-sm font-medium">DNS records to add</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border border-border bg-background p-3 text-sm">
+                      <p><span className="font-medium">Type:</span> CNAME</p>
+                      <p><span className="font-medium">Host:</span> www</p>
+                      <p><span className="font-medium">Value:</span> {dnsTargetHost}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background p-3 text-sm">
+                      <p><span className="font-medium">Type:</span> URL Redirect</p>
+                      <p><span className="font-medium">Host:</span> @</p>
+                      <p><span className="font-medium">Value:</span> https://{wwwHost}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    After saving, add these records at your DNS provider. DNS changes can take up to 24-48 hours.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Typography</CardTitle>
@@ -412,6 +1222,46 @@ export default function Website() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
+                  <Label htmlFor="hero-image-upload">Header Image</Label>
+                  <input
+                    id="hero-image-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleHeroImageUpload}
+                    className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional image for hero background. Recommended wide image. Max 5MB.
+                  </p>
+                  {heroImagePreviewUrl && (
+                    <div className="space-y-2">
+                      <img
+                        src={heroImagePreviewUrl}
+                        alt="Hero preview"
+                        className="h-28 w-full rounded-lg border border-border object-cover"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (heroImagePreviewUrl.startsWith("blob:")) {
+                            URL.revokeObjectURL(heroImagePreviewUrl);
+                          }
+                          setHeroImageUrl("");
+                          setHeroImagePreviewUrl("");
+                          setSelectedHeroImageFile(null);
+                          markDirty();
+                        }}
+                        className="gap-1.5"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Remove Header Image
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="headline">Headline</Label>
                   <Input
                     id="headline"
@@ -438,6 +1288,99 @@ export default function Website() {
                     placeholder="Get a Free Quote"
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Company theme */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Company Theme</CardTitle>
+                <CardDescription>Adjust your client portal header and button colors from here.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="website-client-portal-color-picker">Brand Color</Label>
+                    <Input
+                      id="website-client-portal-color-picker"
+                      type="color"
+                      value={normalizedPortalColor}
+                      onChange={(e) => {
+                        setPortalColor(normalizeClientPortalColor(e.target.value));
+                        markDirty();
+                      }}
+                      className="h-11 w-16 cursor-pointer rounded-md p-1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="website-client-portal-color-hex">Brand Color Hex</Label>
+                    <Input
+                      id="website-client-portal-color-hex"
+                      value={portalColor}
+                      onChange={(e) => {
+                        setPortalColor(e.target.value);
+                        markDirty();
+                      }}
+                      onBlur={() => setPortalColor(normalizeClientPortalColor(portalColor))}
+                      placeholder="#334155"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="website-client-portal-text-color-picker">Brand Text Color</Label>
+                    <Input
+                      id="website-client-portal-text-color-picker"
+                      type="color"
+                      value={normalizedPortalTextColor}
+                      onChange={(e) => {
+                        setPortalTextColor(normalizeClientPortalTextColor(e.target.value));
+                        markDirty();
+                      }}
+                      className="h-11 w-16 cursor-pointer rounded-md p-1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="website-client-portal-text-color-hex">Brand Text Color Hex</Label>
+                    <Input
+                      id="website-client-portal-text-color-hex"
+                      value={portalTextColor}
+                      onChange={(e) => {
+                        setPortalTextColor(e.target.value);
+                        markDirty();
+                      }}
+                      onBlur={() => setPortalTextColor(normalizeClientPortalTextColor(portalTextColor))}
+                      placeholder="#ffffff"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="website-client-portal-highlight-color-picker">Highlight Color</Label>
+                    <Input
+                      id="website-client-portal-highlight-color-picker"
+                      type="color"
+                      value={normalizedPortalHighlightColor}
+                      onChange={(e) => {
+                        setPortalHighlightColor(normalizeClientPortalHighlightColor(e.target.value));
+                        markDirty();
+                      }}
+                      className="h-11 w-16 cursor-pointer rounded-md p-1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="website-client-portal-highlight-color-hex">Highlight Color Hex</Label>
+                    <Input
+                      id="website-client-portal-highlight-color-hex"
+                      value={portalHighlightColor}
+                      onChange={(e) => {
+                        setPortalHighlightColor(e.target.value);
+                        markDirty();
+                      }}
+                      onBlur={() => setPortalHighlightColor(normalizeClientPortalHighlightColor(portalHighlightColor))}
+                      placeholder="#f59e0b"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Wrap website copy in <code>**double asterisks**</code> for highlight color and <code>{`{{double braces}}`}</code> for brand color.
+                </p>
               </CardContent>
             </Card>
 
@@ -472,6 +1415,26 @@ export default function Website() {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="services-section-header">Section Header</Label>
+                    <Input
+                      id="services-section-header"
+                      value={servicesHeader}
+                      onChange={(e) => { setServicesHeader(e.target.value); markDirty(); }}
+                      placeholder="What We Offer"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="services-section-subheading">Section Subheading</Label>
+                    <Input
+                      id="services-section-subheading"
+                      value={servicesSubheading}
+                      onChange={(e) => { setServicesSubheading(e.target.value); markDirty(); }}
+                      placeholder="Reliable services tailored to your needs"
+                    />
+                  </div>
+                </div>
                 {displayedServices.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border py-8 text-center">
                     <p className="text-sm text-muted-foreground">
@@ -495,6 +1458,47 @@ export default function Website() {
                         className="rounded-xl border border-border bg-muted/30 p-4 space-y-3"
                       >
                         <p className="text-sm font-semibold">{name}</p>
+                        <div className="space-y-2">
+                          <Label htmlFor={`service-image-${name}`}>Service Image</Label>
+                          <input
+                            id={`service-image-${name}`}
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              handleServiceImageUpload(name, e.target.files?.[0]);
+                              e.target.value = "";
+                            }}
+                            className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
+                          />
+                          {(serviceImagePreviews[name] || serviceImageUrls[name]) && (
+                            <div className="space-y-2">
+                              <img
+                                src={serviceImagePreviews[name] || serviceImageUrls[name]}
+                                alt={`${name} preview`}
+                                className="h-24 w-full rounded-lg border border-border object-cover"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const previewUrl = serviceImagePreviews[name];
+                                  if (previewUrl?.startsWith("blob:")) {
+                                    URL.revokeObjectURL(previewUrl);
+                                  }
+                                  setServiceImageUrls((prev) => ({ ...prev, [name]: "" }));
+                                  setServiceImagePreviews((prev) => ({ ...prev, [name]: "" }));
+                                  setSelectedServiceImageFiles((prev) => ({ ...prev, [name]: null }));
+                                  markDirty();
+                                }}
+                                className="gap-1.5"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                Remove Service Image
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                         {/* Icon picker */}
                         <div className="flex flex-wrap gap-1.5">
                           {ICON_OPTIONS.map(({ name: iconName, icon: IconComp }) => {
@@ -544,13 +1548,238 @@ export default function Website() {
                 <CardTitle className="text-base">About</CardTitle>
                 <CardDescription>Tell visitors about your business</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="about-heading">Heading</Label>
+                  <Input
+                    id="about-heading"
+                    value={aboutHeading}
+                    onChange={(e) => { setAboutHeading(e.target.value); markDirty(); }}
+                    placeholder="About Us"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="about-subheading">Subheading</Label>
+                  <Input
+                    id="about-subheading"
+                    value={aboutSubheading}
+                    onChange={(e) => { setAboutSubheading(e.target.value); markDirty(); }}
+                    placeholder="Learn more about our team and approach"
+                  />
+                </div>
                 <Textarea
                   value={aboutText}
                   onChange={(e) => { setAboutText(e.target.value); markDirty(); }}
                   placeholder={`${currentAccount?.company_name || "We"} are committed to delivering top-quality service. We take pride in our work and treat every job as if it were our own home.`}
                   rows={5}
                 />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="about-before-image">Before Image</Label>
+                    <input
+                      id="about-before-image"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        handleAboutImageUpload("before", e.target.files?.[0]);
+                        e.target.value = "";
+                      }}
+                      className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
+                    />
+                    {(aboutBeforeImagePreviewUrl || aboutBeforeImageUrl) && (
+                      <div className="space-y-2">
+                        <img
+                          src={aboutBeforeImagePreviewUrl || aboutBeforeImageUrl}
+                          alt="Before preview"
+                          className="h-24 w-full rounded-lg border border-border object-cover"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (aboutBeforeImagePreviewUrl.startsWith("blob:")) {
+                              URL.revokeObjectURL(aboutBeforeImagePreviewUrl);
+                            }
+                            setAboutBeforeImageUrl("");
+                            setAboutBeforeImagePreviewUrl("");
+                            setSelectedAboutBeforeImageFile(null);
+                            markDirty();
+                          }}
+                          className="gap-1.5"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Remove Before Image
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="about-after-image">After Image</Label>
+                    <input
+                      id="about-after-image"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        handleAboutImageUpload("after", e.target.files?.[0]);
+                        e.target.value = "";
+                      }}
+                      className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
+                    />
+                    {(aboutAfterImagePreviewUrl || aboutAfterImageUrl) && (
+                      <div className="space-y-2">
+                        <img
+                          src={aboutAfterImagePreviewUrl || aboutAfterImageUrl}
+                          alt="After preview"
+                          className="h-24 w-full rounded-lg border border-border object-cover"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (aboutAfterImagePreviewUrl.startsWith("blob:")) {
+                              URL.revokeObjectURL(aboutAfterImagePreviewUrl);
+                            }
+                            setAboutAfterImageUrl("");
+                            setAboutAfterImagePreviewUrl("");
+                            setSelectedAboutAfterImageFile(null);
+                            markDirty();
+                          }}
+                          className="gap-1.5"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Remove After Image
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Testimonials */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Testimonials</CardTitle>
+                <CardDescription>
+                  Highlight specific customer quotes. Headlines display in quotation marks on the site.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="testimonials-section-header">Section Headline</Label>
+                    <Input
+                      id="testimonials-section-header"
+                      value={testimonialsHeader}
+                      onChange={(e) => { setTestimonialsHeader(e.target.value); markDirty(); }}
+                      placeholder="What Clients Say"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="testimonials-section-subheading">Section Subheadline</Label>
+                    <Input
+                      id="testimonials-section-subheading"
+                      value={testimonialsSubheading}
+                      onChange={(e) => { setTestimonialsSubheading(e.target.value); markDirty(); }}
+                      placeholder="Trusted by homeowners and businesses in the area"
+                    />
+                  </div>
+                </div>
+                {testimonials.map((testimonial, index) => (
+                  <div key={testimonial.id} className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+                    <p className="text-sm font-semibold">Testimonial {index + 1}</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor={`testimonial-heading-${testimonial.id}`}>Headline</Label>
+                        <Input
+                          id={`testimonial-heading-${testimonial.id}`}
+                          value={testimonial.heading}
+                          onChange={(e) => updateTestimonialField(testimonial.id, "heading", e.target.value)}
+                          placeholder="Fast, Flawless Service"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`testimonial-author-${testimonial.id}`}>Customer Name</Label>
+                        <Input
+                          id={`testimonial-author-${testimonial.id}`}
+                          value={testimonial.author}
+                          onChange={(e) => updateTestimonialField(testimonial.id, "author", e.target.value)}
+                          placeholder="Alex T."
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`testimonial-quote-${testimonial.id}`}>Quote Excerpt</Label>
+                      <Textarea
+                        id={`testimonial-quote-${testimonial.id}`}
+                        value={testimonial.quote}
+                        onChange={(e) => updateTestimonialField(testimonial.id, "quote", e.target.value)}
+                        placeholder="They were punctual, professional, and delivered exceptional results."
+                        rows={3}
+                      />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor={`testimonial-location-${testimonial.id}`}>Customer Title/Location</Label>
+                        <Input
+                          id={`testimonial-location-${testimonial.id}`}
+                          value={testimonial.location}
+                          onChange={(e) => updateTestimonialField(testimonial.id, "location", e.target.value)}
+                          placeholder="Homeowner"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`testimonial-photo-${testimonial.id}`}>Customer Photo</Label>
+                        <input
+                          id={`testimonial-photo-${testimonial.id}`}
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            handleTestimonialPhotoUpload(testimonial.id, e.target.files?.[0]);
+                            e.target.value = "";
+                          }}
+                          className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
+                        />
+                        {(testimonialPhotoPreviews[testimonial.id] || testimonialPhotoUrls[testimonial.id]) && (
+                          <div className="space-y-2">
+                            <img
+                              src={testimonialPhotoPreviews[testimonial.id] || testimonialPhotoUrls[testimonial.id]}
+                              alt={`${testimonial.author || `Testimonial ${index + 1}`} photo`}
+                              className="h-24 w-24 rounded-full border border-border object-cover"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const previewUrl = testimonialPhotoPreviews[testimonial.id];
+                                if (previewUrl?.startsWith("blob:")) {
+                                  URL.revokeObjectURL(previewUrl);
+                                }
+                                setTestimonialPhotoUrls((prev) => ({ ...prev, [testimonial.id]: "" }));
+                                setTestimonialPhotoPreviews((prev) => ({ ...prev, [testimonial.id]: "" }));
+                                setSelectedTestimonialPhotoFiles((prev) => ({ ...prev, [testimonial.id]: null }));
+                                setTestimonials((prev) =>
+                                  prev.map((entry) =>
+                                    entry.id === testimonial.id ? { ...entry, photo_url: null } : entry,
+                                  ),
+                                );
+                                markDirty();
+                              }}
+                              className="gap-1.5"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              Remove Customer Photo
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
 
@@ -654,12 +1883,6 @@ export default function Website() {
               </CardContent>
             </Card>
 
-            <div className="flex justify-end pb-4">
-              <Button onClick={handleSave} disabled={isSaving || !isDirty} className="gap-2">
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                {isSaving ? "Saving…" : "Save Changes"}
-              </Button>
-            </div>
           </TabsContent>
 
           {/* ── PREVIEW TAB ── */}
@@ -678,19 +1901,30 @@ export default function Website() {
               <div className="max-h-[70vh] overflow-y-auto">
                 <LandingPageView
                   config={liveConfig}
-                  themeColor={themeColor}
-                  themeTextColor={themeTextColor}
+                  themeColor={normalizedPortalColor}
+                  themeTextColor={normalizedPortalTextColor}
+                  themeHighlightColor={normalizedPortalHighlightColor}
                   companyName={currentAccount?.company_name || "Your Company"}
                   companyPhone={currentAccount?.company_phone}
                   companyEmail={currentAccount?.company_email}
                   companyAddress={currentAccount?.company_address}
                   logoUrl={currentAccount?.logo_url}
+                  accountId={currentAccount?.id}
                 />
               </div>
             </div>
           </TabsContent>
         </Tabs>
       </div>
+
+      <StickyActionBar
+        onSave={() => {
+          if (!isDirty || isSaving || isUploadingHeroImage) return;
+          void handleSave();
+        }}
+        isSaving={isSaving || isUploadingHeroImage}
+        disabled={!isDirty || activeTab !== "edit" || isUploadingHeroImage}
+      />
 
       <MobileNav />
     </div>

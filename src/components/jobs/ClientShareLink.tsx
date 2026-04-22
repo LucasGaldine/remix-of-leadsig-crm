@@ -3,6 +3,7 @@ import { Check, Copy, Link2, RefreshCw, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 interface ClientShareLinkProps {
@@ -10,12 +11,17 @@ interface ClientShareLinkProps {
 }
 
 export function ClientShareLink({ customerId }: ClientShareLinkProps) {
+  const { currentAccount } = useAuth();
   const [token, setToken] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const shareUrl = token ? buildClientPortalShareUrl(token) : null;
+  const shareUrl = token
+    ? buildClientPortalShareUrl(token, {
+        customDomain: currentAccount?.settings?.website?.custom_domain ?? null,
+      })
+    : null;
 
   useEffect(() => {
     fetchExistingToken();

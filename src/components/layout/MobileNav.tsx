@@ -11,6 +11,7 @@ import {
   Ellipsis,
   ChevronDown,
   Globe,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -43,6 +44,7 @@ const primaryNavItems: NavItem[] = [
 
 const moreMenuItems: NavItem[] = [
   { icon: <Globe className="h-5 w-5" />, label: "Website", path: "/website", requiredRole: "manager" },
+  { icon: <Briefcase className="h-5 w-5" />, label: "Hiring", path: "/hiring", requiredRole: "manager" },
 ];
 
 const moreMenuGroups: NavGroup[] = [

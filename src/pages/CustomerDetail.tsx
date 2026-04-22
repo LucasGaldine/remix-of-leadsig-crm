@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Copy, Check } from "lucide-react";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 
-function PortalLinkButton({ customerId }: { customerId: string }) {
+function PortalLinkButton({ customerId, customDomain }: { customerId: string; customDomain?: string | null }) {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -54,7 +54,7 @@ function PortalLinkButton({ customerId }: { customerId: string }) {
         if (error) throw error;
       }
 
-      const link = buildClientPortalShareUrl(token);
+      const link = buildClientPortalShareUrl(token, { customDomain });
       setPortalLink(link);
       setDialogOpen(true);
     } catch (err) {
@@ -345,7 +345,10 @@ export default function CustomerDetail() {
 
               {/* CTA */}
               <div className="flex flex-col sm:flex-row justify-end gap-2">
-                <PortalLinkButton customerId={customer.id} />
+                    <PortalLinkButton
+                      customerId={customer.id}
+                      customDomain={currentAccount?.settings?.website?.custom_domain ?? null}
+                    />
               </div>
             </div>
           </div>

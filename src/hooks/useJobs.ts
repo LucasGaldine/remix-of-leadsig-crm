@@ -6,6 +6,7 @@ import { useAuth } from "./useAuth";
 import { generateInstances, type RecurringJob } from "./useRecurringJobs";
 import { isJobLifecycleStatus, toDisplayStatus } from "@/lib/jobLifecycle";
 import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallback";
+import { syncAllCalendarJobs } from "./useGoogleCalendar";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
 type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
@@ -270,6 +271,13 @@ export function useCreateJob() {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job-counts"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
+
+      if (!currentAccount?.id) return;
+
+      void syncAllCalendarJobs(currentAccount.id).catch((error) => {
+        const message = error instanceof Error ? error.message : "Unknown calendar sync error";
+        console.warn("syncAllCalendarJobs after job creation failed:", message);
+      });
     },
   });
 }

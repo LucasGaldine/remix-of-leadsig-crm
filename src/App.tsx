@@ -65,6 +65,8 @@ import AffiliateSignup from "./pages/AffiliateSignup";
 import Admin from "./pages/Admin";
 import Website from "./pages/Website";
 import SitePage from "./pages/SitePage";
+import SiteCareersPage from "./pages/SiteCareersPage";
+import Hiring from "./pages/Hiring";
 
 const queryClient = new QueryClient();
 
@@ -182,6 +184,7 @@ const router = createBrowserRouter([
       { path: "/data-deletion", element: <DataDeletion /> },
       { path: "/affiliate", element: <AffiliateSignup /> },
       { path: "/site/:accountId", element: <SitePage /> },
+      { path: "/site/:accountId/careers", element: <SiteCareersPage /> },
       { path: "/onboarding/source", element: <Protected><OnboardingSource /></Protected> },
       { path: "/onboarding/profile", element: <Protected><OnboardingProfile /></Protected> },
       { path: "/onboarding/import", element: <Protected><OnboardingImport /></Protected> },
@@ -227,6 +230,7 @@ const router = createBrowserRouter([
       { path: "/customers/:id", element: <Protected><CustomerDetail /></Protected> },
       { path: "/admin", element: <Protected><Admin /></Protected> },
       { path: "/website", element: <Protected><Website /></Protected> },
+      { path: "/hiring", element: <Protected><Hiring /></Protected> },
       { path: "*", element: <NotFound /> },
     ],
   },

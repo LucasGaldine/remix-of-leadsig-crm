@@ -29,4 +29,14 @@ describe("client portal url helpers", () => {
       "http://localhost:3000/client/job?token=token_123&jobId=job_789",
     );
   });
+
+  it("prefers custom domain when provided", () => {
+    vi.stubEnv("VITE_SITE_URL", "https://app.example.com");
+    expect(
+      buildClientPortalShareUrl("token_123", { customDomain: "www.acme.com" }),
+    ).toBe("https://www.acme.com/client/job?token=token_123");
+    expect(
+      buildClientPortalShareUrl("token_123", { customDomain: "https://portal.acme.com", jobId: "job_789" }),
+    ).toBe("https://portal.acme.com/client/job?token=token_123&jobId=job_789");
+  });
 });

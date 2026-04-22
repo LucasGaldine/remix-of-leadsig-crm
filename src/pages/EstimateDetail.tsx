@@ -955,7 +955,9 @@ export default function EstimateDetail() {
     }
 
     return {
-      link: buildClientPortalShareUrl(token),
+      link: buildClientPortalShareUrl(token, {
+        customDomain: currentAccount?.settings?.website?.custom_domain ?? null,
+      }),
       phone: customer?.phone?.trim() || "",
       email: customer?.email?.trim() || "",
     };

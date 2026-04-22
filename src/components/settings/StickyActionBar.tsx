@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 interface StickyActionBarProps {
   onSave: () => void;
   isSaving?: boolean;
+  disabled?: boolean;
   label?: string;
   savingLabel?: string;
   contentClassName?: string;
@@ -12,6 +13,7 @@ interface StickyActionBarProps {
 export function StickyActionBar({
   onSave,
   isSaving = false,
+  disabled = false,
   label = "Save Changes",
   savingLabel = "Saving...",
   contentClassName: _contentClassName,
@@ -22,7 +24,7 @@ export function StickyActionBar({
         onClick={onSave}
         size="icon"
         className="h-14 w-14 rounded-full shadow-lg"
-        disabled={isSaving}
+        disabled={isSaving || disabled}
         aria-label={isSaving ? savingLabel : label}
       >
         {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
