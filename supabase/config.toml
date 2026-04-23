@@ -33,6 +33,9 @@ verify_jwt = false
 [functions.client-portal-share]
 verify_jwt = false
 
+[functions.website-share]
+verify_jwt = false
+
 [functions.send-client-portal-email]
 verify_jwt = false
 
@@ -46,4 +49,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-sms]
+verify_jwt = false
+
+[functions.send-lead-automation-test-message]
+verify_jwt = false
+
+[functions.lead-automation-inbound-sms]
+verify_jwt = false
+
+[functions.configure-lead-sms-webhook]
 verify_jwt = false

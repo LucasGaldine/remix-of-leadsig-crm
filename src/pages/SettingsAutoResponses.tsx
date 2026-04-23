@@ -67,6 +67,7 @@ export default function SettingsAutoResponses() {
   const [isDirty, setIsDirty] = useState(false);
   const blocker = useUnsavedChanges(isDirty);
 
+  const [leadMessageAutomationEnabled, setLeadMessageAutomationEnabled] = useState(false);
   const [jobMessageAutomationEnabled, setJobMessageAutomationEnabled] = useState(false);
   const [jobMessageTemplateDraft, setJobMessageTemplateDraft] = useState("");
   const [jobMessageTemplateName, setJobMessageTemplateName] = useState("");
@@ -101,11 +102,15 @@ export default function SettingsAutoResponses() {
   const [twilioFromNumber, setTwilioFromNumber] = useState("");
   const [testMessageModalOpen, setTestMessageModalOpen] = useState(false);
   const [testMessagePhoneNumber, setTestMessagePhoneNumber] = useState("");
+  const [leadTestMessageModalOpen, setLeadTestMessageModalOpen] = useState(false);
+  const [leadTestMessagePhoneNumber, setLeadTestMessagePhoneNumber] = useState("");
   const [isSendingTestMessage, setIsSendingTestMessage] = useState(false);
+  const [isSendingLeadTestMessage, setIsSendingLeadTestMessage] = useState(false);
   const [serviceTypePopoverOpen, setServiceTypePopoverOpen] = useState(false);
   const [paymentEmails, setPaymentEmails] = useState<Record<PaymentEmailKey, boolean>>(DEFAULT_PAYMENT_EMAILS);
 
   useEffect(() => {
+    const leadAutomation = settings?.lead_message_automation ?? null;
     const automation = settings?.job_message_automation ?? null;
     const legacyServiceTypes = Array.isArray(automation?.job_service_types)
       ? automation.job_service_types.filter((value): value is string => typeof value === "string")
@@ -190,6 +195,7 @@ export default function SettingsAutoResponses() {
       : [];
     const legacyTemplate = typeof automation?.message_template === "string" ? automation.message_template.trim() : "";
 
+    setLeadMessageAutomationEnabled(isFreePlan ? false : leadAutomation?.enabled === true);
     setJobMessageAutomationEnabled(isFreePlan ? false : automation?.enabled === true);
     setJobMessageTemplates(
       isFreePlan
@@ -287,6 +293,9 @@ export default function SettingsAutoResponses() {
 
     try {
       await updateSettingsAsync({
+        lead_message_automation: {
+          enabled: isFreePlan ? false : leadMessageAutomationEnabled,
+        },
         job_message_automation: {
           enabled: isFreePlan ? false : jobMessageAutomationEnabled,
           message_template: isFreePlan ? "" : (jobMessageTemplates[0]?.content ?? ""),
@@ -324,6 +333,24 @@ export default function SettingsAutoResponses() {
           payment_emails: paymentEmailsToSave,
         },
       });
+      if (
+        !isFreePlan &&
+        leadMessageAutomationEnabled &&
+        trimmedTwilioAccountSid &&
+        trimmedTwilioAuthToken &&
+        trimmedTwilioFromNumber &&
+        currentAccount?.id
+      ) {
+        const { data, error } = await supabase.functions.invoke("configure-lead-sms-webhook", {
+          body: { account_id: currentAccount.id },
+        });
+
+        if (error) {
+          toast.error(`Auto Messaging settings saved, but Twilio inbound webhook setup failed: ${error.message || "Unknown error"}`);
+        } else if (data?.success !== true) {
+          toast.error(`Auto Messaging settings saved, but Twilio inbound webhook setup failed: ${typeof data?.error === "string" ? data.error : "Unknown error"}`);
+        }
+      }
       setIsDirty(false);
       toast.success("Auto Messaging settings saved");
       return true;
@@ -485,7 +512,14 @@ export default function SettingsAutoResponses() {
       }
 
       if (data?.success !== true) {
-        toast.error(typeof data?.error === "string" ? data.error : "Failed to send test message.");
+        const stage = typeof data?.debug?.stage === "string" ? data.debug.stage : "";
+        const detail =
+          typeof data?.debug?.retell_status === "number"
+            ? ` (stage: ${stage || "unknown"}, status: ${data.debug.retell_status})`
+            : stage
+              ? ` (stage: ${stage})`
+              : "";
+        toast.error(`${typeof data?.error === "string" ? data.error : "Failed to send test message."}${detail}`);
         return;
       }
 
@@ -496,6 +530,88 @@ export default function SettingsAutoResponses() {
       toast.error("Could not reach the messaging service. Please try again.");
     } finally {
       setIsSendingTestMessage(false);
+    }
+  };
+
+  const handleSendLeadTestMessage = async () => {
+    if (!currentAccount?.id) {
+      toast.error("You need to be signed in to send a test message.");
+      return;
+    }
+
+    if (isDirty) {
+      toast.error("Save your auto messaging changes before sending a test message.");
+      return;
+    }
+
+    const to = normalizePhone(leadTestMessagePhoneNumber.trim());
+    if (!to || to.length < 12) {
+      toast.error("Enter a valid phone number to send the test message.");
+      return;
+    }
+
+    setIsSendingLeadTestMessage(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-lead-automation-test-message", {
+        body: {
+          account_id: currentAccount.id,
+          to,
+        },
+      });
+
+      if (error) {
+        let detailedMessage = error.message || "Failed to send test message.";
+        const context = (error as { context?: { json?: () => Promise<unknown> } }).context;
+        if (context?.json) {
+          try {
+            const payload = await context.json() as {
+              error?: string;
+              debug?: { stage?: string; retell_status?: number; provider_status?: number };
+            };
+            const stage = typeof payload?.debug?.stage === "string" ? payload.debug.stage : "";
+            const status =
+              typeof payload?.debug?.provider_status === "number"
+                ? payload.debug.provider_status
+                : typeof payload?.debug?.retell_status === "number"
+                  ? payload.debug.retell_status
+                  : null;
+            const base = typeof payload?.error === "string" && payload.error ? payload.error : detailedMessage;
+            const detail =
+              stage && status !== null ? ` (stage: ${stage}, status: ${status})`
+                : stage ? ` (stage: ${stage})`
+                : "";
+            detailedMessage = `${base}${detail}`;
+          } catch {
+            // Keep the original message when the edge error body is unavailable.
+          }
+        }
+        toast.error(detailedMessage);
+        return;
+      }
+
+      if (data?.success !== true) {
+        const stage = typeof data?.debug?.stage === "string" ? data.debug.stage : "";
+        const status =
+          typeof data?.debug?.provider_status === "number"
+            ? data.debug.provider_status
+            : typeof data?.debug?.retell_status === "number"
+              ? data.debug.retell_status
+              : null;
+        const detail =
+          stage && status !== null ? ` (stage: ${stage}, status: ${status})`
+            : stage ? ` (stage: ${stage})`
+            : "";
+        toast.error(`${typeof data?.error === "string" ? data.error : "Failed to send test message."}${detail}`);
+        return;
+      }
+
+      toast.success(`Lead automation test sent to ${to}`);
+      setLeadTestMessagePhoneNumber("");
+      setLeadTestMessageModalOpen(false);
+    } catch {
+      toast.error("Could not reach the messaging service. Please try again.");
+    } finally {
+      setIsSendingLeadTestMessage(false);
     }
   };
 
@@ -579,6 +695,50 @@ export default function SettingsAutoResponses() {
                 >
                   <Mail className="h-4 w-4" />
                   Send test message
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="space-y-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-amber-500" />
+                    Lead Message Automation
+                  </CardTitle>
+                  <CardDescription>
+                    Placeholder toggle for upcoming lead message automation workflows.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center sm:pt-1">
+                  <Switch
+                    id="enable-lead-message-automation"
+                    aria-label="Enable lead message automation"
+                    checked={leadMessageAutomationEnabled}
+                    onCheckedChange={(checked) => {
+                      setLeadMessageAutomationEnabled(checked);
+                      setIsDirty(true);
+                    }}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Uses your connected Twilio sender number for outbound website lead texts.
+              </p>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => setLeadTestMessageModalOpen(true)}
+                  disabled={isSendingLeadTestMessage}
+                >
+                  <Mail className="h-4 w-4" />
+                  Send lead test
                 </Button>
               </div>
             </CardContent>
@@ -1083,6 +1243,35 @@ export default function SettingsAutoResponses() {
               <Button type="button" onClick={handleSendTestMessage} disabled={isSendingTestMessage}>
                 {isSendingTestMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Send message
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={leadTestMessageModalOpen} onOpenChange={setLeadTestMessageModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Send lead automation test</DialogTitle>
+              <DialogDescription>
+                Enter the phone number that should receive a Retell-powered lead automation test text.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="lead-message-test-phone">Lead test destination phone number</Label>
+              <Input
+                id="lead-message-test-phone"
+                type="tel"
+                value={leadTestMessagePhoneNumber}
+                onChange={(event) => setLeadTestMessagePhoneNumber(event.target.value)}
+                placeholder="+15551234567"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setLeadTestMessageModalOpen(false)} disabled={isSendingLeadTestMessage}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleSendLeadTestMessage} disabled={isSendingLeadTestMessage}>
+                {isSendingLeadTestMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Send lead test
               </Button>
             </DialogFooter>
           </DialogContent>

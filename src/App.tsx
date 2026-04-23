@@ -66,6 +66,7 @@ import Admin from "./pages/Admin";
 import Website from "./pages/Website";
 import SitePage from "./pages/SitePage";
 import SiteCareersPage from "./pages/SiteCareersPage";
+import SiteCareerPositionPage from "./pages/SiteCareerPositionPage";
 import Hiring from "./pages/Hiring";
 
 const queryClient = new QueryClient();
@@ -185,6 +186,7 @@ const router = createBrowserRouter([
       { path: "/affiliate", element: <AffiliateSignup /> },
       { path: "/site/:accountId", element: <SitePage /> },
       { path: "/site/:accountId/careers", element: <SiteCareersPage /> },
+      { path: "/site/:accountId/careers/:roleId", element: <SiteCareerPositionPage /> },
       { path: "/onboarding/source", element: <Protected><OnboardingSource /></Protected> },
       { path: "/onboarding/profile", element: <Protected><OnboardingProfile /></Protected> },
       { path: "/onboarding/import", element: <Protected><OnboardingImport /></Protected> },

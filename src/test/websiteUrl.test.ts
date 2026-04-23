@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildWebsitePublicUrl } from "@/lib/websiteUrl";
+import { buildWebsitePublicUrl, buildWebsiteShareUrl } from "@/lib/websiteUrl";
 
 describe("website url helpers", () => {
   afterEach(() => {
@@ -19,7 +19,21 @@ describe("website url helpers", () => {
 
   it("prefers custom domain when provided", () => {
     vi.stubEnv("VITE_SITE_URL", "https://app.example.com");
-    expect(buildWebsitePublicUrl("acct_123", { customDomain: "www.acme.com" })).toBe("https://www.acme.com/");
-    expect(buildWebsitePublicUrl("acct_123", { customDomain: "https://acme.com" })).toBe("https://acme.com/");
+    expect(buildWebsitePublicUrl("acct_123", { customDomain: "www.acme.com" })).toBe("https://www.acme.com/site/acct_123");
+    expect(buildWebsitePublicUrl("acct_123", { customDomain: "https://acme.com" })).toBe("https://acme.com/site/acct_123");
+  });
+
+  it("builds share URL using configured Supabase URL", () => {
+    vi.stubEnv("VITE_SITE_URL", "https://app.example.com");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://proj-ref.supabase.co");
+    expect(buildWebsiteShareUrl("acct_123")).toBe(
+      "https://proj-ref.supabase.co/functions/v1/website-share?accountId=acct_123",
+    );
+  });
+
+  it("falls back to public URL when Supabase URL is not configured", () => {
+    vi.stubEnv("VITE_SITE_URL", "https://app.example.com");
+    vi.stubEnv("VITE_SUPABASE_URL", "");
+    expect(buildWebsiteShareUrl("acct_123")).toBe("https://app.example.com/site/acct_123");
   });
 });

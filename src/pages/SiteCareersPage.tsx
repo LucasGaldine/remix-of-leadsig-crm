@@ -11,7 +11,6 @@ import { FONT_OPTIONS } from "@/pages/Website";
 
 interface AccountData {
   company_name: string;
-  company_email: string | null;
   logo_url: string | null;
   settings: Record<string, unknown> | null;
 }
@@ -99,10 +98,7 @@ export default function SiteCareersPage() {
   if (!account || !accountId) return null;
 
   return (
-    <div
-      className="min-h-screen bg-white text-gray-900"
-      style={bodyFontCss ? { fontFamily: bodyFontCss } : {}}
-    >
+    <div className="min-h-screen bg-white text-gray-900" style={bodyFontCss ? { fontFamily: bodyFontCss } : {}}>
       <header
         className="sticky top-0 z-50 border-b shadow-sm"
         style={{ backgroundColor: themeColor, borderColor: `rgba(${hexToRgb(themeTextColor)}, 0.1)` }}
@@ -169,16 +165,19 @@ export default function SiteCareersPage() {
                     )}
                     {role.employment_type && <span>{role.employment_type}</span>}
                   </div>
-                  {role.description && <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-gray-600">{role.description}</p>}
-                  {account.company_email && (
-                    <a
-                      href={`mailto:${account.company_email}?subject=Application%20for%20${encodeURIComponent(role.title)}`}
-                      className="mt-5 inline-flex rounded-full px-5 py-2 text-sm font-semibold"
-                      style={{ backgroundColor: themeColor, color: themeTextColor }}
-                    >
-                      Apply by Email
-                    </a>
+                  {role.description && (
+                    <p className="mt-4 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-600">
+                      {role.description}
+                    </p>
                   )}
+
+                  <a
+                    href={`/site/${accountId}/careers/${encodeURIComponent(role.id)}`}
+                    className="mt-5 inline-flex rounded-full px-5 py-2 text-sm font-semibold"
+                    style={{ backgroundColor: themeColor, color: themeTextColor }}
+                  >
+                    View Position
+                  </a>
                 </article>
               ))}
             </div>

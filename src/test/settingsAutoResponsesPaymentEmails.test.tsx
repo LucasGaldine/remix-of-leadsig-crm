@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -112,6 +112,22 @@ describe("SettingsAutoResponses payment emails", () => {
     expect(screen.getByRole("switch", { name: /send payment email when payment is logged/i })).toHaveAttribute("aria-checked", "false");
   });
 
+  it("hydrates lead message automation toggle from account settings", () => {
+    mockSettings = {
+      lead_message_automation: {
+        enabled: true,
+      },
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("switch", { name: /enable lead message automation/i })).toHaveAttribute("aria-checked", "true");
+  });
+
   it("saves payment email preferences into job message automation settings", async () => {
     render(
       <MemoryRouter>
@@ -138,6 +154,29 @@ describe("SettingsAutoResponses payment emails", () => {
       invoice_sent: true,
       payment_logged: false,
     });
+  });
+
+  it("saves lead message automation toggle state", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /enable lead message automation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(updateSettingsAsyncMock).toHaveBeenCalled();
+    });
+
+    const payload = updateSettingsAsyncMock.mock.calls[0]?.[0] as {
+      lead_message_automation?: {
+        enabled?: boolean;
+      };
+    };
+
+    expect(payload.lead_message_automation?.enabled).toBe(true);
   });
 
   it("forces payment email preferences off for free plan accounts", async () => {
@@ -315,6 +354,37 @@ describe("SettingsAutoResponses payment emails", () => {
     });
 
     expect(toastSuccessMock).toHaveBeenCalledWith("Test message sent to +15552223344");
+  });
+
+  it("opens a lead test modal and sends to the entered phone number", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /enable lead message automation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(updateSettingsAsyncMock).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /send lead test/i }));
+    fireEvent.change(screen.getByLabelText(/lead test destination phone number/i), { target: { value: "(555) 333-7788" } });
+    const leadTestDialog = screen.getByRole("dialog");
+    fireEvent.click(within(leadTestDialog).getByRole("button", { name: /send lead test/i }));
+
+    await waitFor(() => {
+      expect(invokeFunctionMock).toHaveBeenCalledWith("send-lead-automation-test-message", {
+        body: {
+          account_id: "acct_1",
+          to: "+15553337788",
+        },
+      });
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith("Lead automation test sent to +15553337788");
   });
 
   it("requires a valid destination phone number before sending a test message", async () => {

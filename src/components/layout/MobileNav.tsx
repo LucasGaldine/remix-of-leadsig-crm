@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Globe,
   Briefcase,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -54,6 +55,7 @@ const moreMenuGroups: NavGroup[] = [
     items: [
       { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
       { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
+      { icon: <MessageSquare className="h-5 w-5" />, label: "Auto Messaging", path: "/settings/auto-responses", requiredRole: "manager" },
       { icon: <Settings className="h-5 w-5" />, label: "Lead Sources", path: "/settings/lead-sources", requiredRole: "manager" },
     ],
   },
@@ -76,6 +78,7 @@ const desktopFlyoutNavGroups: Array<NavGroup & { icon: React.ReactNode }> = [
     items: [
       { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
       { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
+      { icon: <MessageSquare className="h-5 w-5" />, label: "Auto Messaging", path: "/settings/auto-responses", requiredRole: "manager" },
       { icon: <Settings className="h-5 w-5" />, label: "Lead Sources", path: "/settings/lead-sources", requiredRole: "manager" },
     ],
   },

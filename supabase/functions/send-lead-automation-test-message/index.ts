@@ -5,6 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
+
 const HARDCODED_RETELL_AGENT_ID = "agent_84800e79b94377a4f275cf63b6";
 
 function normalizePhone(value: string): string {
@@ -28,7 +29,6 @@ function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; a
   const accountSid = (twilio as Record<string, unknown>).account_sid;
   const authToken = (twilio as Record<string, unknown>).auth_token;
   const fromNumber = (twilio as Record<string, unknown>).from_number;
-
   if (typeof accountSid !== "string" || typeof authToken !== "string" || typeof fromNumber !== "string") return null;
 
   const trimmedAccountSid = accountSid.trim();
@@ -45,6 +45,7 @@ function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; a
 
 function isLeadMessageAutomationEnabled(rawSettings: unknown): boolean {
   if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return false;
+
   const settings = rawSettings as Record<string, unknown>;
   const leadAutomation = settings.lead_message_automation;
   if (!leadAutomation || typeof leadAutomation !== "object" || Array.isArray(leadAutomation)) return false;
@@ -116,7 +117,7 @@ async function createRetellChat(params: {
       agent_id: HARDCODED_RETELL_AGENT_ID,
       retell_llm_dynamic_variables: buildDynamicVars(params.firstName, params.companyName),
       metadata: {
-        source: "website",
+        source: "lead_automation_test",
         lead_id: params.leadId,
         account_id: params.accountId,
         to_number: params.to,
@@ -186,7 +187,7 @@ async function createRetellChatCompletion(params: {
   if (!generatedMessage) {
     return {
       success: true,
-      message: "Thanks for reaching out. We got your request and will text you shortly with next steps.",
+      message: "This is a lead automation test message. Please reply with your project details.",
       responseBody: result,
     };
   }
@@ -232,22 +233,43 @@ async function sendTwilioSms(params: {
   return { success: true, sid: typeof result?.sid === "string" ? result.sid : undefined, responseBody: result };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
 
   try {
-    const { account_id, name, email, phone, service_type, notes } = await req.json();
+    const payload = await req.json().catch(() => ({}));
+    const accountId = typeof payload?.account_id === "string" ? payload.account_id.trim() : "";
+    const toPhone = normalizePhone(typeof payload?.to === "string" ? payload.to.trim() : "");
 
-    if (!account_id || !name?.trim()) {
-      return json({ error: "account_id and name are required" }, 400);
+    if (!accountId || !toPhone) {
+      return new Response(JSON.stringify({
+        error: "Missing account_id or destination phone number",
+        debug: { stage: "validate_input" },
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "") : null;
+    if (!token) {
+      return new Response(JSON.stringify({
+        error: "Missing authorization token",
+        debug: { stage: "extract_auth_token" },
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const supabase = createClient(
@@ -255,129 +277,224 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: member } = await supabase
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return new Response(JSON.stringify({
+        error: "Unauthorized",
+        debug: {
+          stage: "auth_get_user",
+          provider_error: userError?.message ?? null,
+        },
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: membership } = await supabase
       .from("account_members")
-      .select("user_id")
-      .eq("account_id", account_id)
-      .eq("role", "owner")
+      .select("account_id")
+      .eq("account_id", accountId)
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!member) {
-      return json({ error: "Account not found" }, 404);
+    if (!membership) {
+      return new Response(JSON.stringify({
+        error: "You do not have access to this account",
+        debug: { stage: "membership_check" },
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { data: account } = await supabase
       .from("accounts")
       .select("company_name, pricing_plan, settings")
-      .eq("id", account_id)
+      .eq("id", accountId)
       .maybeSingle();
 
-    if (!account) {
-      return json({ error: "Account not found" }, 404);
-    }
-
-    const { data: createdLead, error: leadError } = await supabase
-      .from("leads")
-      .insert({
-        account_id,
-        name: name.trim(),
-        email: email?.trim() || null,
-        phone: phone?.trim() || null,
-        service_type: service_type || null,
-        notes: notes?.trim() || null,
-        source: "website",
-        status: "new",
-        created_by: member.user_id,
-      })
-      .select("id")
-      .single();
-
-    if (leadError) throw leadError;
-
-    const shouldSendLeadAutoText = account.pricing_plan !== "free" && isLeadMessageAutomationEnabled(account.settings);
-    const toPhone = normalizePhone(phone?.trim() || "");
-    const connectedTwilio = getConnectedTwilioConfig(account.settings);
-    const retellApiKey = Deno.env.get("RETELL_API_KEY")?.trim() || "";
-
-    if (shouldSendLeadAutoText && toPhone && connectedTwilio && retellApiKey && createdLead?.id) {
-      const firstName = name.trim().split(/\s+/)[0] || "there";
-      const companyName = account.company_name?.trim() || "our team";
-
-      const chatResult = await createRetellChat({
-        apiKey: retellApiKey,
-        firstName,
-        companyName,
-        leadId: createdLead.id,
-        accountId: account_id,
-        to: toPhone,
-        from: connectedTwilio.fromNumber,
+    if (account?.pricing_plan === "free") {
+      return new Response(JSON.stringify({
+        error: "Auto messaging is not available on the Free plan",
+        debug: { stage: "pricing_check", pricing_plan: account.pricing_plan },
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-
-      if (!chatResult.success || !chatResult.chatId) {
-        console.error("website-lead-submit: retell create-chat failed", {
-          error: chatResult.error,
-          status: chatResult.status,
-          response: chatResult.responseBody,
-          lead_id: createdLead.id,
-          account_id,
-        });
-      } else {
-        const completionResult = await createRetellChatCompletion({
-          apiKey: retellApiKey,
-          chatId: chatResult.chatId,
-          content: "A new website lead was just submitted. Send the first SMS to greet them and ask one brief question about their project.",
-        });
-
-        if (!completionResult.success || !completionResult.message) {
-          console.error("website-lead-submit: retell create-chat-completion failed", {
-            error: completionResult.error,
-            status: completionResult.status,
-            response: completionResult.responseBody,
-            lead_id: createdLead.id,
-            account_id,
-            chat_id: chatResult.chatId,
-          });
-        } else {
-          const twilioResult = await sendTwilioSms({
-            to: toPhone,
-            body: completionResult.message,
-            accountSid: connectedTwilio.accountSid,
-            authToken: connectedTwilio.authToken,
-            fromNumber: connectedTwilio.fromNumber,
-          });
-
-          if (!twilioResult.success) {
-            console.error("website-lead-submit: twilio send failed", {
-              error: twilioResult.error,
-              status: twilioResult.status,
-              response: twilioResult.responseBody,
-              lead_id: createdLead.id,
-              account_id,
-              chat_id: chatResult.chatId,
-            });
-          } else {
-            await supabase.from("interactions").insert({
-              lead_id: createdLead.id,
-              type: "text",
-              direction: "outbound",
-              summary: "Lead automation outbound message",
-              body: completionResult.message,
-              metadata: {
-                source: "lead_automation",
-                retell_chat_id: chatResult.chatId,
-                twilio_sid: twilioResult.sid ?? null,
-                from_number: connectedTwilio.fromNumber,
-                to_number: toPhone,
-              },
-            });
-          }
-        }
-      }
     }
 
-    return json({ success: true });
-  } catch (err) {
-    console.error("website-lead-submit error:", err);
-    return json({ error: "Internal server error" }, 500);
+    if (!isLeadMessageAutomationEnabled(account?.settings)) {
+      return new Response(JSON.stringify({
+        error: "Enable lead message automation before sending a lead test.",
+        debug: { stage: "lead_automation_enabled_check" },
+      }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const connectedTwilio = getConnectedTwilioConfig(account?.settings);
+    if (!connectedTwilio) {
+      return new Response(JSON.stringify({
+        error: "Connected Twilio credentials are required for lead message automation.",
+        debug: { stage: "twilio_credentials_check" },
+      }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const retellApiKey = Deno.env.get("RETELL_API_KEY")?.trim() || "";
+    if (!retellApiKey) {
+      return new Response(JSON.stringify({
+        error: "RETELL_API_KEY is not configured",
+        debug: { stage: "retell_api_key_check" },
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: leads } = await supabase
+      .from("leads")
+      .select("id, name, phone")
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: false })
+      .limit(2000);
+
+    const matchedLead = (leads ?? []).find((lead) => normalizePhone((lead.phone || "").trim()) === toPhone);
+    if (!matchedLead?.id) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "No lead found with that phone number in this account. Use a real lead phone number to test conversation memory.",
+        debug: { stage: "lead_lookup_by_phone", to_number: toPhone },
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const firstName = matchedLead.name?.trim().split(/\s+/)[0] || "Test";
+    const companyName = account?.company_name?.trim() || "your company";
+
+    const chatResult = await createRetellChat({
+      apiKey: retellApiKey,
+      firstName,
+      companyName,
+      leadId: matchedLead.id,
+      accountId,
+      to: toPhone,
+      from: connectedTwilio.fromNumber,
+    });
+
+    if (!chatResult.success || !chatResult.chatId) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: chatResult.error || "Failed to create Retell chat",
+        debug: {
+          stage: "retell_create_chat",
+          provider: "retell",
+          provider_status: chatResult.status ?? null,
+          provider_response: chatResult.responseBody ?? null,
+          to_number: toPhone,
+          agent_id: HARDCODED_RETELL_AGENT_ID,
+        },
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const completionResult = await createRetellChatCompletion({
+      apiKey: retellApiKey,
+      chatId: chatResult.chatId,
+      content: "Send a short lead automation test message and ask one project follow-up question.",
+    });
+
+    if (!completionResult.success || !completionResult.message) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: completionResult.error || "Failed to generate lead test message",
+        debug: {
+          stage: "retell_create_chat_completion",
+          provider: "retell",
+          provider_status: completionResult.status ?? null,
+          provider_response: completionResult.responseBody ?? null,
+          to_number: toPhone,
+          chat_id: chatResult.chatId,
+        },
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const twilioResult = await sendTwilioSms({
+      to: toPhone,
+      body: completionResult.message,
+      accountSid: connectedTwilio.accountSid,
+      authToken: connectedTwilio.authToken,
+      fromNumber: connectedTwilio.fromNumber,
+    });
+
+    if (!twilioResult.success) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: twilioResult.error || "Failed to send lead test message",
+        debug: {
+          stage: "twilio_send_message",
+          provider: "twilio",
+          provider_status: twilioResult.status ?? null,
+          provider_response: twilioResult.responseBody ?? null,
+          to_number: toPhone,
+          from_number: connectedTwilio.fromNumber,
+          chat_id: chatResult.chatId,
+        },
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    await supabase.from("interactions").insert({
+      lead_id: matchedLead.id,
+      type: "text",
+      direction: "outbound",
+      summary: "Lead automation test outbound message",
+      body: completionResult.message,
+      metadata: {
+        source: "lead_automation_test",
+        retell_chat_id: chatResult.chatId,
+        twilio_sid: twilioResult.sid ?? null,
+        from_number: connectedTwilio.fromNumber,
+        to_number: toPhone,
+      },
+    });
+
+    return new Response(JSON.stringify({
+      success: true,
+      to: toPhone,
+      sid: twilioResult.sid ?? null,
+      chat_id: chatResult.chatId,
+      message_preview: completionResult.message,
+      debug: {
+        stage: "twilio_send_message_success",
+        provider: "twilio",
+      },
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("send-lead-automation-test-message error:", error);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

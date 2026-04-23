@@ -366,8 +366,12 @@ export function LandingPageView({
                       />
                     </div>
                     <div
-                      className="absolute inset-y-0 w-1 bg-yellow-400 shadow-[0_0_0_1px_rgba(255,255,255,0.65)]"
-                      style={{ left: `${aboutSliderPosition}%`, transform: "translateX(-50%)" }}
+                      className="absolute inset-y-0 w-1 shadow-[0_0_0_1px_rgba(255,255,255,0.65)]"
+                      style={{
+                        left: `${aboutSliderPosition}%`,
+                        transform: "translateX(-50%)",
+                        backgroundColor: themeHighlightColor,
+                      }}
                     />
                     <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/55 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white">
                       Before
@@ -388,7 +392,8 @@ export function LandingPageView({
                     max={100}
                     value={aboutSliderPosition}
                     onChange={(e) => setAboutSliderPosition(Number(e.target.value))}
-                    className="h-2 w-full cursor-ew-resize accent-yellow-500"
+                    className="h-2 w-full cursor-ew-resize"
+                    style={{ accentColor: themeHighlightColor }}
                     aria-label="Before and after slider"
                   />
                 </div>

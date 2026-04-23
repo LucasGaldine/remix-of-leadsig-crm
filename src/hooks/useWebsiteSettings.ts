@@ -19,6 +19,20 @@ export type WebsiteHiringRole = {
   location?: string;
   employment_type?: string;
   description?: string;
+  acceptable_hourly_pay_min?: number | null;
+  acceptable_hourly_pay_max?: number | null;
+};
+
+export type WebsiteHiringInterviewSlot = {
+  id: string;
+  start: string;
+  end: string;
+};
+
+export type WebsiteHiringInterviewDayAvailability = {
+  day: "sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday";
+  enabled: boolean;
+  slots: WebsiteHiringInterviewSlot[];
 };
 
 export type WebsiteTestimonial = {
@@ -34,6 +48,7 @@ export type WebsiteConfig = {
   published?: boolean;
   custom_domain?: string;
   hiring_roles?: WebsiteHiringRole[];
+  hiring_interview_availability?: WebsiteHiringInterviewDayAvailability[];
   font?: string;
   body_font?: string;
   hero?: {

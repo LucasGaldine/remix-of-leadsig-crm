@@ -60,6 +60,9 @@ export type AccountSettings = {
       payment_logged?: boolean;
     };
   } | null;
+  lead_message_automation?: {
+    enabled?: boolean;
+  } | null;
   min_job_size?: Record<string, number> | null;
   service_areas?: Array<{
     location: string;
