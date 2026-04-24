@@ -54,6 +54,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const automationEndpointUrl = `${supabaseUrl}/functions/v1/send-job-automation-message`;
 
     const payload = await req.json().catch(() => ({}));
     const requestedLimit = Number((payload as Record<string, unknown>)?.limit);
@@ -173,14 +174,11 @@ Deno.serve(async (req: Request) => {
 
       const headers: HeadersInit = {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
       };
 
-      if (event.auth_header_name && event.auth_header_value) {
-        headers[event.auth_header_name] = event.auth_header_value;
-      }
-
       try {
-        const response = await fetch(event.endpoint_url, {
+        const response = await fetch(automationEndpointUrl, {
           method: "POST",
           headers,
           body: asJson(outboundPayload),
@@ -194,7 +192,7 @@ Deno.serve(async (req: Request) => {
           account_id: event.account_id,
           lead_id: event.lead_id,
           attempt_number: attemptNumber,
-          endpoint_url: event.endpoint_url,
+          endpoint_url: automationEndpointUrl,
           status_code: response.status,
           response_body: bodySnippet,
           error_message: response.ok ? null : `HTTP ${response.status}`,
@@ -257,7 +255,7 @@ Deno.serve(async (req: Request) => {
           account_id: event.account_id,
           lead_id: event.lead_id,
           attempt_number: attemptNumber,
-          endpoint_url: event.endpoint_url,
+          endpoint_url: automationEndpointUrl,
           status_code: null,
           response_body: null,
           error_message: errorMessage,

@@ -189,7 +189,7 @@ export default function ApiKeys() {
         }
       />
 
-      <main className="px-4 py-4">
+      <main className="max-w-[var(--content-max-width)] m-auto px-4 py-4">
         {/* Info Card */}
         <div className="card-elevated rounded-lg p-4 mb-4">
           <div className="flex gap-3">

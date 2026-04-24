@@ -218,6 +218,12 @@ export default function JobDetail() {
   };
 
   useEffect(() => {
+    if (!isMobile) return;
+
+    setActiveTab((currentTab) => (currentTab === "details" ? "checklist" : currentTab));
+  }, [isMobile]);
+
+  useEffect(() => {
     if (id) {
       fetchEstimate();
       fetchParentLead();
@@ -1653,16 +1659,23 @@ export default function JobDetail() {
               data-testid="job-details-left-card"
             >
               <div className="grid grid-cols-4 px-2 md:border-b md:border-border">
-                {[
-                  { id: "details", label: "Details" },
-                  { id: "checklist", label: isMobile ? "Tasks" : "Checklist" },
-                  { id: "photos", label: "Photos" },
-                  { id: "notes", label: "Notes" },
-                ].map((tab) => (
+                {(isMobile
+                  ? [
+                      { id: "checklist", label: "Tasks" },
+                      { id: "photos", label: "Photos" },
+                      { id: "details", label: "Schedule" },
+                      { id: "notes", label: "Notes" },
+                    ]
+                  : [
+                      { id: "details", label: "Schedule" },
+                      { id: "checklist", label: "Tasks" },
+                      { id: "photos", label: "Photos" },
+                      { id: "notes", label: "Notes" },
+                    ]).map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => {
-                      setActiveTab(tab.id as typeof activeTab);
+                      setActiveTab(tab.id as "details" | "checklist" | "photos" | "notes");
                       if (tab.id === "checklist") {
                         fetchBeforePhotos();
                       }

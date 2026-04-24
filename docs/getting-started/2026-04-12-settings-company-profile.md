@@ -26,7 +26,7 @@ All fields in this section appear on estimates, invoices, and customer-facing co
 
 | Field | Required | Notes |
 |---|---|---|
-| Company Logo | No | PNG, JPG, SVG, or WebP. Max 2 MB. Aspect ratio must be between 1:1 and 4:1. |
+| Company Logo | No | PNG, JPG, SVG, or WebP. Max 5 MB. Aspect ratio must be between 1:1 and 4:1. |
 | Company Name | **Yes** | Displayed on all documents and the client portal header. |
 | Company Email | No | General contact email shown to clients. |
 | Company Phone | No | Displayed on invoices and estimates. |
@@ -37,7 +37,7 @@ All fields in this section appear on estimates, invoices, and customer-facing co
 #### Logo Upload Details
 
 - Accepted formats: PNG, JPG/JPEG, SVG, WebP
-- Maximum file size: 2 MB
+- Maximum file size: 5 MB
 - Aspect ratio: between 1:1 (square) and 4:1 (wide banner). Taller or narrower images are rejected.
 - The logo is previewed immediately after selection, before saving. Clicking "Replace Logo" lets you swap it out.
 - The logo is not uploaded to storage until you save — the preview uses a temporary local object URL.

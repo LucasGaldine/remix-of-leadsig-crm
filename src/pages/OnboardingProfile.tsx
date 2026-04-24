@@ -436,7 +436,7 @@ export default function OnboardingProfile() {
                   {isUploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                   {logoPreviewUrl ? "Replace logo" : "Upload logo"}
                 </Button>
-                <p className="text-xs text-muted-foreground">PNG, JPG, SVG, or WebP up to 2MB.</p>
+                <p className="text-xs text-muted-foreground">PNG, JPG, SVG, or WebP up to 5MB.</p>
               </div>
             )}
 

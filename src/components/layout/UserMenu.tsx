@@ -115,7 +115,7 @@ export function UserMenu({ clickable = true }: UserMenuProps) {
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setBugReportOpen(true)}>
             <Bug className="mr-2 h-4 w-4" />
-            Report a Bug
+            Report an Issue
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleSignOut} className="text-destructive">

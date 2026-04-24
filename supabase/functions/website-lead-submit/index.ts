@@ -65,6 +65,10 @@ function buildDynamicVars(firstName: string, companyName: string): Record<string
   };
 }
 
+function buildWebsiteFallbackMessage(firstName: string, companyName: string): string {
+  return `Hey ${firstName}, we received your request for a quote with ${companyName}. What kind of project are you looking to get done?`;
+}
+
 function isToolPayloadMessage(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return true;
@@ -106,41 +110,45 @@ async function createRetellChat(params: {
   to: string;
   from: string;
 }): Promise<{ success: boolean; chatId?: string; error?: string; status?: number; responseBody?: unknown }> {
-  const response = await fetch("https://api.retellai.com/create-chat", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      agent_id: HARDCODED_RETELL_AGENT_ID,
-      retell_llm_dynamic_variables: buildDynamicVars(params.firstName, params.companyName),
-      metadata: {
-        source: "website",
-        lead_id: params.leadId,
-        account_id: params.accountId,
-        to_number: params.to,
-        from_number: params.from,
+  try {
+    const response = await fetch("https://api.retellai.com/create-chat", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
       },
-    }),
-  });
+      body: JSON.stringify({
+        agent_id: HARDCODED_RETELL_AGENT_ID,
+        retell_llm_dynamic_variables: buildDynamicVars(params.firstName, params.companyName),
+        metadata: {
+          source: "website",
+          lead_id: params.leadId,
+          account_id: params.accountId,
+          to_number: params.to,
+          from_number: params.from,
+        },
+      }),
+    });
 
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail =
-      (typeof result?.message === "string" && result.message)
-      || (typeof result?.error === "string" && result.error)
-      || (typeof result?.detail === "string" && result.detail)
-      || JSON.stringify(result);
-    return { success: false, error: `Retell ${response.status}: ${detail}`, status: response.status, responseBody: result };
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail =
+        (typeof result?.message === "string" && result.message)
+        || (typeof result?.error === "string" && result.error)
+        || (typeof result?.detail === "string" && result.detail)
+        || JSON.stringify(result);
+      return { success: false, error: `Retell ${response.status}: ${detail}`, status: response.status, responseBody: result };
+    }
+
+    const chatId = typeof result?.chat_id === "string" ? result.chat_id : "";
+    if (!chatId) {
+      return { success: false, error: "Retell returned no chat_id", status: response.status, responseBody: result };
+    }
+
+    return { success: true, chatId, responseBody: result };
+  } catch (error) {
+    return { success: false, error: `Retell network error: ${error instanceof Error ? error.message : "unknown error"}` };
   }
-
-  const chatId = typeof result?.chat_id === "string" ? result.chat_id : "";
-  if (!chatId) {
-    return { success: false, error: "Retell returned no chat_id", status: response.status, responseBody: result };
-  }
-
-  return { success: true, chatId, responseBody: result };
 }
 
 async function createRetellChatCompletion(params: {
@@ -148,50 +156,54 @@ async function createRetellChatCompletion(params: {
   chatId: string;
   content: string;
 }): Promise<{ success: boolean; message?: string; error?: string; status?: number; responseBody?: unknown }> {
-  const response = await fetch("https://api.retellai.com/create-chat-completion", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      chat_id: params.chatId,
-      content: params.content,
-    }),
-  });
+  try {
+    const response = await fetch("https://api.retellai.com/create-chat-completion", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: params.chatId,
+        content: params.content,
+      }),
+    });
 
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail =
-      (typeof result?.message === "string" && result.message)
-      || (typeof result?.error === "string" && result.error)
-      || (typeof result?.detail === "string" && result.detail)
-      || JSON.stringify(result);
-    return { success: false, error: `Retell ${response.status}: ${detail}`, status: response.status, responseBody: result };
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail =
+        (typeof result?.message === "string" && result.message)
+        || (typeof result?.error === "string" && result.error)
+        || (typeof result?.detail === "string" && result.detail)
+        || JSON.stringify(result);
+      return { success: false, error: `Retell ${response.status}: ${detail}`, status: response.status, responseBody: result };
+    }
+
+    const generatedMessage =
+      Array.isArray(result?.messages)
+        ? result.messages
+          .filter((message) => isAssistantLikeRole(message?.role))
+          .map((message) =>
+            typeof message?.content === "string" && message.content.trim().length > 0
+              ? message.content.trim()
+              : "",
+          )
+          .filter((message) => !isToolPayloadMessage(message))
+          .slice(-1)[0]
+        : "";
+
+    if (!generatedMessage) {
+      return {
+        success: true,
+        message: "Thanks for reaching out. We got your request and will text you shortly with next steps.",
+        responseBody: result,
+      };
+    }
+
+    return { success: true, message: generatedMessage, responseBody: result };
+  } catch (error) {
+    return { success: false, error: `Retell network error: ${error instanceof Error ? error.message : "unknown error"}` };
   }
-
-  const generatedMessage =
-    Array.isArray(result?.messages)
-      ? result.messages
-        .filter((message) => isAssistantLikeRole(message?.role))
-        .map((message) =>
-          typeof message?.content === "string" && message.content.trim().length > 0
-            ? message.content.trim()
-            : "",
-        )
-        .filter((message) => !isToolPayloadMessage(message))
-        .slice(-1)[0]
-      : "";
-
-  if (!generatedMessage) {
-    return {
-      success: true,
-      message: "Thanks for reaching out. We got your request and will text you shortly with next steps.",
-      responseBody: result,
-    };
-  }
-
-  return { success: true, message: generatedMessage, responseBody: result };
 }
 
 async function sendTwilioSms(params: {
@@ -201,35 +213,39 @@ async function sendTwilioSms(params: {
   authToken: string;
   fromNumber: string;
 }): Promise<{ success: boolean; sid?: string; error?: string; status?: number; responseBody?: unknown }> {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${params.accountSid}/Messages.json`;
-  const credentials = btoa(`${params.accountSid}:${params.authToken}`);
+  try {
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${params.accountSid}/Messages.json`;
+    const credentials = btoa(`${params.accountSid}:${params.authToken}`);
 
-  const form = new URLSearchParams({
-    To: params.to,
-    From: params.fromNumber,
-    Body: params.body,
-  });
+    const form = new URLSearchParams({
+      To: params.to,
+      From: params.fromNumber,
+      Body: params.body,
+    });
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: form.toString(),
-  });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
 
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return {
-      success: false,
-      error: (typeof result?.message === "string" && result.message) || `Twilio ${response.status}`,
-      status: response.status,
-      responseBody: result,
-    };
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        success: false,
+        error: (typeof result?.message === "string" && result.message) || `Twilio ${response.status}`,
+        status: response.status,
+        responseBody: result,
+      };
+    }
+
+    return { success: true, sid: typeof result?.sid === "string" ? result.sid : undefined, responseBody: result };
+  } catch (error) {
+    return { success: false, error: `Twilio network error: ${error instanceof Error ? error.message : "unknown error"}` };
   }
-
-  return { success: true, sid: typeof result?.sid === "string" ? result.sid : undefined, responseBody: result };
 }
 
 Deno.serve(async (req) => {
@@ -255,14 +271,28 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: member } = await supabase
+    const { data: memberRows, error: memberError } = await supabase
       .from("account_members")
       .select("user_id")
       .eq("account_id", account_id)
-      .eq("role", "owner")
-      .maybeSingle();
+      .eq("is_active", true)
+      .limit(1);
 
-    if (!member) {
+    if (memberError) {
+      return json({
+        success: false,
+        error: "Failed to load account member for lead ownership",
+        debug: {
+          stage: "load_account_member",
+          db_error: memberError.message,
+          db_code: memberError.code ?? null,
+          db_details: memberError.details ?? null,
+        },
+      }, 200);
+    }
+
+    const member = memberRows?.[0];
+    if (!member?.user_id) {
       return json({ error: "Account not found" }, 404);
     }
 
@@ -286,98 +316,134 @@ Deno.serve(async (req) => {
         service_type: service_type || null,
         notes: notes?.trim() || null,
         source: "website",
-        status: "new",
         created_by: member.user_id,
       })
       .select("id")
-      .single();
+      .maybeSingle();
 
-    if (leadError) throw leadError;
+    if (leadError || !createdLead?.id) {
+      return json({
+        success: false,
+        error: "Failed to create lead",
+        debug: {
+          stage: "insert_lead",
+          db_error: leadError?.message ?? "No row returned from insert",
+          db_code: leadError?.code ?? null,
+          db_details: leadError?.details ?? null,
+          db_hint: leadError?.hint ?? null,
+        },
+      }, 200);
+    }
 
     const shouldSendLeadAutoText = account.pricing_plan !== "free" && isLeadMessageAutomationEnabled(account.settings);
     const toPhone = normalizePhone(phone?.trim() || "");
     const connectedTwilio = getConnectedTwilioConfig(account.settings);
     const retellApiKey = Deno.env.get("RETELL_API_KEY")?.trim() || "";
 
-    if (shouldSendLeadAutoText && toPhone && connectedTwilio && retellApiKey && createdLead?.id) {
-      const firstName = name.trim().split(/\s+/)[0] || "there";
-      const companyName = account.company_name?.trim() || "our team";
+    if (shouldSendLeadAutoText && toPhone && connectedTwilio && createdLead?.id) {
+      try {
+        const firstName = name.trim().split(/\s+/)[0] || "there";
+        const companyName = account.company_name?.trim() || "our team";
+        let messageToSend = buildWebsiteFallbackMessage(firstName, companyName);
+        let retellChatId: string | null = null;
+        let usedRetellMessage = false;
 
-      const chatResult = await createRetellChat({
-        apiKey: retellApiKey,
-        firstName,
-        companyName,
-        leadId: createdLead.id,
-        accountId: account_id,
-        to: toPhone,
-        from: connectedTwilio.fromNumber,
-      });
+        if (retellApiKey) {
+          const chatResult = await createRetellChat({
+            apiKey: retellApiKey,
+            firstName,
+            companyName,
+            leadId: createdLead.id,
+            accountId: account_id,
+            to: toPhone,
+            from: connectedTwilio.fromNumber,
+          });
 
-      if (!chatResult.success || !chatResult.chatId) {
-        console.error("website-lead-submit: retell create-chat failed", {
-          error: chatResult.error,
-          status: chatResult.status,
-          response: chatResult.responseBody,
+          if (!chatResult.success || !chatResult.chatId) {
+            console.error("website-lead-submit: retell create-chat failed, using fallback message", {
+              error: chatResult.error,
+              status: chatResult.status,
+              response: chatResult.responseBody,
+              lead_id: createdLead.id,
+              account_id,
+            });
+          } else {
+            retellChatId = chatResult.chatId;
+            const completionResult = await createRetellChatCompletion({
+              apiKey: retellApiKey,
+              chatId: chatResult.chatId,
+              content: "A new website lead was just submitted. Send the first SMS to greet them and ask one brief question about their project.",
+            });
+
+            if (!completionResult.success || !completionResult.message) {
+              console.error("website-lead-submit: retell create-chat-completion failed, using fallback message", {
+                error: completionResult.error,
+                status: completionResult.status,
+                response: completionResult.responseBody,
+                lead_id: createdLead.id,
+                account_id,
+                chat_id: chatResult.chatId,
+              });
+            } else {
+              messageToSend = completionResult.message;
+              usedRetellMessage = true;
+            }
+          }
+        }
+
+        const twilioResult = await sendTwilioSms({
+          to: toPhone,
+          body: messageToSend,
+          accountSid: connectedTwilio.accountSid,
+          authToken: connectedTwilio.authToken,
+          fromNumber: connectedTwilio.fromNumber,
+        });
+
+        if (!twilioResult.success) {
+          console.error("website-lead-submit: twilio send failed", {
+            error: twilioResult.error,
+            status: twilioResult.status,
+            response: twilioResult.responseBody,
+            lead_id: createdLead.id,
+            account_id,
+            chat_id: retellChatId,
+          });
+        } else {
+          await supabase.from("interactions").insert({
+            lead_id: createdLead.id,
+            type: "text",
+            direction: "outbound",
+            summary: "Lead automation outbound message",
+            body: messageToSend,
+            metadata: {
+              source: "lead_automation",
+              retell_chat_id: retellChatId,
+              twilio_sid: twilioResult.sid ?? null,
+              from_number: connectedTwilio.fromNumber,
+              to_number: toPhone,
+              generated_by: usedRetellMessage ? "retell" : "fallback_template",
+            },
+          });
+        }
+      } catch (automationError) {
+        console.error("website-lead-submit: automation block failed without blocking lead creation", {
+          error: automationError instanceof Error ? automationError.message : String(automationError),
           lead_id: createdLead.id,
           account_id,
         });
-      } else {
-        const completionResult = await createRetellChatCompletion({
-          apiKey: retellApiKey,
-          chatId: chatResult.chatId,
-          content: "A new website lead was just submitted. Send the first SMS to greet them and ask one brief question about their project.",
-        });
-
-        if (!completionResult.success || !completionResult.message) {
-          console.error("website-lead-submit: retell create-chat-completion failed", {
-            error: completionResult.error,
-            status: completionResult.status,
-            response: completionResult.responseBody,
-            lead_id: createdLead.id,
-            account_id,
-            chat_id: chatResult.chatId,
-          });
-        } else {
-          const twilioResult = await sendTwilioSms({
-            to: toPhone,
-            body: completionResult.message,
-            accountSid: connectedTwilio.accountSid,
-            authToken: connectedTwilio.authToken,
-            fromNumber: connectedTwilio.fromNumber,
-          });
-
-          if (!twilioResult.success) {
-            console.error("website-lead-submit: twilio send failed", {
-              error: twilioResult.error,
-              status: twilioResult.status,
-              response: twilioResult.responseBody,
-              lead_id: createdLead.id,
-              account_id,
-              chat_id: chatResult.chatId,
-            });
-          } else {
-            await supabase.from("interactions").insert({
-              lead_id: createdLead.id,
-              type: "text",
-              direction: "outbound",
-              summary: "Lead automation outbound message",
-              body: completionResult.message,
-              metadata: {
-                source: "lead_automation",
-                retell_chat_id: chatResult.chatId,
-                twilio_sid: twilioResult.sid ?? null,
-                from_number: connectedTwilio.fromNumber,
-                to_number: toPhone,
-              },
-            });
-          }
-        }
       }
     }
 
     return json({ success: true });
   } catch (err) {
     console.error("website-lead-submit error:", err);
-    return json({ error: "Internal server error" }, 500);
+    return json({
+      success: false,
+      error: "Unhandled website lead submit error",
+      debug: {
+        stage: "unhandled_exception",
+        message: err instanceof Error ? err.message : String(err),
+      },
+    }, 200);
   }
 });

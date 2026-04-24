@@ -235,6 +235,27 @@ input[type="number"] {
     @apply text-sm font-semibold;
   }
 
+  .client-portal-themed {
+    font-family: var(--client-portal-body-font, 'Public Sans', sans-serif);
+  }
+
+  .client-portal-themed h1,
+  .client-portal-themed h2,
+  .client-portal-themed h3,
+  .client-portal-themed h4,
+  .client-portal-themed h5,
+  .client-portal-themed h6 {
+    font-family: var(--client-portal-heading-font, var(--client-portal-body-font, 'Public Sans', sans-serif));
+  }
+
+  .client-portal-themed button,
+  .client-portal-themed a,
+  .client-portal-themed input,
+  .client-portal-themed textarea,
+  .client-portal-themed select {
+    font-family: inherit;
+  }
+
   .levitate {
     @apply active:scale-[0.98] hover:shadow-md transition-all;
   }
@@ -242,6 +263,21 @@ input[type="number"] {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  [data-site-reveal] {
+    opacity: 0;
+    transform: translateY(22px);
+    transition:
+      opacity 680ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 680ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--site-reveal-delay, 0ms);
+    will-change: opacity, transform;
+  }
+
+  [data-site-reveal].site-reveal-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
   .main-page-transition-overlay {
     position: fixed;
     inset: 0;
@@ -307,6 +343,14 @@ input[type="number"] {
       opacity: 1;
       transform: translateY(0);
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-site-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }
 

@@ -99,7 +99,7 @@ export default function SettingsDashboard() {
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Dashboard Layout" showBack backTo="/settings" />
 
-      <main className="px-4 py-4 space-y-6">
+      <main className="max-w-[var(--content-max-width)] m-auto px-4 py-4 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

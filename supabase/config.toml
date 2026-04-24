@@ -59,3 +59,15 @@ verify_jwt = false
 
 [functions.configure-lead-sms-webhook]
 verify_jwt = false
+
+[functions.google-email-connect]
+verify_jwt = true
+
+[functions.google-email-callback]
+verify_jwt = false
+
+[functions.google-email-status]
+verify_jwt = true
+
+[functions.google-email-disconnect]
+verify_jwt = true

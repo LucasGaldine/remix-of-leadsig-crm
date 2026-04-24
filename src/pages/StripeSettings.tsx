@@ -14,7 +14,7 @@ export default function StripeSettings() {
       <div className="min-h-screen bg-surface-sunken pb-24">
         <PageHeader title="Payment Settings" showBack />
 
-        <main className="px-4 py-4">
+        <main className="max-w-[var(--content-max-width)] m-auto px-4 py-4">
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-foreground mb-1">
               Stripe Connect

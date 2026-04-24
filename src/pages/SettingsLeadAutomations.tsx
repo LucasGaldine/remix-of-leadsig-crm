@@ -55,7 +55,7 @@ export default function SettingsLeadAutomations() {
         backTo="/settings"
       />
 
-      <main className="mx-auto w-full max-w-4xl px-4 py-6 space-y-6">
+      <main className="max-w-[var(--content-max-width)] m-auto px-4 py-6 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

@@ -223,7 +223,7 @@ export default function Settings() {
         },
         {
           icon: <Bug className="h-5 w-5" />,
-          label: "Report a Bug",
+          label: "Report an Issue",
           description: "Send bug details to support",
           onClick: () => setBugReportOpen(true),
           searchTerms: ["bug", "report", "issue", "broken", "problem", "support ticket"],

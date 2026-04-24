@@ -23,6 +23,7 @@ interface NotificationPreferences {
     tasks: boolean;
     job_assignments: boolean;
     same_day_reminders: boolean;
+    clock_in_reminders: boolean;
   };
   quiet_hours: { enabled: boolean; start: string; end: string };
 }
@@ -46,6 +47,13 @@ function buildMessageBody(
       return `Job assignment: You have been assigned to ${data.lead_name || "a job"}`;
     case "same_day_reminders":
       return `Today's jobs: ${data.summary || "You have jobs scheduled for today"}`;
+    case "clock_in_reminders": {
+      const leadName = (data.lead_name as string) || "your job";
+      const startTime = (data.scheduled_time_start as string) || "the scheduled start time";
+      const jobUrl = (data.job_url as string) || (data.lead_id ? `https://app.leadsig.com/jobs/${data.lead_id}` : "");
+      const linkSuffix = jobUrl ? ` Clock in: ${jobUrl}` : "";
+      return `Clock-in reminder: ${leadName} starts at ${startTime} in 15 minutes.${linkSuffix}`;
+    }
     default:
       return `Notification: ${eventType}`;
   }
@@ -60,6 +68,7 @@ function buildNotificationTitle(eventType: string): string {
     case "tasks": return "SMS Sent - Task Reminder";
     case "job_assignments": return "SMS Sent - Job Assignment";
     case "same_day_reminders": return "SMS Sent - Day Reminder";
+    case "clock_in_reminders": return "SMS Sent - Clock In Reminder";
     default: return "SMS Sent";
   }
 }
@@ -72,6 +81,7 @@ function mapEventType(eventType: string): string {
     case "schedule_changes": return "schedule_change";
     case "job_assignments": return "job_assignment";
     case "same_day_reminders": return "same_day_reminder";
+    case "clock_in_reminders": return "clock_in_reminder";
     default: return eventType;
   }
 }
@@ -86,6 +96,7 @@ function getReferenceInfo(eventType: string, data: Record<string, unknown>): { r
     case "schedule_changes":
       return { reference_id: (data.lead_id as string) || null, reference_type: "job_schedule" };
     case "job_assignments":
+    case "clock_in_reminders":
       return { reference_id: (data.lead_id as string) || null, reference_type: "lead" };
     default:
       return { reference_id: null, reference_type: null };
@@ -276,15 +287,24 @@ Deno.serve(async (req: Request) => {
       const member = members!.find((m) => m.user_id === profile.user_id);
       const isCrewMember = member?.role === "crew_member";
 
-      if (event_type === "job_assignments" && data?.user_id) {
+      if (["job_assignments", "clock_in_reminders"].includes(event_type) && data?.user_id) {
         if (profile.user_id !== data.user_id) {
           results.push({
             user_id: profile.user_id,
             sent: false,
-            reason: "Not the assigned crew member",
+            reason: event_type === "clock_in_reminders" ? "Not the targeted user for this reminder" : "Not the assigned crew member",
           });
           continue;
         }
+      }
+
+      if (event_type === "clock_in_reminders" && !data?.user_id) {
+        results.push({
+          user_id: profile.user_id,
+          sent: false,
+          reason: "No target user provided for clock-in reminder",
+        });
+        continue;
       }
 
       if (isCrewMember && data?.lead_id && ["schedule_changes", "lead_updates"].includes(event_type)) {

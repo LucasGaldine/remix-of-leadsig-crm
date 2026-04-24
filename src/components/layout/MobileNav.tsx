@@ -44,8 +44,8 @@ const primaryNavItems: NavItem[] = [
 ];
 
 const moreMenuItems: NavItem[] = [
-  { icon: <Globe className="h-5 w-5" />, label: "Website", path: "/website", requiredRole: "manager" },
   { icon: <Briefcase className="h-5 w-5" />, label: "Hiring", path: "/hiring", requiredRole: "manager" },
+  { icon: <Globe className="h-5 w-5" />, label: "Website", path: "/website", requiredRole: "manager" },
 ];
 
 const moreMenuGroups: NavGroup[] = [
@@ -108,6 +108,8 @@ export function MobileNav() {
   const { isCrewMember } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
   const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
   const [desktopSectionOpen, setDesktopSectionOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     const storedValue = window.localStorage.getItem(DESKTOP_SECTION_OPEN_STORAGE_KEY);
@@ -313,6 +315,17 @@ export function MobileNav() {
     navigate(path);
   };
 
+  const handleMobileMoreOpenChange = (open: boolean) => {
+    setMobileMoreOpen(open);
+    if (!open) {
+      setMobileOpenGroup(null);
+    }
+  };
+
+  const toggleMobileGroup = (label: string) => {
+    setMobileOpenGroup((current) => (current === label ? null : label));
+  };
+
   return (
     <>
       {showIndicator && targetLabel && (
@@ -378,32 +391,6 @@ export function MobileNav() {
             </button>
 
             {desktopSectionOpen &&
-              visibleMoreMenuItems.map((item) => {
-              const isActive = isActiveRoute(item.path);
-              const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
-
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => handleNavigate(item.path)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors",
-                    "active:bg-muted",
-                    isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <div className="relative shrink-0">{item.icon}</div>
-                  <span className="flex-1 truncate">{item.label}</span>
-                  {badgeCount > 0 && (
-                    <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                      {badgeCount > 9 ? "9+" : badgeCount}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-
-            {desktopSectionOpen &&
               visibleDesktopFlyoutGroups.map((group) => {
               const groupIsActive = group.items.some((item) => isActiveRoute(item.path));
 
@@ -441,6 +428,32 @@ export function MobileNav() {
                 </DropdownMenu>
               );
             })}
+
+            {desktopSectionOpen &&
+              visibleMoreMenuItems.map((item) => {
+              const isActive = isActiveRoute(item.path);
+              const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => handleNavigate(item.path)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors",
+                    "active:bg-muted",
+                    isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <div className="relative shrink-0">{item.icon}</div>
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {badgeCount > 0 && (
+                    <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                      {badgeCount > 9 ? "9+" : badgeCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           <div className="space-y-3 border-t border-border pt-3">
@@ -449,7 +462,7 @@ export function MobileNav() {
               className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
             >
               <Bug className="h-5 w-5 shrink-0" />
-              <span className="flex-1 truncate">Report a Bug</span>
+              <span className="flex-1 truncate">Report an Issue</span>
             </button>
             <button
               onClick={() => handleNavigate("/settings")}
@@ -491,7 +504,7 @@ export function MobileNav() {
               );
             })}
 
-            <DropdownMenu>
+            <DropdownMenu open={mobileMoreOpen} onOpenChange={handleMobileMoreOpenChange}>
               <DropdownMenuTrigger asChild>
                 <button
                   className="relative flex flex-1 flex-col items-center justify-center gap-1 transition-all active:scale-95"
@@ -512,6 +525,41 @@ export function MobileNav() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="top" sideOffset={12} collisionPadding={12} className="w-64">
+                {visibleMoreMenuGroups.map((group) => (
+                  <div key={group.label}>
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        toggleMobileGroup(group.label);
+                      }}
+                      aria-expanded={mobileOpenGroup === group.label}
+                      className="gap-3 px-4 py-4 text-base font-medium"
+                    >
+                      <span className="flex-1">{group.label}</span>
+                      <ChevronDown className={cn("h-4 w-4 transition-transform", mobileOpenGroup === group.label && "rotate-180")} />
+                    </DropdownMenuItem>
+                    {mobileOpenGroup === group.label &&
+                      group.items.map((item) => {
+                        const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
+
+                        return (
+                          <DropdownMenuItem
+                            key={item.path}
+                            onSelect={() => handleNavigate(item.path)}
+                            className="gap-3 px-4 py-4 pl-6 text-base"
+                          >
+                            {item.icon}
+                            <span className="flex-1">{item.label}</span>
+                            {badgeCount > 0 && (
+                              <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                                {badgeCount > 9 ? "9+" : badgeCount}
+                              </span>
+                            )}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                  </div>
+                ))}
                 {visibleMoreMenuItems.map((item) => {
                   const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
 
@@ -527,28 +575,6 @@ export function MobileNav() {
                     </DropdownMenuItem>
                   );
                 })}
-                {visibleMoreMenuGroups.map((group) => (
-                  <div key={group.label}>
-                    <div className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      {group.label}
-                    </div>
-                    {group.items.map((item) => {
-                      const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0;
-
-                      return (
-                        <DropdownMenuItem key={item.path} onSelect={() => handleNavigate(item.path)} className="gap-3 px-4 py-4 text-base">
-                          {item.icon}
-                          <span className="flex-1">{item.label}</span>
-                          {badgeCount > 0 && (
-                            <span className="rounded-full bg-status-attention px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                              {badgeCount > 9 ? "9+" : badgeCount}
-                            </span>
-                          )}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </div>
-                ))}
                 <div className="px-4 py-1" aria-hidden="true">
                   <Separator />
                 </div>
@@ -558,7 +584,7 @@ export function MobileNav() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setBugReportOpen(true)} className="gap-3 px-4 py-4 text-base">
                   <Bug className="h-5 w-5" />
-                  <span>Report a Bug</span>
+                  <span>Report an Issue</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

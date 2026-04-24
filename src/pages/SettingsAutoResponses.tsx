@@ -18,6 +18,7 @@ import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useAccountSettings } from "@/hooks/useAccountSettings";
 import { useAuth } from "@/hooks/useAuth";
+import { useGoogleEmailConnection } from "@/hooks/useGoogleEmailConnection";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -62,6 +63,7 @@ const normalizePhone = (value: string): string => {
 export default function SettingsAutoResponses() {
   const { currentAccount } = useAuth();
   const { settings, updateSettingsAsync, isSaving } = useAccountSettings();
+  const googleEmailConnection = useGoogleEmailConnection();
   const isFreePlan = currentAccount?.pricing_plan === "free";
 
   const [isDirty, setIsDirty] = useState(false);
@@ -91,12 +93,6 @@ export default function SettingsAutoResponses() {
   const [draftOffsetValue, setDraftOffsetValue] = useState("0");
   const [draftOffsetUnit, setDraftOffsetUnit] = useState<OffsetUnit>("days");
   const [draftDeliveryChannel, setDraftDeliveryChannel] = useState<DeliveryChannel>("text");
-  const [customEndpointEnabled, setCustomEndpointEnabled] = useState(false);
-  const [endpointUrl, setEndpointUrl] = useState("");
-  const [authHeaderName, setAuthHeaderName] = useState("");
-  const [authHeaderValue, setAuthHeaderValue] = useState("");
-  const [maxRetryAttempts, setMaxRetryAttempts] = useState("3");
-  const [retryBackoffMinutes, setRetryBackoffMinutes] = useState("5");
   const [twilioAccountSid, setTwilioAccountSid] = useState("");
   const [twilioAuthToken, setTwilioAuthToken] = useState("");
   const [twilioFromNumber, setTwilioFromNumber] = useState("");
@@ -228,18 +224,6 @@ export default function SettingsAutoResponses() {
     setDraftOffsetValue("0");
     setDraftOffsetUnit("days");
     setDraftDeliveryChannel("text");
-    setCustomEndpointEnabled(
-      isFreePlan
-        ? false
-        :
-      automation?.endpoint?.enabled === true
-      || (typeof automation?.endpoint?.url === "string" && automation.endpoint.url.trim().length > 0),
-    );
-    setEndpointUrl(isFreePlan ? "" : (typeof automation?.endpoint?.url === "string" ? automation.endpoint.url : ""));
-    setAuthHeaderName(isFreePlan ? "" : (typeof automation?.endpoint?.auth_header_name === "string" ? automation.endpoint.auth_header_name : ""));
-    setAuthHeaderValue(isFreePlan ? "" : (typeof automation?.endpoint?.auth_header_value === "string" ? automation.endpoint.auth_header_value : ""));
-    setMaxRetryAttempts(String(typeof automation?.retry?.max_attempts === "number" ? automation.retry.max_attempts : 3));
-    setRetryBackoffMinutes(String(typeof automation?.retry?.backoff_minutes === "number" ? automation.retry.backoff_minutes : 5));
     setTwilioAccountSid(
       isFreePlan
         ? ""
@@ -266,9 +250,17 @@ export default function SettingsAutoResponses() {
     setIsDirty(false);
   }, [settings, isFreePlan]);
 
+  const isTwilioConnected = Boolean(twilioAccountSid.trim() && twilioAuthToken.trim() && twilioFromNumber.trim());
+  const isJobAutomationDisabledByTwilio = !isFreePlan && !isTwilioConnected;
+
+  useEffect(() => {
+    if (isJobAutomationDisabledByTwilio && jobMessageAutomationEnabled) {
+      setJobMessageAutomationEnabled(false);
+      setIsDirty(true);
+    }
+  }, [isJobAutomationDisabledByTwilio, jobMessageAutomationEnabled]);
+
   const handleSave = async () => {
-    const parsedMaxRetryAttempts = Number.parseInt(maxRetryAttempts, 10);
-    const parsedRetryBackoffMinutes = Number.parseInt(retryBackoffMinutes, 10);
     const fallbackTemplate = jobMessageTemplates[0];
     const trimmedTwilioAccountSid = twilioAccountSid.trim();
     const trimmedTwilioAuthToken = twilioAuthToken.trim();
@@ -297,7 +289,7 @@ export default function SettingsAutoResponses() {
           enabled: isFreePlan ? false : leadMessageAutomationEnabled,
         },
         job_message_automation: {
-          enabled: isFreePlan ? false : jobMessageAutomationEnabled,
+          enabled: isFreePlan ? false : (isTwilioConnected ? jobMessageAutomationEnabled : false),
           message_template: isFreePlan ? "" : (jobMessageTemplates[0]?.content ?? ""),
           message_templates: isFreePlan ? [] : jobMessageTemplates.map((template) => ({
             id: template.id,
@@ -316,14 +308,14 @@ export default function SettingsAutoResponses() {
             offset_unit: isFreePlan ? "days" : (fallbackTemplate?.trigger.offset_unit ?? "days"),
           },
           endpoint: {
-            enabled: isFreePlan ? false : customEndpointEnabled,
-            url: isFreePlan ? "" : (customEndpointEnabled ? endpointUrl.trim() : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-job-automation-message`),
-            auth_header_name: isFreePlan ? "" : (customEndpointEnabled ? authHeaderName.trim() : ""),
-            auth_header_value: isFreePlan ? "" : (customEndpointEnabled ? authHeaderValue : ""),
+            enabled: isFreePlan ? false : true,
+            url: isFreePlan ? "" : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-job-automation-message`,
+            auth_header_name: "",
+            auth_header_value: "",
           },
           retry: {
-            max_attempts: isFreePlan ? 3 : (customEndpointEnabled && Number.isFinite(parsedMaxRetryAttempts) && parsedMaxRetryAttempts > 0 ? parsedMaxRetryAttempts : 3),
-            backoff_minutes: isFreePlan ? 5 : (customEndpointEnabled && Number.isFinite(parsedRetryBackoffMinutes) && parsedRetryBackoffMinutes >= 0 ? parsedRetryBackoffMinutes : 5),
+            max_attempts: 3,
+            backoff_minutes: 5,
           },
           twilio: {
             account_sid: isFreePlan ? "" : trimmedTwilioAccountSid,
@@ -630,7 +622,7 @@ export default function SettingsAutoResponses() {
           backTo="/settings"
         />
 
-        <main className="mx-auto w-full max-w-4xl px-4 py-6 space-y-6">
+        <main className="max-w-[var(--content-max-width)] m-auto px-4 py-6 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -701,6 +693,64 @@ export default function SettingsAutoResponses() {
           </Card>
 
           <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Company Email Sender
+              </CardTitle>
+              <CardDescription>
+                Connect the Google mailbox automated emails will send from for this company.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium">Google Email</p>
+                    {googleEmailConnection.isConnected ? (
+                      <Badge variant="secondary">Connected</Badge>
+                    ) : (
+                      <Badge variant="outline">Not connected</Badge>
+                    )}
+                  </div>
+                  {googleEmailConnection.isLoading ? (
+                    <p className="text-sm text-muted-foreground">Checking connection...</p>
+                  ) : googleEmailConnection.connectedEmail ? (
+                    <p className="truncate text-sm text-muted-foreground">{googleEmailConnection.connectedEmail}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      One Google account can be connected as the company sender.
+                    </p>
+                  )}
+                </div>
+                {googleEmailConnection.isConnected ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 sm:shrink-0"
+                    onClick={() => googleEmailConnection.disconnect()}
+                    disabled={googleEmailConnection.isDisconnecting}
+                  >
+                    {googleEmailConnection.isDisconnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                    Disconnect Google Email
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 sm:shrink-0"
+                    onClick={() => googleEmailConnection.connect()}
+                    disabled={googleEmailConnection.isLoading || googleEmailConnection.isConnecting}
+                  >
+                    {googleEmailConnection.isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                    Connect Google Email
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader className="space-y-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1">
@@ -753,7 +803,7 @@ export default function SettingsAutoResponses() {
                     Job Message Automation
                   </CardTitle>
                   <CardDescription>
-                    Configure an automatic job message event and send a full payload to your endpoint.
+                    Configure automatic job messages that always send from your connected Twilio number.
                   </CardDescription>
                 </div>
                 <div className="flex items-center sm:pt-1">
@@ -761,6 +811,7 @@ export default function SettingsAutoResponses() {
                     id="enable-job-message-automation"
                     aria-label="Enable job message automation"
                     checked={jobMessageAutomationEnabled}
+                    disabled={isFreePlan || isJobAutomationDisabledByTwilio}
                     onCheckedChange={(checked) => {
                       setJobMessageAutomationEnabled(checked);
                       setIsDirty(true);
@@ -770,6 +821,11 @@ export default function SettingsAutoResponses() {
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
+              {isJobAutomationDisabledByTwilio ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Connect a Twilio account SID, auth token, and sender number above to enable Job Message Automation.
+                </div>
+              ) : null}
               {jobMessageAutomationEnabled ? (
                 <>
 
@@ -1054,95 +1110,6 @@ export default function SettingsAutoResponses() {
                     </Button>
                   </div>
                 </div>
-              ) : null}
-
-              <div className="flex items-center justify-between rounded-lg border bg-background p-4">
-                <div className="space-y-1">
-                  <Label htmlFor="enable-custom-endpoint">Use custom endpoint</Label>
-                  <p className="text-sm text-muted-foreground">Enable to send job message events to your endpoint.</p>
-                </div>
-                <Switch
-                  id="enable-custom-endpoint"
-                  checked={customEndpointEnabled}
-                  onCheckedChange={(checked) => {
-                    setCustomEndpointEnabled(checked);
-                    setIsDirty(true);
-                  }}
-                />
-              </div>
-
-              {customEndpointEnabled ? (
-                <>
-                  <div className="space-y-3">
-                    <Label htmlFor="job-message-endpoint-url">Job message endpoint URL</Label>
-                    <Input
-                      id="job-message-endpoint-url"
-                      type="url"
-                      value={endpointUrl}
-                      onChange={(event) => {
-                        setEndpointUrl(event.target.value);
-                        setIsDirty(true);
-                      }}
-                      placeholder="https://example.com/hooks/job-message"
-                    />
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="job-message-auth-header-name">Job message auth header name</Label>
-                      <Input
-                        id="job-message-auth-header-name"
-                        value={authHeaderName}
-                        onChange={(event) => {
-                          setAuthHeaderName(event.target.value);
-                          setIsDirty(true);
-                        }}
-                        placeholder="Authorization"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="job-message-auth-header-value">Job message auth header value</Label>
-                      <Input
-                        id="job-message-auth-header-value"
-                        value={authHeaderValue}
-                        onChange={(event) => {
-                          setAuthHeaderValue(event.target.value);
-                          setIsDirty(true);
-                        }}
-                        placeholder="Bearer <token>"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="job-message-max-retry-attempts">Max retry attempts</Label>
-                      <Input
-                        id="job-message-max-retry-attempts"
-                        type="number"
-                        min={1}
-                        value={maxRetryAttempts}
-                        onChange={(event) => {
-                          setMaxRetryAttempts(event.target.value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="job-message-retry-backoff-minutes">Retry backoff minutes</Label>
-                      <Input
-                        id="job-message-retry-backoff-minutes"
-                        type="number"
-                        min={0}
-                        value={retryBackoffMinutes}
-                        onChange={(event) => {
-                          setRetryBackoffMinutes(event.target.value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </div>
-                  </div>
-                </>
               ) : null}
 
                 </>

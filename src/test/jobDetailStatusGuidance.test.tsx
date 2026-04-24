@@ -832,8 +832,8 @@ describe("JobDetail status guidance", () => {
     const rightColumn = screen.getByTestId("job-details-right-column");
     const leftCard = within(leftColumn).getByTestId("job-details-left-card");
 
-    expect(within(leftCard).getByRole("button", { name: "Details" })).toBeInTheDocument();
-    expect(within(leftCard).getByRole("button", { name: "Checklist" })).toBeInTheDocument();
+    expect(within(leftCard).getByRole("button", { name: "Schedule" })).toBeInTheDocument();
+    expect(within(leftCard).getByRole("button", { name: "Tasks" })).toBeInTheDocument();
     expect(within(leftCard).getByRole("button", { name: "Photos" })).toBeInTheDocument();
     expect(within(leftCard).getByRole("button", { name: "Notes" })).toBeInTheDocument();
 
@@ -969,7 +969,7 @@ describe("JobDetail status guidance", () => {
     const rightColumn = screen.getByTestId("job-details-right-column");
 
     expect(within(leftColumn).getByLabelText("mention input")).toBeInTheDocument();
-    expect(within(leftColumn).queryByText("Schedule")).not.toBeInTheDocument();
+    expect(within(leftColumn).queryByRole("button", { name: "Add Date" })).not.toBeInTheDocument();
     expect(within(rightColumn).getByText("job costs")).toBeInTheDocument();
     expect(within(rightColumn).getByText("Invoices")).toBeInTheDocument();
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();

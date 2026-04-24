@@ -358,7 +358,7 @@ export default function SettingsCrewManagement() {
         showBack
         backTo="/settings"
       />
-      <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+      <main className="max-w-[var(--content-max-width)] m-auto p-4 md:p-8 space-y-6">
 
         <Card>
           <CardHeader>
@@ -598,7 +598,7 @@ export default function SettingsCrewManagement() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </main>
 
       <Dialog open={!!memberToEdit} onOpenChange={(open) => {
         if (!open) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import {
   Phone, Mail, MapPin, CheckCircle2,
   Wrench, Hammer, Leaf, Droplets, Home, Zap,
@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { WebsiteConfig, WebsiteTestimonial } from "@/hooks/useWebsiteSettings";
-import { FONT_OPTIONS, UNIT_OPTIONS } from "@/pages/Website";
+import { UNIT_OPTIONS } from "@/pages/Website";
+import { getBrandFontOption, loadGoogleBrandFont } from "@/lib/brandFonts";
 import { parseHighlightSegments } from "@/lib/highlightText";
 
 const SERVICE_ICONS: Record<string, LucideIcon> = {
@@ -109,33 +110,22 @@ export function LandingPageView({
   const heroSolidStart = `hsl(${hsl.h} ${hsl.s}% ${Math.max(hsl.l - 18, 16)}%)`;
   const heroSolidEnd = `hsl(${hsl.h} ${hsl.s}% ${Math.max(hsl.l - 8, 20)}%)`;
 
-  const fontOption = FONT_OPTIONS.find((f) => f.name === config.font);
-  const bodyFontOption = FONT_OPTIONS.find((f) => f.name === config.body_font);
+  const fontOption = getBrandFontOption(config.font);
+  const bodyFontOption = getBrandFontOption(config.body_font);
   const fontCss = fontOption?.css;
   const bodyFontCss = bodyFontOption?.css;
 
-  const loadGoogleFont = (option: typeof fontOption) => {
-    if (!option) return;
-    const id = `gfont-${option.name.replace(/\s+/g, "-").toLowerCase()}`;
-    if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href = `https://fonts.googleapis.com/css2?family=${option.googleParam}&display=swap`;
-    document.head.appendChild(link);
-  };
-
-  useEffect(() => { loadGoogleFont(fontOption); }, [fontOption]);
-  useEffect(() => { loadGoogleFont(bodyFontOption); }, [bodyFontOption]);
+  useEffect(() => { loadGoogleBrandFont(fontOption); }, [fontOption]);
+  useEffect(() => { loadGoogleBrandFont(bodyFontOption); }, [bodyFontOption]);
 
   const [calcService, setCalcService] = useState("");
   const [calcQty, setCalcQty] = useState("");
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formPhone, setFormPhone] = useState("");
-  const [formService, setFormService] = useState("");
-  const [formMessage, setFormMessage] = useState("");
+  const [formSmsConsent, setFormSmsConsent] = useState(false);
   const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const pageRef = useRef<HTMLDivElement | null>(null);
 
   const headline = config.hero?.headline || `Professional Services by ${companyName}`;
   const subheadline =
@@ -185,6 +175,39 @@ export function LandingPageView({
   const testimonialsHeader = config.testimonials_section?.header || "What Clients Say";
   const testimonialsSubheading =
     config.testimonials_section?.subheading || "Trusted by homeowners and businesses in the area";
+
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page) return;
+
+    const revealElements = Array.from(page.querySelectorAll<HTMLElement>("[data-site-reveal]"));
+    if (revealElements.length === 0) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion || !("IntersectionObserver" in window)) {
+      revealElements.forEach((element) => element.classList.add("site-reveal-visible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("site-reveal-visible");
+          observer.unobserve(entry.target);
+        });
+      },
+      {
+        threshold: 0,
+        rootMargin: "0px",
+      },
+    );
+
+    revealElements.forEach((element) => observer.observe(element));
+
+    return () => observer.disconnect();
+  }, [config, services.length, testimonials.length]);
+
   const [aboutSliderPosition, setAboutSliderPosition] = useState(50);
 
   const scrollTo = (id: string) => {
@@ -199,17 +222,24 @@ export function LandingPageView({
     }
     setFormStatus("submitting");
     try {
-      const { error } = await supabase.functions.invoke("website-lead-submit", {
+      const { data, error } = await supabase.functions.invoke("website-lead-submit", {
         body: {
           account_id: accountId,
           name: formName,
-          email: formEmail || undefined,
-          phone: formPhone || undefined,
-          service_type: formService || undefined,
-          notes: formMessage || undefined,
+          email: formEmail,
+          phone: formPhone,
+          sms_consent: formSmsConsent,
         },
       });
       if (error) throw error;
+      if (data && typeof data === "object" && "success" in data && (data as { success?: boolean }).success === false) {
+        console.error("website-lead-submit returned unsuccessful response", data);
+        throw new Error(
+          typeof (data as { error?: unknown }).error === "string"
+            ? (data as { error: string }).error
+            : "Lead submission failed",
+        );
+      }
       setFormStatus("success");
     } catch {
       setFormStatus("error");
@@ -237,7 +267,7 @@ export function LandingPageView({
     });
 
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900 antialiased" style={bodyFontCss ? { fontFamily: bodyFontCss } : {}}>
+    <div ref={pageRef} className="min-h-screen bg-white font-sans text-gray-900 antialiased" style={bodyFontCss ? { fontFamily: bodyFontCss } : {}}>
       {/* Sticky nav */}
       <header
         className="sticky top-0 z-50 border-b shadow-sm"
@@ -304,7 +334,7 @@ export function LandingPageView({
           backgroundRepeat: "no-repeat",
         }}
       >
-        <div className="relative mx-auto max-w-4xl px-6 text-center">
+        <div className="relative mx-auto max-w-4xl px-6 text-center" data-site-reveal>
           <h1
             className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl md:text-6xl"
             style={{ color: themeTextColor, ...(fontCss ? { fontFamily: fontCss } : {}) }}
@@ -343,7 +373,7 @@ export function LandingPageView({
       </section>
 
       {/* About */}
-      <section id="about" className="py-20">
+      <section id="about" className="py-20" data-site-reveal>
         <div className="mx-auto grid max-w-6xl gap-10 px-6 lg:grid-cols-2 lg:items-center">
           <div>
             {hasBeforeAfterImages ? (
@@ -436,12 +466,13 @@ export function LandingPageView({
                 return (
                   <div
                     key={service.id}
+                    data-site-reveal
                     className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-md"
                     style={{
                       backgroundColor: themeColor,
                       borderColor: `rgba(${hexToRgb(themeTextColor)}, 0.2)`,
                       color: themeTextColor,
-                    }}
+                    } as React.CSSProperties}
                   >
                     {service.image_url ? (
                       <img
@@ -487,7 +518,7 @@ export function LandingPageView({
         const fmt = (n: number) =>
           n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
         return (
-          <section id="estimate" className="bg-gray-50 py-20">
+          <section id="estimate" className="bg-gray-50 py-20" data-site-reveal>
             <div className="mx-auto max-w-3xl px-6">
               <div className="mb-10 text-center">
                 <h2 className="text-3xl font-bold text-gray-900 sm:text-4xl" style={fontCss ? { fontFamily: fontCss } : {}}>
@@ -556,7 +587,6 @@ export function LandingPageView({
                 <div className="mt-6 text-center">
                   <button
                     onClick={() => {
-                      if (selected) setFormService(selected.name);
                       scrollTo("contact");
                     }}
                     className="rounded-full px-8 py-3 text-sm font-bold shadow-sm transition-opacity hover:opacity-90"
@@ -572,7 +602,7 @@ export function LandingPageView({
       })()}
 
       {/* Testimonials */}
-      <section className="bg-white py-20">
+      <section className="bg-white py-20" data-site-reveal>
         <div className="mx-auto max-w-6xl px-6">
           <div className="mb-12 text-center">
             <h2 className="text-3xl font-bold text-gray-900 sm:text-4xl" style={fontCss ? { fontFamily: fontCss } : {}}>
@@ -583,7 +613,12 @@ export function LandingPageView({
 
           <div className="grid gap-6 md:grid-cols-3">
             {testimonials.map((testimonial, index) => (
-              <article key={testimonial.id || `${testimonial.author}-${testimonial.location}-${index}`} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+              <article
+                key={testimonial.id || `${testimonial.author}-${testimonial.location}-${index}`}
+                data-site-reveal
+                className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
+                style={{ "--site-reveal-delay": `${Math.min(index * 70, 210)}ms` } as React.CSSProperties}
+              >
                 <div className="mb-5 flex items-end gap-3">
                   {testimonial.photo_url ? (
                     <img
@@ -620,7 +655,7 @@ export function LandingPageView({
       </section>
 
       {/* Contact — two-column: info left, form right */}
-      <section id="contact" className="py-20" style={{ backgroundColor: `rgba(${rgb}, 0.05)` }}>
+      <section id="contact" className="py-20" data-site-reveal style={{ backgroundColor: `rgba(${rgb}, 0.05)` }}>
         <div className="mx-auto max-w-6xl px-6">
           <div className="mb-12 text-center">
             <h2 className="text-3xl font-bold text-gray-900 sm:text-4xl" style={fontCss ? { fontFamily: fontCss } : {}}>Get in Touch</h2>
@@ -720,10 +755,11 @@ export function LandingPageView({
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Phone
+                        Phone <span className="text-red-400">*</span>
                       </label>
                       <input
                         type="tel"
+                        required
                         value={formPhone}
                         onChange={(e) => setFormPhone(e.target.value)}
                         placeholder="(555) 000-0000"
@@ -735,10 +771,11 @@ export function LandingPageView({
 
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Email
+                      Email <span className="text-red-400">*</span>
                     </label>
                     <input
                       type="email"
+                      required
                       value={formEmail}
                       onChange={(e) => setFormEmail(e.target.value)}
                       placeholder="jane@example.com"
@@ -747,39 +784,23 @@ export function LandingPageView({
                     />
                   </div>
 
-                  {services.length > 0 && (
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Service
-                      </label>
-                      <select
-                        value={formService}
-                        onChange={(e) => setFormService(e.target.value)}
-                        className={inputClass}
-                        style={{ "--tw-ring-color": themeColor } as React.CSSProperties}
-                      >
-                        <option value="">Select a service…</option>
-                        {services.map((s) => (
-                          <option key={s.id} value={s.name}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Tell us about your project
+                      SMS Consent <span className="text-red-400">*</span>
                     </label>
-                    <textarea
-                      value={formMessage}
-                      onChange={(e) => setFormMessage(e.target.value)}
-                      placeholder="Describe what you need, where it's located, and any other details…"
-                      rows={4}
-                      className={`${inputClass} resize-none`}
-                      style={{ "--tw-ring-color": themeColor } as React.CSSProperties}
-                    />
+                    <label className="flex items-start gap-3 text-sm text-gray-500">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={formSmsConsent}
+                        onChange={(e) => setFormSmsConsent(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-2"
+                        style={{ "--tw-ring-color": themeColor } as React.CSSProperties}
+                      />
+                      <span>
+                        I agree to receive text messages regarding my request, project updates, scheduling, and related services.
+                      </span>
+                    </label>
                   </div>
 
                   {formStatus === "error" && (

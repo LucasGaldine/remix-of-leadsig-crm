@@ -664,8 +664,8 @@ export default function SettingsPricingRules() {
         backTo="/settings"
       />
 
-      <main className="px-4 py-4">
-        <div className="mx-auto max-w-4xl">
+      <main className="max-w-[var(--content-max-width)] m-auto px-4 py-4">
+        <div>
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -862,7 +862,7 @@ export default function SettingsPricingRules() {
           )}
         </div>
 
-        <StickyActionBar onSave={saveRules} isSaving={saving} contentClassName="mx-auto max-w-4xl" />
+        <StickyActionBar onSave={saveRules} isSaving={saving} contentClassName="max-w-[var(--content-max-width)] m-auto" />
       </main>
 
       <MobileNav />

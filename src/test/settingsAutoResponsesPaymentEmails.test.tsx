@@ -4,15 +4,31 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsAutoResponses from "@/pages/SettingsAutoResponses";
 
-const { updateSettingsAsyncMock, toastErrorMock, toastSuccessMock, invokeFunctionMock } = vi.hoisted(() => ({
+const {
+  updateSettingsAsyncMock,
+  toastErrorMock,
+  toastSuccessMock,
+  invokeFunctionMock,
+  connectGoogleEmailMock,
+  disconnectGoogleEmailMock,
+} = vi.hoisted(() => ({
   updateSettingsAsyncMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   invokeFunctionMock: vi.fn(),
+  connectGoogleEmailMock: vi.fn(),
+  disconnectGoogleEmailMock: vi.fn(),
 }));
 
 let mockSettings: Record<string, unknown> | null;
 let mockPricingPlan: "free" | "basic" | "premium";
+let mockGoogleEmailConnection: {
+  isConnected: boolean;
+  connectedEmail: string | null;
+  isLoading: boolean;
+  isConnecting: boolean;
+  isDisconnecting: boolean;
+};
 
 vi.mock("@/components/layout/PageHeader", () => ({
   PageHeader: ({ title }: { title: string }) => <header>{title}</header>,
@@ -51,6 +67,14 @@ vi.mock("@/hooks/useAuth", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useGoogleEmailConnection", () => ({
+  useGoogleEmailConnection: () => ({
+    ...mockGoogleEmailConnection,
+    connect: connectGoogleEmailMock,
+    disconnect: disconnectGoogleEmailMock,
+  }),
+}));
+
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     functions: {
@@ -70,10 +94,19 @@ describe("SettingsAutoResponses payment emails", () => {
   beforeEach(() => {
     mockSettings = {};
     mockPricingPlan = "premium";
+    mockGoogleEmailConnection = {
+      isConnected: false,
+      connectedEmail: null,
+      isLoading: false,
+      isConnecting: false,
+      isDisconnecting: false,
+    };
     updateSettingsAsyncMock.mockReset();
     toastErrorMock.mockReset();
     toastSuccessMock.mockReset();
     invokeFunctionMock.mockReset();
+    connectGoogleEmailMock.mockReset();
+    disconnectGoogleEmailMock.mockReset();
     updateSettingsAsyncMock.mockResolvedValue({});
     invokeFunctionMock.mockResolvedValue({ data: { success: true }, error: null });
   });
@@ -252,7 +285,7 @@ describe("SettingsAutoResponses payment emails", () => {
     expect(screen.getByLabelText(/connected twilio sender number/i)).toHaveValue("+15550001111");
   });
 
-  it("requires connected twilio credentials for text templates before saving", async () => {
+  it("disables job message automation when Twilio is not connected", async () => {
     mockSettings = {
       job_message_automation: {
         enabled: true,
@@ -279,12 +312,19 @@ describe("SettingsAutoResponses payment emails", () => {
       </MemoryRouter>,
     );
 
+    expect(screen.getByRole("switch", { name: /enable job message automation/i })).toBeDisabled();
+
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith("Connect your Twilio account SID, auth token, and sender number to send automated text messages.");
+      expect(updateSettingsAsyncMock).toHaveBeenCalled();
     });
-    expect(updateSettingsAsyncMock).not.toHaveBeenCalled();
+
+    const payload = updateSettingsAsyncMock.mock.calls[0]?.[0] as {
+      job_message_automation?: { enabled?: boolean };
+    };
+
+    expect(payload.job_message_automation?.enabled).toBe(false);
   });
 
   it("saves connected twilio credentials into job message automation settings", async () => {
@@ -331,6 +371,40 @@ describe("SettingsAutoResponses payment emails", () => {
       auth_token: "twilio_secret_token",
       from_number: "+15554443333",
     });
+  });
+
+  it("shows the account Google Email connection and starts connect", () => {
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/company email sender/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /connect google email/i }));
+
+    expect(connectGoogleEmailMock).toHaveBeenCalled();
+  });
+
+  it("shows connected Google Email and allows disconnect", () => {
+    mockGoogleEmailConnection = {
+      isConnected: true,
+      connectedEmail: "sender@example.com",
+      isLoading: false,
+      isConnecting: false,
+      isDisconnecting: false,
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("sender@example.com")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /disconnect google email/i }));
+
+    expect(disconnectGoogleEmailMock).toHaveBeenCalled();
   });
 
   it("opens a send-test-message modal and sends to the entered phone number", async () => {

@@ -1,4 +1,4 @@
-export const COMPANY_LOGO_MAX_FILE_SIZE = 2 * 1024 * 1024;
+export const COMPANY_LOGO_MAX_FILE_SIZE = 5 * 1024 * 1024;
 export const COMPANY_LOGO_MIN_ASPECT_RATIO = 1;
 export const COMPANY_LOGO_MAX_ASPECT_RATIO = 4;
 
@@ -11,7 +11,7 @@ export function getCompanyLogoValidationError(
   }
 
   if (file.size > COMPANY_LOGO_MAX_FILE_SIZE) {
-    return "Logo image must be 2MB or smaller";
+    return "Logo image must be 5MB or smaller";
   }
 
   if (!dimensions.width || !dimensions.height) {

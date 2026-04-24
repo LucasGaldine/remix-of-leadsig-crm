@@ -203,10 +203,9 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
   };
 
   const completedEntries = entries.filter((e) => e.clock_out);
-  const shouldUseCompactLoggedLayout = !activeEntry && completedEntries.length > 0;
   const visibleHistoryEntries = historyExpanded
     ? completedEntries
-    : completedEntries.slice(0, 1);
+    : [];
 
   if (!tableExists) {
     return (
@@ -250,7 +249,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
         </div>
       )}
 
-      {!activeEntry && !loading && !shouldUseCompactLoggedLayout && (
+      {!activeEntry && !loading && (
         <div className="mb-3">
           <Button
             size="lg"
@@ -266,107 +265,55 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
         </div>
       )}
 
-      {shouldUseCompactLoggedLayout ? (
-        <div className="grid grid-cols-[1fr_auto] gap-x-10 gap-y-2 items-start">
-          <div className="space-y-1.5 min-w-0">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 py-0.5 text-left"
-              onClick={() => setHistoryExpanded((prev) => !prev)}
-              aria-expanded={historyExpanded}
-            >
-              <span className="text-base md:text-sm font-medium text-muted-foreground">Logged Hours</span>
-              {historyExpanded ? (
-                <ChevronUp className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              )}
-            </button>
+      {/* GPS info for manual toggle */}
+      {!activeEntry && geo.error && (
+        <div className="flex items-center justify-center gap-2 text-center text-base md:text-sm text-muted-foreground">
+          <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
+          <span>No GPS - use manual clock in/out.</span>
+        </div>
+      )}
 
-            <div className="space-y-1 mt-0.5">
-              {visibleHistoryEntries.map((e) => {
-                const dur = new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime();
-                return (
-                  <div key={e.id} className="flex items-center justify-between text-base md:text-sm py-0.5">
-                    <div>
-                      <span className="text-foreground">
-                        {format(new Date(e.clock_in), "MMM d")}
-                      </span>
-                      <span className="text-muted-foreground ml-2 text-base md:text-sm">
-                        {format(new Date(e.clock_in), "h:mm a")} – {format(new Date(e.clock_out!), "h:mm a")}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-foreground">{formatDuration(dur)}</span>
-                      {e.is_auto && (
-                        <span title="Auto-tracked"><Wifi className="h-3 w-3 text-muted-foreground" /></span>
-                      )}
-                    </div>
+      {/* Past entries */}
+      {!activeEntry && completedEntries.length > 0 && (
+        <div className="space-y-1.5 pt-3">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 py-0.5 text-left"
+            onClick={() => setHistoryExpanded((prev) => !prev)}
+            aria-expanded={historyExpanded}
+          >
+            <span className="text-base md:text-sm font-medium text-muted-foreground">Logged Hours</span>
+            {historyExpanded ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+
+          <div className="space-y-1 mt-0.5">
+            {visibleHistoryEntries.map((e) => {
+              const dur = new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime();
+              return (
+                <div key={e.id} className="flex items-center justify-between text-base md:text-sm py-1">
+                  <div>
+                    <span className="text-foreground">
+                      {format(new Date(e.clock_in), "MMM d")}
+                    </span>
+                    <span className="text-muted-foreground ml-2 text-base md:text-sm">
+                      {format(new Date(e.clock_in), "h:mm a")} – {format(new Date(e.clock_out!), "h:mm a")}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex flex-col items-center gap-2">
-            <Button
-              type="button"
-              size="icon"
-              className="h-11 w-11 rounded-full"
-              aria-label="Clock back in"
-              onClick={() => {
-                setManualMode(true);
-                clockIn(false);
-              }}
-            >
-              <Play className="h-5 w-5" />
-            </Button>
-            {geo.error && <WifiOff className="h-4 w-4 text-destructive" aria-label="No GPS available" />}
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-foreground">{formatDuration(dur)}</span>
+                    {e.is_auto && (
+                      <span title="Auto-tracked"><Wifi className="h-3 w-3 text-muted-foreground" /></span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      ) : (
-        <>
-          {/* GPS info for manual toggle */}
-          {!activeEntry && geo.error && (
-            <div className="flex items-center justify-center gap-2 text-center text-base md:text-sm text-muted-foreground">
-              <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
-              <span>No GPS - use manual clock in/out.</span>
-            </div>
-          )}
-
-          {/* Past entries */}
-          {!activeEntry && completedEntries.length > 0 && (
-            <div className="space-y-1.5 border-t border-border pt-3">
-              <p className="text-base md:text-sm font-medium text-muted-foreground mb-1">Logged Hours</p>
-              {completedEntries.slice(0, 5).map((e) => {
-                const dur = new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime();
-                return (
-                  <div key={e.id} className="flex items-center justify-between text-base md:text-sm py-1">
-                    <div>
-                      <span className="text-foreground">
-                        {format(new Date(e.clock_in), "MMM d")}
-                      </span>
-                      <span className="text-muted-foreground ml-2 text-base md:text-sm">
-                        {format(new Date(e.clock_in), "h:mm a")} – {format(new Date(e.clock_out!), "h:mm a")}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-foreground">{formatDuration(dur)}</span>
-                      {e.is_auto && (
-                        <span title="Auto-tracked"><Wifi className="h-3 w-3 text-muted-foreground" /></span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {completedEntries.length > 5 && (
-                <p className="text-base md:text-sm text-muted-foreground text-center">
-                  +{completedEntries.length - 5} more entries
-                </p>
-              )}
-            </div>
-          )}
-        </>
       )}
     </div>
   );

@@ -21,7 +21,7 @@ import { formatDistanceToNow } from "date-fns";
 import { PlanGate } from "@/components/features/PlanGate";
 
 type Channel = "push" | "email" | "sms";
-type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks" | "job_assignments" | "same_day_reminders";
+type AlertKey = "new_leads" | "lead_updates" | "payments" | "schedule_changes" | "tasks" | "job_assignments" | "same_day_reminders" | "clock_in_reminders";
 type EmailEventKey = "estimate_approved" | "invoice_sent" | "payment_logged";
 const SMS_CONSENT_TEXT_VERSION = "2026-04-09-v1";
 
@@ -39,8 +39,8 @@ const channelMeta: Record<Channel, { label: string; icon: React.ReactNode; helpe
   sms: { label: "SMS", icon: <MessageSquare className="h-4 w-4" />, helper: "Text messages" },
 };
 
-const ownerAlertKeys: AlertKey[] = ["new_leads", "lead_updates", "payments", "schedule_changes", "tasks"];
-const crewAlertKeys: AlertKey[] = ["job_assignments", "schedule_changes", "same_day_reminders", "tasks"];
+const ownerAlertKeys: AlertKey[] = ["new_leads", "lead_updates", "payments", "schedule_changes", "clock_in_reminders", "tasks"];
+const crewAlertKeys: AlertKey[] = ["job_assignments", "schedule_changes", "same_day_reminders", "clock_in_reminders", "tasks"];
 
 const alertMeta: Record<AlertKey, { label: string; description: string; icon: React.ReactNode }> = {
   new_leads: {
@@ -78,6 +78,11 @@ const alertMeta: Record<AlertKey, { label: string; description: string; icon: Re
     description: "Morning notification with your jobs scheduled for today.",
     icon: <Sun className="h-4 w-4" />,
   },
+  clock_in_reminders: {
+    label: "Clock in reminders",
+    description: "SMS reminder 15 minutes before each scheduled start time with a direct job link.",
+    icon: <Clock className="h-4 w-4" />,
+  },
 };
 
 const eventTypeLabels: Record<string, string> = {
@@ -88,6 +93,7 @@ const eventTypeLabels: Record<string, string> = {
   tasks: "Task",
   job_assignments: "Job assignment",
   same_day_reminders: "Day reminder",
+  clock_in_reminders: "Clock in reminder",
 };
 
 const isMissingSmsConsentMetadataColumnError = (message?: string) => {
@@ -116,8 +122,8 @@ export default function SettingsNotifications() {
     () => ({
       channels: { push: false, email: true, sms: false },
       alerts: isCrew
-        ? { job_assignments: true, schedule_changes: true, same_day_reminders: true, tasks: true, new_leads: false, lead_updates: false, payments: false }
-        : { new_leads: true, lead_updates: false, payments: true, schedule_changes: true, tasks: false, job_assignments: false, same_day_reminders: false },
+        ? { job_assignments: true, schedule_changes: true, same_day_reminders: true, clock_in_reminders: true, tasks: true, new_leads: false, lead_updates: false, payments: false }
+        : { new_leads: true, lead_updates: false, payments: true, schedule_changes: true, tasks: false, job_assignments: false, same_day_reminders: false, clock_in_reminders: true },
       email_events: { estimate_approved: true, invoice_sent: true, payment_logged: true },
       quiet_hours: { enabled: false, start: "21:00", end: "07:00" },
       digest: { frequency: isCrew ? "off" : "daily" },
@@ -135,6 +141,7 @@ export default function SettingsNotifications() {
         tasks: false,
         job_assignments: false,
         same_day_reminders: false,
+        clock_in_reminders: false,
       },
       email_events: { estimate_approved: false, invoice_sent: false, payment_logged: false },
       quiet_hours: { enabled: false, start: "21:00", end: "07:00" },
@@ -676,7 +683,6 @@ export default function SettingsNotifications() {
                 }}
               />
             </div>
-            <div className="border-t" />
             {visibleAlertKeys.map((key) => (
               <div
                 key={key}

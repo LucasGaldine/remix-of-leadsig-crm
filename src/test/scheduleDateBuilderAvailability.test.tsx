@@ -48,6 +48,7 @@ vi.mock("@/components/ui/calendar", () => ({
     onDayClick,
     onDayMouseEnter,
     onDayMouseLeave,
+    onDayPointerEnter,
   }: {
     disabled?: (date: Date) => boolean;
     modifiers?: {
@@ -56,6 +57,11 @@ vi.mock("@/components/ui/calendar", () => ({
     onDayClick?: (date: Date, activeModifiers: unknown, event: { buttons?: number }) => void;
     onDayMouseEnter?: (date: Date, activeModifiers: unknown, event: { buttons?: number }) => void;
     onDayMouseLeave?: (date: Date, activeModifiers: unknown, event: { buttons?: number }) => void;
+    onDayPointerEnter?: (
+      date: Date,
+      activeModifiers: unknown,
+      event: { buttons?: number; pointerType?: string }
+    ) => void;
   }) => {
     const target = new Date(2030, 0, 10);
     const altTarget = new Date(2030, 0, 11);
@@ -84,6 +90,12 @@ vi.mock("@/components/ui/calendar", () => ({
         </button>
         <button type="button" onMouseLeave={() => onDayMouseLeave?.(thirdTarget, {}, { buttons: 0 })}>
           Leave day
+        </button>
+        <button
+          type="button"
+          onClick={() => onDayPointerEnter?.(thirdTarget, {}, { buttons: 1, pointerType: "touch" })}
+        >
+          Touch drag third date
         </button>
       </div>
     );
@@ -167,6 +179,45 @@ describe("ScheduleDateBuilder availability guards", () => {
     expect(screen.getByText("12")).toBeInTheDocument();
   });
 
+  it("keeps a date selected when mouseup happens before click after a drag-style hover", () => {
+    const SchedulingHarness = () => {
+      const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
+      return <ScheduleDateBuilder schedules={schedules} onSchedulesChange={setSchedules} />;
+    };
+
+    render(<SchedulingHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
+    fireEvent.mouseDown(window, { button: 0 });
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /drag over third date/i }));
+    fireEvent.mouseUp(window, { button: 0 });
+    fireEvent.click(screen.getByRole("button", { name: /pick third date/i }));
+    fireEvent.click(screen.getByRole("button", { name: /custom times/i }));
+
+    expect(screen.getByText("11")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("ignores synthetic mouse enter after touch pointer drag so tap does not toggle off", () => {
+    const SchedulingHarness = () => {
+      const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
+      return <ScheduleDateBuilder schedules={schedules} onSchedulesChange={setSchedules} />;
+    };
+
+    render(<SchedulingHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
+    fireEvent.pointerDown(window, { button: 0, isPrimary: true, pointerType: "touch" });
+    fireEvent.click(screen.getByRole("button", { name: /touch drag third date/i }));
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /drag over third date/i }));
+    fireEvent.pointerUp(window, { button: 0, isPrimary: true, pointerType: "touch" });
+    fireEvent.click(screen.getByRole("button", { name: /pick third date/i }));
+    fireEvent.click(screen.getByRole("button", { name: /custom times/i }));
+
+    expect(screen.getByText("11")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
   it("allows selecting a date marked busy/full when ignoring existing-schedule constraints", () => {
     const SchedulingHarness = () => {
       const [schedules, setSchedules] = useState<Array<{ date: string; timeStart: string; timeEnd: string }>>([]);
@@ -200,4 +251,5 @@ describe("ScheduleDateBuilder availability guards", () => {
     fireEvent.click(screen.getByRole("button", { name: /pick alt date/i }));
     expect(screen.getByText("alt-normal")).toBeInTheDocument();
   });
+
 });

@@ -130,8 +130,8 @@ export default function SettingsPricing() {
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="Pricing Plans" showBack />
 
-      <main className="px-4 py-6">
-        <div className="mx-auto max-w-4xl">
+      <main className="max-w-[var(--content-max-width)] m-auto px-4 py-6">
+        <div>
           <div className="mb-8 text-center">
             <h2 className="text-2xl font-bold text-foreground">
               Choose the right plan for your business

@@ -7,12 +7,12 @@ import {
 } from "@/lib/companyLogo";
 
 describe("company logo validation", () => {
-  it("rejects files larger than 2 MB", () => {
+  it("rejects files larger than 5 MB", () => {
     const file = new File(["a"], "logo.png", { type: "image/png" });
     Object.defineProperty(file, "size", { value: COMPANY_LOGO_MAX_FILE_SIZE + 1 });
 
     expect(getCompanyLogoValidationError(file, { width: 1200, height: 400 })).toBe(
-      "Logo image must be 2MB or smaller",
+      "Logo image must be 5MB or smaller",
     );
   });
 

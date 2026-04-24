@@ -7,7 +7,7 @@ import {
   normalizeClientPortalColor,
   normalizeClientPortalTextColor,
 } from "@/lib/clientPortalTheme";
-import { FONT_OPTIONS } from "@/pages/Website";
+import { getBrandFontOption, loadGoogleBrandFont } from "@/lib/brandFonts";
 
 interface AccountData {
   company_name: string;
@@ -57,24 +57,13 @@ export default function SiteCareersPage() {
   const themeTextColor = normalizeClientPortalTextColor(account?.settings?.client_portal_text_color);
   const rgb = hexToRgb(themeColor);
   const roles = websiteConfig.hiring_roles ?? [];
-  const fontOption = FONT_OPTIONS.find((f) => f.name === websiteConfig.font);
-  const bodyFontOption = FONT_OPTIONS.find((f) => f.name === websiteConfig.body_font);
+  const fontOption = getBrandFontOption(websiteConfig.font);
+  const bodyFontOption = getBrandFontOption(websiteConfig.body_font);
   const fontCss = fontOption?.css;
   const bodyFontCss = bodyFontOption?.css;
 
-  const loadGoogleFont = (option: typeof fontOption) => {
-    if (!option) return;
-    const id = `gfont-${option.name.replace(/\s+/g, "-").toLowerCase()}`;
-    if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href = `https://fonts.googleapis.com/css2?family=${option.googleParam}&display=swap`;
-    document.head.appendChild(link);
-  };
-
-  useEffect(() => { loadGoogleFont(fontOption); }, [fontOption]);
-  useEffect(() => { loadGoogleFont(bodyFontOption); }, [bodyFontOption]);
+  useEffect(() => { loadGoogleBrandFont(fontOption); }, [fontOption]);
+  useEffect(() => { loadGoogleBrandFont(bodyFontOption); }, [bodyFontOption]);
 
   if (status === "loading") {
     return (

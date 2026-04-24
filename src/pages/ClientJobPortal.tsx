@@ -16,6 +16,7 @@ import {
   normalizeClientPortalColor,
   normalizeClientPortalTextColor,
 } from "@/lib/clientPortalTheme";
+import { getBrandFontOption, loadGoogleBrandFont } from "@/lib/brandFonts";
 
 interface JobData {
   name: string;
@@ -76,6 +77,10 @@ interface CompanyData {
   settings?: {
     client_portal_color?: string | null;
     client_portal_text_color?: string | null;
+    website?: {
+      font?: string | null;
+      body_font?: string | null;
+    } | null;
   } | null;
 }
 
@@ -213,6 +218,9 @@ export default function ClientJobPortal() {
     data?.portal_metadata?.customer?.name?.trim() ||
     "";
   const portalTabTitle = customerName ? `${customerName} | Client Portal` : "Client Portal";
+  const activeCompany = customerData?.company ?? data?.company;
+  const headingFontOption = getBrandFontOption(activeCompany?.settings?.website?.font);
+  const bodyFontOption = getBrandFontOption(activeCompany?.settings?.website?.body_font);
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-client-portal`;
   const apiHeaders = {
@@ -247,6 +255,9 @@ export default function ClientJobPortal() {
       document.title = previousTitle;
     };
   }, [portalTabTitle]);
+
+  useEffect(() => { loadGoogleBrandFont(headingFontOption); }, [headingFontOption]);
+  useEffect(() => { loadGoogleBrandFont(bodyFontOption); }, [bodyFontOption]);
 
   const fetchData = async () => {
     setPageState("loading");
@@ -334,6 +345,8 @@ export default function ClientJobPortal() {
       "--client-portal-text-color": customerPortalTextColor,
       "--client-portal-text-muted": hexToRgba(customerPortalTextColor, 0.72),
       "--client-portal-text-subtle": hexToRgba(customerPortalTextColor, 0.56),
+      "--client-portal-heading-font": headingFontOption?.css,
+      "--client-portal-body-font": bodyFontOption?.css,
     } as React.CSSProperties;
 
     return (
@@ -531,6 +544,8 @@ export default function ClientJobPortal() {
     "--client-portal-text-color": portalTextColor,
     "--client-portal-text-muted": hexToRgba(portalTextColor, 0.72),
     "--client-portal-text-subtle": hexToRgba(portalTextColor, 0.56),
+    "--client-portal-heading-font": headingFontOption?.css,
+    "--client-portal-body-font": bodyFontOption?.css,
   } as React.CSSProperties;
 
   return (

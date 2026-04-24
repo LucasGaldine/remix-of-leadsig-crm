@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,7 +41,7 @@ describe("MobileNav layout", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /report a bug/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /report an issue/i })).toBeInTheDocument();
     expect(screen.getByText(/^Settings$/i)).toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe("MobileNav layout", () => {
     expect(screen.getAllByRole("button", { name: /^More$/i }).length).toBeGreaterThan(0);
   });
 
-  it("includes Settings and Report a Bug in the mobile More dropdown", () => {
+  it("includes Settings and Report an Issue in the mobile More dropdown", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <MobileNav />
@@ -68,10 +68,44 @@ describe("MobileNav layout", () => {
     );
 
     const moreButtons = screen.getAllByRole("button", { name: /^More$/i });
-    fireEvent.click(moreButtons[0]);
+    fireEvent.keyDown(moreButtons[0], { key: "Enter", code: "Enter" });
 
-    expect(screen.getByText(/^Settings$/i)).toBeInTheDocument();
-    expect(screen.getByText(/^Report a Bug$/i)).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^Settings$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^Report an Issue$/i })).toBeInTheDocument();
+  });
+
+  it("toggles CRM and Financials submenus in the mobile More dropdown one at a time", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <MobileNav />
+      </MemoryRouter>,
+    );
+
+    const moreButtons = screen.getAllByRole("button", { name: /^More$/i });
+    fireEvent.keyDown(moreButtons[0], { key: "Enter", code: "Enter" });
+
+    const menu = screen.getByRole("menu");
+    const crmToggle = within(menu).getByRole("menuitem", { name: /^CRM$/i });
+    const financialsToggle = within(menu).getByRole("menuitem", { name: /^Financials$/i });
+
+    expect(crmToggle).toHaveAttribute("aria-expanded", "false");
+    expect(financialsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(menu).queryByText(/^Clients$/i)).not.toBeInTheDocument();
+    expect(within(menu).queryByText(/^Payments$/i)).not.toBeInTheDocument();
+
+    fireEvent.click(crmToggle);
+
+    expect(crmToggle).toHaveAttribute("aria-expanded", "true");
+    expect(financialsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(menu).getByText(/^Clients$/i)).toBeInTheDocument();
+    expect(within(menu).queryByText(/^Payments$/i)).not.toBeInTheDocument();
+
+    fireEvent.click(financialsToggle);
+
+    expect(crmToggle).toHaveAttribute("aria-expanded", "false");
+    expect(financialsToggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(menu).queryByText(/^Clients$/i)).not.toBeInTheDocument();
+    expect(within(menu).getByText(/^Payments$/i)).toBeInTheDocument();
   });
 
   it("does not render chevron arrow buttons on mobile", () => {

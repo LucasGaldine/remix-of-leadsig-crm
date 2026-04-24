@@ -286,7 +286,7 @@ export default function SettingsProfile() {
         backTo="/settings"
       />
 
-      <main className="px-4 py-6 space-y-6">
+      <main className="max-w-[var(--content-max-width)] m-auto px-4 py-6 space-y-6">
         {/* Profile Photo */}
         <div className="card-elevated rounded-lg p-6">
           <h3 className="font-semibold text-lg mb-4">Profile Photo</h3>

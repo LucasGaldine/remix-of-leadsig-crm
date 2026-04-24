@@ -63,7 +63,7 @@ describe("SettingsCompanyProfile logo uploader", () => {
     expect(fileInput).toHaveClass("sr-only");
   });
 
-  it("shows the company logo inside the client portal preview when a logo is configured", () => {
+  it("does not render the client portal preview section", () => {
     mockCurrentAccount.logo_url = "https://example.com/logo.png";
 
     render(
@@ -72,40 +72,6 @@ describe("SettingsCompanyProfile logo uploader", () => {
       </MemoryRouter>,
     );
 
-    const previewCard = screen.getByRole("heading", { name: "Client Portal Preview" }).closest("div");
-    expect(previewCard).not.toBeNull();
-
-    const previewLogo = screen.getAllByRole("img", { name: "LeadSig Landscaping" })
-      .find((image) => image.className.includes("h-10"));
-
-    expect(previewLogo).toBeDefined();
-    expect(previewLogo).toHaveAttribute("src", "https://example.com/logo.png");
-  });
-
-  it("uses the portal text color on the preview pay invoice button", () => {
-    render(
-      <MemoryRouter>
-        <SettingsCompanyProfile />
-      </MemoryRouter>,
-    );
-
-    const payInvoiceButton = screen.getByRole("button", { name: "Pay Invoice" });
-
-    expect(payInvoiceButton).toHaveStyle({
-      backgroundColor: "#334155",
-      color: "#ffffff",
-    });
-  });
-
-  it("keeps the client portal preview constrained to the card width", () => {
-    render(
-      <MemoryRouter>
-        <SettingsCompanyProfile />
-      </MemoryRouter>,
-    );
-
-    const previewContainer = screen.getByTestId("client-portal-preview-container");
-    expect(previewContainer).toHaveClass("w-full");
-    expect(previewContainer).not.toHaveClass("w-screen");
+    expect(screen.queryByRole("heading", { name: /client portal preview/i })).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
 import {
   Globe,
   Eye,
@@ -30,6 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { FONT_OPTIONS, getBrandFontOption } from "@/lib/brandFonts";
 
 export const UNIT_OPTIONS = [
   { value: "sq_ft",     label: "Square Feet (sq ft)" },
@@ -37,17 +38,6 @@ export const UNIT_OPTIONS = [
   { value: "each",      label: "Per Unit (each)" },
   { value: "hour",      label: "Per Hour" },
   { value: "room",      label: "Per Room" },
-];
-
-export const FONT_OPTIONS: { name: string; css: string; googleParam: string }[] = [
-  { name: "Oswald",         css: "'Oswald', sans-serif",         googleParam: "Oswald:wght@400;600;700" },
-  { name: "Bebas Neue",     css: "'Bebas Neue', sans-serif",     googleParam: "Bebas+Neue" },
-  { name: "Rajdhani",       css: "'Rajdhani', sans-serif",       googleParam: "Rajdhani:wght@400;600;700" },
-  { name: "Archivo Narrow", css: "'Archivo Narrow', sans-serif", googleParam: "Archivo+Narrow:wght@400;600;700" },
-  { name: "Libre Franklin", css: "'Libre Franklin', sans-serif", googleParam: "Libre+Franklin:wght@400;600;700" },
-  { name: "Cinzel",         css: "'Cinzel', serif",              googleParam: "Cinzel:wght@400;600;700" },
-  { name: "Merriweather",   css: "'Merriweather', serif",        googleParam: "Merriweather:wght@400;700" },
-  { name: "Lora",           css: "'Lora', serif",                googleParam: "Lora:ital,wght@0,400;0,600;0,700" },
 ];
 
 const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
@@ -78,12 +68,16 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useWebsiteSettings, type WebsiteTestimonial } from "@/hooks/useWebsiteSettings";
 import { formatServiceTypeOption } from "@/hooks/useServiceTypeOptions";
 import { LandingPageView } from "@/components/website/LandingPageView";
+import { ClientPortalHeader } from "@/components/client-portal/ClientPortalHeader";
 import {
+  darkenHexColor,
+  hexToRgba,
   normalizeClientPortalColor,
   normalizeClientPortalHighlightColor,
   normalizeClientPortalTextColor,
@@ -242,6 +236,7 @@ export default function Website() {
   const [serviceImageUrls, setServiceImageUrls] = useState<Record<string, string>>({});
   const [serviceImagePreviews, setServiceImagePreviews] = useState<Record<string, string>>({});
   const [selectedServiceImageFiles, setSelectedServiceImageFiles] = useState<Record<string, File | null>>({});
+  const [editingServiceName, setEditingServiceName] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [portalColor, setPortalColor] = useState("");
@@ -249,6 +244,7 @@ export default function Website() {
   const [portalHighlightColor, setPortalHighlightColor] = useState("");
   const [customDomain, setCustomDomain] = useState("");
   const [activeTab, setActiveTab] = useState("edit");
+  const [previewMode, setPreviewMode] = useState<"website" | "client-portal">("website");
 
   const normalizedPortalColor = normalizeClientPortalColor(portalColor);
   const normalizedPortalTextColor = normalizeClientPortalTextColor(portalTextColor);
@@ -914,6 +910,32 @@ export default function Website() {
   const displayedServices = pricingRuleServices
     .map((service) => service.display_name)
     .filter((name) => name !== "Other");
+  const editingService = editingServiceName
+    ? pricingRuleServices.find((service) => service.display_name === editingServiceName) ?? null
+    : null;
+  const previewJob = {
+    name: "Spring Cleanup",
+    address: "123 Main St",
+    service_type: "Lawn Care",
+    customer: { name: "Sarah" },
+  };
+  const previewCompany = {
+    company_name: currentAccount?.company_name || "Your Company",
+    logo_url: currentAccount?.logo_url || undefined,
+  };
+  const previewEstimate = { total: 350 };
+  const previewPortalColorDark = darkenHexColor(normalizedPortalColor, 0.16);
+  const previewHeadingFontOption = getBrandFontOption(font);
+  const previewBodyFontOption = getBrandFontOption(bodyFont);
+  const previewPortalThemeStyle = {
+    "--client-portal-color": normalizedPortalColor,
+    "--client-portal-color-dark": previewPortalColorDark,
+    "--client-portal-text-color": normalizedPortalTextColor,
+    "--client-portal-text-muted": hexToRgba(normalizedPortalTextColor, 0.72),
+    "--client-portal-text-subtle": hexToRgba(normalizedPortalTextColor, 0.56),
+    "--client-portal-heading-font": previewHeadingFontOption?.css,
+    "--client-portal-body-font": previewBodyFontOption?.css,
+  } as CSSProperties;
 
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -1081,7 +1103,7 @@ export default function Website() {
 
           {/* ── EDIT TAB ── */}
           <TabsContent value="edit" className="mt-4 space-y-4">
-            {/* Typography */}
+            {/* Custom Domain & DNS */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Custom Domain & DNS</CardTitle>
@@ -1214,83 +1236,6 @@ export default function Website() {
               </CardContent>
             </Card>
 
-            {/* Hero */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Hero Section</CardTitle>
-                <CardDescription>The first thing visitors see</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="hero-image-upload">Header Image</Label>
-                  <input
-                    id="hero-image-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleHeroImageUpload}
-                    className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional image for hero background. Recommended wide image. Max 5MB.
-                  </p>
-                  {heroImagePreviewUrl && (
-                    <div className="space-y-2">
-                      <img
-                        src={heroImagePreviewUrl}
-                        alt="Hero preview"
-                        className="h-28 w-full rounded-lg border border-border object-cover"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (heroImagePreviewUrl.startsWith("blob:")) {
-                            URL.revokeObjectURL(heroImagePreviewUrl);
-                          }
-                          setHeroImageUrl("");
-                          setHeroImagePreviewUrl("");
-                          setSelectedHeroImageFile(null);
-                          markDirty();
-                        }}
-                        className="gap-1.5"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        Remove Header Image
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="headline">Headline</Label>
-                  <Input
-                    id="headline"
-                    value={headline}
-                    onChange={(e) => { setHeadline(e.target.value); markDirty(); }}
-                    placeholder={`Professional Services by ${currentAccount?.company_name || "Your Company"}`}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="subheadline">Tagline</Label>
-                  <Input
-                    id="subheadline"
-                    value={subheadline}
-                    onChange={(e) => { setSubheadline(e.target.value); markDirty(); }}
-                    placeholder="Quality work, reliable service, and results you can count on."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cta-text">Call-to-Action Button Text</Label>
-                  <Input
-                    id="cta-text"
-                    value={ctaText}
-                    onChange={(e) => { setCtaText(e.target.value); markDirty(); }}
-                    placeholder="Get a Free Quote"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Company theme */}
             <Card>
               <CardHeader>
@@ -1384,161 +1329,80 @@ export default function Website() {
               </CardContent>
             </Card>
 
-            {/* Services */}
+            {/* Hero */}
             <Card>
               <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-base">Services</CardTitle>
-                    <CardDescription className="mt-1">
-                      Pulled from your{" "}
-                      <button
-                        type="button"
-                        onClick={() => navigate("/settings/pricing-rules")}
-                        className="font-medium text-primary underline-offset-2 hover:underline"
-                      >
-                        Pricing Rules
-                      </button>
-                      . Add an optional description for each.
-                    </CardDescription>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate("/settings/pricing-rules")}
-                    className="gap-1.5 shrink-0 text-muted-foreground"
-                  >
-                    Manage
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                <CardTitle className="text-base">Hero Section</CardTitle>
+                <CardDescription>The first thing visitors see</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="mb-4 grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="services-section-header">Section Header</Label>
-                    <Input
-                      id="services-section-header"
-                      value={servicesHeader}
-                      onChange={(e) => { setServicesHeader(e.target.value); markDirty(); }}
-                      placeholder="What We Offer"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="services-section-subheading">Section Subheading</Label>
-                    <Input
-                      id="services-section-subheading"
-                      value={servicesSubheading}
-                      onChange={(e) => { setServicesSubheading(e.target.value); markDirty(); }}
-                      placeholder="Reliable services tailored to your needs"
-                    />
-                  </div>
-                </div>
-                {displayedServices.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border py-8 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      No pricing rules set up yet.
-                    </p>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      onClick={() => navigate("/settings/pricing-rules")}
-                      className="mt-1 gap-1"
-                    >
-                      Add services in Pricing Rules
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {displayedServices.map((name) => (
-                      <div
-                        key={name}
-                        className="rounded-xl border border-border bg-muted/30 p-4 space-y-3"
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="hero-image-upload">Header Image</Label>
+                  <input
+                    id="hero-image-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleHeroImageUpload}
+                    className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional image for hero background. Recommended wide image. Max 5MB.
+                  </p>
+                  {heroImagePreviewUrl && (
+                    <div className="space-y-2">
+                      <img
+                        src={heroImagePreviewUrl}
+                        alt="Hero preview"
+                        className="h-28 w-full rounded-lg border border-border object-cover"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (heroImagePreviewUrl.startsWith("blob:")) {
+                            URL.revokeObjectURL(heroImagePreviewUrl);
+                          }
+                          setHeroImageUrl("");
+                          setHeroImagePreviewUrl("");
+                          setSelectedHeroImageFile(null);
+                          markDirty();
+                        }}
+                        className="gap-1.5"
                       >
-                        <p className="text-sm font-semibold">{name}</p>
-                        <div className="space-y-2">
-                          <Label htmlFor={`service-image-${name}`}>Service Image</Label>
-                          <input
-                            id={`service-image-${name}`}
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              handleServiceImageUpload(name, e.target.files?.[0]);
-                              e.target.value = "";
-                            }}
-                            className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
-                          />
-                          {(serviceImagePreviews[name] || serviceImageUrls[name]) && (
-                            <div className="space-y-2">
-                              <img
-                                src={serviceImagePreviews[name] || serviceImageUrls[name]}
-                                alt={`${name} preview`}
-                                className="h-24 w-full rounded-lg border border-border object-cover"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const previewUrl = serviceImagePreviews[name];
-                                  if (previewUrl?.startsWith("blob:")) {
-                                    URL.revokeObjectURL(previewUrl);
-                                  }
-                                  setServiceImageUrls((prev) => ({ ...prev, [name]: "" }));
-                                  setServiceImagePreviews((prev) => ({ ...prev, [name]: "" }));
-                                  setSelectedServiceImageFiles((prev) => ({ ...prev, [name]: null }));
-                                  markDirty();
-                                }}
-                                className="gap-1.5"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                                Remove Service Image
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                        {/* Icon picker */}
-                        <div className="flex flex-wrap gap-1.5">
-                          {ICON_OPTIONS.map(({ name: iconName, icon: IconComp }) => {
-                            const selected = (serviceIcons[name] || "CheckCircle2") === iconName;
-                            return (
-                              <button
-                                key={iconName}
-                                type="button"
-                                onClick={() => {
-                                  setServiceIcons((prev) => ({ ...prev, [name]: iconName }));
-                                  markDirty();
-                                }}
-                                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                                  selected
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                                }`}
-                                title={iconName}
-                              >
-                                <IconComp className="h-4 w-4" />
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <Textarea
-                          value={serviceDescriptions[name] || ""}
-                          onChange={(e) => {
-                            setServiceDescriptions((prev) => ({
-                              ...prev,
-                              [name]: e.target.value,
-                            }));
-                            markDirty();
-                          }}
-                          placeholder="Optional description for this service…"
-                          rows={2}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        <X className="h-3.5 w-3.5" />
+                        Remove Header Image
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="headline">Headline</Label>
+                  <Input
+                    id="headline"
+                    value={headline}
+                    onChange={(e) => { setHeadline(e.target.value); markDirty(); }}
+                    placeholder={`Professional Services by ${currentAccount?.company_name || "Your Company"}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="subheadline">Tagline</Label>
+                  <Input
+                    id="subheadline"
+                    value={subheadline}
+                    onChange={(e) => { setSubheadline(e.target.value); markDirty(); }}
+                    placeholder="Quality work, reliable service, and results you can count on."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cta-text">Call-to-Action Button Text</Label>
+                  <Input
+                    id="cta-text"
+                    value={ctaText}
+                    onChange={(e) => { setCtaText(e.target.value); markDirty(); }}
+                    placeholder="Get a Free Quote"
+                  />
+                </div>
               </CardContent>
             </Card>
 
@@ -1657,6 +1521,251 @@ export default function Website() {
                   </div>
                 </div>
               </CardContent>
+            </Card>
+
+            {/* Services */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-base">Services</CardTitle>
+                    <CardDescription className="mt-1">
+                      Pulled from your{" "}
+                      <button
+                        type="button"
+                        onClick={() => navigate("/settings/pricing-rules")}
+                        className="font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        Pricing Rules
+                      </button>
+                      . Add an optional description for each.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate("/settings/pricing-rules")}
+                    className="gap-1.5 shrink-0 text-muted-foreground"
+                  >
+                    Manage
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="services-section-header">Section Header</Label>
+                    <Input
+                      id="services-section-header"
+                      value={servicesHeader}
+                      onChange={(e) => { setServicesHeader(e.target.value); markDirty(); }}
+                      placeholder="What We Offer"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="services-section-subheading">Section Subheading</Label>
+                    <Input
+                      id="services-section-subheading"
+                      value={servicesSubheading}
+                      onChange={(e) => { setServicesSubheading(e.target.value); markDirty(); }}
+                      placeholder="Reliable services tailored to your needs"
+                    />
+                  </div>
+                </div>
+                {displayedServices.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border py-8 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No pricing rules set up yet.
+                    </p>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      onClick={() => navigate("/settings/pricing-rules")}
+                      className="mt-1 gap-1"
+                    >
+                      Add services in Pricing Rules
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {displayedServices.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setEditingServiceName(name)}
+                        className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/60"
+                      >
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-foreground">{name}</p>
+                          <p className="text-xs text-muted-foreground">Click to edit image, icon, and description</p>
+                        </div>
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground">
+                          <Pencil className="h-4 w-4" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <Dialog
+                  open={Boolean(editingService)}
+                  onOpenChange={(open) => {
+                    if (!open) setEditingServiceName(null);
+                  }}
+                >
+                  <DialogContent className="sm:max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Edit Service</DialogTitle>
+                      <DialogDescription>
+                        {editingService ? editingService.display_name : "Service settings"}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    {editingService && (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor={`service-image-${editingService.display_name}`}>Service Image</Label>
+                          <input
+                            id={`service-image-${editingService.display_name}`}
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              handleServiceImageUpload(editingService.display_name, e.target.files?.[0]);
+                              e.target.value = "";
+                            }}
+                            className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/50"
+                          />
+                          {(serviceImagePreviews[editingService.display_name] || serviceImageUrls[editingService.display_name]) && (
+                            <div className="space-y-2">
+                              <img
+                                src={serviceImagePreviews[editingService.display_name] || serviceImageUrls[editingService.display_name]}
+                                alt={`${editingService.display_name} preview`}
+                                className="h-24 w-full rounded-lg border border-border object-cover"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const key = editingService.display_name;
+                                  const previewUrl = serviceImagePreviews[key];
+                                  if (previewUrl?.startsWith("blob:")) {
+                                    URL.revokeObjectURL(previewUrl);
+                                  }
+                                  setServiceImageUrls((prev) => ({ ...prev, [key]: "" }));
+                                  setServiceImagePreviews((prev) => ({ ...prev, [key]: "" }));
+                                  setSelectedServiceImageFiles((prev) => ({ ...prev, [key]: null }));
+                                  markDirty();
+                                }}
+                                className="gap-1.5"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                Remove Service Image
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Service Icon</Label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ICON_OPTIONS.map(({ name: iconName, icon: IconComp }) => {
+                              const selected = (serviceIcons[editingService.display_name] || "CheckCircle2") === iconName;
+                              return (
+                                <button
+                                  key={iconName}
+                                  type="button"
+                                  onClick={() => {
+                                    setServiceIcons((prev) => ({ ...prev, [editingService.display_name]: iconName }));
+                                    markDirty();
+                                  }}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                                    selected
+                                      ? "border-primary bg-primary/10 text-primary"
+                                      : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                                  }`}
+                                  title={iconName}
+                                >
+                                  <IconComp className="h-4 w-4" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor={`service-description-${editingService.display_name}`}>Description</Label>
+                          <Textarea
+                            id={`service-description-${editingService.display_name}`}
+                            value={serviceDescriptions[editingService.display_name] || ""}
+                            onChange={(e) => {
+                              setServiceDescriptions((prev) => ({
+                                ...prev,
+                                [editingService.display_name]: e.target.value,
+                              }));
+                              markDirty();
+                            }}
+                            placeholder="Optional description for this service…"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </DialogContent>
+                </Dialog>
+              </CardContent>
+            </Card>
+
+            {/* Estimate Calculator */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">Estimate Calculator</CardTitle>
+                    <CardDescription className="mt-1">
+                      Let visitors calculate a project estimate on your site
+                    </CardDescription>
+                  </div>
+                  <Switch
+                    checked={calculatorEnabled}
+                    onCheckedChange={(v) => { setCalculatorEnabled(v); markDirty(); }}
+                  />
+                </div>
+              </CardHeader>
+              {calculatorEnabled && (
+                <CardContent>
+                  {displayedServices.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Add services in Pricing Rules first.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Calculator rates and units are pulled directly from Pricing Rules.
+                      </p>
+                      {displayedServices.map((name) => (
+                        <div
+                          key={name}
+                          className="rounded-xl border border-border bg-muted/30 p-4"
+                        >
+                          <p className="text-sm font-semibold">{name}</p>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {(() => {
+                              const service = pricingRuleServices.find((entry) => entry.display_name === name);
+                              if (!service) return "No rate configured";
+                              const unitLabel = UNIT_OPTIONS.find((opt) => opt.value === service.unit_type)?.label ?? service.unit_type;
+                              return `$${service.price_per_unit.toFixed(2)} per ${unitLabel}`;
+                            })()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              )}
             </Card>
 
             {/* Testimonials */}
@@ -1783,55 +1892,6 @@ export default function Website() {
               </CardContent>
             </Card>
 
-            {/* Estimate Calculator */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Estimate Calculator</CardTitle>
-                    <CardDescription className="mt-1">
-                      Let visitors calculate a project estimate on your site
-                    </CardDescription>
-                  </div>
-                  <Switch
-                    checked={calculatorEnabled}
-                    onCheckedChange={(v) => { setCalculatorEnabled(v); markDirty(); }}
-                  />
-                </div>
-              </CardHeader>
-              {calculatorEnabled && (
-                <CardContent>
-                  {displayedServices.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Add services in Pricing Rules first.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-xs text-muted-foreground">
-                        Calculator rates and units are pulled directly from Pricing Rules.
-                      </p>
-                      {displayedServices.map((name) => (
-                        <div
-                          key={name}
-                          className="rounded-xl border border-border bg-muted/30 p-4"
-                        >
-                          <p className="text-sm font-semibold">{name}</p>
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {(() => {
-                              const service = pricingRuleServices.find((entry) => entry.display_name === name);
-                              if (!service) return "No rate configured";
-                              const unitLabel = UNIT_OPTIONS.find((opt) => opt.value === service.unit_type)?.label ?? service.unit_type;
-                              return `$${service.price_per_unit.toFixed(2)} per ${unitLabel}`;
-                            })()}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-
             {/* Contact (read-only) */}
             <Card>
               <CardHeader>
@@ -1887,6 +1947,31 @@ export default function Website() {
 
           {/* ── PREVIEW TAB ── */}
           <TabsContent value="preview" className="mt-4">
+            <div className="mb-3 flex w-full rounded-lg border border-border bg-muted/30 p-1 sm:w-fit" role="tablist" aria-label="Preview mode">
+              <Button
+                type="button"
+                variant={previewMode === "website" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setPreviewMode("website")}
+                role="tab"
+                aria-selected={previewMode === "website"}
+                className="flex-1 sm:flex-none"
+              >
+                Website
+              </Button>
+              <Button
+                type="button"
+                variant={previewMode === "client-portal" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setPreviewMode("client-portal")}
+                role="tab"
+                aria-selected={previewMode === "client-portal"}
+                className="flex-1 sm:flex-none"
+              >
+                Client Portal
+              </Button>
+            </div>
+
             <div className="overflow-hidden rounded-2xl border border-border shadow-sm">
               <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
                 <div className="flex gap-1.5">
@@ -1895,22 +1980,51 @@ export default function Website() {
                   <div className="h-3 w-3 rounded-full bg-green-400" />
                 </div>
                 <div className="flex-1 rounded-md bg-background px-3 py-1 text-center text-xs text-muted-foreground truncate">
-                  {siteUrl || "yoursite.leadsig.ai"}
+                  {previewMode === "website" ? siteUrl || "yoursite.leadsig.ai" : "client-portal.leadsig.ai"}
                 </div>
               </div>
               <div className="max-h-[70vh] overflow-y-auto">
-                <LandingPageView
-                  config={liveConfig}
-                  themeColor={normalizedPortalColor}
-                  themeTextColor={normalizedPortalTextColor}
-                  themeHighlightColor={normalizedPortalHighlightColor}
-                  companyName={currentAccount?.company_name || "Your Company"}
-                  companyPhone={currentAccount?.company_phone}
-                  companyEmail={currentAccount?.company_email}
-                  companyAddress={currentAccount?.company_address}
-                  logoUrl={currentAccount?.logo_url}
-                  accountId={currentAccount?.id}
-                />
+                {previewMode === "website" ? (
+                  <LandingPageView
+                    config={liveConfig}
+                    themeColor={normalizedPortalColor}
+                    themeTextColor={normalizedPortalTextColor}
+                    themeHighlightColor={normalizedPortalHighlightColor}
+                    companyName={currentAccount?.company_name || "Your Company"}
+                    companyPhone={currentAccount?.company_phone}
+                    companyEmail={currentAccount?.company_email}
+                    companyAddress={currentAccount?.company_address}
+                    logoUrl={currentAccount?.logo_url}
+                    accountId={currentAccount?.id}
+                  />
+                ) : (
+                  <div
+                    data-testid="website-client-portal-preview"
+                    className="client-portal-themed space-y-4 bg-slate-50 p-4"
+                    style={previewPortalThemeStyle}
+                  >
+                    <ClientPortalHeader
+                      job={previewJob}
+                      company={previewCompany}
+                      estimate={previewEstimate}
+                      statusLabel="In Progress"
+                      statusColor="bg-blue-100 text-blue-800"
+                      portalColor={normalizedPortalColor}
+                      portalTextColor={normalizedPortalTextColor}
+                    />
+                    <div className="overflow-hidden rounded-xl border border-border bg-white p-5">
+                      <p className="mb-4 text-sm text-slate-600">Scheduled for Monday, 9:00 AM to 11:00 AM</p>
+                      <button
+                        type="button"
+                        className="w-full rounded-lg px-4 py-2.5 text-sm font-medium"
+                        style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
+                        disabled
+                      >
+                        Pay Invoice
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </TabsContent>

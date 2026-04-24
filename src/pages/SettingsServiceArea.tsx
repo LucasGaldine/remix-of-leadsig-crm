@@ -104,7 +104,7 @@ export default function SettingsServiceArea() {
         showBack
         backTo="/settings"
       />
-      <div className="container max-w-4xl mx-auto p-6 space-y-6">
+      <main className="max-w-[var(--content-max-width)] m-auto p-6 space-y-6">
 
         <Card>
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -226,7 +226,7 @@ export default function SettingsServiceArea() {
             ))}
           </CardContent>
         </Card>
-      </div>
+      </main>
       <MobileNav />
     </div>
   );

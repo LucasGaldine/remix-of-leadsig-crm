@@ -50,7 +50,6 @@ export function ScheduleDateBuilder({
   ignoreExistingScheduleConstraints = false,
 }: ScheduleDateBuilderProps) {
   const { currentAccount } = useAuth();
-  const calendarWrapperRef = useRef<HTMLDivElement>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [hoveredUnavailableReason, setHoveredUnavailableReason] = useState<string | null>(null);
   const [mutedDeselectedDates, setMutedDeselectedDates] = useState<Set<string>>(new Set());
@@ -63,7 +62,7 @@ export function ScheduleDateBuilder({
   const dragModeRef = useRef<"add" | "remove" | null>(null);
   const dragVisitedDatesRef = useRef<Set<string>>(new Set());
   const dragMutatedSelectionRef = useRef(false);
-  const applyDragSelectionRef = useRef<(date: Date) => void>(() => undefined);
+  const ignoreMouseEventsUntilRef = useRef(0);
   const lastHoveredDayRef = useRef<Date | null>(null);
   const scheduleDateSetRef = useRef(new Set<string>());
   const schedulesRef = useRef<ScheduleEntry[]>(schedules);
@@ -122,14 +121,6 @@ export function ScheduleDateBuilder({
     const handleMouseDown = (event: MouseEvent) => {
       if (event.button === 0) {
         isPrimaryPointerDownRef.current = true;
-
-        const target = event.target as HTMLElement | null;
-        const dayButton = target?.closest?.("button[role='gridcell']");
-        const wrapper = calendarWrapperRef.current;
-        if (!dayButton || !wrapper || !wrapper.contains(dayButton)) return;
-        if (!lastHoveredDayRef.current) return;
-
-        applyDragSelectionRef.current(lastHoveredDayRef.current);
       }
     };
 
@@ -141,12 +132,10 @@ export function ScheduleDateBuilder({
 
     const handleMouseUp = () => {
       isPrimaryPointerDownRef.current = false;
-      resetDragSelectionState();
     };
 
     const handlePointerUp = () => {
       isPrimaryPointerDownRef.current = false;
-      resetDragSelectionState();
     };
 
     const handleWindowBlur = () => {
@@ -486,10 +475,6 @@ export function ScheduleDateBuilder({
     applyDateSelection(nextDateSet);
   }, [applyDateSelection, canUseDate]);
 
-  useEffect(() => {
-    applyDragSelectionRef.current = applyDragSelection;
-  }, [applyDragSelection]);
-
   const handleDayClick: React.ComponentProps<typeof Calendar>["onDayClick"] = (day) => {
     if (dragMutatedSelectionRef.current) {
       const dayStr = format(day, "yyyy-MM-dd");
@@ -504,6 +489,8 @@ export function ScheduleDateBuilder({
   };
 
   const handleDayMouseEnter: React.ComponentProps<typeof Calendar>["onDayMouseEnter"] = (day, _activeModifiers, event) => {
+    if (Date.now() < ignoreMouseEventsUntilRef.current) return;
+
     lastHoveredDayRef.current = day;
     setHoveredUnavailableReason(getDateUnavailableReason(day));
 
@@ -524,6 +511,8 @@ export function ScheduleDateBuilder({
   };
 
   const handleDayMouseLeave: React.ComponentProps<typeof Calendar>["onDayMouseLeave"] = () => {
+    if (Date.now() < ignoreMouseEventsUntilRef.current) return;
+
     lastHoveredDayRef.current = null;
     setHoveredUnavailableReason(null);
 
@@ -533,6 +522,12 @@ export function ScheduleDateBuilder({
   };
 
   const handleDayPointerEnter: React.ComponentProps<typeof Calendar>["onDayPointerEnter"] = (day, _activeModifiers, event) => {
+    if (event.pointerType !== "mouse") {
+      // Mobile browsers can emit synthetic mouse events after touch pointers.
+      // Ignore those mouse events briefly so we don't clear drag state and double-toggle.
+      ignoreMouseEventsUntilRef.current = Date.now() + 500;
+    }
+
     lastHoveredDayRef.current = day;
     setHoveredUnavailableReason(getDateUnavailableReason(day));
 
@@ -613,7 +608,7 @@ export function ScheduleDateBuilder({
           </div>
         )}
 
-        <div ref={calendarWrapperRef} className="p-2">
+        <div className="p-2">
           <Calendar
             mode="multiple"
             selected={selectedDates}

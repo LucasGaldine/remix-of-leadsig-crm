@@ -4,6 +4,11 @@ export type JobApplicationScreeningInput = {
   expectedHourlyPay: string;
   acceptableHourlyPayMin: number | null;
   acceptableHourlyPayMax: number | null;
+  autoReject?: {
+    transportation_enabled?: boolean;
+    availability_enabled?: boolean;
+    pay_expectation_enabled?: boolean;
+  };
 };
 
 export type JobApplicationScreeningResult = {
@@ -22,7 +27,13 @@ function parseExpectedPay(value: string): number | null {
 export function evaluateJobApplicationScreening(
   input: JobApplicationScreeningInput,
 ): JobApplicationScreeningResult {
-  if (!input.reliableTransportation) {
+  const autoReject = {
+    transportation_enabled: input.autoReject?.transportation_enabled ?? true,
+    availability_enabled: input.autoReject?.availability_enabled ?? true,
+    pay_expectation_enabled: input.autoReject?.pay_expectation_enabled ?? true,
+  };
+
+  if (autoReject.transportation_enabled && !input.reliableTransportation) {
     return {
       tag: "Reject",
       stage: "Pre-Screen Rejected",
@@ -30,7 +41,7 @@ export function evaluateJobApplicationScreening(
     };
   }
 
-  if (!input.availableFullTime) {
+  if (autoReject.availability_enabled && !input.availableFullTime) {
     return {
       tag: "Reject",
       stage: "Pre-Screen Rejected",
@@ -40,6 +51,7 @@ export function evaluateJobApplicationScreening(
 
   const expectedPayValue = parseExpectedPay(input.expectedHourlyPay);
   if (
+    autoReject.pay_expectation_enabled &&
     input.acceptableHourlyPayMax !== null &&
     expectedPayValue !== null &&
     expectedPayValue > input.acceptableHourlyPayMax
