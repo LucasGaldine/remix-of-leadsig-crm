@@ -9,6 +9,7 @@ import {
   BadgeCheck,
   BarChart3,
   Clock3,
+  TrendingDown,
   Loader as Loader2,
   Scale,
   Target,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useRevenueExpenses,
   useLeadFunnel,
@@ -28,28 +30,25 @@ import {
 type Timeframe = "week" | "month";
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
-  { value: "week", label: "Weeks" },
-  { value: "month", label: "Months" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
 ];
 
 function TimeframeToggle({ value, onChange }: { value: Timeframe; onChange: (v: Timeframe) => void }) {
   return (
-    <div className="flex rounded-lg bg-muted p-0.5 gap-0.5">
-      {TIMEFRAMES.map((tf) => (
-        <button
-          key={tf.value}
-          onClick={() => onChange(tf.value)}
-          className={cn(
-            "px-2.5 py-1 text-xs rounded-md font-medium transition-colors",
-            value === tf.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {tf.label}
-        </button>
-      ))}
-    </div>
+    <Tabs value={value} onValueChange={(next) => onChange(next as Timeframe)}>
+      <TabsList className="h-11 rounded-lg p-1">
+        {TIMEFRAMES.map((tf) => (
+          <TabsTrigger
+            key={tf.value}
+            value={tf.value}
+            className="min-w-[96px] px-4 py-2 text-sm font-semibold"
+          >
+            {tf.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 
@@ -87,6 +86,11 @@ function RevenueExpenses({ timeframe }: { timeframe: Timeframe }) {
 
   const hasData = data.length > 0;
   const totalProfit = data.reduce((sum: number, period: any) => sum + ((period.revenue || 0) - (period.expenses || 0)), 0);
+  const maxBarValue = Math.max(
+    1000,
+    ...data.map((period: any) => Math.max(Number(period.revenue) || 0, Number(period.expenses) || 0)),
+  );
+  const yDomain = Math.ceil((maxBarValue * 1.15) / 1000) * 1000;
   const drilldownGroups = data
     .map((period: any) => {
       const entriesByJobId = new Map<string, { id: string; name: string; revenue: number; expenses: number }>();
@@ -130,33 +134,87 @@ function RevenueExpenses({ timeframe }: { timeframe: Timeframe }) {
             type="button"
             onClick={() => setIsDrilldownOpen(true)}
             aria-label="Open revenue and cost job details"
-            className="w-full text-left rounded-md p-1 -m-1 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full text-left rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={data} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="week" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+            <div className="mb-3 flex items-center justify-end gap-4 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                Revenue
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-destructive/70" />
+                Expenses
+              </span>
+            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={data} barGap={8}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="week" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" axisLine={false} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  stroke="hsl(var(--muted-foreground))"
+                  tickFormatter={(v) => `$${(Math.abs(v) / 1000).toFixed(0)}k`}
+                  domain={[0, yDomain]}
+                  axisLine={false}
+                  tickLine={false}
+                />
                 <Tooltip
                   contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                  formatter={(value: number, name: string) => {
+                    return [`$${Math.abs(Number(value)).toLocaleString()}`, name];
+                  }}
                 />
-                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Revenue" />
-                <Bar dataKey="expenses" fill="hsl(var(--destructive) / 0.5)" radius={[4, 4, 0, 0]} name="Expenses" />
+                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} name="Revenue" />
+                <Bar dataKey="expenses" fill="hsl(var(--destructive) / 0.7)" radius={[8, 8, 0, 0]} name="Expenses" />
               </BarChart>
             </ResponsiveContainer>
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Total Profit</span>
-                <span className={cn("text-sm font-semibold", totalProfit >= 0 ? "text-primary" : "text-destructive")}>
-                  ${totalProfit.toLocaleString()}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground px-1">
+            <div className="mt-4 space-y-3 pl-2 sm:pl-3 lg:pl-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-[1.45fr_repeat(6,minmax(0,1fr))] lg:gap-x-2 lg:gap-y-2">
+                <div className="h-28 py-3 flex items-start gap-8 lg:col-span-1 lg:h-32 lg:mr-5">
+                  <div className="min-w-0 space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Total Profit</div>
+                    <span
+                      className={cn(
+                        "block text-3xl font-semibold leading-none",
+                        totalProfit >= 0 ? "text-primary" : "text-destructive",
+                      )}
+                    >
+                      {totalProfit < 0 ? "-" : ""}${Math.abs(totalProfit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="ml-auto self-center grid h-12 w-12 place-items-center rounded-xl bg-destructive/10">
+                    <TrendingDown className="h-6 w-6 text-destructive" />
+                  </div>
+                </div>
                 {data.map((d: any) => (
-                  <span key={d.week} className="font-medium">
-                    {d.week}: ${((d.revenue - d.expenses) / 1000).toFixed(1)}k
-                  </span>
+                  <div
+                    key={d.week}
+                    className="h-28 px-3 py-3 flex flex-col items-center justify-center gap-4 text-center lg:h-32 lg:w-full"
+                  >
+                    <div className="text-sm font-medium text-muted-foreground whitespace-nowrap">{d.week}</div>
+                    <div
+                      className={cn(
+                        "w-full text-center text-xl leading-none font-semibold",
+                        d.revenue - d.expenses > 0
+                          ? "text-primary"
+                          : d.revenue - d.expenses < 0
+                            ? "text-destructive"
+                            : "text-foreground",
+                      )}
+                    >
+                      {(d.revenue - d.expenses) < 0 ? "-" : ""}${(Math.abs(d.revenue - d.expenses) / 1000).toFixed(1)}k
+                    </div>
+                    <span
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full",
+                        (d.revenue - d.expenses) > 0
+                          ? "bg-primary"
+                          : (d.revenue - d.expenses) < 0
+                            ? "bg-destructive"
+                            : "bg-muted-foreground/35",
+                      )}
+                    />
+                  </div>
                 ))}
               </div>
             </div>
@@ -214,19 +272,19 @@ function LeadFunnel({ timeframe }: { timeframe: Timeframe }) {
       {data.every((d: any) => d.count === 0) ? (
         <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">No leads yet</div>
       ) : (
-        <div className="space-y-2">
+        <div className="flex h-full flex-col gap-4">
           {data.map((stage: any, i: number) => {
             const pct = i === 0 ? 100 : Math.round((stage.count / totalLeads) * 100);
             const widthPct = Math.max((stage.count / maxCount) * 100, 20);
             return (
-              <div key={stage.stage} className="space-y-1">
-                <div className="flex justify-between text-xs">
+              <div key={stage.stage} className="flex flex-1 flex-col justify-center gap-2">
+                <div className="flex justify-between text-sm">
                   <span className="text-foreground font-medium">{stage.stage}</span>
                   <span className="text-muted-foreground">{stage.count} ({pct}%)</span>
                 </div>
-                <div className="h-6 rounded-md overflow-hidden bg-muted">
+                <div className="h-10 rounded-full overflow-hidden bg-muted">
                   <div
-                    className="h-full rounded-md bg-gradient-to-r from-primary to-primary/60 transition-all"
+                    className="h-full rounded-full bg-primary transition-all"
                     style={{ width: `${widthPct}%` }}
                   />
                 </div>
@@ -418,13 +476,18 @@ export function DashboardVisuals() {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2">Analytics</h2>
+      <div className="flex items-center justify-start">
         <TimeframeToggle value={timeframe} onChange={setTimeframe} />
       </div>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-3">
+          <RevenueExpenses timeframe={timeframe} />
+        </div>
+        <div className="lg:col-span-1 [&>div]:h-full">
+          <LeadFunnel timeframe={timeframe} />
+        </div>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <RevenueExpenses timeframe={timeframe} />
-        <LeadFunnel timeframe={timeframe} />
         <CompletionDonut timeframe={timeframe} />
         <CostVsQuoted timeframe={timeframe} />
         <CrewHours timeframe={timeframe} />

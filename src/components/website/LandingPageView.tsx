@@ -143,7 +143,7 @@ export function LandingPageView({
   const hasBeforeAfterImages = Boolean(aboutBeforeImageUrl && aboutAfterImageUrl);
   const servicesHeader = config.services_section?.header || "What We Offer";
   const servicesSubheading = config.services_section?.subheading || "Reliable services tailored to your needs";
-  const services = config.services ?? [];
+  const services = (config.services ?? []).filter((service) => service.enabled !== false);
   const testimonials: WebsiteTestimonial[] = (config.testimonials && config.testimonials.length > 0)
     ? config.testimonials
     : [

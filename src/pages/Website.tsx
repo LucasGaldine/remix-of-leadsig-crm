@@ -233,6 +233,7 @@ export default function Website() {
   // keyed by service type name → description / icon
   const [serviceDescriptions, setServiceDescriptions] = useState<Record<string, string>>({});
   const [serviceIcons, setServiceIcons] = useState<Record<string, string>>({});
+  const [serviceEnabled, setServiceEnabled] = useState<Record<string, boolean>>({});
   const [serviceImageUrls, setServiceImageUrls] = useState<Record<string, string>>({});
   const [serviceImagePreviews, setServiceImagePreviews] = useState<Record<string, string>>({});
   const [selectedServiceImageFiles, setSelectedServiceImageFiles] = useState<Record<string, File | null>>({});
@@ -296,19 +297,42 @@ export default function Website() {
       const savedDesc: Record<string, string> = {};
       const savedIcons: Record<string, string> = {};
       const savedImages: Record<string, string> = {};
+      const savedEnabled: Record<string, boolean> = {};
       for (const s of websiteConfig.services ?? []) {
         savedDesc[s.name] = s.description;
         if (s.icon) savedIcons[s.name] = s.icon;
         if (s.image_url) savedImages[s.name] = s.image_url;
+        savedEnabled[s.name] = s.enabled !== false;
       }
       setServiceDescriptions(savedDesc);
       setServiceIcons(savedIcons);
+      setServiceEnabled(savedEnabled);
       setServiceImageUrls(savedImages);
       setServiceImagePreviews(savedImages);
       setSelectedServiceImageFiles({});
       setIsDirty(false);
     }
   }, [isLoading, websiteConfig]);
+
+  useEffect(() => {
+    setServiceEnabled((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const service of pricingRuleServices) {
+        if (service.display_name === "Other") continue;
+        next[service.display_name] = prev[service.display_name] ?? true;
+      }
+
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (
+        prevKeys.length === nextKeys.length &&
+        nextKeys.every((key) => prev[key] === next[key])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [pricingRuleServices]);
 
   useEffect(() => {
     setPortalColor(normalizeClientPortalColor(currentAccount?.settings?.client_portal_color));
@@ -458,6 +482,7 @@ export default function Website() {
       description: serviceDescriptions[service.display_name] || "",
       icon: serviceIcons[service.display_name] || "CheckCircle2",
       image_url: serviceImagePreviews[service.display_name] || serviceImageUrls[service.display_name] || null,
+      enabled: serviceEnabled[service.display_name] ?? true,
       price_per_unit: service.price_per_unit,
       unit_type: service.unit_type,
     }));
@@ -689,6 +714,7 @@ export default function Website() {
           description: serviceDescriptions[service.display_name] || "",
           icon: serviceIcons[service.display_name] || "CheckCircle2",
           image_url: uploadedServiceImageUrls[service.display_name] || null,
+          enabled: serviceEnabled[service.display_name] ?? true,
           price_per_unit: service.price_per_unit,
           unit_type: service.unit_type,
         }));
@@ -910,6 +936,7 @@ export default function Website() {
   const displayedServices = pricingRuleServices
     .map((service) => service.display_name)
     .filter((name) => name !== "Other");
+  const visibleServices = displayedServices.filter((name) => serviceEnabled[name] ?? true);
   const editingService = editingServiceName
     ? pricingRuleServices.find((service) => service.display_name === editingServiceName) ?? null
     : null;
@@ -1554,7 +1581,7 @@ export default function Website() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                <div className="mb-8 space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="services-section-header">Section Header</Label>
                     <Input
@@ -1592,20 +1619,33 @@ export default function Website() {
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">
                     {displayedServices.map((name) => (
-                      <button
+                      <div
                         key={name}
-                        type="button"
-                        onClick={() => setEditingServiceName(name)}
-                        className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/60"
+                        className="flex items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3 text-left"
                       >
-                        <div className="space-y-1">
+                        <div className="flex items-center gap-3">
+                          <Switch
+                            id={`service-enabled-${name}`}
+                            checked={serviceEnabled[name] ?? true}
+                            onCheckedChange={(checked) => {
+                              setServiceEnabled((prev) => ({ ...prev, [name]: checked }));
+                              markDirty();
+                            }}
+                            aria-label={`Toggle ${name} visibility`}
+                          />
                           <p className="text-sm font-semibold text-foreground">{name}</p>
-                          <p className="text-xs text-muted-foreground">Click to edit image, icon, and description</p>
                         </div>
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground">
-                          <Pencil className="h-4 w-4" />
-                        </span>
-                      </button>
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => setEditingServiceName(name)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+                            aria-label={`Edit ${name}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -1737,31 +1777,18 @@ export default function Website() {
               </CardHeader>
               {calculatorEnabled && (
                 <CardContent>
-                  {displayedServices.length === 0 ? (
+                  {visibleServices.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      Add services in Pricing Rules first.
+                      Enable at least one service to show it on your website calculator.
                     </p>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">
                         Calculator rates and units are pulled directly from Pricing Rules.
                       </p>
-                      {displayedServices.map((name) => (
-                        <div
-                          key={name}
-                          className="rounded-xl border border-border bg-muted/30 p-4"
-                        >
-                          <p className="text-sm font-semibold">{name}</p>
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {(() => {
-                              const service = pricingRuleServices.find((entry) => entry.display_name === name);
-                              if (!service) return "No rate configured";
-                              const unitLabel = UNIT_OPTIONS.find((opt) => opt.value === service.unit_type)?.label ?? service.unit_type;
-                              return `$${service.price_per_unit.toFixed(2)} per ${unitLabel}`;
-                            })()}
-                          </div>
-                        </div>
-                      ))}
+                      <p className="text-xs text-muted-foreground">
+                        {visibleServices.length} service{visibleServices.length === 1 ? "" : "s"} enabled for the calculator.
+                      </p>
                     </div>
                   )}
                 </CardContent>

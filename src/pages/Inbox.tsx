@@ -144,7 +144,7 @@ function jobStatus(status?: string | null): { label: string; tone: Tone } {
     case "scheduled":
       return { label: "Scheduled", tone: "pending" };
     case "unscheduled":
-      return { label: "Unscheduled", tone: "neutral" };
+      return { label: "Unscheduled", tone: "attention" };
     case "cancelled":
       return { label: "Cancelled", tone: "attention" };
     default:
@@ -214,7 +214,7 @@ export default function Inbox() {
       const isUnassigned =
         !isSinglePersonCompany &&
         Boolean(job.has_unassigned_schedule) &&
-        (displayStatus === "unscheduled" || displayStatus === "scheduled" || displayStatus === "in_progress");
+        (displayStatus === "scheduled" || displayStatus === "in_progress");
       const needsInvoice = job.status === "completed" && !job.has_invoice && !job.is_estimate_visit;
       const status = isUnassigned
         ? { label: "Unassigned", tone: "attention" as Tone }
@@ -225,7 +225,7 @@ export default function Inbox() {
         id: job.id,
         type: "job",
         title: job.customer?.name || job.name || "Unnamed Job",
-        subtitle: `${formatDate(job.created_at)} | ${job.service_type || "No service type"}`,
+        subtitle: job.service_type || "No service type",
         status: status.label,
         tone: status.tone,
         timestamp: toTimestamp(job.created_at),

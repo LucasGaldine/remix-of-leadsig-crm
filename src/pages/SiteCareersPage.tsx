@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Briefcase, Globe, Loader2, MapPin } from "lucide-react";
 import type { WebsiteConfig } from "@/hooks/useWebsiteSettings";
 import { supabase } from "@/integrations/supabase/client";
+import { isPublishedHiringRole } from "@/lib/hiringRoles";
 import {
   normalizeClientPortalColor,
   normalizeClientPortalTextColor,
@@ -56,7 +57,7 @@ export default function SiteCareersPage() {
   const themeColor = normalizeClientPortalColor(account?.settings?.client_portal_color);
   const themeTextColor = normalizeClientPortalTextColor(account?.settings?.client_portal_text_color);
   const rgb = hexToRgb(themeColor);
-  const roles = websiteConfig.hiring_roles ?? [];
+  const roles = (websiteConfig.hiring_roles ?? []).filter(isPublishedHiringRole);
   const fontOption = getBrandFontOption(websiteConfig.font);
   const bodyFontOption = getBrandFontOption(websiteConfig.body_font);
   const fontCss = fontOption?.css;

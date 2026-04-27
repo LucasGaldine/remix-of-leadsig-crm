@@ -912,7 +912,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     if (manualStep === "job-information") return "Job Information";
     if (manualStep === "assign-and-schedule") return "Scheduling";
     if (manualStep === "crew-assignment") return "Assign Crew";
-    return "Estimate Line Items";
+    return "Estimated Price";
   })();
 
   const estimateEditorDraft = useMemo(() => {
@@ -1055,7 +1055,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     id="jobName"
                     value={jobName}
                     onChange={(e) => setJobName(e.target.value)}
-                    placeholder="Smith Patio Project"
+                    placeholder="Smith Patio Project (optional)"
                   />
                 </div>
 
@@ -1079,7 +1079,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                       setJobAddress(e.target.value);
                       resetAddressVerification();
                     }}
-                    placeholder={selectedCustomer?.address ? `Default: ${selectedCustomer.address}` : "123 Main St, Austin, TX"}
+                    placeholder={selectedCustomer?.address ? "Will use client address by default (optional)" : "123 Main St, Austin, TX (optional)"}
                   />
                   <AddressVerificationBadge
                     verifying={verifying}
@@ -1090,11 +1090,6 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     }}
                     onAccept={(formatted) => setJobAddress(formatted)}
                   />
-                  {selectedCustomer?.address && !jobAddress && (
-                    <p className="text-xs text-muted-foreground">
-                      Will use client's address: {selectedCustomer.address}
-                    </p>
-                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1103,7 +1098,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     id="description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Project scope and details..."
+                    placeholder="Project scope and details... (optional)"
                   />
                 </div>
               </div>

@@ -65,7 +65,7 @@ const jobStatusConfig: Record<string, { label: string; tone: ActivityTone }> = {
   contacted: { label: "Contacted", tone: "pending" },
   qualified: { label: "Qualified", tone: "confirmed" },
   job: { label: "Job", tone: "confirmed" },
-  unscheduled: { label: "Unscheduled", tone: "neutral" },
+  unscheduled: { label: "Unscheduled", tone: "attention" },
   scheduled: { label: "Scheduled", tone: "pending" },
   in_progress: { label: "In Progress", tone: "pending" },
   completed: { label: "Completed", tone: "confirmed" },
@@ -89,7 +89,7 @@ export function JobCard({
   const isUnassigned =
     !hideUnassignedStatus &&
     Boolean(job.has_unassigned_schedule) &&
-    (badgeStatus === "unscheduled" || badgeStatus === "scheduled" || badgeStatus === "in_progress");
+    (badgeStatus === "scheduled" || badgeStatus === "in_progress");
   const needsInvoice = job.status === "completed" && !job.has_invoice && !job.is_estimate_visit;
 
   const status: { label: string; tone: ActivityTone } = isUnassigned

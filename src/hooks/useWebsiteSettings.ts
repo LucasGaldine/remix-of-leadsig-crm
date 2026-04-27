@@ -9,6 +9,7 @@ export type WebsiteService = {
   description: string;
   icon?: string;
   image_url?: string | null;
+  enabled?: boolean;
   price_per_unit?: number;
   unit_type?: string;
 };
@@ -16,6 +17,10 @@ export type WebsiteService = {
 export type WebsiteHiringRole = {
   id: string;
   title: string;
+  status?: string;
+  urgency?: "low" | "normal" | "high" | string;
+  version?: string | number;
+  updated_at?: string;
   location?: string;
   employment_type?: string;
   description?: string;
@@ -28,26 +33,6 @@ export type WebsiteHiringAutoRejectSettings = {
   transportation_enabled?: boolean;
   availability_enabled?: boolean;
   pay_expectation_enabled?: boolean;
-};
-
-export type WebsiteHiringInterviewSlot = {
-  id: string;
-  start: string;
-  end: string;
-};
-
-export type WebsiteHiringInterviewDayAvailability = {
-  day: "sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday";
-  enabled: boolean;
-  slots: WebsiteHiringInterviewSlot[];
-};
-
-export type WebsiteHiringInterviewRules = {
-  interview_length_minutes?: number;
-  buffer_time_minutes?: number;
-  minimum_notice_hours?: number;
-  booking_window_days?: number;
-  block_when_job_scheduled?: boolean;
 };
 
 export type WebsiteTestimonial = {
@@ -63,8 +48,6 @@ export type WebsiteConfig = {
   published?: boolean;
   custom_domain?: string;
   hiring_roles?: WebsiteHiringRole[];
-  hiring_interview_availability?: WebsiteHiringInterviewDayAvailability[];
-  hiring_interview_rules?: WebsiteHiringInterviewRules;
   font?: string;
   body_font?: string;
   hero?: {

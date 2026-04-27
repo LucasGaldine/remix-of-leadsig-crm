@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X, Upload } from "lucide-react";
+import { RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X, Upload, Package } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -24,9 +24,11 @@ import {
   getLineItemTemplates,
   migrateLegacyTemplatesToDatabase,
   updateLineItemTemplate,
+  type LineItemBundleItem,
   type LineItemTemplate,
 } from "@/lib/lineItemTemplates";
 import { LineItemTemplateCSVImportModal } from "@/components/settings/LineItemTemplateCSVImportModal";
+import { LineItemTemplateSearch } from "@/components/templates/LineItemTemplateSearch";
 
 interface PricingRule {
   id?: string;
@@ -53,6 +55,18 @@ interface ServiceTypeDraft {
   notes: string;
 }
 
+interface BundleDraftItem {
+  template_id: string;
+  quantity_per_unit: string;
+}
+
+interface BundleDraft {
+  name: string;
+  description: string;
+  unit: string;
+  items: BundleDraftItem[];
+}
+
 const slugifyServiceType = (name: string) => {
   const slug = name
     .trim()
@@ -70,6 +84,16 @@ const titleCaseServiceType = (serviceType: string) => {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 };
+
+const UNIT_SELECT_OPTIONS = [
+  { value: "bundle", label: "Bundle" },
+  { value: "each", label: "Each" },
+  { value: "item", label: "Item" },
+  { value: "sq ft", label: "Sq Ft" },
+  { value: "linear ft", label: "Linear Ft" },
+  { value: "hour", label: "Hour" },
+  { value: "day", label: "Day" },
+] as const;
 
 export default function SettingsPricingRules() {
   const { user, currentAccount, refreshProfile } = useAuth();
@@ -98,8 +122,11 @@ export default function SettingsPricingRules() {
   const [surcharge, setSurcharge] = useState<string>("");
   const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
   const [showTemplateImportModal, setShowTemplateImportModal] = useState(false);
+  const [showTemplateTypeDialog, setShowTemplateTypeDialog] = useState(false);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [showBundleForm, setShowBundleForm] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingBundleId, setEditingBundleId] = useState<string | null>(null);
   const [templateDraft, setTemplateDraft] = useState({
     name: "",
     description: "",
@@ -108,6 +135,13 @@ export default function SettingsPricingRules() {
     unit_price: "0",
     category: "other",
   });
+  const [bundleDraft, setBundleDraft] = useState<BundleDraft>({
+    name: "",
+    description: "",
+    unit: "bundle",
+    items: [],
+  });
+  const [bundleTemplateQuery, setBundleTemplateQuery] = useState("");
 
   useEffect(() => {
     void fetchRules();
@@ -127,7 +161,7 @@ export default function SettingsPricingRules() {
 
     const loadTemplates = async () => {
       await migrateLegacyTemplatesToDatabase(currentAccount.id);
-      const templates = await getLineItemTemplates(currentAccount.id);
+      const templates = await getLineItemTemplates(currentAccount.id, { includeBundles: true });
       if (!isCancelled) {
         setLineItemTemplates(templates);
       }
@@ -355,9 +389,11 @@ export default function SettingsPricingRules() {
 
   const refreshTemplates = async () => {
     if (!currentAccount?.id) return;
-    const templates = await getLineItemTemplates(currentAccount.id);
+    const templates = await getLineItemTemplates(currentAccount.id, { includeBundles: true });
     setLineItemTemplates(templates);
   };
+
+  const templateOnlyOptions = lineItemTemplates.filter((template) => template.template_type !== "bundle");
 
   const resetTemplateDraft = () => {
     setTemplateDraft({
@@ -370,6 +406,18 @@ export default function SettingsPricingRules() {
     });
     setEditingTemplateId(null);
     setShowTemplateForm(false);
+  };
+
+  const resetBundleDraft = () => {
+    setBundleDraft({
+      name: "",
+      description: "",
+      unit: "bundle",
+      items: [],
+    });
+    setEditingBundleId(null);
+    setShowBundleForm(false);
+    setBundleTemplateQuery("");
   };
 
   const startCreateTemplate = () => {
@@ -385,7 +433,37 @@ export default function SettingsPricingRules() {
     setShowTemplateForm(true);
   };
 
+  const startCreateBundle = () => {
+    setBundleDraft({
+      name: "",
+      description: "",
+      unit: "bundle",
+      items: [],
+    });
+    setEditingBundleId(null);
+    setShowBundleForm(true);
+    setBundleTemplateQuery("");
+  };
+
   const startEditTemplate = (template: LineItemTemplate) => {
+    if (template.template_type === "bundle") {
+      setEditingBundleId(template.id);
+      setBundleDraft({
+        name: template.name,
+        description: template.description || "",
+        unit: template.unit || "bundle",
+        items: template.bundle_items.length > 0
+          ? template.bundle_items.map((item) => ({
+            template_id: item.template_id,
+            quantity_per_unit: item.quantity_per_unit || "1",
+          }))
+          : [],
+      });
+      setShowBundleForm(true);
+      setBundleTemplateQuery("");
+      return;
+    }
+
     setEditingTemplateId(template.id);
     setTemplateDraft({
       name: template.name,
@@ -397,6 +475,71 @@ export default function SettingsPricingRules() {
     });
     setShowTemplateForm(true);
   };
+
+  const updateBundleItemByTemplate = (templateId: string, patch: Partial<BundleDraftItem>) => {
+    setBundleDraft((previous) => ({
+      ...previous,
+      items: previous.items.map((item) =>
+        item.template_id === templateId
+          ? { ...item, ...patch }
+          : item,
+      ),
+    }));
+  };
+
+  const toggleBundleTemplate = (templateId: string, enabled: boolean) => {
+    if (enabled) {
+      setBundleDraft((previous) => {
+        if (previous.items.some((item) => item.template_id === templateId)) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          items: [
+            ...previous.items,
+            {
+              template_id: templateId,
+              quantity_per_unit: "1",
+            },
+          ],
+        };
+      });
+      return;
+    }
+
+    setBundleDraft((previous) => ({
+      ...previous,
+      items: previous.items.filter((item) => item.template_id !== templateId),
+    }));
+  };
+
+  const normalizeBundleItems = (items: BundleDraftItem[]): LineItemBundleItem[] => {
+    const seen = new Set<string>();
+    return items
+      .map((item) => ({
+        template_id: item.template_id,
+        quantity_per_unit: item.quantity_per_unit || "0",
+      }))
+      .filter((item) => {
+        const quantity = Number(item.quantity_per_unit);
+        if (!item.template_id || !Number.isFinite(quantity) || quantity <= 0) return false;
+        if (seen.has(item.template_id)) return false;
+        seen.add(item.template_id);
+        return true;
+      });
+  };
+
+  const selectedBundleTemplateIds = new Set(bundleDraft.items.map((item) => item.template_id));
+  const filteredBundleTemplateOptions = templateOnlyOptions.filter((template) => {
+    if (selectedBundleTemplateIds.has(template.id)) return false;
+    if (!bundleTemplateQuery.trim()) return true;
+    const query = bundleTemplateQuery.trim().toLowerCase();
+    return (
+      template.name.toLowerCase().includes(query)
+      || (template.description || "").toLowerCase().includes(query)
+    );
+  });
 
   const saveTemplateDraft = async () => {
     const name = templateDraft.name.trim();
@@ -417,6 +560,8 @@ export default function SettingsPricingRules() {
       unit: templateDraft.unit || "each",
       unit_price: templateDraft.unit_price || "0",
       category: templateDraft.category || "other",
+      template_type: "template" as const,
+      bundle_items: [],
     };
 
     if (editingTemplateId) {
@@ -441,6 +586,57 @@ export default function SettingsPricingRules() {
     resetTemplateDraft();
   };
 
+  const saveBundleDraft = async () => {
+    const name = bundleDraft.name.trim();
+    if (!name) {
+      toast.error("Bundle title is required");
+      return;
+    }
+
+    if (!currentAccount?.id) {
+      toast.error("No account selected");
+      return;
+    }
+
+    const normalizedItems = normalizeBundleItems(bundleDraft.items);
+    if (normalizedItems.length === 0) {
+      toast.error("Add at least one connected template with quantity");
+      return;
+    }
+
+    const payload = {
+      name,
+      description: bundleDraft.description,
+      quantity: "1",
+      unit: bundleDraft.unit.trim() || "bundle",
+      unit_price: "0",
+      category: "other",
+      template_type: "bundle" as const,
+      bundle_items: normalizedItems,
+    };
+
+    if (editingBundleId) {
+      const updated = await updateLineItemTemplate(editingBundleId, payload);
+      if (!updated) {
+        toast.error("Failed to update bundle");
+        return;
+      }
+      await refreshTemplates();
+      toast.success("Bundle updated");
+      resetBundleDraft();
+      return;
+    }
+
+    const created = await createLineItemTemplate(currentAccount.id, payload);
+    if (!created) {
+      toast.error("Failed to add bundle");
+      return;
+    }
+    await refreshTemplates();
+    toast.success("Bundle added");
+    resetBundleDraft();
+  };
+
   const deleteTemplate = async (id: string) => {
     const deleted = await deleteLineItemTemplate(id);
     if (!deleted) {
@@ -454,6 +650,9 @@ export default function SettingsPricingRules() {
     }
     if (editingTemplateId === id) {
       resetTemplateDraft();
+    }
+    if (editingBundleId === id) {
+      resetBundleDraft();
     }
     toast.success("Template deleted");
   };
@@ -621,6 +820,7 @@ export default function SettingsPricingRules() {
           name,
           description: String(existing?.description ?? ""),
           icon: String(existing?.icon ?? "CheckCircle2"),
+          enabled: existing?.enabled !== false,
           price_per_unit: Number(computedRate.toFixed(2)),
           unit_type: String(rule.unit_type || "sq_ft"),
         }];
@@ -763,27 +963,36 @@ export default function SettingsPricingRules() {
                       <Upload className="h-4 w-4 mr-1" />
                       Import CSV
                     </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={startCreateTemplate}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowTemplateTypeDialog(true)}>
                       <Plus className="h-4 w-4 mr-1" />
-                      Add Template
+                      Add
                     </Button>
                   </div>
                 </div>
 
                 {lineItemTemplates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No templates yet.</p>
+                  <p className="text-sm text-muted-foreground">No templates or bundles yet.</p>
                 ) : (
                   <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                     {lineItemTemplates.map((template) => (
                       <div key={template.id} className="rounded-lg border border-border p-3 flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-medium truncate">{template.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {template.template_type === "bundle" ? "Bundle" : "Template"}
+                          </p>
                           {template.description ? (
                             <p className="text-sm text-muted-foreground mt-0.5">{template.description}</p>
                           ) : null}
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {template.quantity} x ${Number(template.unit_price || 0).toFixed(2)} / {template.unit}
-                          </p>
+                          {template.template_type === "bundle" ? (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {template.bundle_items.length} connected template{template.bundle_items.length === 1 ? "" : "s"} • unit: {template.unit || "bundle"}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {template.quantity} x ${Number(template.unit_price || 0).toFixed(2)} / {template.unit}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <Button type="button" variant="ghost" size="icon" onClick={() => startEditTemplate(template)}>
@@ -874,6 +1083,42 @@ export default function SettingsPricingRules() {
           void refreshTemplates();
         }}
       />
+      <Dialog open={showTemplateTypeDialog} onOpenChange={setShowTemplateTypeDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Line Item</DialogTitle>
+            <DialogDescription>
+              Choose whether you want to add a single template or a multi-item bundle.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                setShowTemplateTypeDialog(false);
+                startCreateTemplate();
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Template
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                setShowTemplateTypeDialog(false);
+                startCreateBundle();
+              }}
+            >
+              <Package className="h-4 w-4 mr-2" />
+              Bundle
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={showTemplateForm}
         onOpenChange={(open) => {
@@ -987,6 +1232,174 @@ export default function SettingsPricingRules() {
               {editingTemplateId ? "Update Template" : "Save Template"}
             </Button>
             <Button type="button" variant="ghost" onClick={resetTemplateDraft}>
+              <X className="h-4 w-4 mr-1" />
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={showBundleForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetBundleDraft();
+          } else {
+            setShowBundleForm(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingBundleId ? "Edit Bundle" : "Add Bundle"}</DialogTitle>
+            <DialogDescription>
+              Each bundle unit adds each connected template by its quantity per unit.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Label htmlFor="bundle-name">Title *</Label>
+              <Input
+                id="bundle-name"
+                value={bundleDraft.name}
+                onChange={(event) =>
+                  setBundleDraft((prev) => ({ ...prev, name: event.target.value }))
+                }
+                placeholder="e.g., Spring Cleanup Package"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="bundle-description">Description</Label>
+              <Input
+                id="bundle-description"
+                value={bundleDraft.description}
+                onChange={(event) =>
+                  setBundleDraft((prev) => ({ ...prev, description: event.target.value }))
+                }
+                placeholder="Optional description"
+              />
+            </div>
+            <div>
+              <Label htmlFor="bundle-unit">Bundle Unit</Label>
+              <Select
+                value={bundleDraft.unit}
+                onValueChange={(value) =>
+                  setBundleDraft((prev) => ({ ...prev, unit: value }))
+                }
+              >
+                <SelectTrigger id="bundle-unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIT_SELECT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label>Connected Templates</Label>
+
+            {templateOnlyOptions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Create at least one template before creating bundles.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">
+                    Search and Add Template
+                  </Label>
+                  <div className="rounded-md border border-border">
+                    <LineItemTemplateSearch
+                      placeholder="Search item labels..."
+                      emptyText={bundleTemplateQuery.trim() ? "No matching labels" : "All templates already added."}
+                      query={bundleTemplateQuery}
+                      onQueryChange={setBundleTemplateQuery}
+                      hideListUntilQuery
+                      sections={[
+                        {
+                          heading: "Your Templates",
+                          items: filteredBundleTemplateOptions.map((template) => ({
+                            id: template.id,
+                            value: `${template.name} ${template.description || ""}`,
+                            primary: template.name,
+                            rightText: `$${Number(template.unit_price || 0).toFixed(2)}`,
+                            onSelect: () => {
+                              toggleBundleTemplate(template.id, true);
+                              setBundleTemplateQuery("");
+                            },
+                          })),
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+
+                {bundleDraft.items.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No connected templates yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      For each connected template: <span className="text-foreground font-medium">Bundle Units x Template Qty</span> is added.
+                    </p>
+                    {bundleDraft.items.map((item) => {
+                      const template = templateOnlyOptions.find((option) => option.id === item.template_id);
+                      if (!template) return null;
+
+                      return (
+                        <div key={template.id} className="rounded-lg border border-border p-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0 sm:flex-1">
+                              <p className="font-medium truncate">{template.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {template.quantity} x ${Number(template.unit_price || 0).toFixed(2)} / {template.unit}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 sm:justify-center">
+                              <Label htmlFor={`bundle-item-quantity-${template.id}`} className="text-xs text-muted-foreground whitespace-nowrap">
+                                Units per bundle:
+                              </Label>
+                              <Input
+                                id={`bundle-item-quantity-${template.id}`}
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="h-9 w-20"
+                                value={item.quantity_per_unit}
+                                onChange={(event) => updateBundleItemByTemplate(template.id, { quantity_per_unit: event.target.value })}
+                              />
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">{template.unit}</span>
+                            </div>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="sm:shrink-0"
+                              onClick={() => toggleBundleTemplate(template.id, false)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button type="button" onClick={saveBundleDraft} disabled={templateOnlyOptions.length === 0}>
+              <Save className="h-4 w-4 mr-1" />
+              {editingBundleId ? "Update Bundle" : "Save Bundle"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={resetBundleDraft}>
               <X className="h-4 w-4 mr-1" />
               Cancel
             </Button>

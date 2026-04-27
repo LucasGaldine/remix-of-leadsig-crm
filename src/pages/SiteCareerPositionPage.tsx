@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ArrowLeft, Globe, Loader2, MapPin } from "lucide-react";
 import type { WebsiteConfig, WebsiteHiringRole } from "@/hooks/useWebsiteSettings";
+import { isPublishedHiringRole } from "@/lib/hiringRoles";
 import { supabase } from "@/integrations/supabase/client";
 import { evaluateJobApplicationScreening } from "@/lib/jobApplicationScreening";
 import {
@@ -26,9 +27,9 @@ type ApplicationFormData = {
   phoneNumber: string;
   email: string;
   city: string;
-  reliableTransportation: "yes" | "no";
-  yearsExperience: "0" | "1–2" | "3+";
-  availableFullTime: "yes" | "no";
+  reliableTransportation: "" | "yes" | "no";
+  yearsExperience: "" | "0" | "1–2" | "3+";
+  availableFullTime: "" | "yes" | "no";
   expectedHourlyPay: string;
   whyHireYou: string;
 };
@@ -39,9 +40,9 @@ function createEmptyApplicationFormData(): ApplicationFormData {
     phoneNumber: "",
     email: "",
     city: "",
-    reliableTransportation: "yes",
-    yearsExperience: "0",
-    availableFullTime: "yes",
+    reliableTransportation: "",
+    yearsExperience: "",
+    availableFullTime: "",
     expectedHourlyPay: "",
     whyHireYou: "",
   };
@@ -59,12 +60,17 @@ function getOptionalNumber(value: unknown): number | null {
   return value;
 }
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email.trim());
+}
+
 export default function SiteCareerPositionPage() {
   const { accountId, roleId } = useParams<{ accountId: string; roleId: string }>();
   const [account, setAccount] = useState<AccountData | null>(null);
   const [status, setStatus] = useState<"loading" | "not-found" | "unpublished" | "ready">("loading");
   const [formData, setFormData] = useState<ApplicationFormData>(createEmptyApplicationFormData());
   const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accountId) {
@@ -88,7 +94,7 @@ export default function SiteCareerPositionPage() {
   }, [accountId]);
 
   const websiteConfig = (account?.settings?.website ?? {}) as WebsiteConfig;
-  const roles = websiteConfig.hiring_roles ?? [];
+  const roles = (websiteConfig.hiring_roles ?? []).filter(isPublishedHiringRole);
   const decodedRoleId = useMemo(() => {
     if (!roleId) return "";
     try {
@@ -114,18 +120,54 @@ export default function SiteCareerPositionPage() {
   const updateField = <K extends keyof ApplicationFormData>(field: K, value: ApplicationFormData[K]) => {
     setFormData((current) => ({ ...current, [field]: value }));
     setFormStatus("idle");
+    setFormErrorMessage(null);
   };
 
   const submitApplication = async (e: FormEvent) => {
     e.preventDefault();
     if (!accountId || !role) return;
 
+    const payload = {
+      fullName: formData.fullName.trim(),
+      phoneNumber: formData.phoneNumber.trim(),
+      email: formData.email.trim().toLowerCase(),
+      city: formData.city.trim(),
+      reliableTransportation: formData.reliableTransportation,
+      yearsExperience: formData.yearsExperience,
+      availableFullTime: formData.availableFullTime,
+      expectedHourlyPay: formData.expectedHourlyPay.trim(),
+      whyHireYou: formData.whyHireYou.trim(),
+    };
+
+    if (
+      !payload.fullName ||
+      !payload.phoneNumber ||
+      !payload.email ||
+      !payload.city ||
+      !payload.reliableTransportation ||
+      !payload.yearsExperience ||
+      !payload.availableFullTime ||
+      !payload.expectedHourlyPay ||
+      !payload.whyHireYou
+    ) {
+      setFormStatus("error");
+      setFormErrorMessage("Please complete every field before submitting.");
+      return;
+    }
+
+    if (!isValidEmail(payload.email)) {
+      setFormStatus("error");
+      setFormErrorMessage("Please enter a valid email address.");
+      return;
+    }
+
+    setFormErrorMessage(null);
     setFormStatus("submitting");
     try {
       const screening = evaluateJobApplicationScreening({
-        reliableTransportation: formData.reliableTransportation === "yes",
-        availableFullTime: formData.availableFullTime === "yes",
-        expectedHourlyPay: formData.expectedHourlyPay,
+        reliableTransportation: payload.reliableTransportation === "yes",
+        availableFullTime: payload.availableFullTime === "yes",
+        expectedHourlyPay: payload.expectedHourlyPay,
         acceptableHourlyPayMin: getOptionalNumber(role.acceptable_hourly_pay_min),
         acceptableHourlyPayMax: getOptionalNumber(role.acceptable_hourly_pay_max),
         autoReject: role.auto_reject,
@@ -135,15 +177,15 @@ export default function SiteCareerPositionPage() {
         account_id: accountId,
         role_id: role.id,
         role_title: role.title,
-        full_name: formData.fullName.trim(),
-        phone_number: formData.phoneNumber.trim(),
-        email: formData.email.trim(),
-        city: formData.city.trim(),
-        reliable_transportation: formData.reliableTransportation === "yes",
-        landscaping_or_labor_experience: formData.yearsExperience,
-        available_full_time: formData.availableFullTime === "yes",
-        expected_hourly_pay: formData.expectedHourlyPay.trim(),
-        why_hire_you: formData.whyHireYou.trim(),
+        full_name: payload.fullName,
+        phone_number: payload.phoneNumber,
+        email: payload.email,
+        city: payload.city,
+        reliable_transportation: payload.reliableTransportation === "yes",
+        landscaping_or_labor_experience: payload.yearsExperience,
+        available_full_time: payload.availableFullTime === "yes",
+        expected_hourly_pay: payload.expectedHourlyPay,
+        why_hire_you: payload.whyHireYou,
         screening_tag: screening.tag,
         screening_stage: screening.stage,
         screening_reason: screening.reason,
@@ -151,8 +193,19 @@ export default function SiteCareerPositionPage() {
 
       if (error) throw error;
       setFormData(createEmptyApplicationFormData());
+      setFormErrorMessage(null);
       setFormStatus("success");
-    } catch {
+    } catch (error: unknown) {
+      const dbError = error as { code?: string; constraint?: string };
+      if (dbError.code === "23505" && dbError.constraint === "job_applications_account_email_unique") {
+        setFormErrorMessage("An application with this email has already been submitted.");
+      } else if (dbError.code === "23505" && dbError.constraint === "job_applications_account_phone_unique") {
+        setFormErrorMessage("An application with this phone number has already been submitted.");
+      } else if (dbError.code === "23514" && dbError.constraint === "job_applications_email_format_valid") {
+        setFormErrorMessage("Please enter a valid email address.");
+      } else {
+        setFormErrorMessage("Failed to submit application. Please try again.");
+      }
       setFormStatus("error");
     }
   };
@@ -292,6 +345,9 @@ export default function SiteCareerPositionPage() {
                     value={formData.email}
                     onChange={(e) => updateField("email", e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    pattern="^[^\s@]+@[^\s@]+\.[^\s@]{2,}$"
+                    title="Please enter a valid email address."
+                    autoComplete="email"
                     required
                   />
                 </div>
@@ -313,10 +369,11 @@ export default function SiteCareerPositionPage() {
                   <select
                     id="transportation"
                     value={formData.reliableTransportation}
-                    onChange={(e) => updateField("reliableTransportation", e.target.value as "yes" | "no")}
+                    onChange={(e) => updateField("reliableTransportation", e.target.value as "" | "yes" | "no")}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     required
                   >
+                    <option value="" disabled>Select one</option>
                     <option value="yes">Yes</option>
                     <option value="no">No</option>
                   </select>
@@ -326,10 +383,11 @@ export default function SiteCareerPositionPage() {
                   <select
                     id="experience"
                     value={formData.yearsExperience}
-                    onChange={(e) => updateField("yearsExperience", e.target.value as "0" | "1–2" | "3+")}
+                    onChange={(e) => updateField("yearsExperience", e.target.value as "" | "0" | "1–2" | "3+")}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     required
                   >
+                    <option value="" disabled>Select one</option>
                     <option value="0">0</option>
                     <option value="1–2">1–2</option>
                     <option value="3+">3+</option>
@@ -343,10 +401,11 @@ export default function SiteCareerPositionPage() {
                   <select
                     id="full-time"
                     value={formData.availableFullTime}
-                    onChange={(e) => updateField("availableFullTime", e.target.value as "yes" | "no")}
+                    onChange={(e) => updateField("availableFullTime", e.target.value as "" | "yes" | "no")}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     required
                   >
+                    <option value="" disabled>Select one</option>
                     <option value="yes">Yes</option>
                     <option value="no">No</option>
                   </select>
@@ -387,7 +446,7 @@ export default function SiteCareerPositionPage() {
                 <p className="text-sm font-medium text-green-700">Application submitted successfully.</p>
               )}
               {formStatus === "error" && (
-                <p className="text-sm font-medium text-red-600">Failed to submit application. Please try again.</p>
+                <p className="text-sm font-medium text-red-600">{formErrorMessage ?? "Failed to submit application. Please try again."}</p>
               )}
 
               {account.company_email && (

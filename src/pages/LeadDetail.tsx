@@ -10,6 +10,7 @@ import { LineItemsEstimateDialog, type EstimateLineItemInit } from "@/components
 import { supabase } from "@/integrations/supabase/client";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
@@ -885,6 +886,7 @@ export default function LeadDetail() {
   }
 
   const showConvertButton = lead.status === "qualified";
+  const showBuildEstimateAction = !["job", "paid", "completed"].includes(lead.status) && !hasEstimate;
   const isEstimateApproved = estimate?.status === "accepted";
   const scheduleVisitDisabledReason = !hasAddress ? "Add an address and city to schedule a visit." : null;
   const contentTabs: { id: typeof activeTab; label: string }[] = [
@@ -925,6 +927,67 @@ export default function LeadDetail() {
     }
   };
 
+  const handleCall = () => {
+    if (!callHref) return;
+    window.open(callHref);
+    void logCall("outbound");
+  };
+
+  const handleText = () => {
+    if (!textHref) return;
+    window.open(textHref);
+    void logText();
+  };
+
+  const mobileQuickActions = [
+    ...(showConvertButton ? [
+      {
+        icon: <FileTextIcon className="h-5 w-5" />,
+        label: "Schedule Job",
+        onClick: () => setCreateEstimateDialogOpen(true),
+        disabled: Boolean(scheduleVisitDisabledReason),
+        group: "navigation",
+      },
+    ] : []),
+    ...(showBuildEstimateAction ? [
+      {
+        icon: <DollarSign className="h-5 w-5" />,
+        label: "Build Estimate",
+        onClick: () => setLineItemsDialogOpen(true),
+        group: "navigation",
+      },
+    ] : []),
+    ...(hasEstimate && estimate?.id ? [
+      {
+        icon: <FileText className="h-5 w-5" />,
+        label: "View Estimate",
+        onClick: () => navigate(`/payments/estimates/${estimate.id}`),
+        group: "navigation",
+      },
+    ] : []),
+    {
+      icon: <Navigation className="h-5 w-5" />,
+      label: "Navigate",
+      onClick: handleNavigate,
+      disabled: !clientAddress,
+      group: "navigation",
+    },
+    {
+      icon: <Phone className="h-5 w-5" />,
+      label: "Call",
+      onClick: handleCall,
+      disabled: !callHref,
+      group: "communication",
+    },
+    {
+      icon: <MessageSquare className="h-5 w-5" />,
+      label: "Text",
+      onClick: handleText,
+      disabled: !textHref,
+      group: "communication",
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="" showBack backTo="/leads" />
@@ -937,12 +1000,12 @@ export default function LeadDetail() {
               {customer?.id ? (
                 <button
                   onClick={() => navigate(`/customers/${customer.id}`)}
-                  className="text-1 text-left hover:text-primary hover:underline transition-colors"
+                  className="text-1 text-2xl md:text-1 text-left break-words hover:text-primary hover:underline transition-colors"
                 >
                   {lead.name}
                 </button>
               ) : (
-                <p className="text-1">{lead.name}</p>
+                <p className="text-1 text-2xl md:text-1 break-words">{lead.name}</p>
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -981,7 +1044,7 @@ export default function LeadDetail() {
             <p className="text-5">{lead.service_type || "No service type"}</p>
           </div>
 
-          <div className="flex w-full items-center justify-start gap-2 md:w-auto md:flex-nowrap md:justify-end">
+          <div className="hidden w-full items-center justify-start gap-2 md:flex md:w-auto md:flex-nowrap md:justify-end">
             {callHref ? (
               <Button variant="secondary" size="icon" asChild>
                 <a href={callHref} aria-label="Call lead" onClick={() => void logCall("outbound")}>
@@ -1387,16 +1450,16 @@ export default function LeadDetail() {
 
       
 
-      <div className="px-4 pb-4 max-w-[var(--content-max-width)] m-auto">
+      <div className="p-4 max-w-[var(--content-max-width)] m-auto">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="flex items-center border-b border-border px-4">
+          <div className="bg-card -mx-4 md:mx-0 rounded-none md:rounded-lg md:border md:border-border overflow-hidden">
+            <div className="grid grid-cols-2 px-2 md:border-b md:border-border">
               {contentTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                    "w-full px-2 py-3 text-center text-base font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
                     activeTab === tab.id
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1414,28 +1477,28 @@ export default function LeadDetail() {
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
                     <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-all text-sm leading-5 text-foreground">{lead.email || "No email"}</p>
+                      <p className="min-w-0 break-all text-base md:text-sm leading-5 text-foreground">{lead.email || "No email"}</p>
                     </div>
                   </div>
                   <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Phone</p>
                     <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Phone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">{formatPhone(lead.phone)}</p>
+                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">{formatPhone(lead.phone)}</p>
                     </div>
                   </div>
                   <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Lead Source</p>
                     <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">{lead.source || "Unknown"}</p>
+                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">{lead.source || "Unknown"}</p>
                     </div>
                   </div>
                   <div className="py-1 min-w-0">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Address</p>
                     <div className="mt-1 flex min-w-0 items-start gap-2">
                       <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">
+                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">
                         {[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}
                       </p>
                     </div>
@@ -1444,7 +1507,7 @@ export default function LeadDetail() {
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Budget</p>
                     <div className="mt-1 flex min-w-0 items-start gap-2">
                       <DollarSign className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">
+                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">
                         {lead.estimated_value != null ? formatCurrency(lead.estimated_value) : "Not set"}
                       </p>
                     </div>
@@ -1453,7 +1516,7 @@ export default function LeadDetail() {
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Service Type</p>
                     <div className="mt-1 flex min-w-0 items-start gap-2">
                       <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-sm leading-5 text-foreground">{lead.service_type || "Not set"}</p>
+                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">{lead.service_type || "Not set"}</p>
                     </div>
                   </div>
                 </div>
@@ -1465,7 +1528,7 @@ export default function LeadDetail() {
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Qualification Checklist</p>
                       <div className="space-y-4">
                         <div className="flex items-center justify-between gap-4">
-                          <Label htmlFor="budget-confirmed" className="cursor-pointer text-sm text-foreground">Budget Confirmed</Label>
+                          <Label htmlFor="budget-confirmed" className="cursor-pointer text-base md:text-sm text-foreground">Budget Confirmed</Label>
                           <Switch
                             id="budget-confirmed"
                             checked={qualification?.budget_confirmed ?? false}
@@ -1474,7 +1537,7 @@ export default function LeadDetail() {
                         </div>
 
                         <div className="flex items-center justify-between gap-4">
-                          <Label htmlFor="service-area" className="cursor-pointer text-sm text-foreground">In Service Area</Label>
+                          <Label htmlFor="service-area" className="cursor-pointer text-base md:text-sm text-foreground">In Service Area</Label>
                           <Switch
                             id="service-area"
                             checked={qualification?.service_area_fit ?? false}
@@ -1483,7 +1546,7 @@ export default function LeadDetail() {
                         </div>
 
                         <div className="flex items-center justify-between gap-4">
-                          <Label htmlFor="decision-maker" className="cursor-pointer text-sm text-foreground">Decision Maker</Label>
+                          <Label htmlFor="decision-maker" className="cursor-pointer text-base md:text-sm text-foreground">Decision Maker</Label>
                           <Switch
                             id="decision-maker"
                             checked={qualification?.decision_maker_confirmed ?? false}
@@ -1496,7 +1559,7 @@ export default function LeadDetail() {
                           onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
                         >
                           <SelectTrigger>
-                            <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-4 text-base md:text-sm">
                               <Calendar className="w-4 h-4 text-muted-foreground" />
                               <SelectValue placeholder="Unsure of timeline" />
                             </div>
@@ -1512,13 +1575,13 @@ export default function LeadDetail() {
                         </Select>
 
                         <div>
-                          <Label className="text-sm text-foreground">Qualification Notes</Label>
+                          <Label className="text-base md:text-sm text-foreground">Qualification Notes</Label>
                           <SpeechToTextTextarea
                             value={qualNotes}
                             onValueChange={setQualNotes}
                             onBlur={() => updateQualification({ notes: qualNotes })}
                             placeholder="Add qualification notes..."
-                            className="mt-1.5 text-sm"
+                            className="mt-1.5 text-base md:text-sm"
                             rows={2}
                           />
                         </div>
@@ -1591,8 +1654,8 @@ export default function LeadDetail() {
 
           <div className="space-y-4">
             <div className="space-y-4">
-              {!["job", "paid", "completed"].includes(lead.status) && !hasEstimate && (
-                <div className="rounded-lg border border-dashed border-border bg-card p-4 space-y-3">
+              {showBuildEstimateAction && (
+                <div className="hidden rounded-lg border border-dashed border-border bg-card p-4 space-y-3 md:block">
                   <p className="text-sm text-muted-foreground">No estimate available</p>
                   <Button size="lg" variant="outline" className="w-full" onClick={() => setLineItemsDialogOpen(true)}>
                     <DollarSign className="h-4 w-4" />
@@ -1697,6 +1760,8 @@ export default function LeadDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <FloatingActionButton actions={mobileQuickActions} className="md:hidden" triggerIcon="wrench" />
 
       <MobileNav />
     </div>

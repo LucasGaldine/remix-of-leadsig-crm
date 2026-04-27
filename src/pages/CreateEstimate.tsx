@@ -490,7 +490,7 @@ export default function CreateEstimate() {
               <CardTitle>Line Items</CardTitle>
               <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Line Item
+                Add Service or Material
               </Button>
             </CardHeader>
             <CardContent>

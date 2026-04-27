@@ -51,6 +51,24 @@ describe("JobCard", () => {
     expect(screen.getByText("Unassigned")).toBeInTheDocument();
   });
 
+  it("prioritizes unscheduled over unassigned when no dates exist", () => {
+    render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...baseJob,
+            has_unassigned_schedule: true,
+            status: "job",
+            display_status: "unscheduled",
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+    expect(screen.getByText("Unscheduled")).toBeInTheDocument();
+  });
+
   it("hides unassigned status when disabled by parent context", () => {
     render(
       <MemoryRouter>

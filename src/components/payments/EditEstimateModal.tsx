@@ -13,21 +13,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { QuickAddLineItem } from "@/components/leads/QuickAddLineItem";
+import { LineItemTemplateSearch } from "@/components/templates/LineItemTemplateSearch";
 import {
   getLineItemTemplates,
   migrateLegacyTemplatesToDatabase,
   upsertDedupedLineItemTemplate,
   type LineItemTemplate,
 } from "@/lib/lineItemTemplates";
+import { expandBundleTemplate } from "@/lib/lineItemTemplateBundles";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
 import { Link } from "react-router-dom";
 
 function formatDollar(value: number): string {
   return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+const DEFAULT_UNIT_OPTIONS = ["item", "each", "hour", "sq ft", "linear ft", "day"] as const;
 
 interface LineItemForm {
   id?: string;
@@ -39,6 +44,21 @@ interface LineItemForm {
   category: LineItemCategory;
   isNew?: boolean;
   originalId?: string;
+}
+
+interface PendingAddLineItemDraft {
+  name: string;
+  description: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  category: LineItemCategory;
+}
+
+interface PendingAddBundleDraft {
+  id: string;
+  name: string;
+  unit: string;
 }
 
 interface EditEstimateModalProps {
@@ -272,7 +292,7 @@ function ExpandedLineItem({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`edit-item-name-${index}`}>Title *</Label>
+        <Label htmlFor={`edit-item-name-${index}`}>Item Label</Label>
         <div className="relative">
           <Input
             id={`edit-item-name-${index}`}
@@ -464,6 +484,19 @@ export function EditEstimateModal({
   const [surcharge, setSurcharge] = useState<string>(() => {
     return (estimate.surcharge || 0).toString();
   });
+  const [showAddLineItemPicker, setShowAddLineItemPicker] = useState(false);
+  const [addLineItemQuery, setAddLineItemQuery] = useState("");
+  const [pendingAddLineItemDraft, setPendingAddLineItemDraft] = useState<PendingAddLineItemDraft | null>(null);
+  const [pendingAddBundleDraft, setPendingAddBundleDraft] = useState<PendingAddBundleDraft | null>(null);
+  const [pendingAddLineItemQuantity, setPendingAddLineItemQuantity] = useState("1");
+  const templateOptions = useMemo(
+    () => lineItemTemplates.filter((template) => template.template_type !== "bundle"),
+    [lineItemTemplates],
+  );
+  const bundleOptions = useMemo(
+    () => lineItemTemplates.filter((template) => template.template_type === "bundle"),
+    [lineItemTemplates],
+  );
   const effectiveEstimateLineItems = useMemo(() => {
     if (isVersionMode) {
       return (estimate.line_items || [])
@@ -546,6 +579,11 @@ export function EditEstimateModal({
     setProfitMode("percentage");
     setProfitAmount((currentSubtotal * (currentMarginPercent / 100)).toFixed(2));
     setSurcharge((estimate.surcharge || 0).toString());
+    setShowAddLineItemPicker(false);
+    setAddLineItemQuery("");
+    setPendingAddLineItemDraft(null);
+    setPendingAddBundleDraft(null);
+    setPendingAddLineItemQuantity("1");
   };
 
   const loadTemplates = async (isCancelledRef: { value: boolean }) => {
@@ -557,7 +595,7 @@ export function EditEstimateModal({
     }
 
     await migrateLegacyTemplatesToDatabase(estimate.account_id);
-    const templates = await getLineItemTemplates(estimate.account_id);
+    const templates = await getLineItemTemplates(estimate.account_id, { includeBundles: true });
     if (!isCancelledRef.value) {
       setLineItemTemplates(templates);
     }
@@ -583,7 +621,10 @@ export function EditEstimateModal({
     };
   }, [open, embedded, effectiveEstimateLineItems, estimate.account_id, estimate.profit_margin, estimate.surcharge]);
 
-  const addLineItem = () => {
+  const addLineItem = (
+    overrides?: Partial<LineItemForm>,
+    options?: { expand?: boolean }
+  ) => {
     const newItems = [
       ...lineItems,
       {
@@ -594,12 +635,99 @@ export function EditEstimateModal({
         unit_price: '',
         category: 'other' as LineItemCategory,
         isNew: true,
+        ...overrides,
       },
     ];
     const newIndex = newItems.length - 1;
     setLineItems(newItems);
     setSnapshots(prev => ({ ...prev, [newIndex]: { ...newItems[newIndex] } }));
-    setExpandedIndex(newIndex);
+    const shouldExpand = options?.expand ?? true;
+    setExpandedIndex(shouldExpand ? newIndex : null);
+  };
+
+  const addLineItemFromTemplate = (template: LineItemTemplate) => {
+    if (template.template_type === "bundle") {
+      setPendingAddBundleDraft({
+        id: template.id,
+        name: template.name,
+        unit: template.unit || "bundle",
+      });
+      setPendingAddLineItemDraft(null);
+      setPendingAddLineItemQuantity("1");
+      return;
+    }
+
+    const draft: PendingAddLineItemDraft = {
+      name: template.name,
+      description: template.description || "",
+      quantity: template.quantity || "1",
+      unit: template.unit || "each",
+      unit_price: template.unit_price || "",
+      category: (template.category || "other") as LineItemCategory,
+    };
+    setPendingAddLineItemDraft(draft);
+    setPendingAddBundleDraft(null);
+    setPendingAddLineItemQuantity(draft.quantity || "1");
+  };
+
+  const addCustomLineItem = () => {
+    const customName = addLineItemQuery.trim() || "Custom item";
+    const draft: PendingAddLineItemDraft = {
+      name: customName,
+      description: "",
+      quantity: "1",
+      unit: "each",
+      unit_price: "",
+      category: "other",
+    };
+    setPendingAddLineItemDraft(draft);
+    setPendingAddBundleDraft(null);
+    setPendingAddLineItemQuantity("1");
+  };
+
+  const confirmAddLineItemFromPicker = () => {
+    const normalizedQuantity = pendingAddLineItemQuantity.trim() || "1";
+
+    if (pendingAddBundleDraft) {
+      const selectedBundle = lineItemTemplates.find((template) => template.id === pendingAddBundleDraft.id);
+      if (!selectedBundle || selectedBundle.template_type !== "bundle") return;
+
+      const expandedItems = expandBundleTemplate(selectedBundle, lineItemTemplates, normalizedQuantity);
+      if (expandedItems.length === 0) {
+        toast.error("No connected templates found for this bundle");
+        return;
+      }
+
+      setLineItems((previous) => [
+        ...previous,
+        ...expandedItems.map((item) => ({
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          category: (item.category || "other") as LineItemCategory,
+          isNew: true,
+        })),
+      ]);
+      setExpandedIndex(null);
+    } else if (pendingAddLineItemDraft) {
+      addLineItem(
+        {
+          ...pendingAddLineItemDraft,
+          quantity: normalizedQuantity,
+        },
+        { expand: false }
+      );
+    } else {
+      return;
+    }
+
+    setShowAddLineItemPicker(false);
+    setAddLineItemQuery("");
+    setPendingAddLineItemDraft(null);
+    setPendingAddBundleDraft(null);
+    setPendingAddLineItemQuantity("1");
   };
 
   const expandLineItem = (index: number) => {
@@ -655,7 +783,7 @@ export function EditEstimateModal({
       return;
     }
 
-    const refreshed = await getLineItemTemplates(estimate.account_id);
+    const refreshed = await getLineItemTemplates(estimate.account_id, { includeBundles: true });
     setLineItemTemplates(refreshed);
     toast.success("Template saved");
   };
@@ -920,7 +1048,7 @@ export function EditEstimateModal({
 
       if (isVersionMode && versionId) {
         if (!normalizedVersionNameDraft) {
-          toast.error("Version name is required");
+          toast.error("Estimate Version is required");
           return;
         }
 
@@ -1209,11 +1337,11 @@ export function EditEstimateModal({
   }, [activeLineItems, onDraftChange, profitMarginPercent, surcharge, profitMode, calculatedProfitAmount]);
 
   const editorBody = (
-    <div className="space-y-4 py-4">
+    <div className={`space-y-4 ${embedded ? "pt-0 pb-4" : "py-4"}`}>
       <div className="space-y-3">
         {shouldShowVersionNameField ? (
           <div className="space-y-2">
-            <Label htmlFor="estimate-version-name">Version Name *</Label>
+            <Label htmlFor="estimate-version-name">Estimate Version *</Label>
             <Input
               id="estimate-version-name"
               value={versionNameDraft}
@@ -1222,7 +1350,7 @@ export function EditEstimateModal({
                 setVersionNameDraft(nextValue);
                 onVersionNameChange?.(nextValue);
               }}
-              placeholder="Version name"
+              placeholder="Estimate Version"
             />
           </div>
         ) : null}
@@ -1254,7 +1382,7 @@ export function EditEstimateModal({
             <ExpandedLineItem
               item={item}
               index={index}
-              templates={lineItemTemplates}
+              templates={templateOptions}
               onUpdate={(field, value) => updateLineItem(index, field, value)}
               onCollapse={() => setExpandedIndex(null)}
               onRevert={() => revertLineItem(index)}
@@ -1282,17 +1410,173 @@ export function EditEstimateModal({
             </div>
           )
         )}
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addLineItem}
-          className="w-full"
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          Add Item
-        </Button>
+        {embedded ? (
+          <Popover
+            open={showAddLineItemPicker}
+            onOpenChange={(nextOpen) => {
+              setShowAddLineItemPicker(nextOpen);
+              if (!nextOpen) {
+                setAddLineItemQuery("");
+                setPendingAddLineItemDraft(null);
+                setPendingAddBundleDraft(null);
+                setPendingAddLineItemQuantity("1");
+              }
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => setShowAddLineItemPicker(true)}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Service or Cost
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+              {pendingAddLineItemDraft || pendingAddBundleDraft ? (
+                <div className="space-y-3 p-3">
+                  <p className="text-sm text-muted-foreground">
+                    {pendingAddBundleDraft ? (
+                      <>
+                        Quantity ({pendingAddBundleDraft.unit || "bundle"}) for{" "}
+                        <span className="font-medium text-foreground">{pendingAddBundleDraft.name}</span>
+                      </>
+                    ) : (
+                      <>
+                        Quantity for <span className="font-medium text-foreground">{pendingAddLineItemDraft?.name}</span>
+                      </>
+                    )}
+                  </p>
+                  <div className={`grid gap-2 ${pendingAddBundleDraft ? "grid-cols-1" : "grid-cols-2"}`}>
+                    <div className="space-y-1">
+                      <Label htmlFor="pending-line-item-quantity" className="text-xs text-muted-foreground">
+                        {pendingAddBundleDraft ? `Quantity (${pendingAddBundleDraft.unit || "bundle"})` : "Quantity"}
+                      </Label>
+                      <Input
+                        id="pending-line-item-quantity"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={pendingAddLineItemQuantity}
+                        onChange={(event) => setPendingAddLineItemQuantity(event.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    {!pendingAddBundleDraft ? (
+                      <div className="space-y-1">
+                        <Label htmlFor="pending-line-item-unit" className="text-xs text-muted-foreground">
+                          Unit
+                        </Label>
+                        <Select
+                          value={pendingAddLineItemDraft?.unit || "each"}
+                          onValueChange={(value) =>
+                            setPendingAddLineItemDraft((previous) =>
+                              previous
+                                ? { ...previous, unit: value }
+                                : previous
+                            )
+                          }
+                        >
+                          <SelectTrigger id="pending-line-item-unit">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(() => {
+                              const unitValue = pendingAddLineItemDraft?.unit || "each";
+                              const options = DEFAULT_UNIT_OPTIONS.includes(unitValue as typeof DEFAULT_UNIT_OPTIONS[number])
+                                ? DEFAULT_UNIT_OPTIONS
+                                : [...DEFAULT_UNIT_OPTIONS, unitValue] as const;
+                              return options.map((unitOption) => (
+                                <SelectItem key={unitOption} value={unitOption}>
+                                  {unitOption}
+                                </SelectItem>
+                              ));
+                            })()}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setPendingAddLineItemDraft(null);
+                        setPendingAddBundleDraft(null);
+                        setPendingAddLineItemQuantity("1");
+                      }}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={confirmAddLineItemFromPicker}
+                    >
+                      {pendingAddBundleDraft ? "Add Bundle" : "Add Item"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <LineItemTemplateSearch
+                  placeholder="Search item labels..."
+                  emptyText="No matching labels"
+                  query={addLineItemQuery}
+                  onQueryChange={setAddLineItemQuery}
+                  sections={[
+                    {
+                      heading: "Your Templates",
+                      items: templateOptions.map((template) => ({
+                        id: template.id,
+                        value: `${template.name} ${template.description || ""}`,
+                        primary: template.name,
+                        rightText: `$${formatDollar(parseFloat(template.unit_price || "0"))}`,
+                        onSelect: () => addLineItemFromTemplate(template),
+                      })),
+                    },
+                    ...(bundleOptions.length > 0
+                      ? [{
+                        heading: "Bundles",
+                        items: bundleOptions.map((bundle) => ({
+                          id: bundle.id,
+                          value: `${bundle.name} ${bundle.description || ""}`,
+                          primary: bundle.name,
+                          rightText: `${bundle.bundle_items.length} item${bundle.bundle_items.length === 1 ? "" : "s"}`,
+                          onSelect: () => addLineItemFromTemplate(bundle),
+                        })),
+                      }]
+                      : []),
+                    {
+                      heading: "Custom",
+                      items: [{
+                        id: `custom-${addLineItemQuery || "blank"}`,
+                        value: `create-custom-${addLineItemQuery}`,
+                        primary: `Create custom item${addLineItemQuery.trim() ? `: "${addLineItemQuery.trim()}"` : ""}`,
+                        onSelect: addCustomLineItem,
+                      }],
+                    },
+                  ]}
+                />
+              )}
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => addLineItem(undefined, { expand: true })}
+            className="w-full"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Service or Cost
+          </Button>
+        )}
 
         <div className="bg-secondary p-4 rounded-lg space-y-2">
           <div className="flex justify-between items-center text-sm">

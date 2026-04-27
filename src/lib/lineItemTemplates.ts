@@ -1,5 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface LineItemBundleItem {
+  template_id: string;
+  quantity_per_unit: string;
+}
+
 export interface LineItemTemplate {
   id: string;
   name: string;
@@ -8,6 +13,8 @@ export interface LineItemTemplate {
   unit: string;
   unit_price: string;
   category: string;
+  template_type: "template" | "bundle";
+  bundle_items: LineItemBundleItem[];
   created_at: string;
 }
 
@@ -18,12 +25,41 @@ interface TemplatePayload {
   unit: string;
   unit_price: string;
   category: string;
+  template_type?: "template" | "bundle";
+  bundle_items?: LineItemBundleItem[];
+}
+
+interface GetLineItemTemplatesOptions {
+  includeBundles?: boolean;
 }
 
 const GLOBAL_LEGACY_KEY = "leadsig_line_item_templates_global";
 const ACCOUNT_LEGACY_PREFIX = "leadsig_line_item_templates_";
+const BASE_TEMPLATE_SELECT = "id, name, description, quantity, unit, unit_price, category, created_at";
+const BUNDLE_TEMPLATE_SELECT = `${BASE_TEMPLATE_SELECT}, template_type, bundle_items`;
+
+function isMissingBundleColumnsError(error: any) {
+  if (!error) return false;
+  const code = String(error.code || "");
+  const message = String(error.message || "").toLowerCase();
+  return code === "42703" || message.includes("template_type") || message.includes("bundle_items");
+}
 
 function toTemplate(row: any): LineItemTemplate {
+  const parsedBundleItems = Array.isArray(row.bundle_items)
+    ? row.bundle_items
+      .map((item: any) => {
+        const templateId = String(item?.template_id || "").trim();
+        if (!templateId) return null;
+
+        return {
+          template_id: templateId,
+          quantity_per_unit: String(item?.quantity_per_unit ?? "1"),
+        } as LineItemBundleItem;
+      })
+      .filter((item): item is LineItemBundleItem => Boolean(item))
+    : [];
+
   return {
     id: String(row.id),
     name: String(row.name || ""),
@@ -32,11 +68,15 @@ function toTemplate(row: any): LineItemTemplate {
     unit: String(row.unit || "each"),
     unit_price: String(row.unit_price ?? "0"),
     category: String(row.category || "other"),
+    template_type: row.template_type === "bundle" ? "bundle" : "template",
+    bundle_items: parsedBundleItems,
     created_at: String(row.created_at || new Date().toISOString()),
   };
 }
 
 function toInsertPayload(accountId: string, payload: TemplatePayload) {
+  const templateType = payload.template_type || "template";
+
   return {
     account_id: accountId,
     name: payload.name.trim(),
@@ -45,6 +85,13 @@ function toInsertPayload(accountId: string, payload: TemplatePayload) {
     unit: payload.unit || "each",
     unit_price: Number(payload.unit_price || 0),
     category: payload.category || "other",
+    template_type: templateType,
+    bundle_items: templateType === "bundle"
+      ? (payload.bundle_items || []).map((item) => ({
+        template_id: item.template_id,
+        quantity_per_unit: Number(item.quantity_per_unit || 0),
+      }))
+      : null,
   };
 }
 
@@ -68,6 +115,8 @@ function parseLegacyTemplates(raw: string | null): LineItemTemplate[] {
           unit: String(item?.unit || "each"),
           unit_price: String(item?.unit_price || "0"),
           category: String(item?.category || "other"),
+          template_type: "template",
+          bundle_items: [],
           created_at: String(item?.created_at || new Date().toISOString()),
         } as LineItemTemplate;
       })
@@ -85,22 +134,56 @@ function buildFingerprint(template: TemplatePayload) {
     (template.unit || "").trim().toLowerCase(),
     (parseFloat(template.unit_price || "0") || 0).toFixed(2),
     (template.category || "other").trim().toLowerCase(),
+    template.template_type || "template",
+    JSON.stringify(
+      (template.bundle_items || [])
+        .map((item) => ({
+          template_id: item.template_id,
+          quantity_per_unit: (parseFloat(item.quantity_per_unit || "0") || 0).toFixed(4),
+        }))
+        .sort((a, b) => a.template_id.localeCompare(b.template_id)),
+    ),
   ].join("|");
 }
 
-export async function getLineItemTemplates(accountId: string): Promise<LineItemTemplate[]> {
+export async function getLineItemTemplates(
+  accountId: string,
+  options: GetLineItemTemplatesOptions = {},
+): Promise<LineItemTemplate[]> {
   if (!accountId) return [];
 
   try {
-    const { data, error } = await (supabase as any)
+    let query = (supabase as any)
       .from("line_item_templates")
-      .select("id, name, description, quantity, unit, unit_price, category, created_at")
+      .select(BUNDLE_TEMPLATE_SELECT)
       .eq("account_id", accountId)
       .order("created_at", { ascending: false });
+
+    if (!options.includeBundles) {
+      query = query.eq("template_type", "template");
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return (data || []).map(toTemplate);
   } catch (error) {
+    if (isMissingBundleColumnsError(error)) {
+      try {
+        const { data, error: legacyError } = await (supabase as any)
+          .from("line_item_templates")
+          .select(BASE_TEMPLATE_SELECT)
+          .eq("account_id", accountId)
+          .order("created_at", { ascending: false });
+
+        if (legacyError) throw legacyError;
+        return (data || []).map(toTemplate);
+      } catch (legacyFetchError) {
+        console.error("Failed to fetch line item templates (legacy fallback)", legacyFetchError);
+        return [];
+      }
+    }
+
     console.error("Failed to fetch line item templates", error);
     return [];
   }
@@ -113,12 +196,41 @@ export async function createLineItemTemplate(accountId: string, payload: Templat
     const { data, error } = await (supabase as any)
       .from("line_item_templates")
       .insert(toInsertPayload(accountId, payload))
-      .select("id, name, description, quantity, unit, unit_price, category, created_at")
+      .select(BUNDLE_TEMPLATE_SELECT)
       .single();
 
     if (error) throw error;
     return data ? toTemplate(data) : null;
   } catch (error) {
+    if (isMissingBundleColumnsError(error)) {
+      if (payload.template_type === "bundle") {
+        console.error("Bundle templates require the bundle migration to be applied", error);
+        return null;
+      }
+
+      try {
+        const { data, error: legacyError } = await (supabase as any)
+          .from("line_item_templates")
+          .insert({
+            account_id: accountId,
+            name: payload.name.trim(),
+            description: payload.description?.trim() || null,
+            quantity: Number(payload.quantity || 1),
+            unit: payload.unit || "each",
+            unit_price: Number(payload.unit_price || 0),
+            category: payload.category || "other",
+          })
+          .select(BASE_TEMPLATE_SELECT)
+          .single();
+
+        if (legacyError) throw legacyError;
+        return data ? toTemplate(data) : null;
+      } catch (legacyCreateError) {
+        console.error("Failed to create line item template (legacy fallback)", legacyCreateError);
+        return null;
+      }
+    }
+
     console.error("Failed to create line item template", error);
     return null;
   }
@@ -126,6 +238,8 @@ export async function createLineItemTemplate(accountId: string, payload: Templat
 
 export async function updateLineItemTemplate(templateId: string, payload: TemplatePayload): Promise<LineItemTemplate | null> {
   if (!templateId || !payload.name.trim()) return null;
+
+  const templateType = payload.template_type || "template";
 
   try {
     const { data, error } = await (supabase as any)
@@ -137,14 +251,50 @@ export async function updateLineItemTemplate(templateId: string, payload: Templa
         unit: payload.unit || "each",
         unit_price: Number(payload.unit_price || 0),
         category: payload.category || "other",
+        template_type: templateType,
+        bundle_items: templateType === "bundle"
+          ? (payload.bundle_items || []).map((item) => ({
+            template_id: item.template_id,
+            quantity_per_unit: Number(item.quantity_per_unit || 0),
+          }))
+          : null,
       })
       .eq("id", templateId)
-      .select("id, name, description, quantity, unit, unit_price, category, created_at")
+      .select(BUNDLE_TEMPLATE_SELECT)
       .single();
 
     if (error) throw error;
     return data ? toTemplate(data) : null;
   } catch (error) {
+    if (isMissingBundleColumnsError(error)) {
+      if (templateType === "bundle") {
+        console.error("Bundle templates require the bundle migration to be applied", error);
+        return null;
+      }
+
+      try {
+        const { data, error: legacyError } = await (supabase as any)
+          .from("line_item_templates")
+          .update({
+            name: payload.name.trim(),
+            description: payload.description?.trim() || null,
+            quantity: Number(payload.quantity || 1),
+            unit: payload.unit || "each",
+            unit_price: Number(payload.unit_price || 0),
+            category: payload.category || "other",
+          })
+          .eq("id", templateId)
+          .select(BASE_TEMPLATE_SELECT)
+          .single();
+
+        if (legacyError) throw legacyError;
+        return data ? toTemplate(data) : null;
+      } catch (legacyUpdateError) {
+        console.error("Failed to update line item template (legacy fallback)", legacyUpdateError);
+        return null;
+      }
+    }
+
     console.error("Failed to update line item template", error);
     return null;
   }
@@ -180,6 +330,8 @@ export async function upsertDedupedLineItemTemplate(
       unit: template.unit,
       unit_price: template.unit_price,
       category: template.category,
+      template_type: template.template_type,
+      bundle_items: template.bundle_items,
     }) === buildFingerprint(payload),
   );
 
@@ -219,6 +371,8 @@ export async function migrateLegacyTemplatesToDatabase(accountId: string) {
         unit: template.unit,
         unit_price: template.unit_price,
         category: template.category,
+        template_type: template.template_type,
+        bundle_items: template.bundle_items,
       });
       if (!uniqueByFingerprint.has(key)) {
         uniqueByFingerprint.set(key, template);
@@ -233,6 +387,8 @@ export async function migrateLegacyTemplatesToDatabase(accountId: string) {
         unit: template.unit,
         unit_price: template.unit_price,
         category: template.category,
+        template_type: template.template_type,
+        bundle_items: template.bundle_items,
       }),
     );
 

@@ -157,7 +157,7 @@ function ExpandedLineItem({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`item-name-${index}`}>Title *</Label>
+        <Label htmlFor={`item-name-${index}`}>Item Label</Label>
         <Input
           id={`item-name-${index}`}
           value={item.name}
