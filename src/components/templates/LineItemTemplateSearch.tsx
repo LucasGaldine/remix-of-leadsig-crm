@@ -6,6 +6,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import type { ReactNode } from "react";
 
 interface LineItemTemplateSearchItem {
   id: string;
@@ -19,6 +20,13 @@ interface LineItemTemplateSearchItem {
 interface LineItemTemplateSearchSection {
   heading: string;
   items: LineItemTemplateSearchItem[];
+  emptyContent?: ReactNode;
+  emptyAction?: {
+    id: string;
+    value: string;
+    content: ReactNode;
+    onSelect: () => void;
+  };
 }
 
 interface LineItemTemplateSearchProps {
@@ -52,25 +60,41 @@ export function LineItemTemplateSearch({
           <CommandEmpty>{emptyText}</CommandEmpty>
           {sections.map((section) => (
             <CommandGroup key={section.heading} heading={section.heading}>
-              {section.items.map((item) => (
-                <CommandItem
-                  key={item.id}
-                  value={item.value}
-                  onSelect={item.onSelect}
-                >
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate">{item.primary}</p>
-                      {item.secondary ? (
-                        <p className="truncate text-xs text-muted-foreground">{item.secondary}</p>
+              {section.items.length > 0 ? (
+                section.items.map((item) => (
+                  <CommandItem
+                    key={item.id}
+                    value={item.value}
+                    onSelect={item.onSelect}
+                  >
+                    <div className="flex w-full items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate">{item.primary}</p>
+                        {item.secondary ? (
+                          <p className="truncate text-xs text-muted-foreground">{item.secondary}</p>
+                        ) : null}
+                      </div>
+                      {item.rightText ? (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{item.rightText}</span>
                       ) : null}
                     </div>
-                    {item.rightText ? (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">{item.rightText}</span>
-                    ) : null}
+                  </CommandItem>
+                ))
+              ) : section.emptyContent ? (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {section.emptyContent}
+                </div>
+              ) : section.emptyAction ? (
+                <CommandItem
+                  key={section.emptyAction.id}
+                  value={section.emptyAction.value}
+                  onSelect={section.emptyAction.onSelect}
+                >
+                  <div className="w-full text-xs text-muted-foreground">
+                    {section.emptyAction.content}
                   </div>
                 </CommandItem>
-              ))}
+              ) : null}
             </CommandGroup>
           ))}
         </CommandList>

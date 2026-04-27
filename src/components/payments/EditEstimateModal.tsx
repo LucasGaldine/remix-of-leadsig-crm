@@ -1538,6 +1538,23 @@ export function EditEstimateModal({
                         rightText: `$${formatDollar(parseFloat(template.unit_price || "0"))}`,
                         onSelect: () => addLineItemFromTemplate(template),
                       })),
+                      emptyAction: {
+                        id: "empty-templates-pricing-rules",
+                        value: "empty-templates-pricing-rules",
+                        onSelect: () => {
+                          setShowAddLineItemPicker(false);
+                          window.location.assign("/settings/pricing-rules");
+                        },
+                        content: (
+                          <>
+                            Create Reusable line items in{" "}
+                            <span className="font-medium text-primary underline underline-offset-2">
+                              Pricing Rules
+                            </span>
+                            .
+                          </>
+                        ),
+                      },
                     },
                     ...(bundleOptions.length > 0
                       ? [{

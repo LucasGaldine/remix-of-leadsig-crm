@@ -557,7 +557,7 @@ export default function JobDetail() {
   };
 
   const triggerJobCompletionAutomation = (completedJob: { id: string; name?: string; service_type?: string; scheduled_date?: string; scheduled_time_start?: string }) => {
-    const automation = accountSettings?.job_message_automation;
+    const automation = (currentAccount?.settings as any)?.job_message_automation;
     if (!automation?.enabled || !currentAccount?.id) return;
 
     const renderMsg = (tpl: string) => {
@@ -611,7 +611,11 @@ export default function JobDetail() {
     }
   };
 
-  const sendCompletionReviewRequest = async () => {
+  const sendCompletionReviewRequest = async ({
+    openPortalDialogOnFallback = false,
+  }: {
+    openPortalDialogOnFallback?: boolean;
+  } = {}) => {
     if (!job?.customer?.id || !currentAccount?.id) return;
 
     const portalFallback = shouldUsePortalFallback(isTwilioConfigured, job.customer.phone);
@@ -623,8 +627,12 @@ export default function JobDetail() {
       setPortalClientPhone(portalData.phone);
       setPortalClientEmail(portalData.email);
       setPortalEmailSent(false);
-      setPortalDialogOpen(true);
-      toast.success("Job completed. Share the client portal link to request a review.");
+      if (openPortalDialogOnFallback) {
+        setPortalDialogOpen(true);
+        toast.success("Job completed. Share the client portal link to request a review.");
+      } else {
+        toast.success("Job completed");
+      }
       return;
     }
 
@@ -652,8 +660,12 @@ export default function JobDetail() {
         setIsTwilioConfigured(false);
         setPortalLink(portalLink);
         setPortalEmailSent(false);
-        setPortalDialogOpen(true);
-        toast.success("Job completed. Share the client portal link to request a review.");
+        if (openPortalDialogOnFallback) {
+          setPortalDialogOpen(true);
+          toast.success("Job completed. Share the client portal link to request a review.");
+        } else {
+          toast.success("Job completed");
+        }
         return;
       }
       throw new Error(errorMessage || "Failed to send review request");
@@ -1971,10 +1983,14 @@ export default function JobDetail() {
                           throw error;
                         }
 
-                        triggerJobCompletionAutomation({ id: id!, name: (job as any)?.name, service_type: (job as any)?.service_type, scheduled_date: (job as any)?.scheduled_date, scheduled_time_start: (job as any)?.scheduled_time_start });
+                        try {
+                          triggerJobCompletionAutomation({ id: id!, name: (job as any)?.name, service_type: (job as any)?.service_type, scheduled_date: (job as any)?.scheduled_date, scheduled_time_start: (job as any)?.scheduled_time_start });
+                        } catch (automationError) {
+                          console.error("Job completion automation failed:", automationError);
+                        }
 
                         try {
-                          await sendCompletionReviewRequest();
+                          await sendCompletionReviewRequest({ openPortalDialogOnFallback: false });
                         } catch (reviewError) {
                           console.error("Failed to send completion review request:", reviewError);
                           toast.error("Job completed, but the review request could not be sent automatically.");

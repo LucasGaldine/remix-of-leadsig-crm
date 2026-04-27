@@ -37,12 +37,25 @@ const GLOBAL_LEGACY_KEY = "leadsig_line_item_templates_global";
 const ACCOUNT_LEGACY_PREFIX = "leadsig_line_item_templates_";
 const BASE_TEMPLATE_SELECT = "id, name, description, quantity, unit, unit_price, category, created_at";
 const BUNDLE_TEMPLATE_SELECT = `${BASE_TEMPLATE_SELECT}, template_type, bundle_items`;
+let supportsBundleColumns: boolean | null = null;
 
 function isMissingBundleColumnsError(error: any) {
   if (!error) return false;
   const code = String(error.code || "");
   const message = String(error.message || "").toLowerCase();
-  return code === "42703" || message.includes("template_type") || message.includes("bundle_items");
+  return code === "42703" || code === "PGRST204" || message.includes("template_type") || message.includes("bundle_items");
+}
+
+function toLegacyInsertPayload(accountId: string, payload: TemplatePayload) {
+  return {
+    account_id: accountId,
+    name: payload.name.trim(),
+    description: payload.description?.trim() || null,
+    quantity: Number(payload.quantity || 1),
+    unit: payload.unit || "each",
+    unit_price: Number(payload.unit_price || 0),
+    category: payload.category || "other",
+  };
 }
 
 function toTemplate(row: any): LineItemTemplate {
@@ -153,22 +166,25 @@ export async function getLineItemTemplates(
   if (!accountId) return [];
 
   try {
+    const shouldUseBundleColumns = supportsBundleColumns !== false;
     let query = (supabase as any)
       .from("line_item_templates")
-      .select(BUNDLE_TEMPLATE_SELECT)
+      .select(shouldUseBundleColumns ? BUNDLE_TEMPLATE_SELECT : BASE_TEMPLATE_SELECT)
       .eq("account_id", accountId)
       .order("created_at", { ascending: false });
 
-    if (!options.includeBundles) {
+    if (!options.includeBundles && shouldUseBundleColumns) {
       query = query.eq("template_type", "template");
     }
 
     const { data, error } = await query;
 
     if (error) throw error;
+    if (shouldUseBundleColumns) supportsBundleColumns = true;
     return (data || []).map(toTemplate);
   } catch (error) {
     if (isMissingBundleColumnsError(error)) {
+      supportsBundleColumns = false;
       try {
         const { data, error: legacyError } = await (supabase as any)
           .from("line_item_templates")
@@ -193,16 +209,24 @@ export async function createLineItemTemplate(accountId: string, payload: Templat
   if (!accountId || !payload.name.trim()) return null;
 
   try {
+    const shouldUseBundleColumns = supportsBundleColumns !== false;
+    if (!shouldUseBundleColumns && payload.template_type === "bundle") {
+      console.error("Bundle templates require the bundle migration to be applied");
+      return null;
+    }
+
     const { data, error } = await (supabase as any)
       .from("line_item_templates")
-      .insert(toInsertPayload(accountId, payload))
-      .select(BUNDLE_TEMPLATE_SELECT)
+      .insert(shouldUseBundleColumns ? toInsertPayload(accountId, payload) : toLegacyInsertPayload(accountId, payload))
+      .select(shouldUseBundleColumns ? BUNDLE_TEMPLATE_SELECT : BASE_TEMPLATE_SELECT)
       .single();
 
     if (error) throw error;
+    if (shouldUseBundleColumns) supportsBundleColumns = true;
     return data ? toTemplate(data) : null;
   } catch (error) {
     if (isMissingBundleColumnsError(error)) {
+      supportsBundleColumns = false;
       if (payload.template_type === "bundle") {
         console.error("Bundle templates require the bundle migration to be applied", error);
         return null;
@@ -211,15 +235,7 @@ export async function createLineItemTemplate(accountId: string, payload: Templat
       try {
         const { data, error: legacyError } = await (supabase as any)
           .from("line_item_templates")
-          .insert({
-            account_id: accountId,
-            name: payload.name.trim(),
-            description: payload.description?.trim() || null,
-            quantity: Number(payload.quantity || 1),
-            unit: payload.unit || "each",
-            unit_price: Number(payload.unit_price || 0),
-            category: payload.category || "other",
-          })
+          .insert(toLegacyInsertPayload(accountId, payload))
           .select(BASE_TEMPLATE_SELECT)
           .single();
 
@@ -242,31 +258,50 @@ export async function updateLineItemTemplate(templateId: string, payload: Templa
   const templateType = payload.template_type || "template";
 
   try {
+    const shouldUseBundleColumns = supportsBundleColumns !== false;
+    if (!shouldUseBundleColumns && templateType === "bundle") {
+      console.error("Bundle templates require the bundle migration to be applied");
+      return null;
+    }
+
     const { data, error } = await (supabase as any)
       .from("line_item_templates")
-      .update({
-        name: payload.name.trim(),
-        description: payload.description?.trim() || null,
-        quantity: Number(payload.quantity || 1),
-        unit: payload.unit || "each",
-        unit_price: Number(payload.unit_price || 0),
-        category: payload.category || "other",
-        template_type: templateType,
-        bundle_items: templateType === "bundle"
-          ? (payload.bundle_items || []).map((item) => ({
-            template_id: item.template_id,
-            quantity_per_unit: Number(item.quantity_per_unit || 0),
-          }))
-          : null,
-      })
+      .update(
+        shouldUseBundleColumns
+          ? {
+            name: payload.name.trim(),
+            description: payload.description?.trim() || null,
+            quantity: Number(payload.quantity || 1),
+            unit: payload.unit || "each",
+            unit_price: Number(payload.unit_price || 0),
+            category: payload.category || "other",
+            template_type: templateType,
+            bundle_items: templateType === "bundle"
+              ? (payload.bundle_items || []).map((item) => ({
+                template_id: item.template_id,
+                quantity_per_unit: Number(item.quantity_per_unit || 0),
+              }))
+              : null,
+          }
+          : {
+            name: payload.name.trim(),
+            description: payload.description?.trim() || null,
+            quantity: Number(payload.quantity || 1),
+            unit: payload.unit || "each",
+            unit_price: Number(payload.unit_price || 0),
+            category: payload.category || "other",
+          },
+      )
       .eq("id", templateId)
-      .select(BUNDLE_TEMPLATE_SELECT)
+      .select(shouldUseBundleColumns ? BUNDLE_TEMPLATE_SELECT : BASE_TEMPLATE_SELECT)
       .single();
 
     if (error) throw error;
+    if (shouldUseBundleColumns) supportsBundleColumns = true;
     return data ? toTemplate(data) : null;
   } catch (error) {
     if (isMissingBundleColumnsError(error)) {
+      supportsBundleColumns = false;
       if (templateType === "bundle") {
         console.error("Bundle templates require the bundle migration to be applied", error);
         return null;
@@ -379,7 +414,8 @@ export async function migrateLegacyTemplatesToDatabase(accountId: string) {
       }
     }
 
-    const payload = Array.from(uniqueByFingerprint.values()).map((template) =>
+    const templates = Array.from(uniqueByFingerprint.values());
+    const modernPayload = templates.map((template) =>
       toInsertPayload(accountId, {
         name: template.name,
         description: template.description,
@@ -392,11 +428,41 @@ export async function migrateLegacyTemplatesToDatabase(accountId: string) {
       }),
     );
 
-    const { error: insertError } = await (supabase as any)
-      .from("line_item_templates")
-      .insert(payload);
+    if (supportsBundleColumns !== false) {
+      const { error: insertError } = await (supabase as any)
+        .from("line_item_templates")
+        .insert(modernPayload);
 
-    if (insertError) throw insertError;
+      if (!insertError) {
+        supportsBundleColumns = true;
+        return;
+      }
+
+      if (!isMissingBundleColumnsError(insertError)) {
+        throw insertError;
+      }
+
+      supportsBundleColumns = false;
+    }
+
+    const legacyPayload = templates.map((template) =>
+      toLegacyInsertPayload(accountId, {
+        name: template.name,
+        description: template.description,
+        quantity: template.quantity,
+        unit: template.unit,
+        unit_price: template.unit_price,
+        category: template.category,
+        template_type: template.template_type,
+        bundle_items: template.bundle_items,
+      }),
+    );
+
+    const { error: legacyInsertError } = await (supabase as any)
+      .from("line_item_templates")
+      .insert(legacyPayload);
+
+    if (legacyInsertError) throw legacyInsertError;
   } catch (error) {
     console.error("Failed migrating legacy line item templates", error);
   }

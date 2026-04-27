@@ -703,11 +703,11 @@ export function JobChecklist({
                 All checklist items will be checked off. Would you like to mark this job as complete?
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setCompleteDialogOpen(false)} disabled={markingComplete}>
+            <AlertDialogFooter className="flex-row gap-2 sm:gap-2">
+              <AlertDialogCancel size="lg" className="mt-0 flex-1" onClick={() => setCompleteDialogOpen(false)} disabled={markingComplete}>
                 No, Keep Open
               </AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmComplete} disabled={markingComplete}>
+              <AlertDialogAction size="lg" className="flex-1" onClick={handleConfirmComplete} disabled={markingComplete}>
                 {markingComplete ? "Completing..." : "Yes, Mark Complete"}
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -1392,11 +1392,11 @@ export function JobChecklist({
               All checklist items will be checked off. Would you like to mark this job as complete?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setCompleteDialogOpen(false)} disabled={markingComplete}>
+          <AlertDialogFooter className="flex-row gap-2 sm:gap-2">
+            <AlertDialogCancel size="lg" className="mt-0 flex-1" onClick={() => setCompleteDialogOpen(false)} disabled={markingComplete}>
               No, Keep Open
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmComplete} disabled={markingComplete}>
+            <AlertDialogAction size="lg" className="flex-1" onClick={handleConfirmComplete} disabled={markingComplete}>
               {markingComplete ? "Completing..." : "Yes, Mark Complete"}
             </AlertDialogAction>
           </AlertDialogFooter>
