@@ -64,15 +64,6 @@ export default function OnboardingImport() {
           </Card>
         ) : (
           <>
-            <Card className="border-border/70 shadow-sm">
-              <CardHeader>
-                <CardTitle>Choose the right CSV for each import</CardTitle>
-                <CardDescription>
-                  Leads are potential customers, clients are confirmed customer records, and jobs are scheduled or active work orders.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
             <div className="grid gap-4 md:grid-cols-3">
               <Card className="border-border/70 shadow-sm">
                 <CardHeader>
@@ -85,7 +76,7 @@ export default function OnboardingImport() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full" onClick={() => setShowLeadImport(true)}>Import Leads CSV</Button>
+                  <Button className="w-full" variant="secondary" onClick={() => setShowLeadImport(true)}>Import Leads CSV</Button>
                   {leadImportDone && (
                     <p className="flex items-center gap-2 text-sm text-emerald-600">
                       <CheckCircle2 className="h-4 w-4" />
@@ -106,7 +97,7 @@ export default function OnboardingImport() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full" onClick={() => setShowClientImport(true)}>Import Clients CSV</Button>
+                  <Button className="w-full" variant="secondary" onClick={() => setShowClientImport(true)}>Import Clients CSV</Button>
                   {clientImportDone && (
                     <p className="flex items-center gap-2 text-sm text-emerald-600">
                       <CheckCircle2 className="h-4 w-4" />
@@ -127,7 +118,7 @@ export default function OnboardingImport() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full" onClick={() => setShowJobImport(true)}>Import Jobs CSV</Button>
+                  <Button className="w-full" variant="secondary" onClick={() => setShowJobImport(true)}>Import Jobs CSV</Button>
                   {jobImportDone && (
                     <p className="flex items-center gap-2 text-sm text-emerald-600">
                       <CheckCircle2 className="h-4 w-4" />

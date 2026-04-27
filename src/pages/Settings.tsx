@@ -152,7 +152,7 @@ export default function Settings() {
           label: "Auto Messaging",
           description: "Job message automation and follow-ups",
           onClick: () => navigate("/settings/auto-responses"),
-          requiredPlan: "premium",
+          requiredPlan: "basic",
           searchTerms: ["automessaging", "auto messaging", "job message", "job message automation", "auto response", "automatic", "missed call", "follow up", "sms", "text message"],
         },
         ...(role === "owner"

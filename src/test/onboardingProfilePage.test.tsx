@@ -12,6 +12,7 @@ const startStripeOnboardingMock = vi.fn();
 let mockedDefaultTaxRate = 8;
 let mockedDefaultProfitMargin = 0;
 let mockedDefaultSurcharge = 0;
+let pricingRulesRows: Array<{ user_id: string; account_id: string; service_type: string }> = [];
 
 const mockCrewProfiles: Array<{ id: string; full_name: string; role: "crew_lead" | "crew_member" }> = [];
 
@@ -26,6 +27,7 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
+    user: { id: "user_1" },
     currentAccount: {
       id: "acct_1",
       invite_code: "ABC123",
@@ -104,6 +106,34 @@ vi.mock("@/integrations/supabase/client", () => ({
         };
       }
 
+      if (table === "pricing_rules") {
+        return {
+          select: () => ({
+            eq: (column: string, value: string) => ({
+              eq: () => ({
+                order: async () => {
+                  const rows = column === "account_id"
+                    ? pricingRulesRows.filter((row) => row.account_id === value)
+                    : [...pricingRulesRows];
+                  return { data: rows, error: null };
+                },
+              }),
+            }),
+          }),
+          upsert: async (rows: Array<{ user_id: string; account_id: string; service_type: string }>) => {
+            rows.forEach((row) => {
+              const exists = pricingRulesRows.some(
+                (existing) => existing.user_id === row.user_id && existing.service_type === row.service_type,
+              );
+              if (!exists) {
+                pricingRulesRows.push(row);
+              }
+            });
+            return { error: null };
+          },
+        };
+      }
+
       return {
         select: () => ({
           eq: () => ({
@@ -137,6 +167,7 @@ describe("OnboardingProfile page", () => {
     mockedDefaultTaxRate = 8;
     mockedDefaultProfitMargin = 0;
     mockedDefaultSurcharge = 0;
+    pricingRulesRows = [];
     window.localStorage.removeItem(ONBOARDING_PROFILE_STORAGE_KEY);
   });
 
@@ -145,11 +176,45 @@ describe("OnboardingProfile page", () => {
 
     expect(screen.getByText(/^Step 2 of 3$/i)).toBeInTheDocument();
     expect(screen.getByText(/Upload your company logo/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Add your services/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    expect(screen.getByLabelText(/Add your services/i)).toBeInTheDocument();
+  });
+
+  it("adds and saves onboarding services", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    fireEvent.change(screen.getByLabelText(/Add your services/i), { target: { value: "Window Cleaning" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Add$/i }));
+
+    expect(screen.getByText("Window Cleaning")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+
+    await waitFor(() => {
+      expect(pricingRulesRows).toEqual([
+        { user_id: "user_1", account_id: "acct_1", service_type: "Window Cleaning" },
+      ]);
+    });
+  });
+
+  it("renders saved slug service types as display labels", async () => {
+    pricingRulesRows = [
+      { user_id: "user_1", account_id: "acct_1", service_type: "retaining_walls" },
+    ];
+
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Retaining Walls")).toBeInTheDocument();
+    });
   });
 
   it("adds a mock crew member", async () => {
     renderPage();
 
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
 
@@ -165,6 +230,7 @@ describe("OnboardingProfile page", () => {
   it("completes profile onboarding and continues to import", async () => {
     renderPage();
 
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     expect(screen.getByDisplayValue("ABC123")).toBeInTheDocument();
@@ -189,6 +255,7 @@ describe("OnboardingProfile page", () => {
   it("shows connect stripe section on the final slide and triggers stripe onboarding", () => {
     renderPage();
 
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));

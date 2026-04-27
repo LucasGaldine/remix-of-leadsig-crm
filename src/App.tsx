@@ -68,6 +68,7 @@ import SitePage from "./pages/SitePage";
 import SiteCareersPage from "./pages/SiteCareersPage";
 import SiteCareerPositionPage from "./pages/SiteCareerPositionPage";
 import Hiring from "./pages/Hiring";
+import ComingSoon from "./pages/ComingSoon";
 
 const queryClient = new QueryClient();
 
@@ -233,6 +234,7 @@ const router = createBrowserRouter([
       { path: "/admin", element: <Protected><Admin /></Protected> },
       { path: "/website", element: <Protected><Website /></Protected> },
       { path: "/hiring", element: <Protected><Hiring /></Protected> },
+      { path: "/coming-soon", element: <Protected><ComingSoon /></Protected> },
       { path: "*", element: <NotFound /> },
     ],
   },

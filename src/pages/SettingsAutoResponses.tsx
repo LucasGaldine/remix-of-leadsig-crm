@@ -609,7 +609,7 @@ export default function SettingsAutoResponses() {
 
   return (
     <PlanGate
-      requiredPlan="premium"
+      requiredPlan="basic"
       featureName="Auto Messaging"
       featureDescription="Automate job message workflows for follow-ups and outbound reminders."
       backTo="/settings"

@@ -4,7 +4,6 @@ import { Trophy } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -109,15 +108,6 @@ export default function OnboardingPlan() {
           </div>
         </div>
 
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="space-y-3">
-            <CardTitle className="text-2xl">Upgrade your account</CardTitle>
-            <CardDescription className="text-base">
-              Choose your starting plan. You can change it anytime from Billing Settings.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
         <div className="sm:hidden px-2">
           <Carousel
             opts={{ align: "start", containScroll: "trimSnaps", dragFree: false }}
@@ -179,7 +169,7 @@ export default function OnboardingPlan() {
               {isBasicTierChange
                 ? `Your company will stay on the Essentials plan and switch to the ${getBasicTierDisplayName(selectedBasicTier)} tier through Stripe billing.`
                 : pendingPlan === "premium"
-                ? "Pro is $497/month plus a one-time $3,000 setup fee. Billing is managed through Stripe."
+                ? "ELO Accelerator service options are Done With You ($3,000/month) or Done For You ($5,000/month). Billing is managed through Stripe."
                 : isDowngrade
                 ? `Your company will move to the ${pendingPlanName} plan and Stripe billing will update to the lower price.`
                 : `Your company will move to the ${pendingPlanName} plan through Stripe billing.`}

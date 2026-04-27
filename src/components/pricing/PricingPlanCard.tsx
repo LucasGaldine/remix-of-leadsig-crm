@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Check, Crown, Leaf, X, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,7 +8,6 @@ import {
   BASIC_TIER_CONFIG,
   getBasicTierMonthlyPrice,
   getBasicTierSeatLabel,
-  hasLandscapingSkoolAccess,
   type BasicTier,
   type PlanKey,
 } from "@/lib/billingPlans";
@@ -17,6 +18,30 @@ export const planOrder: Record<PlanKey, number> = { free: 0, basic: 1, premium: 
 interface PlanFeature {
   label: string;
   included: boolean;
+}
+
+type PremiumServiceOption = "done-with-you" | "done-for-you";
+
+function getPremiumServiceMonthlyPrice(option: PremiumServiceOption): number {
+  return option === "done-for-you" ? 5000 : 3000;
+}
+
+function getUserFeature(plan: PlanKey, basicTier: BasicTier): PlanFeature {
+  if (plan === "free") {
+    return { label: "1 user", included: false };
+  }
+
+  if (plan === "basic") {
+    const tierConfig = BASIC_TIER_CONFIG[basicTier];
+    const includesMultipleUsers = tierConfig.maxMembers === null || tierConfig.maxMembers > 1;
+
+    return {
+      label: tierConfig.seatLabel,
+      included: includesMultipleUsers,
+    };
+  }
+
+  return { label: "Unlimited users", included: true };
 }
 
 export interface PricingPlanDefinition {
@@ -46,9 +71,9 @@ export const pricingPlans: PricingPlanDefinition[] = [
   },
   {
     key: "premium",
-    name: "Pro",
+    name: "ELO Accelerator",
     period: "/month",
-    description: "Full automation, lead generation support, and premium onboarding.",
+    description: "Partner with our professionals at LeadSig to level up your service business.",
     icon: <Crown className="h-6 w-6" />,
     highlighted: true,
     badge: "Most Popular",
@@ -56,18 +81,19 @@ export const pricingPlans: PricingPlanDefinition[] = [
 ];
 
 export function getPlanFeatures(plan: PlanKey, basicTier: BasicTier): PlanFeature[] {
-  const skoolIncluded = hasLandscapingSkoolAccess(plan, plan === "basic" ? basicTier : null);
+  const eloCommunityIncluded = true;
+  const userFeature = getUserFeature(plan, basicTier);
 
   if (plan === "free") {
     return [
       { label: "Lead storage & management", included: true },
-      { label: "Job tracking", included: true },
-      { label: "Basic scheduling", included: true },
+      { label: "Job tracking and scheduling", included: true },
+      userFeature,
       { label: "Before photos on leads", included: false },
-      { label: "Integrations", included: false },
+      { label: "Ad Account Integrations", included: false },
       { label: "Automations & auto-replies", included: false },
       { label: "SMS & email notifications", included: false },
-      { label: "Landscaping Skool", included: false },
+      { label: "ELO Community", included: eloCommunityIncluded },
       { label: "LeadSig lead generation", included: false },
     ];
   }
@@ -75,31 +101,27 @@ export function getPlanFeatures(plan: PlanKey, basicTier: BasicTier): PlanFeatur
   if (plan === "basic") {
     return [
       { label: "Lead storage & management", included: true },
-      { label: "Job tracking", included: true },
-      { label: "Basic scheduling", included: true },
+      { label: "Job tracking and scheduling", included: true },
+      userFeature,
       { label: "Before photos on leads", included: true },
-      { label: "Integrations", included: true },
+      { label: "Ad Account Integrations", included: true },
       { label: "SMS & email notifications", included: true },
-      { label: "Automations & auto-replies", included: false },
-      { label: "Landscaping Skool (Growth tier)", included: skoolIncluded },
+      { label: "Automations & auto-replies", included: true },
+      { label: "ELO Community", included: eloCommunityIncluded },
       { label: "LeadSig lead generation", included: false },
     ];
   }
 
   return [
-    { label: "Lead storage & management", included: true },
-    { label: "Job tracking", included: true },
-    { label: "Basic scheduling", included: true },
-    { label: "Before photos on leads", included: true },
-    { label: "Integrations", included: true },
-    { label: "SMS & email notifications", included: true },
-    { label: "Automations & auto-replies", included: true },
-    { label: "Landscaping Skool", included: skoolIncluded },
-    { label: "LeadSig lead generation", included: true },
+    { label: "All LeadSig features", included: true },
+    { label: "1 on 1 Business Coaching", included: true },
+    { label: "Lead Acquisition", included: true },
+    { label: "Hiring & HR", included: true },
+    { label: "Social Media Management", included: true },
   ];
 }
 
-function getPlanPrice(plan: PlanKey, basicTier: BasicTier): string {
+function getPlanPrice(plan: PlanKey, basicTier: BasicTier, premiumService: PremiumServiceOption): string {
   const formatPrice = (value: number) => `$${value.toLocaleString("en-US")}`;
 
   if (plan === "free") {
@@ -110,7 +132,7 @@ function getPlanPrice(plan: PlanKey, basicTier: BasicTier): string {
     return formatPrice(getBasicTierMonthlyPrice(basicTier));
   }
 
-  return formatPrice(497);
+  return formatPrice(getPremiumServiceMonthlyPrice(premiumService));
 }
 
 export function getBasicTierDisplayName(tier: BasicTier): string {
@@ -139,10 +161,14 @@ type PricingPlanCardProps =
     };
 
 export function PricingPlanCard(props: PricingPlanCardProps) {
+  const navigate = useNavigate();
   const { plan, selectedBasicTier, onSelectBasicTier, isUpdating } = props;
   const displayTier = selectedBasicTier;
+  const [selectedPremiumService, setSelectedPremiumService] = useState<PremiumServiceOption>("done-with-you");
+  const isPrimaryPlan = plan.key === "premium";
   const features = getPlanFeatures(plan.key, displayTier);
-  const hasTopBadge = props.mode === "settings" && (plan.key === props.currentPlan || (props.currentPlan !== plan.key && !!plan.badge));
+  const sortedFeatures = [...features].sort((a, b) => Number(b.included) - Number(a.included));
+  const hasTopBadge = props.mode === "settings" && props.currentPlan !== plan.key && !!plan.badge;
 
   let isSelected = false;
   let buttonDisabled = false;
@@ -180,41 +206,106 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
     buttonLabel = isSelected ? "Selected" : `Select ${plan.name}`;
   }
 
+  if (plan.key === "premium") {
+    const isCurrentPremiumPlan = props.mode === "settings" && isSelected;
+    buttonLabel = isCurrentPremiumPlan ? "Current Plan" : "Learn More";
+    buttonDisabled = isCurrentPremiumPlan || isUpdating;
+  }
+
+  const handleActionClick = () => {
+    if (plan.key === "premium" && props.mode === "settings" && isSelected) {
+      return;
+    }
+
+    if (plan.key === "premium") {
+      navigate("/coming-soon");
+      return;
+    }
+
+    props.onAction(plan.key);
+  };
+
   return (
     <div
       className={cn(
-        "relative flex flex-col rounded-xl border bg-card p-6 transition-shadow",
+        "relative flex h-full flex-col rounded-xl border bg-card p-6 transition-shadow",
         hasTopBadge && "pt-10",
+        isPrimaryPlan && "border-primary bg-primary text-primary-foreground shadow-lg",
         isSelected ? "border-primary shadow-lg ring-1 ring-primary/20" : "border-border shadow-sm",
       )}
     >
-      {props.mode === "settings" && isSelected && (
-        <Badge className="absolute left-1/2 top-2 -translate-x-1/2 px-3 py-0.5 text-xs">
-          Current Plan
-        </Badge>
-      )}
       {props.mode === "settings" && props.currentPlan !== plan.key && plan.badge && (
         <Badge
           variant="outline"
-          className="absolute left-1/2 top-2 -translate-x-1/2 bg-card px-3 py-0.5 text-xs"
+          className={cn(
+            "absolute left-1/2 top-2 -translate-x-1/2 px-3 py-0.5 text-xs",
+            isPrimaryPlan
+              ? "border-primary-foreground/40 bg-primary text-primary-foreground"
+              : "bg-card",
+          )}
         >
           {plan.badge}
         </Badge>
       )}
 
       <div className="mb-4 flex items-center gap-3">
-        <div className={cn("rounded-lg p-2", isSelected ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground")}>
+        <div
+          className={cn(
+            "rounded-lg p-2",
+            isPrimaryPlan
+              ? "bg-primary-foreground/15 text-primary-foreground"
+              : isSelected
+              ? "bg-primary/10 text-primary"
+              : "bg-secondary text-secondary-foreground",
+          )}
+        >
           {plan.icon}
         </div>
-        <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
+        <h3 className={cn("text-lg font-semibold", isPrimaryPlan ? "text-primary-foreground" : "text-foreground")}>
+          {plan.name}
+        </h3>
       </div>
 
+      <div className="mb-2 flex items-baseline gap-1">
+        <span className={cn("text-3xl font-bold tracking-tight", isPrimaryPlan ? "text-primary-foreground" : "text-foreground")}>
+          {getPlanPrice(plan.key, displayTier, selectedPremiumService)}
+        </span>
+        <span className={cn("text-sm", isPrimaryPlan ? "text-primary-foreground/80" : "text-muted-foreground")}>
+          {plan.period}
+        </span>
+      </div>
+
+      {plan.key === "premium" && (
+        <div className="mb-6">
+          <select
+            aria-label="Premium service option"
+            className={cn(
+              "w-full rounded-xl border px-4 py-2.5 text-base font-semibold",
+              isPrimaryPlan
+                ? "border-primary-foreground/45 bg-primary/30 text-primary-foreground"
+                : "border bg-background text-foreground",
+            )}
+            value={selectedPremiumService}
+            onChange={(event) => setSelectedPremiumService(event.target.value as PremiumServiceOption)}
+            disabled={isUpdating}
+          >
+            <option value="done-with-you">Done With You</option>
+            <option value="done-for-you">Done For You</option>
+          </select>
+        </div>
+      )}
+
+      {plan.key !== "basic" && (
+        <p className={cn("mb-6 text-sm leading-relaxed", isPrimaryPlan ? "text-primary-foreground/85" : "text-muted-foreground")}>
+          {plan.description}
+        </p>
+      )}
+
       {plan.key === "basic" && (
-        <label className="mb-4 block text-sm text-muted-foreground">
-          Tier
+        <div className="mb-6">
           <select
             aria-label="Basic tier"
-            className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground"
             value={displayTier}
             onChange={(event) => onSelectBasicTier(event.target.value as BasicTier)}
             disabled={isUpdating}
@@ -225,31 +316,29 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
               </option>
             ))}
           </select>
-        </label>
+        </div>
       )}
-
-      <div className="mb-2 flex items-baseline gap-1">
-        <span className="text-3xl font-bold tracking-tight text-foreground">
-          {getPlanPrice(plan.key, displayTier)}
-        </span>
-        <span className="text-sm text-muted-foreground">{plan.period}</span>
-      </div>
-
-      {plan.key === "premium" && (
-        <p className="mb-2 text-xs text-muted-foreground">+ $3,000 one-time setup fee</p>
-      )}
-
-      <p className="mb-6 text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
 
       <div className="mb-6 flex-1 space-y-3">
-        {features.map((feature) => (
+        {sortedFeatures.map((feature) => (
           <div key={feature.label} className="flex items-center gap-2.5">
             {feature.included ? (
-              <Check className="h-4 w-4 shrink-0 text-primary" />
+              <Check className={cn("h-4 w-4 shrink-0", isPrimaryPlan ? "text-primary-foreground" : "text-primary")} />
             ) : (
-              <X className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+              <X className={cn("h-4 w-4 shrink-0", isPrimaryPlan ? "text-primary-foreground/45" : "text-muted-foreground/40")} />
             )}
-            <span className={cn("text-sm", feature.included ? "text-foreground" : "text-muted-foreground/60")}>
+            <span
+              className={cn(
+                "text-sm",
+                feature.included
+                  ? isPrimaryPlan
+                    ? "text-primary-foreground"
+                    : "text-foreground"
+                  : isPrimaryPlan
+                  ? "text-primary-foreground/60"
+                  : "text-muted-foreground/60",
+              )}
+            >
               {feature.label}
             </span>
           </div>
@@ -257,9 +346,9 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
       </div>
 
       <Button
-        variant={buttonVariant}
+        variant={isPrimaryPlan && buttonVariant === "default" ? "secondary" : buttonVariant}
         className={cn("w-full", plan.highlighted && buttonVariant === "default" && "shadow-sm")}
-        onClick={() => props.onAction(plan.key)}
+        onClick={handleActionClick}
         disabled={buttonDisabled}
       >
         {buttonLabel}

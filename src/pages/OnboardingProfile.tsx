@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, Building2, Check, Copy, Loader2, Plus, Trash2, Upload, Users } from "lucide-react";
+import { ArrowRight, Building2, Check, Copy, Loader2, Plus, Trash2, Upload, Users, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MockCrewProfileDialog } from "@/components/crew/MockCrewProfileDialog";
 import { useAuth } from "@/hooks/useAuth";
+import { formatServiceTypeOption } from "@/hooks/useServiceTypeOptions";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { completeOnboardingProfile } from "@/lib/onboarding";
 import {
@@ -43,6 +44,10 @@ const profileSlideMeta = [
     description: "Upload your company logo.",
   },
   {
+    title: "Add Your Services",
+    description: "Add the services your company offers.",
+  },
+  {
     title: "Client Portal Theme",
     description: "Set your client portal brand colors.",
   },
@@ -59,7 +64,7 @@ const profileSlideMeta = [
 export default function OnboardingProfile() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { currentAccount, refreshProfile } = useAuth();
+  const { currentAccount, refreshProfile, user } = useAuth();
   const [searchParams] = useSearchParams();
   const isReplay = searchParams.get("source") === "search";
   const { status: stripeStatus, connecting: stripeConnecting, startOnboarding: startStripeOnboarding } = useStripeConnect();
@@ -78,6 +83,8 @@ export default function OnboardingProfile() {
   const [profitMargin, setProfitMargin] = useState("");
   const [surcharge, setSurcharge] = useState("");
   const [pricingDefaultsDirty, setPricingDefaultsDirty] = useState(false);
+  const [services, setServices] = useState<string[]>([]);
+  const [serviceInput, setServiceInput] = useState("");
 
   const [mockMemberName, setMockMemberName] = useState("");
   const [mockMemberPhone, setMockMemberPhone] = useState("");
@@ -100,17 +107,50 @@ export default function OnboardingProfile() {
   }, [currentAccount, selectedLogoFile]);
 
   useEffect(() => {
+    if (!currentAccount?.id || !user?.id) return;
+    let isCancelled = false;
+
+    const loadServices = async () => {
+      const { data, error } = await supabase
+        .from("pricing_rules")
+        .select("service_type")
+        .eq("account_id", currentAccount.id)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+
+      if (isCancelled) return;
+
+      if (error) {
+        toast.error("Failed to load services");
+        return;
+      }
+
+      const nextServices = Array.from(
+        new Set(
+          (data || [])
+            .map((row) => String((row as { service_type?: string }).service_type || "").trim())
+            .filter(Boolean),
+        ),
+      );
+
+      setServices(nextServices);
+      setServiceInput("");
+    };
+
+    void loadServices();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentAccount?.id, user?.id]);
+
+  useEffect(() => {
     if (!currentAccount) return;
     setTaxRate(String(currentAccount.default_tax_rate ?? 8));
     setProfitMargin(String(currentAccount.default_profit_margin ?? 0));
     setSurcharge(String(currentAccount.default_surcharge ?? 0));
     setPricingDefaultsDirty(false);
-  }, [
-    currentAccount?.id,
-    currentAccount?.default_tax_rate,
-    currentAccount?.default_profit_margin,
-    currentAccount?.default_surcharge,
-  ]);
+  }, [currentAccount]);
 
   useEffect(() => {
     return () => {
@@ -234,8 +274,28 @@ export default function OnboardingProfile() {
     }
   };
 
+  const addService = () => {
+    const normalizedValue = serviceInput.trim();
+    if (!normalizedValue) return;
+
+    const alreadyExists = services.some((service) => service.toLowerCase() === normalizedValue.toLowerCase());
+    if (alreadyExists) {
+      toast.error("That service is already listed");
+      return;
+    }
+
+    setServices((current) => [...current, normalizedValue]);
+    setServiceInput("");
+    setBrandingDirty(true);
+  };
+
+  const removeService = (serviceToRemove: string) => {
+    setServices((current) => current.filter((service) => service !== serviceToRemove));
+    setBrandingDirty(true);
+  };
+
   const saveBranding = async () => {
-    if (!currentAccount?.id) {
+    if (!currentAccount?.id || !user?.id) {
       toast.error("Missing account");
       return false;
     }
@@ -284,17 +344,47 @@ export default function OnboardingProfile() {
       })
       .eq("id", currentAccount.id);
 
-    setIsSavingBranding(false);
-
     if (error) {
+      setIsSavingBranding(false);
       toast.error("Failed to save profile branding");
       return false;
+    }
+
+    const normalizedServices = Array.from(
+      new Set(
+        services
+          .map((service) => service.trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (normalizedServices.length > 0) {
+      const { error: serviceSaveError } = await supabase
+        .from("pricing_rules")
+        .upsert(
+          normalizedServices.map((serviceType) => ({
+            user_id: user.id,
+            account_id: currentAccount.id,
+            service_type: serviceType,
+          })),
+          {
+            onConflict: "user_id,service_type",
+            ignoreDuplicates: true,
+          },
+        );
+
+      if (serviceSaveError) {
+        setIsSavingBranding(false);
+        toast.error("Failed to save service types");
+        return false;
+      }
     }
 
     setLogoUrl(uploadedLogoUrl || "");
     setLogoPreviewUrl(uploadedLogoUrl || "");
     setSelectedLogoFile(null);
     setBrandingDirty(false);
+    setIsSavingBranding(false);
     toast.success("Profile branding saved");
     await refreshProfile();
     return true;
@@ -316,7 +406,7 @@ export default function OnboardingProfile() {
   };
 
   const continueSlide = async () => {
-    if ((activeSlide === 0 || activeSlide === 1) && brandingDirty) {
+    if ((activeSlide === 0 || activeSlide === 1 || activeSlide === 2) && brandingDirty) {
       const didSave = await saveBranding();
       if (!didSave) return;
     }
@@ -441,6 +531,53 @@ export default function OnboardingProfile() {
             )}
 
             {activeSlide === 1 && (
+              <div className="space-y-3">
+                <Label htmlFor="onboarding-service-input" className="text-sm font-medium">
+                  Add your services
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="onboarding-service-input"
+                    value={serviceInput}
+                    onChange={(event) => setServiceInput(event.target.value)}
+                    placeholder="e.g. Lawn Care"
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      addService();
+                    }}
+                  />
+                  <Button type="button" variant="outline" onClick={addService}>
+                    Add
+                  </Button>
+                </div>
+
+                {services.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No services added yet.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-sm font-medium">Your Services</p>
+                    <div className="flex flex-wrap gap-2">
+                      {services.map((service) => (
+                        <div key={service} className="inline-flex items-center gap-1 rounded-full border bg-muted px-3 py-1 text-sm">
+                          <span>{formatServiceTypeOption(service)}</span>
+                          <button
+                            type="button"
+                            className="text-muted-foreground transition-colors hover:text-foreground"
+                            aria-label={`Remove ${formatServiceTypeOption(service)}`}
+                            onClick={() => removeService(service)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeSlide === 2 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-2">
@@ -524,7 +661,7 @@ export default function OnboardingProfile() {
               </div>
             )}
 
-            {activeSlide === 2 && (
+            {activeSlide === 3 && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <Label htmlFor="onboarding-invite-code">Company Invite Code</Label>
@@ -604,7 +741,7 @@ export default function OnboardingProfile() {
               </div>
             )}
 
-            {activeSlide === 3 && (
+            {activeSlide === 4 && (
               <div className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-2">
