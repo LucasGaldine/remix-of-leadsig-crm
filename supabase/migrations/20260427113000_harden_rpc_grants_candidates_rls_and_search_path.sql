@@ -263,7 +263,16 @@ END;
 $$;
 
 -- 6) Lock search_path for flagged functions if present.
-ALTER FUNCTION IF EXISTS public.normalize_hiring_roles_status() SET search_path = public;
-ALTER FUNCTION IF EXISTS public.accounts_normalize_hiring_role_status_tg() SET search_path = public;
+DO $$
+BEGIN
+  IF to_regprocedure('public.normalize_hiring_roles_status()') IS NOT NULL THEN
+    EXECUTE 'ALTER FUNCTION public.normalize_hiring_roles_status() SET search_path = public';
+  END IF;
+
+  IF to_regprocedure('public.accounts_normalize_hiring_role_status_tg()') IS NOT NULL THEN
+    EXECUTE 'ALTER FUNCTION public.accounts_normalize_hiring_role_status_tg() SET search_path = public';
+  END IF;
+END;
+$$;
 
 COMMIT;
