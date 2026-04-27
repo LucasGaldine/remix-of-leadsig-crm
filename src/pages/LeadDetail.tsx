@@ -1001,9 +1001,6 @@ export default function LeadDetail() {
               onClick={() => setStatusGuidanceOpen(true)}
               className="hidden md:flex flex-wrap items-center gap-2 cursor-pointer"
             >
-            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Step {currentStepIndex + 1} of {statusSteps.length}
-            </p>
             <button
               type="button"
               className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -1123,7 +1120,7 @@ export default function LeadDetail() {
 
             <div
               className={cn(
-                "hidden md:flex items-center gap-2 flex-nowrap",
+                "hidden md:flex items-center gap-2 flex-nowrap md:pl-[76px]",
                 headerInfoOpen ? "order-3 w-full justify-start" : "order-1",
               )}
             >
