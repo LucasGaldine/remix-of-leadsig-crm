@@ -88,13 +88,12 @@ export function getPlanFeatures(plan: PlanKey, basicTier: BasicTier): PlanFeatur
     return [
       { label: "Lead storage & management", included: true },
       { label: "Job tracking and scheduling", included: true },
-      userFeature,
+      { label: "ELO Community", included: eloCommunityIncluded },
       { label: "Before photos on leads", included: false },
       { label: "Ad Account Integrations", included: false },
       { label: "Automations & auto-replies", included: false },
       { label: "SMS & email notifications", included: false },
-      { label: "ELO Community", included: eloCommunityIncluded },
-      { label: "LeadSig lead generation", included: false },
+      userFeature,
     ];
   }
 
@@ -102,21 +101,20 @@ export function getPlanFeatures(plan: PlanKey, basicTier: BasicTier): PlanFeatur
     return [
       { label: "Lead storage & management", included: true },
       { label: "Job tracking and scheduling", included: true },
-      userFeature,
+      { label: "ELO Community", included: eloCommunityIncluded },
       { label: "Before photos on leads", included: true },
       { label: "Ad Account Integrations", included: true },
       { label: "SMS & email notifications", included: true },
       { label: "Automations & auto-replies", included: true },
-      { label: "ELO Community", included: eloCommunityIncluded },
-      { label: "LeadSig lead generation", included: false },
+      userFeature,
     ];
   }
 
   return [
-    { label: "All LeadSig features", included: true },
+    { label: "All LeadSig CRM features", included: true },
     { label: "1 on 1 Business Coaching", included: true },
-    { label: "Lead Acquisition", included: true },
-    { label: "Hiring & HR", included: true },
+    { label: "LeadSig Lead Generation", included: true },
+    { label: "Hireflow HR Management", included: true },
     { label: "Social Media Management", included: true },
   ];
 }
@@ -167,7 +165,6 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
   const [selectedPremiumService, setSelectedPremiumService] = useState<PremiumServiceOption>("done-with-you");
   const isPrimaryPlan = plan.key === "premium";
   const features = getPlanFeatures(plan.key, displayTier);
-  const sortedFeatures = [...features].sort((a, b) => Number(b.included) - Number(a.included));
   const hasTopBadge = props.mode === "settings" && props.currentPlan !== plan.key && !!plan.badge;
 
   let isSelected = false;
@@ -320,7 +317,7 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
       )}
 
       <div className="mb-6 flex-1 space-y-3">
-        {sortedFeatures.map((feature) => (
+        {features.map((feature) => (
           <div key={feature.label} className="flex items-center gap-2.5">
             {feature.included ? (
               <Check className={cn("h-4 w-4 shrink-0", isPrimaryPlan ? "text-primary-foreground" : "text-primary")} />
