@@ -381,13 +381,21 @@ export async function migrateLegacyTemplatesToDatabase(accountId: string) {
   if (!accountId) return;
 
   try {
+    const clearLegacyStorage = () => {
+      window.localStorage.removeItem(GLOBAL_LEGACY_KEY);
+      window.localStorage.removeItem(`${ACCOUNT_LEGACY_PREFIX}${accountId}`);
+    };
+
     const { count, error: countError } = await (supabase as any)
       .from("line_item_templates")
       .select("id", { count: "exact", head: true })
       .eq("account_id", accountId);
 
     if (countError) throw countError;
-    if ((count || 0) > 0) return;
+    if ((count || 0) > 0) {
+      clearLegacyStorage();
+      return;
+    }
 
     const globalLegacyTemplates = parseLegacyTemplates(window.localStorage.getItem(GLOBAL_LEGACY_KEY));
     const accountLegacyTemplates = parseLegacyTemplates(
@@ -435,6 +443,7 @@ export async function migrateLegacyTemplatesToDatabase(accountId: string) {
 
       if (!insertError) {
         supportsBundleColumns = true;
+        clearLegacyStorage();
         return;
       }
 
@@ -463,6 +472,7 @@ export async function migrateLegacyTemplatesToDatabase(accountId: string) {
       .insert(legacyPayload);
 
     if (legacyInsertError) throw legacyInsertError;
+    clearLegacyStorage();
   } catch (error) {
     console.error("Failed migrating legacy line item templates", error);
   }
