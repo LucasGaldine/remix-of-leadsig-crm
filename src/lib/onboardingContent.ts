@@ -1,125 +1,140 @@
+export type OnboardingSlideSceneId =
+  | "lead-storage-management"
+  | "job-tracking-scheduling"
+  | "before-photos"
+  | "team-setup"
+  | "ad-integrations"
+  | "branded-website-client-portal"
+  | "sms-email-notifications"
+  | "automations-auto-replies"
+  | "crm-recap-premium-preview";
+
 export interface OnboardingSlide {
   id: string;
   title: string;
   description: string;
   bullets: string[];
-  media: {
-    src: string;
-    type: "image" | "video";
-  };
+  sceneId: OnboardingSlideSceneId;
+  planAvailabilityLabel: "Free" | "Essentials+" | "Premium";
+  successCheckText: string;
 }
 
 export const onboardingSlides: OnboardingSlide[] = [
   {
-    id: "dashboard",
-    title: "Dashboard",
-    description: "Your home base for what needs attention first.",
+    id: "lead-storage-management",
+    title: "Lead Storage & Management",
+    description: "Capture, organize, and move leads through a clear pipeline.",
     bullets: [
-      "Quick stats give you an instant read on pipeline, jobs, and revenue.",
-      "Priority sections surface leads, approvals, and work that need action.",
-      "Use it as your starting point each day to decide what to tackle next.",
+      "Keep every inbound lead in one place with visible status and ownership.",
+      "Use status changes to guide handoffs from outreach to qualification.",
+      "Treat this as the source of truth for what needs follow-up next.",
     ],
-    media: {
-      src: "/Onboarding/dashboard.png",
-      type: "image",
-    },
+    sceneId: "lead-storage-management",
+    planAvailabilityLabel: "Free",
+    successCheckText: "Lead moved from New to Qualified.",
   },
   {
-    id: "lead-to-job",
-    title: "Lead To Job",
-    description: "This is where incoming leads start moving into active work.",
+    id: "job-tracking-scheduling",
+    title: "Job Tracking and Scheduling",
+    description: "Turn approved work into scheduled jobs with clear execution status.",
     bullets: [
-      "The yellow Pending label marks leads that came in from your integrations.",
-      "Review those leads, qualify them, and move the right ones into jobs.",
-      "This keeps new inbound opportunities separate from work already in progress.",
+      "Create jobs with ownership, due date, and current progress at a glance.",
+      "Place jobs on the calendar to eliminate scheduling guesswork.",
+      "Use status updates to keep office and field teams aligned.",
     ],
-    media: {
-      src: "/Onboarding/lead_to_job.mov",
-      type: "video",
-    },
+    sceneId: "job-tracking-scheduling",
+    planAvailabilityLabel: "Free",
+    successCheckText: "Job assigned and scheduled date set.",
   },
   {
-    id: "unassigned-job",
-    title: "Unassigned Job",
-    description: "This label flags work that still needs an owner.",
+    id: "before-photos",
+    title: "Before Photos on Leads",
+    description: "Attach visual context before work starts.",
     bullets: [
-      "Unassigned means no crew member or team lead has been attached to the job yet.",
-      "Use it as a quick signal that scheduling is not fully locked in.",
-      "Assigning the job helps your team know who is responsible before the work starts.",
+      "Store before-condition photos directly on the lead record.",
+      "Give your team better prep context before quoting or dispatch.",
+      "Keep visual proof tied to the customer history.",
     ],
-    media: {
-      src: "/Onboarding/unassigned_jobs.mov",
-      type: "video",
-    },
+    sceneId: "before-photos",
+    planAvailabilityLabel: "Essentials+",
+    successCheckText: "Before photo attached to lead.",
   },
   {
-    id: "need-invoice-job",
-    title: "Need Invoice Job",
-    description: "This label points to work that is finished but not billed.",
+    id: "team-setup",
+    title: "Team Setup",
+    description: "Invite users, assign roles, and make responsibilities clear.",
     bullets: [
-      "Need Invoice means the job is ready for billing follow-up.",
-      "It helps you catch completed work before revenue slips through the cracks.",
-      "Use this status to create and send the invoice as the next step.",
+      "Send invites from one place and onboard teammates quickly.",
+      "Assign roles so people see the right tools for their work.",
+      "Keep accountability clean with explicit ownership by user.",
     ],
-    media: {
-      src: "/Onboarding/need_invoice_job.mov",
-      type: "video",
-    },
+    sceneId: "team-setup",
+    planAvailabilityLabel: "Essentials+",
+    successCheckText: "User invited and role assigned.",
   },
   {
-    id: "client-portal",
-    title: "Client Portal",
-    description: "A shareable job view built for your customer.",
+    id: "ad-integrations",
+    title: "Ad Account Integrations",
+    description: "Connect lead sources and verify inbound flow.",
     bullets: [
-      "Share this link directly with the client so they can track progress.",
-      "The portal gives them a clean view of scheduling, updates, photos, and activity.",
-      "It reduces back-and-forth by keeping job information in one place.",
+      "Link ad platforms so leads arrive without manual entry.",
+      "Confirm connection status and run a quick ingestion check.",
+      "Monitor source health from integrations settings.",
     ],
-    media: {
-      src: "/Onboarding/client_portal.mov",
-      type: "video",
-    },
+    sceneId: "ad-integrations",
+    planAvailabilityLabel: "Essentials+",
+    successCheckText: "At least one ad source connected.",
   },
   {
-    id: "calendar",
-    title: "Calendar",
-    description: "Your scheduling view for upcoming work.",
+    id: "branded-website-client-portal",
+    title: "Branded Website & Client Portal",
+    description: "Present customer-facing pages with your brand and shareable links.",
     bullets: [
-      "Use the calendar to see when jobs are planned across the team.",
-      "It helps you manage workload, timing, and appointment visibility in one place.",
-      "This page is best for checking the day, week, and job timing at a glance.",
+      "Apply logo and colors so client-facing touchpoints match your brand.",
+      "Generate a clean portal experience for job updates and trust.",
+      "Share links confidently knowing the client view is ready.",
     ],
-    media: {
-      src: "/Onboarding/calendar.png",
-      type: "image",
-    },
+    sceneId: "branded-website-client-portal",
+    planAvailabilityLabel: "Essentials+",
+    successCheckText: "Portal branding updated and link ready to share.",
   },
   {
-    id: "payment",
-    title: "Payment",
-    description: "The billing area for estimates, invoices, and collected payments.",
+    id: "sms-email-notifications",
+    title: "SMS & Email Notifications",
+    description: "Route alerts to the right people at the right time.",
     bullets: [
-      "The page is laid out so you can move between estimates, invoices, and payment records.",
-      "Use it to track what has been sent, what is outstanding, and what is already paid.",
-      "It acts as the central place for revenue follow-up and payment history.",
+      "Choose channels and event alerts by role and urgency.",
+      "Use quiet hours and digests to reduce noise without missing priority events.",
+      "Send a test alert to validate your setup.",
     ],
-    media: {
-      src: "/Onboarding/payment.png",
-      type: "image",
-    },
+    sceneId: "sms-email-notifications",
+    planAvailabilityLabel: "Essentials+",
+    successCheckText: "SMS and email alerts configured.",
   },
   {
-    id: "integrations",
-    title: "Integrations",
-    description: "The setup area for connected lead sources and external tools.",
+    id: "automations-auto-replies",
+    title: "Automations & Auto-Replies",
+    description: "Create consistent follow-up with trigger-based workflows.",
     bullets: [
-      "This is where you connect and manage your integrations.",
-      "Use it to control where leads come from and how they enter LeadSig.",
-      "If a source needs to be connected, updated, or reviewed, start here.",
+      "Use triggers to send instant acknowledgements and internal alerts.",
+      "Standardize response speed across your team.",
+      "Turn on one automation and confirm it fires correctly.",
     ],
-    media: {
-      src: "/Onboarding/integrations.png",
-      type: "image",
-    },
+    sceneId: "automations-auto-replies",
+    planAvailabilityLabel: "Essentials+",
+    successCheckText: "One automation enabled and active.",
+  },
+  {
+    id: "crm-recap-premium-preview",
+    title: "CRM Recap + Premium Preview",
+    description: "Review your core setup and preview premium growth support.",
+    bullets: [
+      "Confirm your main CRM systems are configured end to end.",
+      "Use this checklist as your launch-ready baseline.",
+      "Preview premium outcomes for coaching and growth services.",
+    ],
+    sceneId: "crm-recap-premium-preview",
+    planAvailabilityLabel: "Premium",
+    successCheckText: "Core CRM setup checklist completed.",
   },
 ];

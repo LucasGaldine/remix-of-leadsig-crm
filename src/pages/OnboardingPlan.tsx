@@ -150,7 +150,7 @@ export default function OnboardingPlan() {
           ))}
         </div>
 
-        <div className="flex justify-center sm:justify-end">
+        <div className="flex justify-center">
           <Button size="lg" onClick={handleContinue}>
             <Trophy className="mr-2 h-4 w-4" />
             Complete onboarding

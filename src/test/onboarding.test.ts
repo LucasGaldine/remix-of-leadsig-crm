@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import {
   completeOnboardingImport,
+  completeOnboardingProfile,
   completeOnboardingSource,
   completeOnboardingTutorial,
   getPostAuthRedirectPath,
@@ -60,7 +61,7 @@ describe("onboarding tutorial state", () => {
     expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/onboarding/source");
   });
 
-  it("routes to import onboarding after CRM source is complete", () => {
+  it("routes to profile onboarding after CRM source is complete", () => {
     window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
@@ -69,6 +70,18 @@ describe("onboarding tutorial state", () => {
     completeOnboardingSource();
 
     expect(shouldShowOnboardingSource()).toBe(false);
+    expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/onboarding/profile");
+  });
+
+  it("routes to import onboarding after profile onboarding is complete", () => {
+    window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
+    window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
+
+    getPostAuthRedirectPath({ isNewSignup: true });
+    completeOnboardingSource();
+    completeOnboardingProfile();
+
     expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/onboarding/import");
   });
 
@@ -79,24 +92,26 @@ describe("onboarding tutorial state", () => {
 
     getPostAuthRedirectPath({ isNewSignup: true });
     completeOnboardingSource();
+    completeOnboardingProfile();
     completeOnboardingImport();
 
     expect(shouldShowOnboardingImport()).toBe(false);
     expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/tutorial");
   });
 
-  it("marks the tutorial complete after finishing", () => {
+  it("marks the tutorial complete and routes to plan onboarding", () => {
     window.localStorage.removeItem(ONBOARDING_SOURCE_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_IMPORT_STORAGE_KEY);
     window.localStorage.removeItem(ONBOARDING_TUTORIAL_STORAGE_KEY);
 
     getPostAuthRedirectPath({ isNewSignup: true });
     completeOnboardingSource();
+    completeOnboardingProfile();
     completeOnboardingImport();
     completeOnboardingTutorial();
 
     expect(shouldShowOnboardingTutorial()).toBe(false);
-    expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/");
+    expect(getPostAuthRedirectPath({ isNewSignup: false })).toBe("/onboarding/plan");
   });
 });
 
@@ -139,58 +154,19 @@ describe("global search tutorial entry", () => {
 describe("onboarding slide content", () => {
   it("keeps the requested onboarding stages in order", () => {
     expect(onboardingSlides.map((slide) => slide.id)).toEqual([
-      "dashboard",
-      "lead-to-job",
-      "unassigned-job",
-      "need-invoice-job",
-      "client-portal",
-      "calendar",
-      "payment",
-      "integrations",
+      "lead-storage-management",
+      "job-tracking-scheduling",
+      "before-photos",
+      "team-setup",
+      "ad-integrations",
+      "branded-website-client-portal",
+      "sms-email-notifications",
+      "automations-auto-replies",
+      "crm-recap-premium-preview",
     ]);
   });
 
-  it("renders tutorial details before media in the mobile DOM order", () => {
-    const { container } = render(
-      createElement(
-        MemoryRouter,
-        { initialEntries: ["/tutorial"] },
-        createElement(
-          Routes,
-          null,
-          createElement(Route, { path: "/tutorial", element: createElement(Tutorial) }),
-        ),
-      ),
-    );
-
-    const slideTitle = screen.getByRole("heading", { name: "Dashboard" });
-    const slideImage = screen.getByRole("img", { name: "Dashboard" });
-    const cardGrid = container.querySelector(".grid");
-
-    expect(cardGrid).not.toBeNull();
-    expect(cardGrid?.firstElementChild).toContainElement(slideTitle);
-    expect(cardGrid?.lastElementChild).toContainElement(slideImage);
-  });
-
-  it("caps desktop media height to 80 percent of the viewport", () => {
-    const { container } = render(
-      createElement(
-        MemoryRouter,
-        { initialEntries: ["/tutorial"] },
-        createElement(
-          Routes,
-          null,
-          createElement(Route, { path: "/tutorial", element: createElement(Tutorial) }),
-        ),
-      ),
-    );
-
-    const mediaPanel = container.querySelector(".lg\\:max-h-\\[80vh\\]");
-
-    expect(mediaPanel).not.toBeNull();
-  });
-
-  it("resizes tutorial media without cropping it", () => {
+  it("renders tutorial details for the active slide", () => {
     render(
       createElement(
         MemoryRouter,
@@ -203,8 +179,28 @@ describe("onboarding slide content", () => {
       ),
     );
 
-    const slideImage = screen.getByRole("img", { name: "Dashboard" });
+    const slideTitle = screen.getByRole("heading", { name: "Lead Storage & Management" });
+    expect(slideTitle).toBeInTheDocument();
+    expect(screen.getByText(/Capture, organize, and move leads/i)).toBeInTheDocument();
+  });
 
-    expect(slideImage.className).toContain("object-contain");
+  it("renders text-only tutorial content", () => {
+    const { container } = render(
+      createElement(
+        MemoryRouter,
+        { initialEntries: ["/tutorial"] },
+        createElement(
+          Routes,
+          null,
+          createElement(Route, { path: "/tutorial", element: createElement(Tutorial) }),
+        ),
+      ),
+    );
+
+    const walkthroughPill = screen.getByText("Product walkthrough");
+    const sceneElement = container.querySelector("[aria-label^='Tutorial scene:']");
+
+    expect(walkthroughPill).toBeInTheDocument();
+    expect(sceneElement).toBeNull();
   });
 });

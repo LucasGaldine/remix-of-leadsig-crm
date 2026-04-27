@@ -4,7 +4,6 @@ import { ArrowLeft, ArrowRight, Check, PlayCircle } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   completeOnboardingTutorial,
   markOnboardingPlanPending,
@@ -48,8 +47,8 @@ export default function Tutorial() {
         showSearch={false}
       />
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
-        <div className="flex items-center justify-between gap-4">
+      <main className="mx-auto flex w-full max-w-[var(--content-max-width)] flex-col gap-6 px-4 py-6">
+        <div className="mx-auto flex w-full max-w-[var(--content-max-width)] items-center justify-between gap-4 px-4">
           <div>
             <p className="text-sm font-medium text-muted-foreground">
               Step {currentIndex + 1} of {onboardingSlides.length}
@@ -67,95 +66,68 @@ export default function Tutorial() {
           </Button>
         </div>
 
-        <Card className="overflow-hidden border-border/70 shadow-sm">
-          <div className="grid gap-0 lg:grid-cols-[1.25fr_0.85fr]">
-            <CardContent className="order-1 flex flex-col justify-between gap-8 p-6 md:p-8 lg:order-2">
-              <div className="space-y-5">
-                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-sm font-medium text-primary">
-                  <PlayCircle className="h-4 w-4" />
-                  Product walkthrough
-                </div>
+        <section className="w-full">
+          <div className="space-y-5 rounded-2xl border border-border/70 bg-card p-6 shadow-sm md:p-8">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-sm font-medium text-primary">
+              <PlayCircle className="h-4 w-4" />
+              Product walkthrough
+            </div>
 
-                <div className="space-y-3">
-                  <h2 className="text-3xl font-semibold tracking-tight">{currentSlide.title}</h2>
-                  <p className="text-base text-muted-foreground">{currentSlide.description}</p>
-                </div>
+            <div className="space-y-3">
+              <h2 className="text-3xl font-semibold tracking-tight">{currentSlide.title}</h2>
+              <p className="text-base text-muted-foreground">{currentSlide.description}</p>
+            </div>
 
-                <ul className="space-y-3">
-                  {currentSlide.bullets.map((bullet) => (
-                    <li key={bullet} className="flex items-start gap-3 text-sm leading-6 text-foreground/90">
-                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                      <span>{bullet}</span>
-                    </li>
-                  ))}
-                </ul>
+            <ul className="space-y-3">
+              {currentSlide.bullets.map((bullet) => (
+                <li key={bullet} className="flex items-start gap-3 text-sm leading-6 text-foreground/90">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                  <span>{bullet}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {onboardingSlides.map((slide, index) => (
+                  <button
+                    key={slide.id}
+                    type="button"
+                    aria-label={`Go to ${slide.title}`}
+                    aria-pressed={index === currentIndex}
+                    onClick={() => setCurrentIndex(index)}
+                    className={`h-2.5 rounded-full transition-all ${
+                      index === currentIndex ? "w-10 bg-primary" : "w-2.5 bg-muted-foreground/30"
+                    }`}
+                  />
+                ))}
               </div>
 
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  {onboardingSlides.map((slide, index) => (
-                    <button
-                      key={slide.id}
-                      type="button"
-                      aria-label={`Go to ${slide.title}`}
-                      aria-pressed={index === currentIndex}
-                      onClick={() => setCurrentIndex(index)}
-                      className={`h-2.5 rounded-full transition-all ${
-                        index === currentIndex ? "w-10 bg-primary" : "w-2.5 bg-muted-foreground/30"
-                      }`}
-                    />
-                  ))}
-                </div>
+              <div className="flex items-center justify-between gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
+                  disabled={currentIndex === 0}
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back
+                </Button>
 
-                <div className="flex items-center justify-between gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
-                    disabled={currentIndex === 0}
-                  >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back
+                {isLastSlide ? (
+                  <Button onClick={handleFinish}>
+                    <Check className="mr-2 h-4 w-4" />
+                    Finish tutorial
                   </Button>
-
-                  {isLastSlide ? (
-                    <Button onClick={handleFinish}>
-                      <Check className="mr-2 h-4 w-4" />
-                      Finish tutorial
-                    </Button>
-                  ) : (
-                    <Button onClick={() => setCurrentIndex((index) => Math.min(onboardingSlides.length - 1, index + 1))}>
-                      Next
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-
-            <div className="order-2 bg-background p-3 md:p-5 lg:order-1 lg:max-h-[80vh]">
-              <div className="overflow-hidden rounded-2xl border border-border/60 bg-black/5 lg:flex lg:h-full lg:items-center lg:justify-center">
-                {currentSlide.media.type === "image" ? (
-                  <img
-                    src={currentSlide.media.src}
-                    alt={currentSlide.title}
-                    className="h-full w-full object-contain"
-                  />
                 ) : (
-                  <video
-                    key={currentSlide.media.src}
-                    src={currentSlide.media.src}
-                    className="h-full w-full object-contain"
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    controls
-                  />
+                  <Button onClick={() => setCurrentIndex((index) => Math.min(onboardingSlides.length - 1, index + 1))}>
+                    Next
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
                 )}
               </div>
             </div>
           </div>
-        </Card>
+        </section>
       </main>
     </div>
   );
