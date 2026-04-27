@@ -3,7 +3,7 @@ import type { AppRole } from "@/hooks/useAuth";
 export interface SearchPage {
   name: string;
   path: string;
-  icon: "home" | "users" | "briefcase" | "dollar-sign" | "settings" | "calendar" | "layout-dashboard" | "crown" | "book-open";
+  icon: "home" | "users" | "user" | "briefcase" | "dollar-sign" | "settings" | "calendar" | "layout-dashboard" | "crown" | "book-open";
   description?: string;
   roles?: AppRole[];
   keywords?: string[];
@@ -60,11 +60,11 @@ export const searchPages: SearchPage[] = [
     keywords: ["calendar", "appointments", "timeline", "booking"],
   },
   {
-    name: "Customers",
+    name: "Contacts",
     path: "/customers",
-    icon: "users",
-    description: "Client directory",
-    keywords: ["clients", "contacts"],
+    icon: "user",
+    description: "Contact directory",
+    keywords: ["contacts", "contact directory", "customers", "clients"],
   },
   {
     name: "Payments",

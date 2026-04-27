@@ -1253,7 +1253,7 @@ export default function LeadDetail() {
           <DialogHeader>
             <DialogTitle>Edit Lead</DialogTitle>
             <DialogDescription>
-              Update lead and client information below.
+              Update lead and contact information below.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-4">
@@ -1292,7 +1292,7 @@ export default function LeadDetail() {
             <Separator />
 
             <div>
-              <h4 className="text-sm font-semibold text-foreground mb-3">Client Information</h4>
+              <h4 className="text-sm font-semibold text-foreground mb-3">Contact Information</h4>
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label htmlFor="edit-name">Name *</Label>

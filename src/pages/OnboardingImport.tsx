@@ -54,7 +54,7 @@ export default function OnboardingImport() {
             <CardHeader className="space-y-3">
               <CardTitle className="text-2xl">Bring your current data into LeadSig</CardTitle>
               <CardDescription className="text-base">
-                Import now if you already have CSV files for leads, clients, or jobs. You can always do this later from each section.
+                Import now if you already have CSV files for leads, contacts, or jobs. You can always do this later from each section.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-row gap-3 sm:items-center">
@@ -91,17 +91,17 @@ export default function OnboardingImport() {
                   <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <Users className="h-5 w-5" />
                   </div>
-                  <CardTitle>Import Clients</CardTitle>
+                  <CardTitle>Import Contacts</CardTitle>
                   <CardDescription>
                     Use this for your customer contact list with names, phone numbers, emails, and addresses.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full" variant="secondary" onClick={() => setShowClientImport(true)}>Import Clients CSV</Button>
+                  <Button className="w-full" variant="secondary" onClick={() => setShowClientImport(true)}>Import Contacts CSV</Button>
                   {clientImportDone && (
                     <p className="flex items-center gap-2 text-sm text-emerald-600">
                       <CheckCircle2 className="h-4 w-4" />
-                      Clients imported
+                      Contacts imported
                     </p>
                   )}
                 </CardContent>

@@ -25,7 +25,7 @@ export function CustomerCard({ customer, onClick, className }: CustomerCardProps
       icon={<User className="h-5 w-5 text-sky-600" />}
       title={customer.name}
       subtitle={subtitle}
-      statusLabel="Client"
+      statusLabel="Contact"
       tone="neutral"
       onClick={onClick}
       className={className}

@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import type { DragEvent } from "react";
-import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2, BookmarkPlus, Mic } from "lucide-react";
+import { GripVertical, Plus, X, Check, Pencil, RotateCcw, Trash2, Undo2, BookmarkPlus, Mic, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
 import {
   Select,
@@ -60,6 +61,8 @@ interface PendingAddBundleDraft {
   name: string;
   unit: string;
 }
+
+type PendingAddCustomStep = "name" | "quantity" | "price" | "description";
 
 interface EditEstimateModalProps {
   open: boolean;
@@ -488,6 +491,8 @@ export function EditEstimateModal({
   const [addLineItemQuery, setAddLineItemQuery] = useState("");
   const [pendingAddLineItemDraft, setPendingAddLineItemDraft] = useState<PendingAddLineItemDraft | null>(null);
   const [pendingAddBundleDraft, setPendingAddBundleDraft] = useState<PendingAddBundleDraft | null>(null);
+  const [pendingAddLineItemIsCustom, setPendingAddLineItemIsCustom] = useState(false);
+  const [pendingAddCustomStep, setPendingAddCustomStep] = useState<PendingAddCustomStep>("name");
   const [pendingAddLineItemQuantity, setPendingAddLineItemQuantity] = useState("1");
   const templateOptions = useMemo(
     () => lineItemTemplates.filter((template) => template.template_type !== "bundle"),
@@ -583,6 +588,8 @@ export function EditEstimateModal({
     setAddLineItemQuery("");
     setPendingAddLineItemDraft(null);
     setPendingAddBundleDraft(null);
+    setPendingAddLineItemIsCustom(false);
+    setPendingAddCustomStep("name");
     setPendingAddLineItemQuantity("1");
   };
 
@@ -653,6 +660,8 @@ export function EditEstimateModal({
         unit: template.unit || "bundle",
       });
       setPendingAddLineItemDraft(null);
+      setPendingAddLineItemIsCustom(false);
+      setPendingAddCustomStep("name");
       setPendingAddLineItemQuantity("1");
       return;
     }
@@ -667,6 +676,8 @@ export function EditEstimateModal({
     };
     setPendingAddLineItemDraft(draft);
     setPendingAddBundleDraft(null);
+    setPendingAddLineItemIsCustom(false);
+    setPendingAddCustomStep("name");
     setPendingAddLineItemQuantity(draft.quantity || "1");
   };
 
@@ -682,7 +693,62 @@ export function EditEstimateModal({
     };
     setPendingAddLineItemDraft(draft);
     setPendingAddBundleDraft(null);
+    setPendingAddLineItemIsCustom(true);
+    setPendingAddCustomStep("name");
     setPendingAddLineItemQuantity("1");
+  };
+
+  const resetPendingAddPicker = () => {
+    setPendingAddLineItemDraft(null);
+    setPendingAddBundleDraft(null);
+    setPendingAddLineItemIsCustom(false);
+    setPendingAddCustomStep("name");
+    setPendingAddLineItemQuantity("1");
+  };
+
+  const customStepOrder: PendingAddCustomStep[] = ["name", "quantity", "price", "description"];
+  const customStepIndex = customStepOrder.indexOf(pendingAddCustomStep);
+  const isCustomFinalStep = pendingAddCustomStep === "description";
+
+  const moveCustomStep = (direction: "next" | "back") => {
+    if (!pendingAddLineItemIsCustom) return;
+    const delta = direction === "next" ? 1 : -1;
+    const nextIndex = Math.min(customStepOrder.length - 1, Math.max(0, customStepIndex + delta));
+    setPendingAddCustomStep(customStepOrder[nextIndex]);
+  };
+
+  const savePendingCustomDraftAsTemplate = async () => {
+    if (!pendingAddLineItemDraft || !estimate.account_id) {
+      toast.error("Missing account for template save");
+      return;
+    }
+
+    const saved = await upsertDedupedLineItemTemplate(
+      estimate.account_id,
+      {
+        name: pendingAddLineItemDraft.name.trim() || "Custom item",
+        description: pendingAddLineItemDraft.description || "",
+        quantity: pendingAddLineItemQuantity || "1",
+        unit: pendingAddLineItemDraft.unit || "each",
+        unit_price: pendingAddLineItemDraft.unit_price || "0",
+        category: pendingAddLineItemDraft.category || "other",
+      },
+      lineItemTemplates,
+    );
+
+    if (!saved) {
+      toast.error("Failed to save template");
+      return;
+    }
+
+    const refreshed = await getLineItemTemplates(estimate.account_id, { includeBundles: true });
+    setLineItemTemplates(refreshed);
+    toast.success("Template saved");
+  };
+
+  const goToPricingRules = () => {
+    setShowAddLineItemPicker(false);
+    window.location.assign("/settings/pricing-rules");
   };
 
   const confirmAddLineItemFromPicker = () => {
@@ -712,9 +778,11 @@ export function EditEstimateModal({
       ]);
       setExpandedIndex(null);
     } else if (pendingAddLineItemDraft) {
+      const normalizedName = pendingAddLineItemDraft.name.trim() || "Custom item";
       addLineItem(
         {
           ...pendingAddLineItemDraft,
+          name: normalizedName,
           quantity: normalizedQuantity,
         },
         { expand: false }
@@ -725,9 +793,7 @@ export function EditEstimateModal({
 
     setShowAddLineItemPicker(false);
     setAddLineItemQuery("");
-    setPendingAddLineItemDraft(null);
-    setPendingAddBundleDraft(null);
-    setPendingAddLineItemQuantity("1");
+    resetPendingAddPicker();
   };
 
   const expandLineItem = (index: number) => {
@@ -1417,9 +1483,7 @@ export function EditEstimateModal({
               setShowAddLineItemPicker(nextOpen);
               if (!nextOpen) {
                 setAddLineItemQuery("");
-                setPendingAddLineItemDraft(null);
-                setPendingAddBundleDraft(null);
-                setPendingAddLineItemQuantity("1");
+                resetPendingAddPicker();
               }
             }}
           >
@@ -1438,88 +1502,251 @@ export function EditEstimateModal({
             <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
               {pendingAddLineItemDraft || pendingAddBundleDraft ? (
                 <div className="space-y-3 p-3">
-                  <p className="text-sm text-muted-foreground">
-                    {pendingAddBundleDraft ? (
-                      <>
+                  {pendingAddBundleDraft ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">
                         Quantity ({pendingAddBundleDraft.unit || "bundle"}) for{" "}
                         <span className="font-medium text-foreground">{pendingAddBundleDraft.name}</span>
-                      </>
-                    ) : (
-                      <>
-                        Quantity for <span className="font-medium text-foreground">{pendingAddLineItemDraft?.name}</span>
-                      </>
-                    )}
-                  </p>
-                  <div className={`grid gap-2 ${pendingAddBundleDraft ? "grid-cols-1" : "grid-cols-2"}`}>
-                    <div className="space-y-1">
-                      <Label htmlFor="pending-line-item-quantity" className="text-xs text-muted-foreground">
-                        {pendingAddBundleDraft ? `Quantity (${pendingAddBundleDraft.unit || "bundle"})` : "Quantity"}
-                      </Label>
-                      <Input
-                        id="pending-line-item-quantity"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={pendingAddLineItemQuantity}
-                        onChange={(event) => setPendingAddLineItemQuantity(event.target.value)}
-                        autoFocus
-                      />
-                    </div>
-                    {!pendingAddBundleDraft ? (
-                      <div className="space-y-1">
-                        <Label htmlFor="pending-line-item-unit" className="text-xs text-muted-foreground">
-                          Unit
-                        </Label>
-                        <Select
-                          value={pendingAddLineItemDraft?.unit || "each"}
-                          onValueChange={(value) =>
-                            setPendingAddLineItemDraft((previous) =>
-                              previous
-                                ? { ...previous, unit: value }
-                                : previous
-                            )
-                          }
-                        >
-                          <SelectTrigger id="pending-line-item-unit">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(() => {
-                              const unitValue = pendingAddLineItemDraft?.unit || "each";
-                              const options = DEFAULT_UNIT_OPTIONS.includes(unitValue as typeof DEFAULT_UNIT_OPTIONS[number])
-                                ? DEFAULT_UNIT_OPTIONS
-                                : [...DEFAULT_UNIT_OPTIONS, unitValue] as const;
-                              return options.map((unitOption) => (
-                                <SelectItem key={unitOption} value={unitOption}>
-                                  {unitOption}
-                                </SelectItem>
-                              ));
-                            })()}
-                          </SelectContent>
-                        </Select>
+                      </p>
+                      <div className="grid gap-2 grid-cols-1">
+                        <div className="space-y-1">
+                          <Label htmlFor="pending-line-item-quantity" className="text-xs text-muted-foreground">
+                            Quantity ({pendingAddBundleDraft.unit || "bundle"})
+                          </Label>
+                          <Input
+                            id="pending-line-item-quantity"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={pendingAddLineItemQuantity}
+                            onChange={(event) => setPendingAddLineItemQuantity(event.target.value)}
+                            autoFocus
+                          />
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
+                    </>
+                  ) : pendingAddLineItemIsCustom ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        {pendingAddCustomStep === "name"
+                          ? "Name your custom item"
+                          : pendingAddCustomStep === "quantity"
+                            ? "Set quantity and unit"
+                            : pendingAddCustomStep === "price"
+                              ? "Set price per unit"
+                              : "Optionally add a description"}
+                      </p>
+                      {pendingAddCustomStep === "name" ? (
+                        <div className="space-y-1">
+                          <Label htmlFor="pending-line-item-name" className="text-xs text-muted-foreground">
+                            Name
+                          </Label>
+                          <Input
+                            id="pending-line-item-name"
+                            value={pendingAddLineItemDraft?.name || ""}
+                            onChange={(event) =>
+                              setPendingAddLineItemDraft((previous) =>
+                                previous
+                                  ? { ...previous, name: event.target.value }
+                                  : previous
+                              )
+                            }
+                            autoFocus
+                          />
+                        </div>
+                      ) : null}
+                      {pendingAddCustomStep === "quantity" ? (
+                        <div className="grid gap-2 grid-cols-2">
+                          <div className="space-y-1">
+                            <Label htmlFor="pending-line-item-quantity" className="text-xs text-muted-foreground">
+                              Quantity
+                            </Label>
+                            <Input
+                              id="pending-line-item-quantity"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={pendingAddLineItemQuantity}
+                              onChange={(event) => setPendingAddLineItemQuantity(event.target.value)}
+                              autoFocus
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="pending-line-item-unit" className="text-xs text-muted-foreground">
+                              Unit
+                            </Label>
+                            <Select
+                              value={pendingAddLineItemDraft?.unit || "each"}
+                              onValueChange={(value) =>
+                                setPendingAddLineItemDraft((previous) =>
+                                  previous
+                                    ? { ...previous, unit: value }
+                                    : previous
+                                )
+                              }
+                            >
+                              <SelectTrigger id="pending-line-item-unit">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(() => {
+                                  const unitValue = pendingAddLineItemDraft?.unit || "each";
+                                  const options = DEFAULT_UNIT_OPTIONS.includes(unitValue as typeof DEFAULT_UNIT_OPTIONS[number])
+                                    ? DEFAULT_UNIT_OPTIONS
+                                    : [...DEFAULT_UNIT_OPTIONS, unitValue] as const;
+                                  return options.map((unitOption) => (
+                                    <SelectItem key={unitOption} value={unitOption}>
+                                      {unitOption}
+                                    </SelectItem>
+                                  ));
+                                })()}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      ) : null}
+                      {pendingAddCustomStep === "price" ? (
+                        <div className="space-y-1">
+                          <Label htmlFor="pending-line-item-price" className="text-xs text-muted-foreground">
+                            Price per unit
+                          </Label>
+                          <Input
+                            id="pending-line-item-price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={pendingAddLineItemDraft?.unit_price || ""}
+                            onChange={(event) =>
+                              setPendingAddLineItemDraft((previous) =>
+                                previous
+                                  ? { ...previous, unit_price: event.target.value }
+                                  : previous
+                              )
+                            }
+                            autoFocus
+                          />
+                        </div>
+                      ) : null}
+                      {pendingAddCustomStep === "description" ? (
+                        <div className="space-y-1">
+                          <Label htmlFor="pending-line-item-description" className="text-xs text-muted-foreground">
+                            Description (optional)
+                          </Label>
+                          <Textarea
+                            id="pending-line-item-description"
+                            value={pendingAddLineItemDraft?.description || ""}
+                            onChange={(event) =>
+                              setPendingAddLineItemDraft((previous) =>
+                                previous
+                                  ? { ...previous, description: event.target.value }
+                                  : previous
+                              )
+                            }
+                            autoFocus
+                          />
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Quantity for <span className="font-medium text-foreground">{pendingAddLineItemDraft?.name}</span>
+                      </p>
+                      <div className="grid gap-2 grid-cols-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="pending-line-item-quantity" className="text-xs text-muted-foreground">
+                            Quantity
+                          </Label>
+                          <Input
+                            id="pending-line-item-quantity"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={pendingAddLineItemQuantity}
+                            onChange={(event) => setPendingAddLineItemQuantity(event.target.value)}
+                            autoFocus
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="pending-line-item-unit" className="text-xs text-muted-foreground">
+                            Unit
+                          </Label>
+                          <Select
+                            value={pendingAddLineItemDraft?.unit || "each"}
+                            onValueChange={(value) =>
+                              setPendingAddLineItemDraft((previous) =>
+                                previous
+                                  ? { ...previous, unit: value }
+                                  : previous
+                              )
+                            }
+                          >
+                            <SelectTrigger id="pending-line-item-unit">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(() => {
+                                const unitValue = pendingAddLineItemDraft?.unit || "each";
+                                const options = DEFAULT_UNIT_OPTIONS.includes(unitValue as typeof DEFAULT_UNIT_OPTIONS[number])
+                                  ? DEFAULT_UNIT_OPTIONS
+                                  : [...DEFAULT_UNIT_OPTIONS, unitValue] as const;
+                                return options.map((unitOption) => (
+                                  <SelectItem key={unitOption} value={unitOption}>
+                                    {unitOption}
+                                  </SelectItem>
+                                ));
+                              })()}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        setPendingAddLineItemDraft(null);
-                        setPendingAddBundleDraft(null);
-                        setPendingAddLineItemQuantity("1");
+                        if (pendingAddLineItemIsCustom && customStepIndex > 0) {
+                          moveCustomStep("back");
+                          return;
+                        }
+                        resetPendingAddPicker();
                       }}
                     >
                       Back
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={confirmAddLineItemFromPicker}
-                    >
-                      {pendingAddBundleDraft ? "Add Bundle" : "Add Item"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {pendingAddLineItemIsCustom && isCustomFinalStep ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={savePendingCustomDraftAsTemplate}
+                        >
+                          Save as template
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          if (pendingAddLineItemIsCustom && !isCustomFinalStep) {
+                            moveCustomStep("next");
+                            return;
+                          }
+                          confirmAddLineItemFromPicker();
+                        }}
+                        disabled={pendingAddLineItemIsCustom && pendingAddCustomStep === "name" && !pendingAddLineItemDraft?.name.trim()}
+                      >
+                        {pendingAddLineItemIsCustom && !isCustomFinalStep
+                          ? "Next"
+                          : pendingAddBundleDraft
+                            ? "Add Bundle"
+                            : "Add Item"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1531,6 +1758,18 @@ export function EditEstimateModal({
                   sections={[
                     {
                       heading: "Your Templates",
+                      headingRight: (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground"
+                          aria-label="Open Pricing Rules"
+                          onClick={goToPricingRules}
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                        </Button>
+                      ),
                       items: templateOptions.map((template) => ({
                         id: template.id,
                         value: `${template.name} ${template.description || ""}`,
@@ -1541,10 +1780,7 @@ export function EditEstimateModal({
                       emptyAction: {
                         id: "empty-templates-pricing-rules",
                         value: "empty-templates-pricing-rules",
-                        onSelect: () => {
-                          setShowAddLineItemPicker(false);
-                          window.location.assign("/settings/pricing-rules");
-                        },
+                        onSelect: goToPricingRules,
                         content: (
                           <>
                             Create Reusable line items in{" "}

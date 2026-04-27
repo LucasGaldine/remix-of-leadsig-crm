@@ -76,7 +76,7 @@ export function getKeyboardShortcutHelp(isManager: boolean): string[] {
     "G then D/H: Dashboard",
     "G then J: Jobs",
     "G then C: Schedule",
-    "G then U: Customers",
+    "G then U: Contacts",
     "G then S: Settings",
   ];
 

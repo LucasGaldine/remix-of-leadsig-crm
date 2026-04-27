@@ -342,7 +342,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
       };
     }
 
-    throw new Error("Please select a client or create a new one");
+    throw new Error("Please select a contact or create a new one");
   };
 
   const resetForm = () => {
@@ -373,12 +373,12 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
   const createManualJob = async () => {
     if (clientMode === "new" && !newClientData.name.trim()) {
-      toast.error("Client name is required");
+      toast.error("Contact name is required");
       return;
     }
 
     if (clientMode === "existing" && !selectedCustomer) {
-      toast.error("Please select a client or create a new one");
+      toast.error("Please select a contact or create a new one");
       return;
     }
 
@@ -1079,7 +1079,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                       setJobAddress(e.target.value);
                       resetAddressVerification();
                     }}
-                    placeholder={selectedCustomer?.address ? "Will use client address by default (optional)" : "123 Main St, Austin, TX (optional)"}
+                    placeholder={selectedCustomer?.address ? "Will use contact address by default (optional)" : "123 Main St, Austin, TX (optional)"}
                   />
                   <AddressVerificationBadge
                     verifying={verifying}

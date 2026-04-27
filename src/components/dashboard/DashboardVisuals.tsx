@@ -411,7 +411,7 @@ function CostVsQuoted({ timeframe }: { timeframe: Timeframe }) {
                 type="button"
                 onClick={() => navigate(`/customers/${job.customerId}`)}
                 className="w-full flex items-center justify-between p-2 rounded-md bg-muted/50 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-                aria-label={`Open client ${job.name}`}
+                aria-label={`Open contact ${job.name}`}
               >
                 <div>
                   <div className="text-sm font-medium text-foreground">{job.name}</div>

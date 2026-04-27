@@ -1330,7 +1330,7 @@ export default function EstimateDetail() {
     ...(estimate.customer?.id
       ? [{
           icon: <User className="h-5 w-5" />,
-          label: "View Client",
+          label: "View Contact",
           onClick: () => navigate(`/customers/${estimate.customer?.id}`),
           group: "details",
         }]
@@ -1896,7 +1896,7 @@ export default function EstimateDetail() {
               <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
                 <div className="flex gap-2 items-center">
                   <User className="w-3 h-3" />
-                  <p className="text-xs uppercase tracking-wide">Client</p>
+                  <p className="text-xs uppercase tracking-wide">Contact</p>
                 </div>
                 <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   View

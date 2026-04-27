@@ -29,7 +29,7 @@ export default function Customers() {
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
-        title="Clients"
+        title="Contacts"
         subtitle={`${totalCustomers} total`}
         hideTitle
       />
@@ -41,7 +41,7 @@ export default function Customers() {
               <div className="relative flex-1">
                 <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                  placeholder="Search clients..."
+                  placeholder="Search contacts..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="h-14 rounded-full border-border bg-card px-5 pl-14 text-base text-foreground shadow-sm placeholder:text-muted-foreground"
@@ -52,7 +52,7 @@ export default function Customers() {
                   <Button
                     variant="outline"
                     size="icon"
-                    aria-label="Sort clients"
+                    aria-label="Sort contacts"
                     className="h-14 w-14 shrink-0 rounded-full border-border bg-card shadow-sm hover:bg-card"
                   >
                     <ArrowUpDown className="!h-5 !w-5 !text-muted-foreground" />
@@ -76,7 +76,7 @@ export default function Customers() {
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex items-center gap-2">
                 <User className="h-3.5 w-3.5 text-muted-foreground" />
-                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Clients</p>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Contacts</p>
               </div>
             </div>
           </div>

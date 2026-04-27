@@ -172,7 +172,7 @@ export function LandingPageView({
           photo_url: null,
         },
       ];
-  const testimonialsHeader = config.testimonials_section?.header || "What Clients Say";
+  const testimonialsHeader = config.testimonials_section?.header || "What Contacts Say";
   const testimonialsSubheading =
     config.testimonials_section?.subheading || "Trusted by homeowners and businesses in the area";
 

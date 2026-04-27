@@ -19,6 +19,7 @@ interface LineItemTemplateSearchItem {
 
 interface LineItemTemplateSearchSection {
   heading: string;
+  headingRight?: ReactNode;
   items: LineItemTemplateSearchItem[];
   emptyContent?: ReactNode;
   emptyAction?: {
@@ -59,7 +60,22 @@ export function LineItemTemplateSearch({
         <CommandList>
           <CommandEmpty>{emptyText}</CommandEmpty>
           {sections.map((section) => (
-            <CommandGroup key={section.heading} heading={section.heading}>
+            <CommandGroup
+              key={section.heading}
+              heading={(
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span>{section.heading}</span>
+                  {section.headingRight ? (
+                    <span
+                      className="pointer-events-auto"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {section.headingRight}
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            >
               {section.items.length > 0 ? (
                 section.items.map((item) => (
                   <CommandItem

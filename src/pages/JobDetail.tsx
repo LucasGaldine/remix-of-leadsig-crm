@@ -671,7 +671,7 @@ export default function JobDetail() {
       throw new Error(errorMessage || "Failed to send review request");
     }
 
-    toast.success("Review request sent to the client");
+    toast.success("Review request sent to the contact");
   };
 
   const handleCopyPortalLink = async () => {
@@ -811,7 +811,7 @@ export default function JobDetail() {
         throw new Error(reason);
       }
 
-      toast.success("Portal link text sent to the client");
+      toast.success("Portal link text sent to the contact");
       setPortalDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to send client portal text";
@@ -1591,10 +1591,10 @@ export default function JobDetail() {
                         to={`/customers/${job.customer.id}`}
                         className="break-words min-w-0 hover:text-foreground hover:underline transition-colors"
                       >
-                        {job.customer?.name || "Unknown Client"}
+                        {job.customer?.name || "Unknown Contact"}
                       </Link>
                     ) : (
-                      <span className="break-words min-w-0">{job.customer?.name || "Unknown Client"}</span>
+                      <span className="break-words min-w-0">{job.customer?.name || "Unknown Contact"}</span>
                     )}
                   </p>
                   <div className="flex items-start gap-1">

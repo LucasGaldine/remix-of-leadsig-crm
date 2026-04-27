@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Chrome as Home, Users, Briefcase, DollarSign, Settings, Calendar, LayoutDashboard, Search, Crown, BookOpen } from "lucide-react";
+import { Chrome as Home, Users, User, Briefcase, DollarSign, Settings, Calendar, LayoutDashboard, Search, Crown, BookOpen } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,11 +27,17 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   }, [query, role]);
 
   const renderIcon = (page: SearchPage) => {
+    if (page.path === "/customers") {
+      return <User className="h-4 w-4" />;
+    }
+
     switch (page.icon) {
       case "home":
         return <Home className="h-4 w-4" />;
       case "users":
         return <Users className="h-4 w-4" />;
+      case "user":
+        return <User className="h-4 w-4" />;
       case "briefcase":
         return <Briefcase className="h-4 w-4" />;
       case "dollar-sign":

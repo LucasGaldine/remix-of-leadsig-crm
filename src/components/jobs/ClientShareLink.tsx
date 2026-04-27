@@ -97,7 +97,7 @@ export function ClientShareLink({ customerId }: ClientShareLinkProps) {
         <div className="flex-1 min-w-0">
           <p className="font-medium text-foreground">Client Portal Link</p>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Share a link so your client can view all their jobs, estimates, photos, and schedules in one place.
+            Share a link so your contact can view all their jobs, estimates, photos, and schedules in one place.
           </p>
 
           {shareUrl ? (

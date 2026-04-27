@@ -98,12 +98,12 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
     e.preventDefault();
 
     if (clientMode === "new" && !newClientData.name.trim()) {
-      toast.error("Client name is required");
+      toast.error("Contact name is required");
       return;
     }
 
     if (clientMode === "existing" && !selectedCustomer) {
-      toast.error("Please select a client or create a new one");
+      toast.error("Please select a contact or create a new one");
       return;
     }
 
@@ -149,7 +149,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
         customerAddress = selectedCustomer.address;
         customerCity = selectedCustomer.city;
       } else {
-        toast.error("Please select a client or create a new one");
+        toast.error("Please select a contact or create a new one");
         return;
       }
 

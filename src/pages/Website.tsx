@@ -1811,7 +1811,7 @@ export default function Website() {
                       id="testimonials-section-header"
                       value={testimonialsHeader}
                       onChange={(e) => { setTestimonialsHeader(e.target.value); markDirty(); }}
-                      placeholder="What Clients Say"
+                      placeholder="What Contacts Say"
                     />
                   </div>
                   <div className="space-y-2">

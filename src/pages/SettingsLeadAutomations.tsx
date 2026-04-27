@@ -63,7 +63,7 @@ export default function SettingsLeadAutomations() {
               Messaging Bot Webhook
             </CardTitle>
             <CardDescription>
-              Let SMS/chat bots log inbound or outbound messages directly to a client timeline.
+              Let SMS/chat bots log inbound or outbound messages directly to a contact timeline.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -79,7 +79,7 @@ export default function SettingsLeadAutomations() {
             />
             <pre className="text-xs overflow-x-auto p-3 rounded border bg-muted/50">{`{
   "lead_id": "<optional-lead-id>",
-  "client": { "email": "client@example.com", "phone": "555-123-4567" },
+  "client": { "email": "contact@example.com", "phone": "555-123-4567" },
   "direction": "inbound",
   "summary": "Bot follow-up",
   "message": "Thanks for reaching out. We'll call you shortly.",
@@ -95,7 +95,7 @@ export default function SettingsLeadAutomations() {
               Call Intake Webhook
             </CardTitle>
             <CardDescription>
-              Let call center and intake agents log calls for a client without opening LeadSig.
+              Let call center and intake agents log calls for a contact without opening LeadSig.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -114,7 +114,7 @@ export default function SettingsLeadAutomations() {
   "client": { "external_source_id": "abc123", "phone": "555-123-4567" },
   "direction": "inbound",
   "summary": "Initial intake call",
-  "notes": "Client wants paver patio quote.",
+  "notes": "Contact wants paver patio quote.",
   "duration_seconds": 420,
   "call_outcome": "qualified_for_site_visit",
   "metadata": { "agent": "Sofia" }

@@ -78,7 +78,7 @@ export function ClientPortalLinkDialog({
         <DialogHeader>
           <DialogTitle>Client Portal Link</DialogTitle>
           <DialogDescription>
-            Share this link with your client so they can view their jobs, estimates, and invoices.
+            Share this link with your contact so they can view their jobs, estimates, and invoices.
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">

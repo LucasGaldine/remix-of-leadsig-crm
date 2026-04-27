@@ -61,7 +61,7 @@ export function ClientSelector({
   if (mode === "existing" && selectedCustomer) {
     return (
       <div className="space-y-3">
-        <Label>Client</Label>
+        <Label>Contact</Label>
         
         <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
           <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
@@ -95,14 +95,14 @@ export function ClientSelector({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <Label>Client <span className="text-destructive">*</span></Label>
+        <Label>Contact <span className="text-destructive">*</span></Label>
         {mode === "new" ? (
           <button
             type="button"
             onClick={handleSwitchToExisting}
             className="text-xs font-medium text-emerald-700 hover:text-emerald-800 transition-colors"
           >
-            Select existing client
+            Select existing contact
           </button>
         ) : (
           <button
@@ -111,7 +111,7 @@ export function ClientSelector({
             className="text-xs font-medium text-emerald-700 hover:text-emerald-800 transition-colors flex items-center gap-1"
           >
             <UserPlus className="h-3 w-3" />
-            New client
+            New contact
           </button>
         )}
       </div>
@@ -127,7 +127,7 @@ export function ClientSelector({
                 setShowResults(true);
               }}
               onFocus={() => setShowResults(true)}
-              placeholder="Search clients by name, email, or phone..."
+              placeholder="Search contacts by name, email, or phone..."
               className="pl-9 mt-1.5"
             />
           </div>
@@ -163,14 +163,14 @@ export function ClientSelector({
                       className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-emerald-700 font-medium hover:bg-accent transition-colors"
                     >
                       <UserPlus className="h-4 w-4" />
-                      Create new client
+                      Create new contact
                     </button>
                   </div>
                 </>
               ) : (
                 <div className="p-3">
                   <p className="text-sm text-muted-foreground text-center mb-2">
-                    {searchQuery ? "No clients found" : "Type to search clients"}
+                    {searchQuery ? "No contacts found" : "Type to search contacts"}
                   </p>
                   {searchQuery && (
                     <button
@@ -182,7 +182,7 @@ export function ClientSelector({
                       className="w-full flex items-center justify-center gap-2 py-2 text-sm text-emerald-700 font-medium hover:bg-accent rounded transition-colors"
                     >
                       <UserPlus className="h-4 w-4" />
-                      Create "{searchQuery}" as new client
+                      Create "{searchQuery}" as new contact
                     </button>
                   )}
                 </div>

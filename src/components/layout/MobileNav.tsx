@@ -8,6 +8,7 @@ import {
   Inbox,
   Bug,
   Users,
+  User,
   Ellipsis,
   ChevronDown,
   Globe,
@@ -53,7 +54,7 @@ const moreMenuGroups: NavGroup[] = [
     label: "CRM",
     requiredRole: "all",
     items: [
-      { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
+      { icon: <User className="h-5 w-5" />, label: "Contacts", path: "/customers", requiredRole: "all" },
       { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
       { icon: <MessageSquare className="h-5 w-5" />, label: "Auto Messaging", path: "/settings/auto-responses", requiredRole: "manager" },
       { icon: <Settings className="h-5 w-5" />, label: "Lead Sources", path: "/settings/lead-sources", requiredRole: "manager" },
@@ -76,7 +77,7 @@ const desktopFlyoutNavGroups: Array<NavGroup & { icon: React.ReactNode }> = [
     icon: <Users className="h-5 w-5" />,
     requiredRole: "all",
     items: [
-      { icon: <Users className="h-5 w-5" />, label: "Clients", path: "/customers", requiredRole: "all" },
+      { icon: <User className="h-5 w-5" />, label: "Contacts", path: "/customers", requiredRole: "all" },
       { icon: <Magnet className="h-5 w-5" />, label: "Leads", path: "/leads", requiredRole: "manager" },
       { icon: <MessageSquare className="h-5 w-5" />, label: "Auto Messaging", path: "/settings/auto-responses", requiredRole: "manager" },
       { icon: <Settings className="h-5 w-5" />, label: "Lead Sources", path: "/settings/lead-sources", requiredRole: "manager" },

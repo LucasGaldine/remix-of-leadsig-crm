@@ -174,7 +174,7 @@ export default function AffiliateSignup() {
                   id="affiliate-marketing-plan"
                   value={marketingPlan}
                   onChange={(event) => setMarketingPlan(event.target.value)}
-                  placeholder="Example: I will post tutorials on social media, email my client list, and share in local groups."
+                  placeholder="Example: I will post tutorials on social media, email my contact list, and share in local groups."
                   disabled={isSubmitting}
                   required
                   aria-required="true"
