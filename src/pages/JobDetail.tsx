@@ -1483,72 +1483,70 @@ export default function JobDetail() {
               )}
             </div>
 
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 md:h-16 md:w-16">
-                  <Briefcase className="h-7 w-7 md:h-8 md:w-8" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-1 text-2xl md:text-1 break-words">{job.name || "Job"}</p>
-                  <button
-                    type="button"
-                    onClick={() => setHeaderInfoOpen((current) => !current)}
-                    className="group mt-1 flex items-center gap-2 p-0 text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <span>More info</span>
-                    <ChevronDown
-                      className={cn(
-                        "h-4 w-4 transition-transform duration-200",
-                        headerInfoOpen && "rotate-180",
-                      )}
-                    />
-                  </button>
-                </div>
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 md:h-16 md:w-16">
+                <Briefcase className="h-7 w-7 md:h-8 md:w-8" />
               </div>
-              {isManager() && (
-                <div className="shrink-0">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Open job actions menu"
-                      >
-                        <EllipsisVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem onClick={openEditDialog}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit Job
-                      </DropdownMenuItem>
-                      {jobAny.recurring_job_id ? (
-                        <DropdownMenuItem onClick={() => setRecurringDetailModalOpen(true)}>
-                          <Repeat className="h-4 w-4 mr-2" />
-                          View Schedule Details
+              <div className="min-w-0">
+                <div className="flex items-start gap-2">
+                  <p className="text-1 text-2xl md:text-1 break-words">{job.name || "Job"}</p>
+                  {isManager() && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 -mt-0.5"
+                          aria-label="Open job actions menu"
+                        >
+                          <EllipsisVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onClick={openEditDialog}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Job
                         </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
-                          <Repeat className="h-4 w-4 mr-2" />
-                          Create Recurring Schedule
+                        {jobAny.recurring_job_id ? (
+                          <DropdownMenuItem onClick={() => setRecurringDetailModalOpen(true)}>
+                            <Repeat className="h-4 w-4 mr-2" />
+                            View Schedule Details
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
+                            <Repeat className="h-4 w-4 mr-2" />
+                            Create Recurring Schedule
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
+                          <Archive className="h-4 w-4 mr-2" />
+                          {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Cancelled"}
                         </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => setArchiveDialogOpen(true)}>
-                        <Archive className="h-4 w-4 mr-2" />
-                        {job?.status === "completed" || job?.status === "paid" ? "Archive" : "Mark as Cancelled"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => setDeleteDialogOpen(true)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        {deleteJobConfig.menuLabel}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteDialogOpen(true)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          {deleteJobConfig.menuLabel}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setHeaderInfoOpen((current) => !current)}
+                  className="group mt-1 flex items-center gap-2 p-0 text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <span>More info</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 transition-transform duration-200",
+                      headerInfoOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+              </div>
             </div>
             <p
               data-testid="job-description-preview"

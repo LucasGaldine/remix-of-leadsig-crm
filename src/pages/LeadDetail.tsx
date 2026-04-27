@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy, ExternalLink } from "lucide-react";
+import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy, ExternalLink, ListChecks } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getDetailDeleteConfig } from "@/lib/detailDeleteConfig";
@@ -207,6 +208,7 @@ export default function LeadDetail() {
 
   // Activity timeline state
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [headerInfoOpen, setHeaderInfoOpen] = useState(false);
 
   // Qualification state
   const [qualNotes, setQualNotes] = useState("");
@@ -994,136 +996,11 @@ export default function LeadDetail() {
 
       <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-4 space-y-4">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-1.5">
-            <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Lead Profile</p>
-            <div className="flex items-center gap-2">
-              {customer?.id ? (
-                <button
-                  onClick={() => navigate(`/customers/${customer.id}`)}
-                  className="text-1 text-2xl md:text-1 text-left break-words hover:text-primary hover:underline transition-colors"
-                >
-                  {lead.name}
-                </button>
-              ) : (
-                <p className="text-1 text-2xl md:text-1 break-words">{lead.name}</p>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label="Open lead actions menu"
-                  >
-                    <EllipsisVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={openEditDialog}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Lead
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusGuidanceOpen(true)}>
-                    <Info className="h-4 w-4 mr-2" />
-                    Status Guide
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setMarkLostDialogOpen(true)}>
-                    <Archive className="h-4 w-4 mr-2" />
-                    Mark as Lost
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => setDeleteDialogOpen(true)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {deleteLeadConfig.menuLabel}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            <p className="text-5">{lead.service_type || "No service type"}</p>
-          </div>
-
-          <div className="hidden w-full items-center justify-start gap-2 md:flex md:w-auto md:flex-nowrap md:justify-end">
-            {callHref ? (
-              <Button variant="secondary" size="icon" asChild>
-                <a href={callHref} aria-label="Call lead" onClick={() => void logCall("outbound")}>
-                  <Phone className="h-4 w-4" />
-                </a>
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="icon"
-                disabled
-                aria-label="Call lead unavailable: no phone number"
-              >
-                <Phone className="h-4 w-4" />
-              </Button>
-            )}
-            {textHref ? (
-              <Button variant="secondary" size="icon" asChild>
-                <a href={textHref} aria-label="Text lead" onClick={() => void logText()}>
-                  <MessageSquare className="h-4 w-4" />
-                </a>
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="icon"
-                disabled
-                aria-label="Text lead unavailable: no phone number"
-              >
-                <MessageSquare className="h-4 w-4" />
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={handleNavigate}
-              disabled={!clientAddress}
-              aria-label="Navigate to lead address"
+          <div className="space-y-3 min-w-0 w-full">
+            <div
+              onClick={() => setStatusGuidanceOpen(true)}
+              className="hidden md:flex flex-wrap items-center gap-2 cursor-pointer"
             >
-              <Navigation className="h-4 w-4" />
-            </Button>
-            {showConvertButton && (
-              scheduleVisitDisabledReason ? (
-                <Tooltip>
-                  <Popover>
-                    <TooltipTrigger asChild>
-                      <PopoverTrigger asChild>
-                        <span tabIndex={0} aria-label={`Schedule visit unavailable: ${scheduleVisitDisabledReason}`} className="inline-flex">
-                          <Button disabled size="lg" className="pointer-events-none">
-                            <FileTextIcon className="h-4 w-4 shrink-0" />
-                            Schedule Job
-                          </Button>
-                        </span>
-                      </PopoverTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {scheduleVisitDisabledReason}
-                    </TooltipContent>
-                    <PopoverContent className="w-64 p-3 text-sm">
-                      {scheduleVisitDisabledReason}
-                    </PopoverContent>
-                  </Popover>
-                </Tooltip>
-              ) : (
-                <Button onClick={() => setCreateEstimateDialogOpen(true)}>
-                  <FileTextIcon className="h-4 w-4 shrink-0" />
-                  Schedule Job
-                </Button>
-              )
-            )}
-          </div>
-        </div>
-
-        <div
-          className="bg-card rounded-lg border border-border p-5 cursor-pointer hover:shadow-md transition-all"
-          onClick={() => setStatusGuidanceOpen(true)}
-        >
-          <div className="flex items-center justify-between gap-4 mb-6">
-
             <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Step {currentStepIndex + 1} of {statusSteps.length}
             </p>
@@ -1136,10 +1013,157 @@ export default function LeadDetail() {
               <StatusBadge status={getStatusBadgeStatus(lead.status)} size="lg">
                 {getLeadStatusLabel(lead.status)}
               </StatusBadge>
-              
             </button>
+            </div>
+
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 border border-blue-100 md:h-16 md:w-16">
+              <User className="h-7 w-7 md:h-8 md:w-8" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-start gap-2">
+                {customer?.id ? (
+                  <button
+                    onClick={() => navigate(`/customers/${customer.id}`)}
+                    className="text-1 text-2xl md:text-1 text-left break-words hover:text-primary hover:underline transition-colors"
+                  >
+                    {lead.name}
+                  </button>
+                ) : (
+                  <p className="text-1 text-2xl md:text-1 break-words">{lead.name}</p>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 -mt-0.5"
+                      aria-label="Open lead actions menu"
+                    >
+                      <EllipsisVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={openEditDialog}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit Lead
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setStatusGuidanceOpen(true)}>
+                      <Info className="h-4 w-4 mr-2" />
+                      Status Guide
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setMarkLostDialogOpen(true)}>
+                      <Archive className="h-4 w-4 mr-2" />
+                      Mark as Lost
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setDeleteDialogOpen(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {deleteLeadConfig.menuLabel}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHeaderInfoOpen((current) => !current)}
+                className="group mt-1 flex items-center gap-2 p-0 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <span>More info</span>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform duration-200",
+                    headerInfoOpen && "rotate-180",
+                  )}
+                />
+              </button>
+            </div>
           </div>
-          <div className="relative max-w-5xl mx-auto ">
+
+          <Collapsible
+            open={headerInfoOpen}
+            onOpenChange={setHeaderInfoOpen}
+            className={cn(
+              "w-full flex flex-col gap-0 md:flex-row md:items-center",
+              headerInfoOpen ? "md:flex-wrap" : "md:flex-nowrap md:justify-between",
+            )}
+          >
+            <CollapsibleContent className="order-2 w-full space-y-2 rounded-xl border border-border bg-card p-4 text-muted-foreground md:rounded-none md:border-0 md:bg-transparent md:p-0">
+              <div className="space-y-2 text-base md:text-sm text-muted-foreground">
+                <p className="flex items-start gap-1">
+                  <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="break-all min-w-0 text-foreground">{lead.email || "No email"}</span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="break-words min-w-0 text-foreground">{formatPhone(lead.phone)}</span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <Trophy className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="break-words min-w-0 text-foreground">{lead.source || "Unknown"}</span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="break-words min-w-0 text-foreground">{clientAddress || "No address"}</span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <DollarSign className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="break-words min-w-0 text-foreground">
+                    {lead.estimated_value != null ? formatCurrency(lead.estimated_value) : "Not set"}
+                  </span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <Briefcase className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="break-words min-w-0 text-foreground">{lead.service_type || "Not set"}</span>
+                </p>
+              </div>
+            </CollapsibleContent>
+
+            <div
+              className={cn(
+                "hidden md:flex items-center gap-2 flex-nowrap",
+                headerInfoOpen ? "order-3 w-full justify-start" : "order-1",
+              )}
+            >
+              <Button
+                aria-label="Call"
+                variant="secondary"
+                size="icon"
+                onClick={handleCall}
+                disabled={!callHref}
+              >
+                <Phone className="h-4 w-4" />
+              </Button>
+              <Button
+                aria-label="Text"
+                variant="secondary"
+                size="icon"
+                onClick={handleText}
+                disabled={!textHref}
+              >
+                <MessageSquare className="h-4 w-4" />
+              </Button>
+              <Button
+                aria-label="Navigate"
+                variant="secondary"
+                size="icon"
+                onClick={handleNavigate}
+                disabled={!clientAddress}
+              >
+                <Navigation className="h-4 w-4" />
+              </Button>
+            </div>
+          </Collapsible>
+          </div>
+        </div>
+
+        <div
+          className="cursor-pointer pt-4"
+          onClick={() => setStatusGuidanceOpen(true)}
+        >
+          <div className="relative">
             <div className="absolute left-[12.5%] right-[12.5%] top-[10px] h-px bg-border" />
             <div className="relative grid grid-cols-4 gap-2">
             {statusSteps.map((step, index) => {
@@ -1472,60 +1496,57 @@ export default function LeadDetail() {
 
             {activeTab === "details" && (
               <div className="p-5 md:p-6 space-y-6">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:gap-x-8">
-                  <div className="py-1 min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
-                    <div className="mt-1 flex min-w-0 items-start gap-2">
-                      <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-all text-base md:text-sm leading-5 text-foreground">{lead.email || "No email"}</p>
-                    </div>
-                  </div>
-                  <div className="py-1 min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Phone</p>
-                    <div className="mt-1 flex min-w-0 items-start gap-2">
-                      <Phone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">{formatPhone(lead.phone)}</p>
-                    </div>
-                  </div>
-                  <div className="py-1 min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Lead Source</p>
-                    <div className="mt-1 flex min-w-0 items-start gap-2">
-                      <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">{lead.source || "Unknown"}</p>
-                    </div>
-                  </div>
-                  <div className="py-1 min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Address</p>
-                    <div className="mt-1 flex min-w-0 items-start gap-2">
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">
-                        {[lead.address, lead.city].filter(Boolean).join(", ") || "No address"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="py-1 min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Budget</p>
-                    <div className="mt-1 flex min-w-0 items-start gap-2">
-                      <DollarSign className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">
-                        {lead.estimated_value != null ? formatCurrency(lead.estimated_value) : "Not set"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="py-1 min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Service Type</p>
-                    <div className="mt-1 flex min-w-0 items-start gap-2">
-                      <Briefcase className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <p className="min-w-0 break-words text-base md:text-sm leading-5 text-foreground">{lead.service_type || "Not set"}</p>
-                    </div>
-                  </div>
-                </div>
-
                 {!["job", "paid", "completed"].includes(lead.status) && (
                   <>
-                    <Separator />
                     <div className="space-y-4">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Qualification Checklist</p>
+                      {lead.status === "qualified" && (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="lg"
+                              variant="secondary"
+                              className="flex-1"
+                              onClick={() => setLineItemsDialogOpen(true)}
+                            >
+                              <DollarSign className="h-4 w-4 shrink-0" />
+                              Build Estimate
+                            </Button>
+                            {scheduleVisitDisabledReason ? (
+                              <Tooltip>
+                                <Popover>
+                                  <TooltipTrigger asChild>
+                                    <PopoverTrigger asChild>
+                                      <span tabIndex={0} aria-label={`Schedule visit unavailable: ${scheduleVisitDisabledReason}`} className="inline-flex flex-1">
+                                        <Button disabled size="lg" className="pointer-events-none w-full">
+                                          <FileTextIcon className="h-4 w-4 shrink-0" />
+                                          Schedule Job
+                                        </Button>
+                                      </span>
+                                    </PopoverTrigger>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {scheduleVisitDisabledReason}
+                                  </TooltipContent>
+                                  <PopoverContent className="w-64 p-3 text-sm">
+                                    {scheduleVisitDisabledReason}
+                                  </PopoverContent>
+                                </Popover>
+                              </Tooltip>
+                            ) : (
+                              <Button size="lg" className="flex-1" onClick={() => setCreateEstimateDialogOpen(true)}>
+                                <FileTextIcon className="h-4 w-4 shrink-0" />
+                                Schedule Job
+                              </Button>
+                            )}
+                          </div>
+                          <Separator />
+                        </div>
+                      )}
+                      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                        <ListChecks className="h-3.5 w-3.5" />
+                        Qualification Checklist
+                      </p>
                       <div className="space-y-4">
                         <div className="flex items-center justify-between gap-4">
                           <Label htmlFor="budget-confirmed" className="cursor-pointer text-base md:text-sm text-foreground">Budget Confirmed</Label>
