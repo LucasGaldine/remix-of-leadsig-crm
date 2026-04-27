@@ -50,7 +50,7 @@ import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallb
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 import { applyCustomerContactToJob } from "@/lib/jobCustomerCache";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
 import { MonthDayDateBadge } from "@/components/shared/MonthDayDateBadge";
@@ -1483,10 +1483,30 @@ export default function JobDetail() {
               )}
             </div>
 
-            <div className="flex items-end justify-between gap-3">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <p className="text-1 text-2xl md:text-1 break-words">{job.name || "Job"}</p>
-                {isManager() && (
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 md:h-16 md:w-16">
+                  <Briefcase className="h-7 w-7 md:h-8 md:w-8" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-1 text-2xl md:text-1 break-words">{job.name || "Job"}</p>
+                  <button
+                    type="button"
+                    onClick={() => setHeaderInfoOpen((current) => !current)}
+                    className="group mt-1 flex items-center gap-2 p-0 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <span>More info</span>
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 transition-transform duration-200",
+                        headerInfoOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+              {isManager() && (
+                <div className="shrink-0">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -1527,8 +1547,8 @@ export default function JobDetail() {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                )}
-              </div>
+                </div>
+              )}
             </div>
             <p
               data-testid="job-description-preview"
@@ -1545,22 +1565,10 @@ export default function JobDetail() {
               onOpenChange={setHeaderInfoOpen}
               data-testid="job-header-actions-row"
               className={cn(
-                "w-full flex flex-col gap-2 md:flex-row md:items-center",
+                "w-full flex flex-col gap-0 md:flex-row md:items-center",
                 headerInfoOpen ? "md:flex-wrap" : "md:flex-nowrap md:justify-between",
               )}
             >
-              <CollapsibleTrigger asChild>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="lg"
-                  className="group order-1 w-auto self-start justify-center gap-2 text-foreground data-[state=open]:text-muted-foreground"
-                >
-                  <span>More info</span>
-                  <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                </Button>
-              </CollapsibleTrigger>
-
               <CollapsibleContent className="order-2 w-full space-y-2 rounded-xl border border-border bg-card p-4 text-muted-foreground md:rounded-none md:border-0 md:bg-transparent md:p-0">
                 <p className="md:hidden text-base text-muted-foreground whitespace-pre-wrap">
                   {jobDescription || "No description provided."}

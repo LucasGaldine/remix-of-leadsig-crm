@@ -695,6 +695,24 @@ export function JobChecklist({
             </span>
           </Button>
         </div>
+        <AlertDialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Mark Job as Complete?</AlertDialogTitle>
+              <AlertDialogDescription>
+                All checklist items will be checked off. Would you like to mark this job as complete?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setCompleteDialogOpen(false)} disabled={markingComplete}>
+                No, Keep Open
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmComplete} disabled={markingComplete}>
+                {markingComplete ? "Completing..." : "Yes, Mark Complete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
