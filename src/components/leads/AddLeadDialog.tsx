@@ -277,7 +277,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
                       value={leadData.serviceType}
                       onValueChange={(v) => handleLeadChange("serviceType", v)}
                     >
-                      <SelectTrigger id="serviceType" className="mt-1.5">
+                      <SelectTrigger id="serviceType" className="mt-1.5 text-base [&>span]:text-base">
                         <SelectValue placeholder="Select service type" />
                       </SelectTrigger>
                       <SelectContent>
@@ -297,7 +297,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
                       type="text"
                       value={formatCurrency(leadData.estimatedBudget)}
                       onChange={(e) => handleBudgetChange(e.target.value)}
-                      placeholder="$5,000"
+                      placeholder="$5,000 (optional)"
                       className="mt-1.5"
                     />
                   </div>
@@ -308,8 +308,8 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
                       id="notes"
                       value={leadData.notes}
                       onChange={(e) => handleLeadChange("notes", e.target.value)}
-                      placeholder="Any additional notes..."
-                      className="mt-1.5 min-h-[60px] resize-none"
+                      placeholder="Any additional notes... (optional)"
+                      className="mt-1.5 min-h-[60px] resize-none text-base"
                     />
                   </div>
               </>
@@ -334,7 +334,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
               </div>
             )}
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 flex-row gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
               <Button type="button" variant="outline" size="lg" onClick={() => { resetForm(); onOpenChange(false); }}>
                 Cancel
               </Button>

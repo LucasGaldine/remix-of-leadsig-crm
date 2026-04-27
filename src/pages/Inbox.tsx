@@ -51,9 +51,9 @@ const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "
 
 const chipConfig: Array<{ value: InboxFilter; label: string; icon: ComponentType<{ className?: string }> }> = [
   { value: "all", label: "All", icon: InboxIcon },
-  { value: "client", label: "Clients", icon: User },
-  { value: "lead", label: "Leads", icon: Magnet },
   { value: "job", label: "Jobs", icon: Briefcase },
+  { value: "lead", label: "Leads", icon: Magnet },
+  { value: "client", label: "Clients", icon: User },
   { value: "estimate", label: "Estimates", icon: FileText },
   { value: "invoice", label: "Invoices", icon: Receipt },
   { value: "payment", label: "Payments", icon: CreditCard },
@@ -167,7 +167,7 @@ export default function Inbox() {
   const navigate = useNavigate();
   const { isManager } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<InboxFilter>("all");
+  const [activeFilter, setActiveFilter] = useState<InboxFilter>("job");
   const [sortBy, setSortBy] = useState<InboxSortOption>("newest");
 
   const { data: customers = [], isLoading: customersLoading, refetch: refetchCustomers } = useCustomers();

@@ -239,6 +239,24 @@ export function JobChecklist({
     { category: "material", title: "Materials", addLabel: "Add Material", icon: Package },
   ];
 
+  const emptySectionCopy: Record<
+    Exclude<ChecklistItemCategory, "standard">,
+    { title: string; description: string }
+  > = {
+    task: {
+      title: "No tasks yet",
+      description: "Add tasks to track what needs to get done on this job.",
+    },
+    tool: {
+      title: "No tools yet",
+      description: "Add tools to track what you use on this job.",
+    },
+    material: {
+      title: "No materials yet",
+      description: "Add materials to track what you use on this job.",
+    },
+  };
+
   useEffect(() => {
     if (!editor.open || editor.category !== "material" || !currentAccount?.id) return;
     let isCancelled = false;
@@ -654,13 +672,28 @@ export function JobChecklist({
       <div className="space-y-3">
         <div className="text-center py-12">
           <Circle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-          <p className="text-muted-foreground mb-4">No checklist items</p>
+          <p className="text-muted-foreground mb-0">No items</p>
           {isManager && (
-            <Button variant="outline" onClick={() => setEditMode(true)}>
+            <Button variant="ghost" onClick={() => setEditMode(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Checklist Items
+              Add Task, Tool, or Material
             </Button>
           )}
+        </div>
+        <div className="my-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="w-full"
+            onClick={handleCompleteClick}
+            disabled={isJobCompleted || editMode}
+          >
+            <CheckCircle2 />
+            <span className={cn(isJobCompleted && "line-through text-muted-foreground")}>
+              Complete
+            </span>
+          </Button>
         </div>
       </div>
     );
@@ -749,32 +782,48 @@ export function JobChecklist({
           embedded ? "" : "rounded-lg border border-border bg-card",
         )}
       >
-        {checklistSections.map((section) => {
+        {checklistSections.map((section, index) => {
           const Icon = section.icon;
           const sectionList = sectionItems[section.category];
+          const sectionEmptyCopy = emptySectionCopy[section.category];
+          const hasItemsInSection = sectionList.length > 0;
 
           return (
             <section
               key={section.category}
-              aria-labelledby={`checklist-section-${section.category}`}
-              className="py-5 px-3 md:p-3 space-y-2"
+              aria-label={`${section.title} checklist`}
+              className={cn(
+                "px-3 md:p-3 space-y-1",
+                index === 0 ? "pt-5 pb-3" : "py-3",
+              )}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-3 md:gap-2">
-                  <Icon className="h-5 w-5 md:h-3.5 md:w-3.5 shrink-0 text-muted-foreground" />
-                  <h3
-                    id={`checklist-section-${section.category}`}
-                    className="text-base uppercase tracking-wide leading-none text-muted-foreground"
-                  >
+              {hasItemsInSection && (
+                <div className="flex items-center gap-2 md:gap-1.5">
+                  <Icon className="h-4 w-4 md:h-3 md:w-3 shrink-0 text-muted-foreground" />
+                  <h3 className="text-sm md:text-xs uppercase tracking-wide leading-none text-muted-foreground">
                     {section.title}
                   </h3>
                 </div>
-              </div>
-              {sectionList.length === 0 ? (
-                <p className="text-xl md:text-sm text-muted-foreground px-1 py-2">
-                  No {section.title.toLowerCase()} yet
-                </p>
-              ) : (
+              )}
+              {sectionList.length === 0 && !editMode ? (
+                <div className="flex items-center gap-3 rounded-xl bg-muted/30 px-3 py-2.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <Icon className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p
+                      className="font-medium leading-tight text-foreground text-base"
+                    >
+                      {sectionEmptyCopy.title}
+                    </p>
+                    <p
+                      className="text-muted-foreground text-xs"
+                    >
+                      {sectionEmptyCopy.description}
+                    </p>
+                  </div>
+                </div>
+              ) : sectionList.length > 0 ? (
                 <div>
                   {sectionList.map((item) => {
                     if (section.category === "material") {
@@ -961,7 +1010,10 @@ export function JobChecklist({
                         <div className="flex-1 min-w-0 space-y-1">
                           <span
                             className={cn(
-                              "block text-xl md:text-sm font-semibold",
+                              "block font-semibold",
+                              normalizedLabel === "navigate to address"
+                                ? "text-base"
+                                : "text-xl md:text-sm",
                               checklistItem.is_completed && !editMode && "line-through text-muted-foreground",
                             )}
                           >
@@ -1036,7 +1088,7 @@ export function JobChecklist({
                     );
                   })}
                 </div>
-              )}
+              ) : null}
               {editMode && (
                 <button
                   type="button"

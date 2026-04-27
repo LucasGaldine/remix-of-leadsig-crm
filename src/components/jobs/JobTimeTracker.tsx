@@ -3,7 +3,6 @@ import {
   Play,
   Square,
   Wifi,
-  WifiOff,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -213,10 +212,6 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
         <p className="text-base md:text-sm text-muted-foreground">
           Time tracking requires the <code className="text-base md:text-xs bg-muted px-1 py-0.5 rounded">job_time_entries</code> table. Please run the setup SQL on your database.
         </p>
-        <div className="mt-3 flex items-center gap-2 text-base md:text-sm text-muted-foreground">
-          <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
-          <span>No GPS - use manual clock in/out.</span>
-        </div>
       </div>
     );
   }
@@ -250,7 +245,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
       )}
 
       {!activeEntry && !loading && (
-        <div className="mb-3">
+        <div className="mb-1">
           <Button
             size="lg"
             className="w-full"
@@ -262,14 +257,6 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
             <Play />
             Clock In
           </Button>
-        </div>
-      )}
-
-      {/* GPS info for manual toggle */}
-      {!activeEntry && geo.error && (
-        <div className="flex items-center justify-center gap-2 text-center text-base md:text-sm text-muted-foreground">
-          <WifiOff className="h-4 w-4 shrink-0 text-destructive" />
-          <span>No GPS - use manual clock in/out.</span>
         </div>
       )}
 

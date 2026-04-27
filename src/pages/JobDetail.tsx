@@ -1908,7 +1908,7 @@ export default function JobDetail() {
                     embedded
                   />
                 </div>
-                <div className="h-1 md:h-1" />
+                <div className="h-0" />
                 
                 <div className="hidden py-4">
                   <Separator />

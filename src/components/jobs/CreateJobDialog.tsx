@@ -1066,7 +1066,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     value={serviceType}
                     onValueChange={setServiceType}
                     options={serviceTypeOptions}
-                    className="h-12 text-base border-border rounded-lg"
+                    className="h-12 text-base border-border rounded-lg [&>span]:text-base"
                   />
                 </div>
 
@@ -1099,6 +1099,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Project scope and details... (optional)"
+                    className="text-base"
                   />
                 </div>
               </div>

@@ -192,7 +192,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
                   value={formData.serviceType} 
                   onValueChange={(v) => handleChange("serviceType", v)}
                   options={serviceTypeOptions}
-                  className="mt-1.5"
+                  className="mt-1.5 text-base [&>span]:text-base"
                 />
               </div>
 
@@ -236,7 +236,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
                   onChange={(e) => handleChange("description", e.target.value)}
                   placeholder="Project scope and details..."
                   rows={2}
-                  className="mt-1.5"
+                  className="mt-1.5 text-base"
                 />
               </div>
             </div>
