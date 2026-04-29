@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import {
   Phone, Mail, MapPin, CheckCircle2,
-  Wrench, Hammer, Leaf, Droplets, Home, Zap,
+  Wrench, HardHat, Leaf, Droplets, Home, Zap,
   Paintbrush, Truck, Shield, Scissors, Sparkles, Star,
   Send, type LucideIcon,
 } from "lucide-react";
@@ -12,7 +12,7 @@ import { getBrandFontOption, loadGoogleBrandFont } from "@/lib/brandFonts";
 import { parseHighlightSegments } from "@/lib/highlightText";
 
 const SERVICE_ICONS: Record<string, LucideIcon> = {
-  CheckCircle2, Wrench, Hammer, Leaf, Droplets, Home, Zap,
+  CheckCircle2, Wrench, HardHat, Leaf, Droplets, Home, Zap,
   Paintbrush, Truck, Shield, Scissors, Sparkles, Star,
 };
 

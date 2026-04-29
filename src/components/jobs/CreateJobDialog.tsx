@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -29,8 +30,8 @@ import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
-import { matchServiceType, normalizeVoiceEstimateParsedData, normalizeVoiceJobParsedData } from "@/lib/voiceIntake";
-import type { VoiceEstimateParsedData, VoiceJobParsedData } from "@/types/voiceIntake";
+import { matchServiceType, normalizeVoiceJobParsedData } from "@/lib/voiceIntake";
+import type { VoiceJobParsedData } from "@/types/voiceIntake";
 import { useAddressVerification } from "@/hooks/useAddressVerification";
 import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 import { CreateJobCrewAssignmentStep } from "@/components/jobs/CreateJobCrewAssignmentStep";
@@ -40,6 +41,7 @@ import { RecurrenceFrequency, useConvertToRecurring } from "@/hooks/useRecurring
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 import { useServiceTypeOptions } from "@/hooks/useServiceTypeOptions";
 import { ServiceTypeSelect } from "@/components/shared/ServiceTypeSelect";
+import { cn } from "@/lib/utils";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -79,6 +81,13 @@ const MANUAL_STEPS_SINGLE_PERSON: ManualStep[] = [
   "estimate-line-items",
 ];
 
+const MANUAL_STEPS_WITHOUT_CREW_ASSIGNMENT: ManualStep[] = [
+  "client",
+  "job-information",
+  "assign-and-schedule",
+  "estimate-line-items",
+];
+
 const INITIAL_LINE_ITEM: EstimateLineItem = {
   name: "",
   description: "",
@@ -87,6 +96,16 @@ const INITIAL_LINE_ITEM: EstimateLineItem = {
   unit_price: "",
   category: "other",
 };
+
+const DAYS_OF_WEEK = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+];
 
 export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobDialogProps) {
   const { user, currentAccount } = useAuth();
@@ -101,7 +120,6 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
   const [showCSVImport, setShowCSVImport] = useState(false);
   const [showVoiceJobIntake, setShowVoiceJobIntake] = useState(false);
-  const [showVoiceEstimateIntake, setShowVoiceEstimateIntake] = useState(false);
   const [manualStep, setManualStep] = useState<ManualStep>("client");
 
   const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
@@ -116,6 +134,13 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
   const [addedSchedules, setAddedSchedules] = useState<ScheduleEntry[]>([]);
   const [scheduleMode, setScheduleMode] = useState<"one-time" | "recurring">("one-time");
   const [recurringFrequency, setRecurringFrequency] = useState<RecurrenceFrequency>("weekly");
+  const [recurringStartDate, setRecurringStartDate] = useState("");
+  const [recurringHasEndDate, setRecurringHasEndDate] = useState(false);
+  const [recurringEndDate, setRecurringEndDate] = useState("");
+  const [recurringTimeStart, setRecurringTimeStart] = useState("");
+  const [recurringTimeEnd, setRecurringTimeEnd] = useState("");
+  const [recurringDaysOfWeek, setRecurringDaysOfWeek] = useState<number[]>([]);
+  const [recurringDayOfMonth, setRecurringDayOfMonth] = useState("");
   const [crewByScheduleIndex, setCrewByScheduleIndex] = useState<Record<number, string[]>>({});
   const [crewConflictByMember, setCrewConflictByMember] = useState<Record<string, number[]>>({});
   const [crewConflictDetailsByMember, setCrewConflictDetailsByMember] = useState<
@@ -125,7 +150,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
   const [activeCrewId, setActiveCrewId] = useState<string>("");
   const [isLoadingCrewConflicts, setIsLoadingCrewConflicts] = useState(false);
   const [lineItems, setLineItems] = useState<EstimateLineItem[]>([{ ...INITIAL_LINE_ITEM }]);
-  const [estimateVersionName, setEstimateVersionName] = useState("Version 1");
+  const [estimateVersionName, setEstimateVersionName] = useState("Standard");
   const [profitMargin, setProfitMargin] = useState<string>("0");
   const [surcharge, setSurcharge] = useState<string>("0");
   const [isLoading, setIsLoading] = useState(false);
@@ -133,21 +158,38 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     .map((member) => member.user_id)
     .sort()
     .join("|");
-  const scheduleConflictKey = addedSchedules
+  const isSinglePersonCompany = isSinglePersonCompanyByMembers(crewMembers);
+  const recurrenceSchedules = useMemo<ScheduleEntry[]>(
+    () => (
+      recurringStartDate
+        ? [{ date: recurringStartDate, timeStart: recurringTimeStart, timeEnd: recurringTimeEnd }]
+      : []
+    ),
+    [recurringStartDate, recurringTimeStart, recurringTimeEnd],
+  );
+  const schedulesForAssignment = scheduleMode === "recurring" ? recurrenceSchedules : addedSchedules;
+  const hasSchedulesForCrewAssignment = schedulesForAssignment.length > 0;
+  const shouldShowCrewAssignmentStep = !isSinglePersonCompany && hasSchedulesForCrewAssignment;
+  const manualSteps = shouldShowCrewAssignmentStep
+    ? MANUAL_STEPS
+    : (isSinglePersonCompany ? MANUAL_STEPS_SINGLE_PERSON : MANUAL_STEPS_WITHOUT_CREW_ASSIGNMENT);
+  const scheduleConflictKey = schedulesForAssignment
     .map((schedule) => `${schedule.date}:${schedule.timeStart || ""}:${schedule.timeEnd || ""}`)
     .join("|");
-  const isSinglePersonCompany = isSinglePersonCompanyByMembers(crewMembers);
-  const manualSteps = isSinglePersonCompany ? MANUAL_STEPS_SINGLE_PERSON : MANUAL_STEPS;
+
+  const handleSchedulesChange = (schedules: ScheduleEntry[]) => {
+    setAddedSchedules(schedules);
+  };
 
   useEffect(() => {
-    if (!isSinglePersonCompany || manualStep !== "crew-assignment") return;
+    if (shouldShowCrewAssignmentStep || manualStep !== "crew-assignment") return;
     setManualStep("estimate-line-items");
     setCrewByScheduleIndex({});
     setCrewConflictByMember({});
     setCrewConflictDetailsByMember({});
     setCrewSearchQuery("");
     setActiveCrewId("");
-  }, [isSinglePersonCompany, manualStep]);
+  }, [manualStep, shouldShowCrewAssignmentStep]);
 
   useEffect(() => {
     if (!open) return;
@@ -156,9 +198,16 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
   }, [open, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
 
   useEffect(() => {
+    setCrewByScheduleIndex({});
+    setCrewConflictByMember({});
+    setCrewConflictDetailsByMember({});
+    setActiveCrewId("");
+  }, [scheduleMode, recurringStartDate, recurringTimeStart, recurringTimeEnd]);
+
+  useEffect(() => {
     if (!open || manualStep !== "crew-assignment") return;
 
-    if (!currentAccount?.id || addedSchedules.length === 0 || crewMembers.length === 0) {
+    if (!currentAccount?.id || schedulesForAssignment.length === 0 || crewMembers.length === 0) {
       setCrewConflictByMember({});
       setCrewConflictDetailsByMember({});
       setIsLoadingCrewConflicts(false);
@@ -220,7 +269,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
       const conflictMap: Record<string, number[]> = {};
       const conflictDetailsMap: Record<string, Record<number, CrewConflictDetail>> = {};
-      for (const [scheduleIndex, schedule] of addedSchedules.entries()) {
+      for (const [scheduleIndex, schedule] of schedulesForAssignment.entries()) {
         for (const assignment of assignmentRows) {
           const scheduleRows = Array.isArray((assignment as any).job_schedules)
             ? (assignment as any).job_schedules
@@ -294,7 +343,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
         if (!current) return current;
         const conflicts = conflictMap[current] || [];
         const unavailableForAllDays =
-          addedSchedules.length > 0 && conflicts.length >= addedSchedules.length;
+          schedulesForAssignment.length > 0 && conflicts.length >= schedulesForAssignment.length;
         return unavailableForAllDays ? "" : current;
       });
       setIsLoadingCrewConflicts(false);
@@ -305,7 +354,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     return () => {
       isCancelled = true;
     };
-  }, [open, manualStep, currentAccount?.id, crewMemberIdsKey, scheduleConflictKey]);
+  }, [open, manualStep, currentAccount?.id, crewMemberIdsKey, scheduleConflictKey, schedulesForAssignment]);
 
   const resolveCustomer = async (): Promise<{
     id: string;
@@ -357,15 +406,21 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     setAddedSchedules([]);
     setScheduleMode("one-time");
     setRecurringFrequency("weekly");
+    setRecurringStartDate("");
+    setRecurringHasEndDate(false);
+    setRecurringEndDate("");
+    setRecurringTimeStart("");
+    setRecurringTimeEnd("");
+    setRecurringDaysOfWeek([]);
+    setRecurringDayOfMonth("");
     setCrewByScheduleIndex({});
     setCrewConflictByMember({});
     setCrewConflictDetailsByMember({});
     setCrewSearchQuery("");
     setActiveCrewId("");
     setShowVoiceJobIntake(false);
-    setShowVoiceEstimateIntake(false);
     setLineItems([{ ...INITIAL_LINE_ITEM }]);
-    setEstimateVersionName("Version 1");
+    setEstimateVersionName("Standard");
     setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
     setSurcharge(String(currentAccount?.default_surcharge ?? 0));
     resetAddressVerification();
@@ -382,8 +437,32 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
       return;
     }
 
-    if (scheduleMode === "recurring" && addedSchedules.length === 0) {
-      toast.error("Select at least one schedule date to create a recurring schedule");
+    if (scheduleMode === "recurring" && !recurringStartDate) {
+      toast.error("Choose a recurring start date");
+      return;
+    }
+
+    if (
+      scheduleMode === "recurring" &&
+      (recurringFrequency === "weekly" || recurringFrequency === "biweekly") &&
+      recurringDaysOfWeek.length === 0
+    ) {
+      toast.error("Select at least one day of the week for recurring visits");
+      return;
+    }
+
+    if (scheduleMode === "recurring" && recurringFrequency === "monthly" && !recurringDayOfMonth) {
+      toast.error("Select a day of the month for recurring visits");
+      return;
+    }
+
+    if (scheduleMode === "recurring" && recurringHasEndDate && !recurringEndDate) {
+      toast.error("Choose an end date or leave it blank to never end");
+      return;
+    }
+
+    if (scheduleMode === "recurring" && recurringHasEndDate && recurringEndDate < recurringStartDate) {
+      toast.error("End date must be on or after start date");
       return;
     }
 
@@ -425,15 +504,10 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
         + (lineItemsSubtotal * (surchargePercent / 100));
       const estimatedValue = adjustedSubtotal + (adjustedSubtotal * (taxRatePercent / 100));
 
-      const recurringStartScheduleIndex = scheduleMode === "recurring" && addedSchedules.length > 0
-        ? addedSchedules.reduce((bestIndex, schedule, index) => {
-            if (bestIndex === -1) return index;
-            return schedule.date < addedSchedules[bestIndex].date ? index : bestIndex;
-          }, -1)
-        : -1;
+      const recurringStartScheduleIndex = scheduleMode === "recurring" && recurrenceSchedules.length > 0 ? 0 : -1;
 
       const schedulesForCreation = scheduleMode === "recurring" && recurringStartScheduleIndex >= 0
-        ? [{ ...addedSchedules[recurringStartScheduleIndex], sourceIndex: recurringStartScheduleIndex }]
+        ? [{ ...recurrenceSchedules[recurringStartScheduleIndex], sourceIndex: recurringStartScheduleIndex }]
         : addedSchedules.map((schedule, sourceIndex) => ({ ...schedule, sourceIndex }));
 
       const proposedCrewAssignments = schedulesForCreation.flatMap((schedule) => {
@@ -458,7 +532,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
         : [];
 
       const recurringStartSchedule = recurringStartScheduleIndex >= 0
-        ? addedSchedules[recurringStartScheduleIndex]
+        ? recurrenceSchedules[recurringStartScheduleIndex]
         : null;
 
       if (proposedCrewAssignments.length > 0) {
@@ -704,7 +778,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
           if (estimateLineItemsError) throw estimateLineItemsError;
 
-          const initialVersionName = estimateVersionName.trim() || "Version 1";
+          const initialVersionName = estimateVersionName.trim() || "Standard";
           await createEstimateVersionSnapshot({
             estimateId,
             accountId: currentAccount.id,
@@ -732,8 +806,6 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
       }
 
       if (scheduleMode === "recurring" && recurringStartSchedule) {
-        const [year, month, day] = recurringStartSchedule.date.split("-").map(Number);
-        const localDate = new Date(year, month - 1, day);
         const recurringInput = {
           jobId: createdJob.id,
           frequency: recurringFrequency,
@@ -742,8 +814,11 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
           scheduled_time_end: recurringStartSchedule.timeEnd || null,
           preferred_days_of_week: (
             recurringFrequency === "weekly" || recurringFrequency === "biweekly"
-          ) ? [localDate.getDay()] : [],
-          preferred_day_of_month: recurringFrequency === "monthly" ? localDate.getDate() : null,
+          ) ? recurringDaysOfWeek : [],
+          preferred_day_of_month: recurringFrequency === "monthly" && recurringDayOfMonth
+            ? Number.parseInt(recurringDayOfMonth, 10)
+            : null,
+          end_date: recurringHasEndDate && recurringEndDate ? recurringEndDate : null,
           default_crew_user_ids: recurringDefaultCrewUserIds,
         } satisfies Parameters<typeof convertToRecurring.mutateAsync>[0];
 
@@ -838,8 +913,8 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
   };
 
   const isCrewUnavailableForSelectedSchedules = (crewId: string) => {
-    return addedSchedules.length > 0
-      && addedSchedules.every((_, scheduleIndex) => isCrewConflictedOnDay(scheduleIndex, crewId));
+    return schedulesForAssignment.length > 0
+      && schedulesForAssignment.every((_, scheduleIndex) => isCrewConflictedOnDay(scheduleIndex, crewId));
   };
 
   const toggleSelectedCrewDay = (scheduleIndex: number) => {
@@ -873,28 +948,6 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     setShowVoiceJobIntake(false);
   };
 
-  const applyVoiceEstimateIntake = (parsedData: VoiceEstimateParsedData) => {
-    const parsed = normalizeVoiceEstimateParsedData(parsedData);
-    const parsedLineItems = (parsed.lineItems || [])
-      .map((item) => {
-        const name = (item.name || "").trim();
-        if (!name) return null;
-        return {
-          name,
-          description: item.description || "",
-          quantity: String(item.quantity ?? 1),
-          unit: item.unit || "item",
-          unit_price: String(item.unitPrice ?? 0),
-          category: "other" as const,
-        };
-      })
-      .filter((item): item is EstimateLineItem => item !== null);
-
-    if (parsedLineItems.length > 0) {
-      setLineItems(parsedLineItems);
-    }
-  };
-
   const addressToVerify = resolveCreateJobAddress({
     jobAddress,
     customerAddress: selectedCustomer?.address,
@@ -912,7 +965,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     if (manualStep === "job-information") return "Job Information";
     if (manualStep === "assign-and-schedule") return "Scheduling";
     if (manualStep === "crew-assignment") return "Assign Crew";
-    return "Estimated Price";
+    return "Estimated Job Price";
   })();
 
   const estimateEditorDraft = useMemo(() => {
@@ -944,10 +997,18 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     const adjustedSubtotal = subtotal + (subtotal * profitMarginValue) + (subtotal * surchargeValue);
     const tax = adjustedSubtotal * taxRate;
     const total = adjustedSubtotal + tax;
+    const customerAddress = (selectedCustomer?.address || newClientData.address || "").trim();
+    const resolvedJobAddress = (jobAddress || "").trim();
 
     return {
       account_id: currentAccount?.id,
       status: "draft",
+      customer: {
+        address: customerAddress || null,
+      },
+      job: {
+        address: resolvedJobAddress || null,
+      },
       line_items: normalizedLineItems,
       tax_rate: taxRate,
       discount: 0,
@@ -957,7 +1018,16 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
       profit_margin: Number.parseFloat(profitMargin || "0") || 0,
       surcharge: Number.parseFloat(surcharge || "0") || 0,
     };
-  }, [currentAccount?.default_tax_rate, currentAccount?.id, lineItems, profitMargin, surcharge]);
+  }, [
+    currentAccount?.default_tax_rate,
+    currentAccount?.id,
+    jobAddress,
+    lineItems,
+    newClientData.address,
+    profitMargin,
+    selectedCustomer?.address,
+    surcharge,
+  ]);
 
   return (
     <>
@@ -1107,84 +1177,172 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
             {manualStep === "assign-and-schedule" && (
               <div className="space-y-4">
-                <ScheduleDateBuilder
-                  schedules={addedSchedules}
-                  onSchedulesChange={setAddedSchedules}
-                  ignoreExistingScheduleConstraints={isSinglePersonCompany}
-                  recurringControls={(
+                <div className="grid grid-cols-2 rounded-full border border-border bg-muted p-1">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleMode("one-time")}
+                    className={`h-9 rounded-full text-sm font-medium transition-colors ${
+                      scheduleMode === "one-time"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    One Off
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleMode("recurring")}
+                    className={`h-9 rounded-full text-sm font-medium transition-colors ${
+                      scheduleMode === "recurring"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Recurring
+                  </button>
+                </div>
+
+                {scheduleMode === "one-time" ? (
+                  <ScheduleDateBuilder
+                    schedules={addedSchedules}
+                    onSchedulesChange={handleSchedulesChange}
+                    ignoreExistingScheduleConstraints={isSinglePersonCompany}
+                  />
+                ) : (
+                  <div className="space-y-4 rounded-lg border border-border p-3">
                     <div className="space-y-2">
-                      <div className="relative grid grid-cols-2 rounded-full border border-border bg-muted p-1">
-                        <div className="pointer-events-none absolute inset-1 grid grid-cols-2 gap-1">
-                          {scheduleMode === "one-time" ? (
-                            <>
-                              <div className="rounded-full bg-background shadow-sm" />
-                              <div />
-                            </>
-                          ) : (
-                            <>
-                              <div />
-                              <div className="rounded-full bg-background shadow-sm" />
-                            </>
-                          )}
+                      <Label className="font-medium">How Often</Label>
+                      <Select
+                        value={recurringFrequency}
+                        onValueChange={(value) => {
+                          setRecurringFrequency(value as RecurrenceFrequency);
+                          setRecurringDaysOfWeek([]);
+                          setRecurringDayOfMonth("");
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {(recurringFrequency === "weekly" || recurringFrequency === "biweekly") && (
+                      <div className="space-y-2">
+                        <Label className="font-medium">When It Reoccurs</Label>
+                        <div className="grid grid-cols-7 gap-1.5">
+                          {DAYS_OF_WEEK.map((day) => (
+                            <button
+                              key={day.value}
+                              type="button"
+                              onClick={() => {
+                                setRecurringDaysOfWeek((current) => (
+                                  current.includes(day.value)
+                                    ? current.filter((value) => value !== day.value)
+                                    : [...current, day.value].sort((a, b) => a - b)
+                                ));
+                              }}
+                              className={cn(
+                                "h-9 rounded-md border text-xs font-medium",
+                                recurringDaysOfWeek.includes(day.value)
+                                  ? "border-foreground bg-foreground text-background"
+                                  : "border-border text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              {day.label}
+                            </button>
+                          ))}
                         </div>
-                        {scheduleMode === "one-time" ? (
-                          <>
-                            <div className="relative z-10 flex h-9 items-center justify-center rounded-full text-sm font-medium text-foreground">
-                              One Off
-                            </div>
-                            <button
-                              type="button"
-                              className="relative z-10 h-9 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground"
-                              onClick={() => setScheduleMode("recurring")}
-                            >
-                              Recurring
-                            </button>
-                          </>
+                      </div>
+                    )}
+
+                    {recurringFrequency === "monthly" && (
+                      <div className="space-y-2">
+                        <Label className="font-medium">When It Reoccurs</Label>
+                        <Select value={recurringDayOfMonth} onValueChange={setRecurringDayOfMonth}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select day of month" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                              <SelectItem key={day} value={String(day)}>
+                                Day {day}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="recurringStartDate" className="font-medium">Start Date</Label>
+                        <Input
+                          id="recurringStartDate"
+                          type="date"
+                          value={recurringStartDate}
+                          onChange={(event) => setRecurringStartDate(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="recurringEndDate" className="font-medium">End Date</Label>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              checked={recurringHasEndDate}
+                              onCheckedChange={(checked) => setRecurringHasEndDate(checked === true)}
+                            />
+                            Set end
+                          </label>
+                        </div>
+                        {recurringHasEndDate ? (
+                          <Input
+                            id="recurringEndDate"
+                            type="date"
+                            min={recurringStartDate || undefined}
+                            value={recurringEndDate}
+                            onChange={(event) => setRecurringEndDate(event.target.value)}
+                          />
                         ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="relative z-10 h-9 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground"
-                              onClick={() => setScheduleMode("one-time")}
-                            >
-                              One Off
-                            </button>
-                            <div className="relative z-10 flex h-9 items-center justify-center rounded-full text-sm font-medium text-foreground">
-                              Recurring
-                            </div>
-                          </>
+                          <div className="flex h-10 items-center rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground">
+                            Never ends
+                          </div>
                         )}
                       </div>
-
-                      {scheduleMode === "recurring" && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Select
-                            value={recurringFrequency}
-                            onValueChange={(value) => setRecurringFrequency(value as RecurrenceFrequency)}
-                          >
-                            <SelectTrigger className="w-[200px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="weekly">Weekly</SelectItem>
-                              <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
-                              <SelectItem value="monthly">Monthly</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">
-                            The earliest date you add will become the recurring start date.
-                          </p>
-                        </div>
-                      )}
                     </div>
-                  )}
-                />
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="recurringStartTime" className="font-medium">Start Time</Label>
+                        <Input
+                          id="recurringStartTime"
+                          type="time"
+                          value={recurringTimeStart}
+                          onChange={(event) => setRecurringTimeStart(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="recurringEndTime" className="font-medium">End Time</Label>
+                        <Input
+                          id="recurringEndTime"
+                          type="time"
+                          value={recurringTimeEnd}
+                          onChange={(event) => setRecurringTimeEnd(event.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {!isSinglePersonCompany && manualStep === "crew-assignment" && (
               <CreateJobCrewAssignmentStep
-                addedSchedules={addedSchedules}
+                addedSchedules={schedulesForAssignment}
                 crewMembers={crewMembers}
                 assignedCrewByScheduleIndex={crewByScheduleIndex}
                 filteredCrewMembers={filteredCrewMembers}
@@ -1207,11 +1365,8 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
             {manualStep === "estimate-line-items" && (
               <CreateJobEstimateStepContent
                 open={open && manualStep === "estimate-line-items"}
-                showVoiceEstimateIntake={showVoiceEstimateIntake}
                 estimateEditorDraft={estimateEditorDraft}
                 estimateVersionName={estimateVersionName}
-                onShowVoiceEstimateIntake={() => setShowVoiceEstimateIntake(true)}
-                onHideVoiceEstimateIntake={() => setShowVoiceEstimateIntake(false)}
                 onEstimateVersionNameChange={setEstimateVersionName}
                 onDraftChange={({ lineItems: updatedLineItems, profitMargin: updatedProfitMargin, surcharge: updatedSurcharge }) => {
                   setLineItems(
@@ -1227,7 +1382,6 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                   setProfitMargin(updatedProfitMargin);
                   setSurcharge(updatedSurcharge);
                 }}
-                onApplyVoiceEstimateIntake={applyVoiceEstimateIntake}
               />
             )}
           </div>
@@ -1273,7 +1427,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     type="button"
                     size="lg"
                     onClick={createManualJob}
-                    disabled={isLoading || showVoiceEstimateIntake}
+                    disabled={isLoading}
                   >
                     {isLoading ? "Creating..." : "Create Job"}
                   </Button>

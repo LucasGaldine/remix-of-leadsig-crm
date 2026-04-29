@@ -12,7 +12,7 @@ import {
   Ellipsis,
   ChevronDown,
   Globe,
-  Briefcase,
+  Handshake,
   MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ const primaryNavItems: NavItem[] = [
 ];
 
 const moreMenuItems: NavItem[] = [
-  { icon: <Briefcase className="h-5 w-5" />, label: "Hiring", path: "/hiring", requiredRole: "manager" },
+  { icon: <Handshake className="h-5 w-5" />, label: "Hiring", path: "/hiring", requiredRole: "manager" },
   { icon: <Globe className="h-5 w-5" />, label: "Website", path: "/website", requiredRole: "manager" },
 ];
 

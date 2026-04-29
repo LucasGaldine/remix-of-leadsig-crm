@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
+import { LINE_ITEM_UNIT_OPTIONS } from "@/constants/lineItemUnits";
 import {
   Select,
   SelectContent,
@@ -553,11 +554,11 @@ export default function CreateEstimate() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="each">Each</SelectItem>
-                              <SelectItem value="hour">Hour</SelectItem>
-                              <SelectItem value="sq ft">Sq Ft</SelectItem>
-                              <SelectItem value="linear ft">Linear Ft</SelectItem>
-                              <SelectItem value="day">Day</SelectItem>
+                              {LINE_ITEM_UNIT_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>

@@ -1,5 +1,20 @@
 import { useState, useEffect } from "react";
-import { RotateCcw, Loader as Loader2, Plus, Pencil, Trash2, Save, X, Upload, Package } from "lucide-react";
+import {
+  RotateCcw,
+  Loader as Loader2,
+  Plus,
+  Pencil,
+  Trash2,
+  Save,
+  X,
+  Upload,
+  Package,
+  Calculator,
+  Percent,
+  HandCoins,
+  CircleDollarSign,
+  Wrench,
+} from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -29,6 +44,7 @@ import {
 } from "@/lib/lineItemTemplates";
 import { LineItemTemplateCSVImportModal } from "@/components/settings/LineItemTemplateCSVImportModal";
 import { LineItemTemplateSearch } from "@/components/templates/LineItemTemplateSearch";
+import { LINE_ITEM_UNIT_OPTIONS } from "@/constants/lineItemUnits";
 
 interface PricingRule {
   id?: string;
@@ -47,12 +63,9 @@ interface PricingRule {
 interface ServiceTypeDraft {
   name: string;
   unit_type: string;
-  base_labor_rate: string;
-  material_rate: string;
-  waste_factor: string;
-  overhead_multiplier: string;
-  profit_margin: string;
-  notes: string;
+  price_per_unit: string;
+  min_job_size: string;
+  description: string;
 }
 
 interface BundleDraftItem {
@@ -87,12 +100,7 @@ const titleCaseServiceType = (serviceType: string) => {
 
 const UNIT_SELECT_OPTIONS = [
   { value: "bundle", label: "Bundle" },
-  { value: "each", label: "Each" },
-  { value: "item", label: "Item" },
-  { value: "sq ft", label: "Sq Ft" },
-  { value: "linear ft", label: "Linear Ft" },
-  { value: "hour", label: "Hour" },
-  { value: "day", label: "Day" },
+  ...LINE_ITEM_UNIT_OPTIONS,
 ] as const;
 
 export default function SettingsPricingRules() {
@@ -105,17 +113,15 @@ export default function SettingsPricingRules() {
   const defaultServiceTypes = Object.keys(DEFAULT_PRICING_RULES) as ServiceType[];
   const [rules, setRules] = useState<Record<string, PricingRule>>({});
   const [serviceTypeOrder, setServiceTypeOrder] = useState<string[]>([]);
+  const [serviceTypeMinimums, setServiceTypeMinimums] = useState<Record<string, number>>({});
   const [editingServiceType, setEditingServiceType] = useState<string | null>(null);
   const [showServiceTypeForm, setShowServiceTypeForm] = useState(false);
   const [serviceTypeDraft, setServiceTypeDraft] = useState<ServiceTypeDraft>({
     name: "",
     unit_type: "sq_ft",
-    base_labor_rate: "0",
-    material_rate: "0",
-    waste_factor: "10",
-    overhead_multiplier: "1.15",
-    profit_margin: "20",
-    notes: "",
+    price_per_unit: "0",
+    min_job_size: "0",
+    description: "",
   });
   const [taxRate, setTaxRate] = useState<string>("");
   const [profitMargin, setProfitMargin] = useState<string>("");
@@ -192,12 +198,9 @@ export default function SettingsPricingRules() {
     setServiceTypeDraft({
       name: "",
       unit_type: "sq_ft",
-      base_labor_rate: "0",
-      material_rate: "0",
-      waste_factor: "10",
-      overhead_multiplier: "1.15",
-      profit_margin: "20",
-      notes: "",
+      price_per_unit: "0",
+      min_job_size: "0",
+      description: "",
     });
     setEditingServiceType(null);
     setShowServiceTypeForm(false);
@@ -207,12 +210,9 @@ export default function SettingsPricingRules() {
     setServiceTypeDraft({
       name: "",
       unit_type: "sq_ft",
-      base_labor_rate: "0",
-      material_rate: "0",
-      waste_factor: "10",
-      overhead_multiplier: "1.15",
-      profit_margin: "20",
-      notes: "",
+      price_per_unit: "0",
+      min_job_size: "0",
+      description: "",
     });
     setEditingServiceType(null);
     setShowServiceTypeForm(true);
@@ -226,12 +226,9 @@ export default function SettingsPricingRules() {
     setServiceTypeDraft({
       name: getServiceTypeLabel(serviceType),
       unit_type: rule.unit_type,
-      base_labor_rate: String(rule.base_labor_rate),
-      material_rate: String(rule.material_rate),
-      waste_factor: String(rule.waste_factor),
-      overhead_multiplier: String(rule.overhead_multiplier),
-      profit_margin: String(rule.profit_margin),
-      notes: rule.notes || "",
+      price_per_unit: String((Number(rule.base_labor_rate) + Number(rule.material_rate)).toFixed(2)),
+      min_job_size: String(serviceTypeMinimums[serviceType] ?? 0),
+      description: rule.notes || "",
     });
     setShowServiceTypeForm(true);
   };
@@ -275,13 +272,14 @@ export default function SettingsPricingRules() {
       ...baseRule,
       service_type: nextKey,
       unit_type: serviceTypeDraft.unit_type || "sq_ft",
-      base_labor_rate: parseFloat(serviceTypeDraft.base_labor_rate) || 0,
-      material_rate: parseFloat(serviceTypeDraft.material_rate) || 0,
-      waste_factor: parseFloat(serviceTypeDraft.waste_factor) || 0,
-      overhead_multiplier: parseFloat(serviceTypeDraft.overhead_multiplier) || 1,
-      profit_margin: parseFloat(serviceTypeDraft.profit_margin) || 0,
-      notes: serviceTypeDraft.notes || undefined,
+      base_labor_rate: parseFloat(serviceTypeDraft.price_per_unit) || 0,
+      material_rate: 0,
+      waste_factor: 0,
+      overhead_multiplier: 1,
+      profit_margin: 0,
+      notes: serviceTypeDraft.description || undefined,
     };
+    const parsedMinJobSize = parseFloat(serviceTypeDraft.min_job_size) || 0;
 
     try {
       if (previousRule?.id) {
@@ -318,6 +316,46 @@ export default function SettingsPricingRules() {
 
         if (error) throw error;
       }
+
+      const { data: accountRow, error: accountReadError } = await supabase
+        .from("accounts")
+        .select("settings")
+        .eq("id", currentAccount.id)
+        .single();
+
+      if (accountReadError) throw accountReadError;
+
+      const currentSettings = (accountRow?.settings as Record<string, unknown> | null) ?? {};
+      const existingMinimumsRaw = currentSettings.min_job_size;
+      const existingMinimums = (
+        existingMinimumsRaw && typeof existingMinimumsRaw === "object" && !Array.isArray(existingMinimumsRaw)
+          ? existingMinimumsRaw
+          : {}
+      ) as Record<string, unknown>;
+
+      const nextMinimums: Record<string, number> = Object.fromEntries(
+        Object.entries(existingMinimums)
+          .filter(([key, value]) => typeof key === "string" && typeof value === "number" && Number.isFinite(value)),
+      );
+
+      if (previousKey && previousKey !== nextKey) {
+        delete nextMinimums[previousKey];
+      }
+      nextMinimums[nextKey] = Math.max(0, parsedMinJobSize);
+
+      const { error: accountUpdateError } = await supabase
+        .from("accounts")
+        .update({
+          settings: {
+            ...currentSettings,
+            min_job_size: nextMinimums,
+          },
+        })
+        .eq("id", currentAccount.id);
+
+      if (accountUpdateError) throw accountUpdateError;
+
+      setServiceTypeMinimums(nextMinimums);
 
       toast.success(previousKey ? "Service type updated" : "Service type added");
       resetServiceTypeDraft();
@@ -357,6 +395,44 @@ export default function SettingsPricingRules() {
         if (error) throw error;
       }
 
+      if (currentAccount?.id) {
+        const { data: accountRow, error: accountReadError } = await supabase
+          .from("accounts")
+          .select("settings")
+          .eq("id", currentAccount.id)
+          .single();
+
+        if (accountReadError) throw accountReadError;
+
+        const currentSettings = (accountRow?.settings as Record<string, unknown> | null) ?? {};
+        const existingMinimumsRaw = currentSettings.min_job_size;
+        const existingMinimums = (
+          existingMinimumsRaw && typeof existingMinimumsRaw === "object" && !Array.isArray(existingMinimumsRaw)
+            ? existingMinimumsRaw
+            : {}
+        ) as Record<string, unknown>;
+
+        const nextMinimums: Record<string, number> = Object.fromEntries(
+          Object.entries(existingMinimums)
+            .filter(([key, value]) => typeof key === "string" && typeof value === "number" && Number.isFinite(value)),
+        );
+
+        delete nextMinimums[serviceType];
+
+        const { error: accountUpdateError } = await supabase
+          .from("accounts")
+          .update({
+            settings: {
+              ...currentSettings,
+              min_job_size: nextMinimums,
+            },
+          })
+          .eq("id", currentAccount.id);
+
+        if (accountUpdateError) throw accountUpdateError;
+        setServiceTypeMinimums(nextMinimums);
+      }
+
       if (editingServiceType === serviceType) {
         resetServiceTypeDraft();
       }
@@ -372,11 +448,18 @@ export default function SettingsPricingRules() {
 
   const resetToDefaults = (serviceType: ServiceType) => {
     if (!user?.id) return;
+    const defaultRule = DEFAULT_PRICING_RULES[serviceType];
+    const defaultUnitPrice = Number(defaultRule.base_labor_rate) + Number(defaultRule.material_rate);
 
     setRules((prev) => ({
       ...prev,
       [serviceType]: {
         ...DEFAULT_PRICING_RULES[serviceType],
+        base_labor_rate: Number(defaultUnitPrice.toFixed(2)),
+        material_rate: 0,
+        waste_factor: 0,
+        overhead_multiplier: 1,
+        profit_margin: 0,
         id: prev[serviceType]?.id,
         user_id: user.id,
         account_id: currentAccount?.id,
@@ -391,6 +474,13 @@ export default function SettingsPricingRules() {
     if (!currentAccount?.id) return;
     const templates = await getLineItemTemplates(currentAccount.id, { includeBundles: true });
     setLineItemTemplates(templates);
+  };
+
+  const upsertTemplateInState = (template: LineItemTemplate) => {
+    setLineItemTemplates((previous) => {
+      const next = [template, ...previous.filter((item) => item.id !== template.id)];
+      return next.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    });
   };
 
   const templateOnlyOptions = lineItemTemplates.filter((template) => template.template_type !== "bundle");
@@ -570,7 +660,8 @@ export default function SettingsPricingRules() {
         toast.error("Failed to update template");
         return;
       }
-      await refreshTemplates();
+      upsertTemplateInState(updated);
+      void refreshTemplates();
       toast.success("Template updated");
       resetTemplateDraft();
       return;
@@ -581,7 +672,8 @@ export default function SettingsPricingRules() {
       toast.error("Failed to add template");
       return;
     }
-    await refreshTemplates();
+    upsertTemplateInState(created);
+    void refreshTemplates();
     toast.success("Template added");
     resetTemplateDraft();
   };
@@ -621,7 +713,8 @@ export default function SettingsPricingRules() {
         toast.error("Failed to update bundle");
         return;
       }
-      await refreshTemplates();
+      upsertTemplateInState(updated);
+      void refreshTemplates();
       toast.success("Bundle updated");
       resetBundleDraft();
       return;
@@ -632,7 +725,8 @@ export default function SettingsPricingRules() {
       toast.error("Failed to add bundle");
       return;
     }
-    await refreshTemplates();
+    upsertTemplateInState(created);
+    void refreshTemplates();
     toast.success("Bundle added");
     resetBundleDraft();
   };
@@ -673,10 +767,42 @@ export default function SettingsPricingRules() {
       return;
     }
 
+    const { data: accountRow, error: accountError } = await supabase
+      .from("accounts")
+      .select("settings")
+      .eq("id", currentAccount.id)
+      .maybeSingle();
+
+    if (accountError) {
+      console.error("Error fetching account settings:", accountError);
+      toast.error("Failed to load pricing rules");
+      setLoading(false);
+      return;
+    }
+
+    const settings = (accountRow?.settings as Record<string, unknown> | null) ?? {};
+    const minJobSize = settings.min_job_size;
+    const initialMinimums: Record<string, number> = (
+      minJobSize && typeof minJobSize === "object" && !Array.isArray(minJobSize)
+        ? Object.fromEntries(
+          Object.entries(minJobSize as Record<string, unknown>)
+            .filter(([key, value]) => typeof key === "string" && typeof value === "number" && Number.isFinite(value)),
+        )
+        : {}
+    ) as Record<string, number>;
+
     const initialRules: Record<string, PricingRule> = {};
 
     (data || []).forEach((rule) => {
-      initialRules[rule.service_type] = rule as PricingRule;
+      const combinedUnitPrice = Number(rule.base_labor_rate ?? 0) + Number(rule.material_rate ?? 0);
+      initialRules[rule.service_type] = {
+        ...(rule as PricingRule),
+        base_labor_rate: Number.isFinite(combinedUnitPrice) ? combinedUnitPrice : 0,
+        material_rate: 0,
+        waste_factor: 0,
+        overhead_multiplier: 1,
+        profit_margin: 0,
+      };
     });
 
     // Keep "other" available as a required fallback service type.
@@ -700,18 +826,16 @@ export default function SettingsPricingRules() {
     ];
 
     setRules(initialRules);
+    setServiceTypeMinimums(initialMinimums);
     setServiceTypeOrder(orderedServiceTypes);
     setEditingServiceType(null);
     setShowServiceTypeForm(false);
     setServiceTypeDraft({
       name: "",
       unit_type: "sq_ft",
-      base_labor_rate: "0",
-      material_rate: "0",
-      waste_factor: "10",
-      overhead_multiplier: "1.15",
-      profit_margin: "20",
-      notes: "",
+      price_per_unit: "0",
+      min_job_size: "0",
+      description: "",
     });
     setLoading(false);
   };
@@ -809,19 +933,13 @@ export default function SettingsPricingRules() {
         if (name === "Other") return [];
 
         const existing = existingByName.get(name);
-        const computedRate =
-          (Number(rule.base_labor_rate) + Number(rule.material_rate)) *
-          (1 + Number(rule.waste_factor) / 100) *
-          Number(rule.overhead_multiplier) *
-          (1 + Number(rule.profit_margin) / 100);
-
         return [{
           id: serviceType,
           name,
-          description: String(existing?.description ?? ""),
+          description: String(rule.notes ?? existing?.description ?? ""),
           icon: String(existing?.icon ?? "CheckCircle2"),
           enabled: existing?.enabled !== false,
-          price_per_unit: Number(computedRate.toFixed(2)),
+          price_per_unit: Number((Number(rule.base_labor_rate) + Number(rule.material_rate)).toFixed(2)),
           unit_type: String(rule.unit_type || "sq_ft"),
         }];
       });
@@ -874,7 +992,10 @@ export default function SettingsPricingRules() {
             <div className="space-y-4">
               <div className="card-elevated rounded-lg p-4 space-y-4">
                 <div>
-                  <h3 className="font-medium">Estimate Defaults</h3>
+                  <h3 className="text-2xl font-medium flex items-center gap-2">
+                    <Calculator className="h-5 w-5 text-muted-foreground" />
+                    Default Pricing
+                  </h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     Applied automatically to new estimates (editable per estimate)
                   </p>
@@ -882,10 +1003,10 @@ export default function SettingsPricingRules() {
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium">Default Tax Rate</h4>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      Applied automatically to new estimates
-                    </p>
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Percent className="h-4 w-4 text-muted-foreground" />
+                      Default Tax Rate
+                    </h4>
                   </div>
                   <div className="relative w-28">
                     <Input
@@ -905,10 +1026,10 @@ export default function SettingsPricingRules() {
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium">Default Profit Margin</h4>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      Applied automatically to new estimates (editable per estimate)
-                    </p>
+                    <h4 className="font-medium flex items-center gap-2">
+                      <HandCoins className="h-4 w-4 text-muted-foreground" />
+                      Default Profit Margin
+                    </h4>
                   </div>
                   <div className="relative w-28">
                     <Input
@@ -928,10 +1049,10 @@ export default function SettingsPricingRules() {
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium">Default Surcharge</h4>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      Applied automatically to new estimates (editable per estimate)
-                    </p>
+                    <h4 className="font-medium flex items-center gap-2">
+                      <CircleDollarSign className="h-4 w-4 text-muted-foreground" />
+                      Default Surcharge
+                    </h4>
                   </div>
                   <div className="relative w-28">
                     <Input
@@ -951,14 +1072,17 @@ export default function SettingsPricingRules() {
               </div>
 
               <div className="card-elevated rounded-lg p-4 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h3 className="font-medium">Line Item Templates</h3>
+                    <h3 className="text-2xl font-medium flex items-center gap-2">
+                      <Package className="h-5 w-5 text-muted-foreground" />
+                      Reusable Estimate Items
+                    </h3>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       Manage reusable templates shown in Quick Add.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => setShowTemplateImportModal(true)}>
                       <Upload className="h-4 w-4 mr-1" />
                       Import CSV
@@ -1009,9 +1133,12 @@ export default function SettingsPricingRules() {
               </div>
 
               <div className="card-elevated rounded-lg p-4 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <h3 className="font-medium">Service Types</h3>
+                    <h3 className="text-2xl font-medium flex items-center gap-2">
+                      <Wrench className="h-5 w-5 text-muted-foreground" />
+                      Service Types
+                    </h3>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       Manage default and custom service types used in pricing rules.
                     </p>
@@ -1033,6 +1160,7 @@ export default function SettingsPricingRules() {
                       const isLinearFeet = rule.unit_type === "linear_ft";
                       const isDefault = isDefaultServiceType(serviceType);
                       const isProtected = isProtectedServiceType(serviceType);
+                      const unitPrice = Number(rule.base_labor_rate) + Number(rule.material_rate);
 
                       return (
                         <div key={serviceType} className="rounded-lg border border-border p-3 flex items-start justify-between gap-3">
@@ -1042,7 +1170,7 @@ export default function SettingsPricingRules() {
                               {isDefault ? "Default service type" : "Custom service type"}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              ${rule.base_labor_rate.toFixed(2)} labor + ${rule.material_rate.toFixed(2)} materials / {isLinearFeet ? "linear ft" : "sq ft"} • {rule.profit_margin}% profit
+                              ${unitPrice.toFixed(2)} / {isLinearFeet ? "linear ft" : "sq ft"}{rule.notes ? ` • ${rule.notes}` : ""}
                             </p>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
@@ -1196,12 +1324,11 @@ export default function SettingsPricingRules() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="each">Each</SelectItem>
-                  <SelectItem value="item">Item</SelectItem>
-                  <SelectItem value="sq ft">Sq Ft</SelectItem>
-                  <SelectItem value="linear ft">Linear Ft</SelectItem>
-                  <SelectItem value="hour">Hour</SelectItem>
-                  <SelectItem value="day">Day</SelectItem>
+                  {LINE_ITEM_UNIT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1309,9 +1436,6 @@ export default function SettingsPricingRules() {
             ) : (
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">
-                    Search and Add Template
-                  </Label>
                   <div className="rounded-md border border-border">
                     <LineItemTemplateSearch
                       placeholder="Search item labels..."
@@ -1343,7 +1467,8 @@ export default function SettingsPricingRules() {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      For each connected template: <span className="text-foreground font-medium">Bundle Units x Template Qty</span> is added.
+                      Adding 1 <span className="text-foreground font-medium">{bundleDraft.unit.trim() || "bundle"}</span> of{" "}
+                      <span className="text-foreground font-medium">{bundleDraft.name.trim() || "bundle"}</span> will add:
                     </p>
                     {bundleDraft.items.map((item) => {
                       const template = templateOnlyOptions.find((option) => option.id === item.template_id);
@@ -1351,39 +1476,37 @@ export default function SettingsPricingRules() {
 
                       return (
                         <div key={template.id} className="rounded-lg border border-border p-3">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0 sm:flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
                               <p className="font-medium truncate">{template.name}</p>
                               <p className="text-xs text-muted-foreground">
                                 {template.quantity} x ${Number(template.unit_price || 0).toFixed(2)} / {template.unit}
                               </p>
                             </div>
 
-                            <div className="flex items-center gap-2 sm:justify-center">
-                              <Label htmlFor={`bundle-item-quantity-${template.id}`} className="text-xs text-muted-foreground whitespace-nowrap">
-                                Units per bundle:
-                              </Label>
+                            <div className="flex items-center gap-2 shrink-0">
                               <Input
                                 id={`bundle-item-quantity-${template.id}`}
                                 type="number"
                                 min="0"
                                 step="0.01"
+                                aria-label={`Units per bundle for ${template.name}`}
                                 className="h-9 w-20"
                                 value={item.quantity_per_unit}
                                 onChange={(event) => updateBundleItemByTemplate(template.id, { quantity_per_unit: event.target.value })}
                               />
                               <span className="text-xs text-muted-foreground whitespace-nowrap">{template.unit}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => toggleBundleTemplate(template.id, false)}
+                                aria-label={`Remove ${template.name} from bundle`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="sm:shrink-0"
-                              onClick={() => toggleBundleTemplate(template.id, false)}
-                            >
-                              Remove
-                            </Button>
                           </div>
                         </div>
                       );
@@ -1420,7 +1543,7 @@ export default function SettingsPricingRules() {
           <DialogHeader>
             <DialogTitle>{editingServiceType ? "Edit Service Type" : "Add Service Type"}</DialogTitle>
             <DialogDescription>
-              Configure pricing defaults for this service type.
+              Configure service details for this service type.
             </DialogDescription>
           </DialogHeader>
 
@@ -1456,79 +1579,41 @@ export default function SettingsPricingRules() {
             </div>
 
             <div>
-              <Label htmlFor="service-type-labor">Labor Rate</Label>
+              <Label htmlFor="service-type-price">Price Per Unit</Label>
               <Input
-                id="service-type-labor"
+                id="service-type-price"
                 type="number"
                 step="0.01"
-                value={serviceTypeDraft.base_labor_rate}
+                value={serviceTypeDraft.price_per_unit}
                 onChange={(event) =>
-                  setServiceTypeDraft((prev) => ({ ...prev, base_labor_rate: event.target.value }))
+                  setServiceTypeDraft((prev) => ({ ...prev, price_per_unit: event.target.value }))
                 }
               />
             </div>
 
             <div>
-              <Label htmlFor="service-type-material">Material Rate</Label>
+              <Label htmlFor="service-type-min-job-size">Minimum Job Size ($)</Label>
               <Input
-                id="service-type-material"
+                id="service-type-min-job-size"
                 type="number"
+                min="0"
                 step="0.01"
-                value={serviceTypeDraft.material_rate}
+                value={serviceTypeDraft.min_job_size}
                 onChange={(event) =>
-                  setServiceTypeDraft((prev) => ({ ...prev, material_rate: event.target.value }))
-                }
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="service-type-waste">Waste Factor (%)</Label>
-              <Input
-                id="service-type-waste"
-                type="number"
-                step="0.01"
-                value={serviceTypeDraft.waste_factor}
-                onChange={(event) =>
-                  setServiceTypeDraft((prev) => ({ ...prev, waste_factor: event.target.value }))
-                }
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="service-type-overhead">Overhead Multiplier</Label>
-              <Input
-                id="service-type-overhead"
-                type="number"
-                step="0.01"
-                value={serviceTypeDraft.overhead_multiplier}
-                onChange={(event) =>
-                  setServiceTypeDraft((prev) => ({ ...prev, overhead_multiplier: event.target.value }))
-                }
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="service-type-profit">Profit Margin (%)</Label>
-              <Input
-                id="service-type-profit"
-                type="number"
-                step="0.01"
-                value={serviceTypeDraft.profit_margin}
-                onChange={(event) =>
-                  setServiceTypeDraft((prev) => ({ ...prev, profit_margin: event.target.value }))
+                  setServiceTypeDraft((prev) => ({ ...prev, min_job_size: event.target.value }))
                 }
               />
             </div>
 
             <div className="sm:col-span-2">
-              <Label htmlFor="service-type-notes">Notes</Label>
+              <Label htmlFor="service-type-description">Description</Label>
               <Input
-                id="service-type-notes"
-                value={serviceTypeDraft.notes}
+                id="service-type-description"
+                value={serviceTypeDraft.description}
                 onChange={(event) =>
-                  setServiceTypeDraft((prev) => ({ ...prev, notes: event.target.value }))
+                  setServiceTypeDraft((prev) => ({ ...prev, description: event.target.value }))
                 }
-                placeholder="Optional notes"
+                placeholder="Optional description"
               />
             </div>
           </div>

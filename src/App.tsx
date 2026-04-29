@@ -33,7 +33,6 @@ import LeadsRejected from "./pages/LeadsRejected";
 import SettingsProfile from "./pages/SettingsProfile";
 import SettingsCompanyProfile from "./pages/SettingsCompanyProfile";
 import SettingsServiceArea from "./pages/SettingsServiceArea";
-import SettingsMinJobSize from "./pages/SettingsMinJobSize";
 import SettingsAvailability from "./pages/SettingsAvailability";
 import SettingsCrewManagement from "./pages/SettingsCrewManagement";
 import SettingsAutoResponses from "./pages/SettingsAutoResponses";
@@ -212,7 +211,6 @@ const router = createBrowserRouter([
       { path: "/settings/profile", element: <Protected><SettingsProfile /></Protected> },
       { path: "/settings/company", element: <Protected><SettingsCompanyProfile /></Protected> },
       { path: "/settings/service-area", element: <Protected><SettingsServiceArea /></Protected> },
-      { path: "/settings/min-job-size", element: <Protected><SettingsMinJobSize /></Protected> },
       { path: "/settings/availability", element: <Protected><SettingsAvailability /></Protected> },
       { path: "/settings/crew", element: <Protected><SettingsCrewManagement /></Protected> },
       { path: "/settings/auto-responses", element: <Protected><SettingsAutoResponses /></Protected> },

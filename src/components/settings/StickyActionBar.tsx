@@ -19,15 +19,15 @@ export function StickyActionBar({
   contentClassName: _contentClassName,
 }: StickyActionBarProps) {
   return (
-    <div className="fixed bottom-24 right-4 z-40 sm:bottom-6 sm:right-6">
+    <div className="fixed !right-3 !bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-40 sm:!bottom-6 sm:!right-6">
       <Button
         onClick={onSave}
         size="icon"
-        className="h-14 w-14 rounded-full shadow-lg"
+        className="h-16 w-16 rounded-full shadow-lg sm:h-14 sm:w-14"
         disabled={isSaving || disabled}
         aria-label={isSaving ? savingLabel : label}
       >
-        {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+        {isSaving ? <Loader2 className="!h-6 !w-6 animate-spin !stroke-[2.5]" /> : <Save className="!h-6 !w-6 !stroke-[2.5]" />}
       </Button>
     </div>
   );

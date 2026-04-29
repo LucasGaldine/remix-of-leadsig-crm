@@ -40,18 +40,18 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       : [{ name: "", description: "", quantity: "1", unit: "item", unit_price: "", category: "other" }]);
 
   const [lineItems, setLineItems] = useState<EstimateLineItemInit[]>(defaultLineItems);
-  const [estimateName, setEstimateName] = useState("original");
-  const [profitMargin, setProfitMargin] = useState<string>("");
+  const [estimateName, setEstimateName] = useState("Version 1");
+  const [profitMargin, setProfitMargin] = useState<string>(String(currentAccount?.default_profit_margin ?? 0));
   const [profitMode, setProfitMode] = useState<"percentage" | "amount">("percentage");
   const [profitAmount, setProfitAmount] = useState<string>("0");
-  const [surcharge, setSurcharge] = useState<string>("");
+  const [surcharge, setSurcharge] = useState<string>(String(currentAccount?.default_surcharge ?? 0));
   const [creating, setCreating] = useState(false);
   const [showVoiceEstimateIntake, setShowVoiceEstimateIntake] = useState(false);
 
   useEffect(() => {
     if (open) {
       setLineItems(defaultLineItems);
-      setEstimateName("original");
+      setEstimateName("Version 1");
       const defaultProfitMargin = Number(currentAccount?.default_profit_margin ?? 0);
       const defaultSubtotal = defaultLineItems.reduce((sum, item) => {
         const quantity = Number.parseFloat(item.quantity || "0") || 0;
@@ -65,6 +65,31 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       setShowVoiceEstimateIntake(false);
     }
   }, [open, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
+
+  useEffect(() => {
+    if (!open || !currentAccount?.id) return;
+
+    let isCancelled = false;
+
+    const syncAccountDefaults = async () => {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("default_profit_margin, default_surcharge")
+        .eq("id", currentAccount.id)
+        .maybeSingle();
+
+      if (isCancelled || error || !data) return;
+
+      setProfitMargin(String(data.default_profit_margin ?? 0));
+      setSurcharge(String(data.default_surcharge ?? 0));
+    };
+
+    void syncAccountDefaults();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [open, currentAccount?.id]);
 
   const applyVoiceEstimateIntake = (parsedData: VoiceEstimateParsedData) => {
     const parsed = normalizeVoiceEstimateParsedData(parsedData);
@@ -197,7 +222,7 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
       const taxRate = taxRatePercent / 100;
       const taxAmount = subtotalAfterAdjustments * taxRate;
       const estimateTotal = subtotalAfterAdjustments + taxAmount;
-      const normalizedEstimateName = estimateName.trim() || "original";
+      const normalizedEstimateName = estimateName.trim() || "Version 1";
 
       const { error: updateError } = await supabase
         .from("leads")

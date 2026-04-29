@@ -14,7 +14,7 @@ import {
   ToggleRight,
   ArrowRight,
   Wrench,
-  Hammer,
+  HardHat,
   Leaf,
   Droplets,
   Home,
@@ -43,7 +43,7 @@ export const UNIT_OPTIONS = [
 const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
   { name: "CheckCircle2", icon: CheckCircle2 },
   { name: "Wrench", icon: Wrench },
-  { name: "Hammer", icon: Hammer },
+  { name: "HardHat", icon: HardHat },
   { name: "Leaf", icon: Leaf },
   { name: "Droplets", icon: Droplets },
   { name: "Home", icon: Home },
@@ -387,7 +387,7 @@ export default function Website() {
     if (!currentAccount?.id) return;
     supabase
       .from("pricing_rules")
-      .select("service_type, base_labor_rate, material_rate, waste_factor, overhead_multiplier, profit_margin, unit_type, updated_at")
+      .select("service_type, base_labor_rate, material_rate, unit_type, updated_at")
       .eq("account_id", currentAccount.id)
       .order("updated_at", { ascending: false })
       .then(({ data }) => {
@@ -410,14 +410,7 @@ export default function Website() {
 
           const baseLaborRate = Number(rule.base_labor_rate ?? 0);
           const materialRate = Number(rule.material_rate ?? 0);
-          const wasteFactor = Number(rule.waste_factor ?? 0);
-          const overheadMultiplier = Number(rule.overhead_multiplier ?? 1);
-          const profitMargin = Number(rule.profit_margin ?? 0);
-          const computedRate =
-            (baseLaborRate + materialRate) *
-            (1 + wasteFactor / 100) *
-            overheadMultiplier *
-            (1 + profitMargin / 100);
+          const computedRate = baseLaborRate + materialRate;
 
           byServiceType.set(serviceTypeKey, {
             service_type: serviceType,

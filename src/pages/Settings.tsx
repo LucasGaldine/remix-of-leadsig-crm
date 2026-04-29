@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
-import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Ruler, Crown, FileText, Scale, Trash2, Search, Bug, Webhook } from "lucide-react";
+import { User, Building2, DollarSign, Bell, Calendar, Users, Zap, CircleHelp as HelpCircle, LogOut, ChevronRight, MapPin, Shield, Plug, ExternalLink, LayoutDashboard, Calculator, Crown, FileText, Scale, Trash2, Search, Bug, Webhook } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
@@ -87,13 +87,6 @@ export default function Settings() {
           description: "Configure estimate calculations",
           onClick: () => navigate("/settings/pricing-rules"),
           searchTerms: ["pricing", "rates", "square foot", "per foot", "linear foot", "margin", "markup", "tax rate", "labor cost", "material cost", "base labor rate", "material rate", "waste factor", "overhead", "profit margin", "pavers", "turf", "concrete", "sod", "mulch", "gravel", "pricing rules", "estimate calculation", "cost"],
-        },
-        {
-          icon: <Ruler className="h-5 w-5" />,
-          label: "Minimum Job Size",
-          description: "Set your floor",
-          onClick: () => navigate("/settings/min-job-size"),
-          searchTerms: ["minimum", "floor", "smallest job", "min size"],
         },
       ],
     },

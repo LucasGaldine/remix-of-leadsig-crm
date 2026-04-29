@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Briefcase, Globe, Loader2, MapPin } from "lucide-react";
+import { Hammer, Globe, Loader2, MapPin } from "lucide-react";
 import type { WebsiteConfig } from "@/hooks/useWebsiteSettings";
 import { supabase } from "@/integrations/supabase/client";
 import { isPublishedHiringRole } from "@/lib/hiringRoles";
@@ -135,7 +135,7 @@ export default function SiteCareersPage() {
         <div className="mx-auto max-w-5xl px-6">
           {roles.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
-              <Briefcase className="mx-auto h-10 w-10 text-gray-400" />
+              <Hammer className="mx-auto h-10 w-10 text-gray-400" />
               <h2 className="mt-4 text-xl font-semibold text-gray-900" style={fontCss ? { fontFamily: fontCss } : {}}>No openings right now</h2>
               <p className="mt-2 text-sm text-gray-500">
                 Check back soon for new opportunities.

@@ -14,7 +14,7 @@ import {
   BellOff,
   CheckCheck,
   Trash2,
-  Briefcase,
+  Hammer,
   AtSign,
 } from "lucide-react";
 
@@ -29,7 +29,7 @@ const EVENT_CONFIG: Record<string, { icon: typeof UserPlus; color: string }> = {
   payment_received: { icon: DollarSign, color: "text-emerald-600 bg-emerald-50" },
   schedule_change: { icon: CalendarDays, color: "text-sky-600 bg-sky-50" },
   estimate_approved: { icon: FileCheck, color: "text-teal-600 bg-teal-50" },
-  job_assignment: { icon: Briefcase, color: "text-primary bg-primary/10" },
+  job_assignment: { icon: Hammer, color: "text-primary bg-primary/10" },
   mention: { icon: AtSign, color: "text-primary bg-primary/10" },
 };
 

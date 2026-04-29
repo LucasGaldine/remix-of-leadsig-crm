@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useJobLineItems } from "@/hooks/useJobLineItems";
 import { JobCostsModal } from "./JobCostsModal";
 import { ChevronsDown } from "lucide-react";
@@ -6,15 +6,30 @@ import { ChevronsDown } from "lucide-react";
 interface JobCostsProps {
   jobId: string;
   grouped?: boolean;
+  openSignal?: number;
+  addSignal?: number;
 }
 
-export const JobCosts = ({ jobId, grouped = false }: JobCostsProps) => {
+export const JobCosts = ({ jobId, grouped = false, openSignal = 0, addSignal = 0 }: JobCostsProps) => {
   const { lineItems, isLoading, totalCost } = useJobLineItems(jobId);
   const [modalOpen, setModalOpen] = useState(false);
+  const [startInAddMode, setStartInAddMode] = useState(false);
   const shellClassName = grouped
     ? "p-0 text-foreground"
     : "rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm";
   const hasLineItems = (lineItems?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (openSignal <= 0) return;
+    setStartInAddMode(false);
+    setModalOpen(true);
+  }, [openSignal]);
+
+  useEffect(() => {
+    if (addSignal <= 0) return;
+    setStartInAddMode(true);
+    setModalOpen(true);
+  }, [addSignal]);
 
   if (isLoading) {
     return (
@@ -75,7 +90,17 @@ export const JobCosts = ({ jobId, grouped = false }: JobCostsProps) => {
         </div>
       </button>
 
-      <JobCostsModal jobId={jobId} open={modalOpen} onOpenChange={setModalOpen} />
+      <JobCostsModal
+        jobId={jobId}
+        open={modalOpen}
+        onOpenChange={(nextOpen) => {
+          setModalOpen(nextOpen);
+          if (!nextOpen) {
+            setStartInAddMode(false);
+          }
+        }}
+        startInAddMode={startInAddMode}
+      />
     </>
   );
 };

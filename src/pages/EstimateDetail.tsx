@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowRightLeft, User, Calendar, Briefcase, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical, DollarSign } from "lucide-react";
+import { ArrowRightLeft, User, Calendar, Hammer, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical, DollarSign } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
@@ -1337,7 +1337,7 @@ export default function EstimateDetail() {
       : []),
     ...(estimate.job?.id
       ? [{
-          icon: <Briefcase className="h-5 w-5" />,
+          icon: <Hammer className="h-5 w-5" />,
           label: "View Job",
           onClick: () => navigate(`/jobs/${estimate.job?.id}`),
           group: "details",
@@ -1913,7 +1913,7 @@ export default function EstimateDetail() {
               <div className="hidden w-full rounded-2xl border border-border bg-card p-5 text-left text-foreground shadow-sm md:block">
                 <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
                 <div className="flex gap-2 items-center">
-                    <Briefcase className="w-3 h-3" />
+                    <Hammer className="w-3 h-3" />
                   </div>
                   <StatusBadge status={getJobStatusBadgeStatus(rawJobStatus) as any}>
                     {jobStatusLabel}
@@ -1940,7 +1940,7 @@ export default function EstimateDetail() {
               >
                 <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
                   <div className="flex gap-2 items-center">
-                    <Briefcase className="w-3 h-3" />
+                    <Hammer className="w-3 h-3" />
                   </div>
                   <StatusBadge status={getJobStatusBadgeStatus(rawJobStatus) as any}>
                     {jobStatusLabel}

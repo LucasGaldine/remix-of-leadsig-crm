@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { MainPageQuickActions } from "@/components/layout/MainPageQuickActions";
 import { JobCard } from "@/components/jobs/JobCard";
-import { ArrowUpDown, Users, TriangleAlert as AlertTriangle, DollarSign, Building2, User, Check, Search, Briefcase } from "lucide-react";
+import { ArrowUpDown, Users, TriangleAlert as AlertTriangle, DollarSign, Building2, User, Check, Search, Hammer } from "lucide-react";
 import { useJobs, useJobRevenue } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
@@ -289,7 +289,7 @@ export default function Jobs() {
 
           <div className="hidden px-4 pt-5 pb-3 md:block">
             <div className="inline-flex items-center gap-2">
-              <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+              <Hammer className="h-3.5 w-3.5 text-muted-foreground" />
               <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Jobs</p>
             </div>
           </div>

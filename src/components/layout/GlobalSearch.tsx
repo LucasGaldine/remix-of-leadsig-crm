@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Chrome as Home, Users, User, Briefcase, DollarSign, Settings, Calendar, LayoutDashboard, Search, Crown, BookOpen } from "lucide-react";
+import { Chrome as Home, Users, User, Hammer, DollarSign, Settings, Calendar, LayoutDashboard, Search, Crown, BookOpen } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +39,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       case "user":
         return <User className="h-4 w-4" />;
       case "briefcase":
-        return <Briefcase className="h-4 w-4" />;
+        return <Hammer className="h-4 w-4" />;
       case "dollar-sign":
         return <DollarSign className="h-4 w-4" />;
       case "calendar":

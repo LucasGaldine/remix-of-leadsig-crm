@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Briefcase, ExternalLink, Eye, Plus, Trash2 } from "lucide-react";
+import { Hammer, ExternalLink, Eye, Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -298,7 +298,7 @@ export default function Hiring() {
         </div>
         {roles.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-background p-8 text-center">
-            <Briefcase className="mx-auto h-8 w-8 text-muted-foreground" />
+            <Hammer className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 text-sm text-muted-foreground">No open roles yet.</p>
           </div>
         ) : (

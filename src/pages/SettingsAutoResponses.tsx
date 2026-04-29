@@ -756,7 +756,7 @@ export default function SettingsAutoResponses() {
                 <div className="space-y-1">
                   <CardTitle className="flex items-center gap-2">
                     <Zap className="h-5 w-5 text-amber-500" />
-                    Lead Message Automation
+                    Signal Intent Filtering
                   </CardTitle>
                   <CardDescription>
                     Placeholder toggle for upcoming lead message automation workflows.

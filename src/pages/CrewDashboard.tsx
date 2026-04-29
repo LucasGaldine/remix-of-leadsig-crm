@@ -8,7 +8,7 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { JobCard } from "@/components/jobs/JobCard";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
 import { Card, CardContent } from "@/components/ui/card";
-import { Briefcase, Calendar, Clock } from "lucide-react";
+import { Hammer, Calendar, Clock } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -117,7 +117,7 @@ export default function CrewDashboard() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                <Briefcase className="h-8 w-8 text-primary mx-auto mb-2" />
+                <Hammer className="h-8 w-8 text-primary mx-auto mb-2" />
                 <div className="text-2xl font-bold">{todayJobs.length}</div>
                 <div className="text-sm text-muted-foreground">Active Jobs</div>
               </div>

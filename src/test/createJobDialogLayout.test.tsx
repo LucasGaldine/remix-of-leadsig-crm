@@ -93,6 +93,21 @@ vi.mock("@/components/jobs/JobCSVImportModal", () => ({
   JobCSVImportModal: () => null,
 }));
 
+vi.mock("@/hooks/useServiceTypeOptions", () => ({
+  useServiceTypeOptions: () => [],
+}));
+
+vi.mock("@/components/shared/ServiceTypeSelect", () => ({
+  ServiceTypeSelect: (props: { id?: string; value?: string; onValueChange?: (value: string) => void }) => (
+    <input
+      id={props.id}
+      aria-label="Service Type"
+      value={props.value || ""}
+      onChange={(event) => props.onValueChange?.(event.target.value)}
+    />
+  ),
+}));
+
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({
@@ -120,11 +135,16 @@ vi.mock("@/components/ui/switch", () => ({
 }));
 
 vi.mock("@/components/scheduling/ScheduleDateBuilder", () => ({
-  ScheduleDateBuilder: (props: { recurringControls?: any }) => (
+  ScheduleDateBuilder: (props: { recurringControls?: any; onSchedulesChange?: (schedules: Array<{ date: string; timeStart: string; timeEnd: string }>) => void }) => (
     <div>
       <p>Add Schedule Dates</p>
       {props.recurringControls}
-      <button type="button">Add Schedule Date</button>
+      <button
+        type="button"
+        onClick={() => props.onSchedulesChange?.([{ date: "2030-01-05", timeStart: "09:00", timeEnd: "11:00" }])}
+      >
+        Add Schedule Date
+      </button>
     </div>
   ),
 }));
@@ -143,44 +163,53 @@ describe("CreateJobDialog layout", () => {
     render(<CreateJobDialog open onOpenChange={() => {}} />);
 
     expect(screen.getByRole("button", { name: /import from csv/i })).toBeInTheDocument();
-    expect(screen.getByText(/step 1 of 5/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 1 of 4/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
   });
 
-  it("keeps Skip & Create and moves through steps with continue", () => {
+  it("keeps Skip & Create and skips crew assignment when no schedule days are added", () => {
     render(<CreateJobDialog open onOpenChange={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: /mock select client/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    expect(screen.getByText(/step 2 of 5/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 2 of 4/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /skip & create/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /skip this step/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^cancel$/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    expect(screen.getByText(/step 3 of 5/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 3 of 4/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add schedule date/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^recurring$/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    expect(screen.getByText(/step 4 of 5/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^assign crew$/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    expect(screen.getByText(/step 5 of 5/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /voice estimate intake/i })).toBeInTheDocument();
+    expect(screen.getByText(/step 4 of 4/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^assign crew$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create with voice/i })).toBeInTheDocument();
   });
 
-  it("toggles to voice estimate intake on step 5", () => {
+  it("shows crew assignment when at least one schedule day is added", () => {
+    render(<CreateJobDialog open onOpenChange={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /mock select client/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add schedule date/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    expect(screen.getByText(/step 4 of 5/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^assign crew$/i })).toBeInTheDocument();
+  });
+
+  it("toggles to voice estimate intake on the estimate step", () => {
     render(<CreateJobDialog open onOpenChange={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: /mock select client/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /voice estimate intake/i }));
+    fireEvent.click(screen.getByRole("button", { name: /create with voice/i }));
     expect(screen.getByText(/mock voice intake panel/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /back to manual form/i })).toBeInTheDocument();
   });

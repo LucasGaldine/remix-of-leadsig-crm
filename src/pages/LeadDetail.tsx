@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Briefcase, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy, ExternalLink, ListChecks } from "lucide-react";
+import { EllipsisVertical, Phone, MessageSquare, Calendar, Plus, Hammer, TriangleAlert as AlertTriangle, Check, X, Clock, FileText, PhoneCall, MessageCircle, User, Trash2, Pencil as Edit, DollarSign, ChevronRight, ChevronDown, Info, MapPin, Mail, Navigation, Archive, FileText as FileTextIcon, Trophy, ExternalLink, ListChecks } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ClientShareLink } from "@/components/jobs/ClientShareLink";
@@ -14,7 +14,7 @@ import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -903,6 +903,68 @@ export default function LeadDetail() {
     return "new";
   })();
   const currentStepIndex = Math.max(statusSteps.findIndex((step) => step.key === currentStepKey), 0);
+  const leadStatusProgressBar = (
+    <div
+      className="cursor-pointer"
+      onClick={() => setStatusGuidanceOpen(true)}
+    >
+      <div className="relative">
+        <div className="absolute left-4 right-4 top-3 h-[8px] bg-border" />
+        <div
+          className="absolute left-4 top-3 h-[8px] bg-primary transition-all duration-300"
+          style={{
+            width: `calc((100% - 2rem) * ${currentStepIndex / 3})`,
+          }}
+        />
+        <div className="relative flex items-start justify-between gap-2">
+          {statusSteps.map((step, index) => {
+            const isReached = index <= currentStepIndex;
+            const canClick = index < 3;
+            const IncompleteIcon = step.key === "new"
+              ? User
+              : step.key === "contacted"
+                ? MessageSquare
+                : step.key === "qualified"
+                  ? ListChecks
+                  : Hammer;
+            return (
+              <div key={step.key} className="flex flex-col items-center gap-2 ">
+                <button
+                  type="button"
+                  disabled={!canClick}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (canClick) updateLeadStatus(step.key);
+                  }}
+                  className={cn(
+                    "flex flex-col items-center gap-2",
+                    canClick ? "cursor-pointer" : "cursor-default"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all",
+                      isReached ? "border-primary bg-primary" : "border-border bg-muted",
+                    )}
+                  >
+                    {isReached ? (
+                      <Check className="h-4 w-4 text-primary-foreground" />
+                    ) : (
+                      <IncompleteIcon className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </span>
+
+                  <span className={cn("text-[11px] uppercase tracking-[0.16em] text-muted-foreground text-center", isReached ? "text-primary font-semibold" : "")}>
+                    {step.label}
+                  </span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
   const recentActivity = interactions.slice(0, 3);
   const clientAddress = [lead.address, lead.city].filter(Boolean).join(", ");
 
@@ -1112,7 +1174,7 @@ export default function LeadDetail() {
                   </span>
                 </p>
                 <p className="flex items-start gap-1">
-                  <Briefcase className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <Hammer className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span className="break-words min-w-0 text-foreground">{lead.service_type || "Not set"}</span>
                 </p>
               </div>
@@ -1156,53 +1218,6 @@ export default function LeadDetail() {
           </div>
         </div>
 
-        <div
-          className="cursor-pointer pt-4"
-          onClick={() => setStatusGuidanceOpen(true)}
-        >
-          <div className="relative">
-            <div className="absolute left-[12.5%] right-[12.5%] top-[10px] h-px bg-border" />
-            <div className="relative grid grid-cols-4 gap-2">
-            {statusSteps.map((step, index) => {
-              const isActive = index === currentStepIndex;
-              const isComplete = index < currentStepIndex;
-              const canClick = index < 3;
-              return (
-                <div key={step.key} className="flex flex-col items-center gap-2 ">
-                  <button
-                    type="button"
-                    disabled={!canClick}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (canClick) updateLeadStatus(step.key);
-                    }}
-                    className={cn(
-                      "flex flex-col items-center gap-2",
-                      canClick ? "cursor-pointer" : "cursor-default"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex justify-center items-center h-5 w-5 rounded-full border",
-                        isActive ? "bg-muted border-primary ring-4 ring-[hsl(var(--primary))]" : isComplete ? "bg-primary border-primary/40" : "bg-muted border-border"
-                      )}
-                    > 
-                    {isActive && <Check className="w-0 h-0 text-muted"></Check>}
-                    
-                    
-                    </span>
-                   
-
-                    <span className={cn("text-[11px] uppercase tracking-[0.16em] text-muted-foreground text-center", (isActive || isComplete) ? "text-primary font-semibold": "")}>
-                      {step.label}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-            </div>
-          </div>
-        </div>
       </div>
 
 
@@ -1492,7 +1507,10 @@ export default function LeadDetail() {
             </div>
 
             {activeTab === "details" && (
-              <div className="p-5 md:p-6 space-y-6">
+              <div className="p-5 space-y-6">
+                <div className="pt-2">
+                  {leadStatusProgressBar}
+                </div>
                 {!["job", "paid", "completed"].includes(lead.status) && (
                   <>
                     <div className="space-y-4">
@@ -1540,57 +1558,128 @@ export default function LeadDetail() {
                           <Separator />
                         </div>
                       )}
-                      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                      <p className="mt-2 mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
                         <ListChecks className="h-3.5 w-3.5" />
                         Qualification Checklist
                       </p>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <Label htmlFor="budget-confirmed" className="cursor-pointer text-base md:text-sm text-foreground">Budget Confirmed</Label>
-                          <Switch
+                      <div className="space-y-3">
+                        <div
+                          className={cn(
+                            "flex items-center gap-3 rounded-full border px-3 py-2",
+                            qualification?.budget_confirmed
+                              ? "border-[hsl(var(--status-confirmed))]/30 bg-[hsl(var(--status-confirmed-bg))]"
+                              : "border-border bg-background",
+                          )}
+                        >
+                          <DollarSign
+                            className={cn(
+                              "h-3.5 w-3.5 shrink-0",
+                              qualification?.budget_confirmed ? "text-primary" : "text-muted-foreground",
+                            )}
+                          />
+                          <Label
+                            htmlFor="budget-confirmed"
+                            className={cn(
+                              "flex-1 cursor-pointer text-base md:text-sm transition-colors",
+                              qualification?.budget_confirmed
+                                ? "text-primary line-through"
+                                : "text-foreground",
+                            )}
+                          >
+                            Is their budget confirmed?
+                          </Label>
+                          <Checkbox
                             id="budget-confirmed"
                             checked={qualification?.budget_confirmed ?? false}
-                            onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked })}
+                            onCheckedChange={(checked) => updateQualification({ budget_confirmed: checked === true })}
                           />
                         </div>
 
-                        <div className="flex items-center justify-between gap-4">
-                          <Label htmlFor="service-area" className="cursor-pointer text-base md:text-sm text-foreground">In Service Area</Label>
-                          <Switch
+                        <div
+                          className={cn(
+                            "flex items-center gap-3 rounded-full border px-3 py-2",
+                            qualification?.service_area_fit
+                              ? "border-[hsl(var(--status-confirmed))]/30 bg-[hsl(var(--status-confirmed-bg))]"
+                              : "border-border bg-background",
+                          )}
+                        >
+                          <MapPin
+                            className={cn(
+                              "h-3.5 w-3.5 shrink-0",
+                              qualification?.service_area_fit ? "text-primary" : "text-muted-foreground",
+                            )}
+                          />
+                          <Label
+                            htmlFor="service-area"
+                            className={cn(
+                              "flex-1 cursor-pointer text-base md:text-sm transition-colors",
+                              qualification?.service_area_fit
+                                ? "text-primary line-through"
+                                : "text-foreground",
+                            )}
+                          >
+                            Are they in your service area?
+                          </Label>
+                          <Checkbox
                             id="service-area"
                             checked={qualification?.service_area_fit ?? false}
-                            onCheckedChange={(checked) => updateQualification({ service_area_fit: checked })}
+                            onCheckedChange={(checked) => updateQualification({ service_area_fit: checked === true })}
                           />
                         </div>
 
-                        <div className="flex items-center justify-between gap-4">
-                          <Label htmlFor="decision-maker" className="cursor-pointer text-base md:text-sm text-foreground">Decision Maker</Label>
-                          <Switch
+                        <div
+                          className={cn(
+                            "flex items-center gap-3 rounded-full border px-3 py-2",
+                            qualification?.decision_maker_confirmed
+                              ? "border-[hsl(var(--status-confirmed))]/30 bg-[hsl(var(--status-confirmed-bg))]"
+                              : "border-border bg-background",
+                          )}
+                        >
+                          <User
+                            className={cn(
+                              "h-3.5 w-3.5 shrink-0",
+                              qualification?.decision_maker_confirmed ? "text-primary" : "text-muted-foreground",
+                            )}
+                          />
+                          <Label
+                            htmlFor="decision-maker"
+                            className={cn(
+                              "flex-1 cursor-pointer text-base md:text-sm transition-colors",
+                              qualification?.decision_maker_confirmed
+                                ? "text-primary line-through"
+                                : "text-foreground",
+                            )}
+                          >
+                            Are they the primary decision maker?
+                          </Label>
+                          <Checkbox
                             id="decision-maker"
                             checked={qualification?.decision_maker_confirmed ?? false}
-                            onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked })}
+                            onCheckedChange={(checked) => updateQualification({ decision_maker_confirmed: checked === true })}
                           />
                         </div>
 
-                        <Select
-                          value={qualification?.timeline || "none"}
-                          onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
-                        >
-                          <SelectTrigger>
-                            <div className="flex items-center gap-4 text-base md:text-sm">
-                              <Calendar className="w-4 h-4 text-muted-foreground" />
-                              <SelectValue placeholder="Unsure of timeline" />
-                            </div>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Timeline not confirmed</SelectItem>
-                            {TIMELINE_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="pt-6">
+                          <Select
+                            value={qualification?.timeline || "none"}
+                            onValueChange={(value) => updateQualification({ timeline: value === "none" ? null : value as TimelinePeriod })}
+                          >
+                            <SelectTrigger>
+                              <div className="flex items-center gap-4 text-base md:text-sm">
+                                <Calendar className="w-4 h-4 text-muted-foreground" />
+                                <SelectValue placeholder="Unsure of timeline" />
+                              </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Timeline not confirmed</SelectItem>
+                              {TIMELINE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
                         <div>
                           <Label className="text-base md:text-sm text-foreground">Qualification Notes</Label>
@@ -1631,7 +1720,7 @@ export default function LeadDetail() {
             )}
 
             {activeTab === "notes" && (
-              <div className="p-6 space-y-4">
+              <div className="p-5 space-y-4">
 
                   <MentionInput
                     value={newNote}

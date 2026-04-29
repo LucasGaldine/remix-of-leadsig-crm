@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
@@ -30,6 +30,7 @@ interface JobCostsModalProps {
   jobId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  startInAddMode?: boolean;
 }
 
 interface EditingLineItem {
@@ -70,7 +71,7 @@ const UPDATE_ESTIMATE_TARGET_OPTIONS: { value: EstimateUpdateTarget; label: stri
   { value: "entire_estimate", label: "entire estimate" },
 ];
 
-export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps) => {
+export const JobCostsModal = ({ jobId, open, onOpenChange, startInAddMode = false }: JobCostsModalProps) => {
   const {
     lineItems,
     isLoading,
@@ -104,6 +105,13 @@ export const JobCostsModal = ({ jobId, open, onOpenChange }: JobCostsModalProps)
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const MAX_COLLAPSED_DESCRIPTION_LENGTH = 140;
   const editingLocked = !hasApprovedEstimate;
+
+  useEffect(() => {
+    if (!open) return;
+    if (startInAddMode && !editingLocked) {
+      setIsAdding(true);
+    }
+  }, [open, startInAddMode, editingLocked]);
 
   const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (editingLocked) return;

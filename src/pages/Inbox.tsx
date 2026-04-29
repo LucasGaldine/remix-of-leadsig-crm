@@ -6,7 +6,7 @@ import {
   Inbox as InboxIcon,
   User,
   Magnet,
-  Briefcase,
+  Hammer,
   FileText,
   Receipt,
   CreditCard,
@@ -51,7 +51,7 @@ const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "
 
 const chipConfig: Array<{ value: InboxFilter; label: string; icon: ComponentType<{ className?: string }> }> = [
   { value: "all", label: "All", icon: InboxIcon },
-  { value: "job", label: "Jobs", icon: Briefcase },
+  { value: "job", label: "Jobs", icon: Hammer },
   { value: "lead", label: "Leads", icon: Magnet },
   { value: "client", label: "Contacts", icon: User },
   { value: "estimate", label: "Estimates", icon: FileText },
@@ -62,7 +62,7 @@ const chipConfig: Array<{ value: InboxFilter; label: string; icon: ComponentType
 const rowIconConfig: Record<InboxType, { icon: ComponentType<{ className?: string }>; className: string }> = {
   client: { icon: User, className: "text-sky-600" },
   lead: { icon: Magnet, className: "text-sky-600" },
-  job: { icon: Briefcase, className: "text-emerald-600" },
+  job: { icon: Hammer, className: "text-emerald-600" },
   estimate: { icon: FileText, className: "text-amber-600" },
   invoice: { icon: Receipt, className: "text-indigo-600" },
   payment: { icon: CreditCard, className: "text-violet-600" },

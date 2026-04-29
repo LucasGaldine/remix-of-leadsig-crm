@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Briefcase, UserPlus } from "lucide-react";
+import { Hammer, UserPlus } from "lucide-react";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
 import { AddLeadDialog } from "@/components/leads/AddLeadDialog";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
@@ -26,7 +26,7 @@ export function MainPageQuickActions({ onLeadCreated, onJobCreated, show = true 
             onClick: () => setAddLeadOpen(true),
           },
           {
-            icon: <Briefcase className="h-5 w-5" />,
+            icon: <Hammer className="h-5 w-5" />,
             label: "Add Job",
             onClick: () => setAddJobOpen(true),
             primary: true,

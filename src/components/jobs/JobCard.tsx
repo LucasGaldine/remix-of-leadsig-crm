@@ -1,4 +1,4 @@
-import { Briefcase, ChevronRight, MessageSquare, Navigation, Phone } from "lucide-react";
+import { Hammer, ChevronRight, MessageSquare, Navigation, Phone } from "lucide-react";
 import { format } from "date-fns";
 import { Database } from "@/types/database";
 import { UnifiedActivityCard, type ActivityTone } from "@/components/activity/UnifiedActivityCard";
@@ -153,7 +153,7 @@ export function JobCard({
   return (
     <UnifiedActivityCard
       icon={
-        <Briefcase
+        <Hammer
           className={mobileDashboardEmphasis ? "h-7 w-7 text-emerald-600 md:h-5 md:w-5" : "h-5 w-5 text-emerald-600"}
         />
       }

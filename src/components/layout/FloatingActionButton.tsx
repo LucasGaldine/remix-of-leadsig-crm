@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Wrench, X, UserPlus, FileText, Briefcase, Package, DollarSign, Truck } from "lucide-react";
+import { Plus, Wrench, X, UserPlus, FileText, Hammer, Package, DollarSign, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -328,7 +328,7 @@ export function useContextualFAB() {
     if (path === "/jobs") {
       return [
         {
-          icon: <Briefcase className="h-5 w-5" />,
+          icon: <Hammer className="h-5 w-5" />,
           label: "Create Job",
           onClick: handlers.onAddJob || (() => {}),
           primary: true,

@@ -50,7 +50,10 @@ export function PageHeader({
   }, [onSearchClick]);
 
   const handleBack = () => {
-    if (window.history.state?.idx > 0) {
+    const routerIdx = window.history.state?.idx;
+    const canGoBack = (typeof routerIdx === "number" && routerIdx > 0) || window.history.length > 1;
+
+    if (canGoBack) {
       navigate(-1);
     } else if (backTo) {
       navigate(backTo);

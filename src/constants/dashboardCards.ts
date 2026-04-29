@@ -2,7 +2,7 @@ import {
   Inbox,
   Clock,
   Target,
-  Hammer,
+  HardHat,
   CalendarDays,
   TrendingUp,
   FileWarning,
@@ -51,7 +51,7 @@ export const DASHBOARD_CARDS: DashboardCardConfig[] = [
     id: "active_jobs",
     label: "Active Jobs",
     description: "Jobs currently in progress",
-    icon: Hammer,
+    icon: HardHat,
     navigateTo: "/jobs",
   },
   {

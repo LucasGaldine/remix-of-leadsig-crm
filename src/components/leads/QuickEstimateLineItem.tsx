@@ -26,10 +26,9 @@ export function QuickEstimateLineItem({ leadId, onApply }: QuickEstimateLineItem
   const handleSelect = (serviceType: ServiceType) => {
     const rule = getPricingRule(serviceType);
     const label = SERVICE_LABELS[serviceType];
-    const isFencing = serviceType === "fencing";
-    const unit = isFencing ? "linear ft" : "sq ft";
+    const unit = rule?.unit_type === "linear_ft" ? "linear ft" : "sq ft";
 
-    // Use the combined rate (labor + material) as unit price
+    // Use the stored per-unit rate.
     const laborRate = rule?.base_labor_rate ?? 0;
     const materialRate = rule?.material_rate ?? 0;
     const unitPrice = (laborRate + materialRate).toFixed(2);
@@ -65,7 +64,7 @@ export function QuickEstimateLineItem({ leadId, onApply }: QuickEstimateLineItem
             {(Object.entries(SERVICE_LABELS) as [ServiceType, string][]).map(([key, label]) => {
               const rule = getPricingRule(key);
               const rate = rule ? (rule.base_labor_rate + rule.material_rate).toFixed(2) : "—";
-              const isFencing = key === "fencing";
+              const isLinearFeet = rule?.unit_type === "linear_ft";
               return (
                 <button
                   key={key}
@@ -74,7 +73,7 @@ export function QuickEstimateLineItem({ leadId, onApply }: QuickEstimateLineItem
                 >
                   <div className="text-sm font-semibold text-foreground">{label}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    ${rate} / {isFencing ? "lf" : "sf"}
+                    ${rate} / {isLinearFeet ? "lf" : "sf"}
                   </div>
                 </button>
               );
