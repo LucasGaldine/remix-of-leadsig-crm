@@ -142,8 +142,6 @@ export function buildIntegrationLeadStatus(qualified: boolean, now = new Date().
 }
 
 export function getAutoQualifyWebhookConfig(settings: AccountSettings | null): AutoQualifyWebhookConfig | null {
-  if (!settings?.auto_qualify_integration_leads) return null;
-
   const endpointUrl = settings.auto_qualify_webhook?.endpoint_url?.trim();
   if (!endpointUrl) return null;
 
@@ -167,7 +165,7 @@ export async function getIntegrationAutomationSettings(
   if (error) {
     console.error("integration-lead-automation: failed to load account settings", error);
     return {
-      autoQualifyEnabled: false,
+      autoQualifyEnabled: true,
       webhookConfig: null,
       rejectOutOfRange: false,
       rejectOutOfBudget: false,
@@ -177,7 +175,8 @@ export async function getIntegrationAutomationSettings(
   }
 
   const settings = (data?.settings ?? null) as AccountSettings | null;
-  const autoQualifyEnabled = settings?.auto_qualify_integration_leads === true;
+  // Intent signal filtering is always enabled for inbound integration leads.
+  const autoQualifyEnabled = true;
   const rejectOutOfRange = settings?.auto_qualify_reject_out_of_range === true;
   const rejectOutOfBudget = settings?.auto_qualify_reject_out_of_budget === true;
 
@@ -394,14 +393,6 @@ export async function evaluateIntegrationQualificationDecision(params: {
 }> {
   const { automationSettings, accountId, source, leadData, rawPayload } = params;
 
-  if (!automationSettings.autoQualifyEnabled) {
-    return {
-      qualified: false,
-      reason: "Auto-qualify disabled",
-      metadata: { webhook_used: false },
-    };
-  }
-
   const ruleBasedRejection = await evaluateRuleBasedRejection(automationSettings, leadData);
   if (ruleBasedRejection) return ruleBasedRejection;
 
@@ -417,7 +408,7 @@ export async function evaluateIntegrationQualificationDecision(params: {
 
   return {
     qualified: true,
-    reason: "Auto-qualify enabled",
+    reason: "Qualified by intent signal filtering",
     metadata: { webhook_used: false },
   };
 }

@@ -13,6 +13,10 @@ type PricingRuleRow = {
 type QualificationDecision = {
   qualified: boolean | null;
   reason?: string;
+  address?: string;
+  city?: string;
+  description?: string;
+  budget?: number;
 };
 
 function toTitleCaseService(serviceType: string): string {
@@ -24,11 +28,57 @@ function toTitleCaseService(serviceType: string): string {
 }
 
 function normalizeDecision(record: Record<string, unknown>): QualificationDecision {
+  const address = firstNonEmptyString([
+    record.address,
+    record.lead_address,
+    record.leadAddress,
+    record.street_address,
+    record.streetAddress,
+    findDeepValue(record, ["address", "lead_address", "leadAddress", "street_address", "streetAddress"]),
+  ]);
+  const city = firstNonEmptyString([record.city, findDeepValue(record, ["city"])]);
+  const description = firstNonEmptyString([
+    record.description,
+    record.project_description,
+    record.projectDescription,
+    record.project_details,
+    record.projectDetails,
+    findDeepValue(record, [
+      "description",
+      "project_description",
+      "projectDescription",
+      "project_details",
+      "projectDetails",
+    ]),
+  ]);
+  const budget = firstFiniteNumber([
+    record.budget,
+    record.estimated_value,
+    record.estimatedValue,
+    record.project_budget,
+    record.projectBudget,
+    findDeepValue(record, ["budget", "estimated_value", "estimatedValue", "project_budget", "projectBudget"]),
+  ]);
+
   if (typeof record.qualified === "boolean") {
-    return { qualified: record.qualified, reason: typeof record.reason === "string" ? record.reason : undefined };
+    return {
+      qualified: record.qualified,
+      reason: typeof record.reason === "string" ? record.reason : undefined,
+      ...(address ? { address } : {}),
+      ...(city ? { city } : {}),
+      ...(description ? { description } : {}),
+      ...(budget !== null ? { budget } : {}),
+    };
   }
   if (typeof record.is_qualified === "boolean") {
-    return { qualified: record.is_qualified, reason: typeof record.reason === "string" ? record.reason : undefined };
+    return {
+      qualified: record.is_qualified,
+      reason: typeof record.reason === "string" ? record.reason : undefined,
+      ...(address ? { address } : {}),
+      ...(city ? { city } : {}),
+      ...(description ? { description } : {}),
+      ...(budget !== null ? { budget } : {}),
+    };
   }
 
   const normalizedStatus = typeof record.status === "string"
@@ -48,12 +98,108 @@ function normalizeDecision(record: Record<string, unknown>): QualificationDecisi
   ]);
 
   if (qualifiedStatuses.has(normalizedStatus)) {
-    return { qualified: true, reason: typeof record.reason === "string" ? record.reason : undefined };
+    return {
+      qualified: true,
+      reason: typeof record.reason === "string" ? record.reason : undefined,
+      ...(address ? { address } : {}),
+      ...(city ? { city } : {}),
+      ...(description ? { description } : {}),
+      ...(budget !== null ? { budget } : {}),
+    };
   }
   if (notQualifiedStatuses.has(normalizedStatus)) {
-    return { qualified: false, reason: typeof record.reason === "string" ? record.reason : undefined };
+    return {
+      qualified: false,
+      reason: typeof record.reason === "string" ? record.reason : undefined,
+      ...(address ? { address } : {}),
+      ...(city ? { city } : {}),
+      ...(description ? { description } : {}),
+      ...(budget !== null ? { budget } : {}),
+    };
   }
-  return { qualified: null };
+  return {
+    qualified: null,
+    ...(address ? { address } : {}),
+    ...(city ? { city } : {}),
+    ...(description ? { description } : {}),
+    ...(budget !== null ? { budget } : {}),
+  };
+}
+
+function firstNonEmptyString(values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function parseBudget(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.-]/g, "");
+    if (!cleaned) return null;
+    const parsed = Number.parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function firstFiniteNumber(values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = parseBudget(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      // no-op
+    }
+  }
+  return {};
+}
+
+function findDeepValue(obj: unknown, keys: string[], maxDepth = 6): unknown {
+  const targets = new Set(keys.map((k) => k.toLowerCase()));
+  const visited = new Set<unknown>();
+
+  function walk(value: unknown, depth: number): unknown {
+    if (depth > maxDepth || value === null || value === undefined) return undefined;
+    if (typeof value === "string") {
+      const parsed = parseJsonObject(value);
+      if (Object.keys(parsed).length > 0) return walk(parsed, depth + 1);
+      return undefined;
+    }
+    if (typeof value !== "object") return undefined;
+    if (visited.has(value)) return undefined;
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = walk(item, depth + 1);
+        if (found !== undefined) return found;
+      }
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    for (const [k, v] of Object.entries(record)) {
+      if (targets.has(k.toLowerCase()) && v !== undefined && v !== null) return v;
+    }
+    for (const v of Object.values(record)) {
+      const found = walk(v, depth + 1);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  return walk(obj, 0);
 }
 
 function tryParseDecisionFromText(content: string): QualificationDecision {
@@ -192,17 +338,27 @@ export async function buildLeadAutomationDynamicVars(params: {
 
 export function extractQualificationDecisionFromRetellResponse(responseBody: unknown): QualificationDecision {
   const postChatDecision = extractDecisionFromPostChatData(responseBody);
-  if (postChatDecision.qualified !== null) return postChatDecision;
 
   const messages = Array.isArray((responseBody as Record<string, unknown> | null)?.messages)
     ? (responseBody as { messages: Array<{ content?: unknown }> }).messages
     : [];
 
+  let messageDecision: QualificationDecision = { qualified: null };
   for (const message of messages) {
     if (typeof message?.content !== "string") continue;
     const decision = tryParseDecisionFromText(message.content);
-    if (decision.qualified !== null) return decision;
+    if (decision.qualified !== null) {
+      messageDecision = decision;
+      break;
+    }
   }
 
-  return { qualified: null };
+  return {
+    qualified: postChatDecision.qualified ?? messageDecision.qualified,
+    reason: postChatDecision.reason ?? messageDecision.reason,
+    ...(postChatDecision.address ? { address: postChatDecision.address } : {}),
+    ...(postChatDecision.city ? { city: postChatDecision.city } : {}),
+    ...(postChatDecision.description ? { description: postChatDecision.description } : {}),
+    ...(postChatDecision.budget !== undefined ? { budget: postChatDecision.budget } : {}),
+  };
 }

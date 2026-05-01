@@ -153,7 +153,7 @@ export default function Settings() {
               {
                 icon: <Plug className="h-5 w-5" />,
                 label: "Lead Sources",
-                description: "Connect platforms and manage auto-qualify",
+                description: "Connect platforms and manage intent filtering",
                 onClick: () => navigate("/settings/lead-sources"),
                 requiredPlan: "basic",
                 searchTerms: ["lead sources", "integrations", "facebook", "meta", "api", "webhook", "connect", "platforms", "auto qualify", "integration leads"],

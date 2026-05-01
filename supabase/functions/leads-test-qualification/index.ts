@@ -120,11 +120,7 @@ Deno.serve(async (req: Request) => {
         lead: leadData,
       },
     });
-    const status = decision.reason === "Auto-qualify disabled"
-      ? "neutral"
-      : decision.qualified
-        ? "qualified"
-        : "rejected";
+    const status = decision.qualified ? "qualified" : "rejected";
 
     return new Response(
       JSON.stringify({

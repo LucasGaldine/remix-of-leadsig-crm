@@ -6,15 +6,14 @@ import {
   getAutoQualifyWebhookConfig,
 } from "../../supabase/functions/_shared/integration-lead-automation";
 
-describe("integration auto-qualify webhook config", () => {
+describe("integration intent filter webhook config", () => {
   it("returns null when webhook url is missing", () => {
     const config = getAutoQualifyWebhookConfig({ auto_qualify_integration_leads: true });
     expect(config).toBeNull();
   });
 
-  it("returns normalized config when enabled with endpoint", () => {
+  it("returns normalized config when endpoint exists", () => {
     const config = getAutoQualifyWebhookConfig({
-      auto_qualify_integration_leads: true,
       auto_qualify_webhook: {
         endpoint_url: "  https://hooks.example.com/qualify  ",
         auth_header_name: "  x-api-key ",

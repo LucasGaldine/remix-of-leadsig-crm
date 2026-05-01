@@ -44,6 +44,34 @@ function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; a
   };
 }
 
+function shouldUseDefaultNumber(rawSettings: unknown): boolean {
+  if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return true;
+  const settings = rawSettings as Record<string, unknown>;
+  const automation = settings.job_message_automation;
+  if (!automation || typeof automation !== "object" || Array.isArray(automation)) return true;
+
+  const useDefault = (automation as Record<string, unknown>).use_default_number;
+  return typeof useDefault === "boolean" ? useDefault : true;
+}
+
+function getFirstEnvValue(keys: string[]): string {
+  for (const key of keys) {
+    const value = Deno.env.get(key)?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function getDefaultTwilioConfig(): { accountSid: string; authToken: string; fromNumber: string } | null {
+  const accountSid = getFirstEnvValue(["TWILIO_ACCOUNT_SID", "LEADSIG_TWILIO_ACCOUNT_SID", "DEFAULT_TWILIO_ACCOUNT_SID"]);
+  const authToken = getFirstEnvValue(["TWILIO_AUTH_TOKEN", "LEADSIG_TWILIO_AUTH_TOKEN", "DEFAULT_TWILIO_AUTH_TOKEN"]);
+  const fromNumber = normalizePhone(getFirstEnvValue(["TWILIO_FROM_NUMBER", "LEADSIG_TWILIO_FROM_NUMBER", "DEFAULT_TWILIO_FROM_NUMBER"]));
+
+  if (!accountSid || !authToken || !fromNumber) return null;
+
+  return { accountSid, authToken, fromNumber };
+}
+
 function isLeadMessageAutomationEnabled(rawSettings: unknown): boolean {
   if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return false;
 
@@ -336,10 +364,13 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const useDefaultNumber = shouldUseDefaultNumber(account?.settings);
     const connectedTwilio = getConnectedTwilioConfig(account?.settings);
-    if (!connectedTwilio) {
+    const defaultTwilio = getDefaultTwilioConfig();
+    const twilioConfig = useDefaultNumber ? (defaultTwilio ?? connectedTwilio) : connectedTwilio;
+    if (!twilioConfig) {
       return new Response(JSON.stringify({
-        error: "Connected Twilio credentials are required for lead message automation.",
+        error: "Twilio credentials are required for lead message automation.",
         debug: { stage: "twilio_credentials_check" },
       }), {
         status: 422,
@@ -388,7 +419,7 @@ Deno.serve(async (req: Request) => {
       leadId: matchedLead.id,
       accountId,
       to: toPhone,
-      from: connectedTwilio.fromNumber,
+      from: twilioConfig.fromNumber,
       accountSettings: account?.settings,
     });
 
@@ -437,9 +468,9 @@ Deno.serve(async (req: Request) => {
     const twilioResult = await sendTwilioSms({
       to: toPhone,
       body: completionResult.message,
-      accountSid: connectedTwilio.accountSid,
-      authToken: connectedTwilio.authToken,
-      fromNumber: connectedTwilio.fromNumber,
+      accountSid: twilioConfig.accountSid,
+      authToken: twilioConfig.authToken,
+      fromNumber: twilioConfig.fromNumber,
     });
 
     if (!twilioResult.success) {
@@ -452,7 +483,7 @@ Deno.serve(async (req: Request) => {
           provider_status: twilioResult.status ?? null,
           provider_response: twilioResult.responseBody ?? null,
           to_number: toPhone,
-          from_number: connectedTwilio.fromNumber,
+          from_number: twilioConfig.fromNumber,
           chat_id: chatResult.chatId,
         },
       }), {
@@ -471,7 +502,7 @@ Deno.serve(async (req: Request) => {
         source: "lead_automation_test",
         retell_chat_id: chatResult.chatId,
         twilio_sid: twilioResult.sid ?? null,
-        from_number: connectedTwilio.fromNumber,
+        from_number: twilioConfig.fromNumber,
         to_number: toPhone,
       },
     });

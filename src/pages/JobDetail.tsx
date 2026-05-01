@@ -1116,10 +1116,19 @@ export default function JobDetail() {
   };
 
   const openEditDialog = () => {
+    const rawJobAddress = job?.address?.trim() || "";
+    const customerCity = job?.customer?.city?.trim() || "";
+    const normalizedAddress = rawJobAddress.toLowerCase();
+    const normalizedCity = customerCity.toLowerCase();
+    const addressWithCity =
+      rawJobAddress && customerCity && !normalizedAddress.includes(normalizedCity)
+        ? `${rawJobAddress}, ${customerCity}`
+        : rawJobAddress;
+
     setEditForm({
       name: job?.name || "",
       service_type: job?.service_type || "",
-      address: job?.address || "",
+      address: addressWithCity,
       description: job?.description || "",
       customer_name: job?.customer?.name || "",
       customer_phone: job?.customer?.phone || "",
@@ -2346,15 +2355,24 @@ export default function JobDetail() {
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-customer-email">Customer Email</Label>
+              <Input
+                id="edit-customer-email"
+                type="email"
+                value={editForm.customer_email}
+                onChange={(e) => setEditForm({ ...editForm, customer_email: e.target.value })}
+                placeholder="customer@example.com"
+              />
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="edit-customer-email">Customer Email</Label>
+                <Label htmlFor="edit-customer-address">Customer Address</Label>
                 <Input
-                  id="edit-customer-email"
-                  type="email"
-                  value={editForm.customer_email}
-                  onChange={(e) => setEditForm({ ...editForm, customer_email: e.target.value })}
-                  placeholder="customer@example.com"
+                  id="edit-customer-address"
+                  value={editForm.customer_address}
+                  onChange={(e) => setEditForm({ ...editForm, customer_address: e.target.value })}
+                  placeholder="123 Main St"
                 />
               </div>
               <div className="space-y-2">
@@ -2366,15 +2384,6 @@ export default function JobDetail() {
                   placeholder="Austin"
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-customer-address">Customer Address</Label>
-              <Input
-                id="edit-customer-address"
-                value={editForm.customer_address}
-                onChange={(e) => setEditForm({ ...editForm, customer_address: e.target.value })}
-                placeholder="123 Main St"
-              />
             </div>
             <Separator />
             <div className="space-y-2">

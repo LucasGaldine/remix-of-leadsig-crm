@@ -276,7 +276,6 @@ async function processLeadInBackground(
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   const automationSettings = await getIntegrationAutomationSettings(supabase, accountId);
-  const autoQualify = automationSettings.autoQualifyEnabled;
 
   const { source, parsed: directParsed } = detectSourceAndParse(rawPayload);
   console.log(`leads-inbound: Source detected as '${source}', direct parse result:`, directParsed ? "success" : "null");
@@ -343,6 +342,9 @@ async function processLeadInBackground(
   const leadStatus = forcePendingUntilConversationComplete
     ? buildIntegrationLeadStatus(false)
     : buildIntegrationLeadStatus(qualificationDecision.qualified);
+  const qualifiedViaBasicFiltering = !forcePendingUntilConversationComplete &&
+    qualificationDecision.qualified === true &&
+    qualificationDecision.metadata?.webhook_used === false;
   const { data: lead, error: leadError } = await supabase
     .from("leads")
     .insert({
@@ -357,6 +359,7 @@ async function processLeadInBackground(
       source,
       external_payload: rawPayload,
       notes: leadData.notes || null,
+      description: qualifiedViaBasicFiltering ? "Qualified via basic filtering" : null,
       ...leadStatus,
       created_by: userId,
       account_id: accountId,
@@ -376,11 +379,9 @@ async function processLeadInBackground(
       direction: "na",
       summary: forcePendingUntilConversationComplete
         ? `Lead created via ${source} and added to pending review`
-        : autoQualify
-        ? qualificationDecision.qualified
+        : qualificationDecision.qualified
           ? `Lead created via ${source} and auto-qualified`
-          : `Lead created via ${source} and marked not qualified`
-        : `Lead created via ${source} (parsed directly)`,
+          : `Lead created via ${source} and marked not qualified`,
       metadata: {
         source,
         pending_until_conversation_complete: forcePendingUntilConversationComplete,

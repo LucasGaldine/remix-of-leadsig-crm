@@ -110,7 +110,6 @@ async function processTestLeadInBackground(
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   const testPayload = buildTestPayload(platform);
   const automationSettings = await getIntegrationAutomationSettings(supabase, accountId);
-  const autoQualify = automationSettings.autoQualifyEnabled;
 
   let leadName = `Test Lead - ${platformNames[platform] || platform}`;
   let leadEmail: string | null = `test.${platform}@leadsig.test`;
@@ -202,11 +201,9 @@ async function processTestLeadInBackground(
         lead_id: lead.id,
         type: "system",
         direction: "na",
-        summary: autoQualify
-          ? qualificationDecision.qualified
-            ? `Test lead auto-qualified for ${platformNames[platform] || platform} connection verification`
-            : `Test lead marked not qualified for ${platformNames[platform] || platform} connection verification`
-          : `Test lead created for ${platformNames[platform] || platform} connection verification`,
+        summary: qualificationDecision.qualified
+          ? `Test lead auto-qualified for ${platformNames[platform] || platform} connection verification`
+          : `Test lead marked not qualified for ${platformNames[platform] || platform} connection verification`,
         metadata: {
           test: true,
           platform,

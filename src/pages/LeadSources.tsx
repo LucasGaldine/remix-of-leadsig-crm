@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, CheckCircle2, Copy, ChevronDown, ChevronUp, FlaskConical, Loader2, MinusCircle, RefreshCw, Mail, Settings2, Webhook, ExternalLink, Key, XCircle } from "lucide-react";
+import { Check, CheckCircle2, Copy, ChevronDown, ChevronUp, FlaskConical, Loader2, RefreshCw, Mail, Settings2, Webhook, ExternalLink, Key, XCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -191,7 +191,6 @@ export default function LeadSources() {
   });
 
   const [successOpen, setSuccessOpen] = useState(false);
-  const [autoQualifyIntegrationLeads, setAutoQualifyIntegrationLeads] = useState(false);
   const [autoQualifyRejectOutOfRange, setAutoQualifyRejectOutOfRange] = useState(false);
   const [autoQualifyRejectOutOfBudget, setAutoQualifyRejectOutOfBudget] = useState(false);
   const [enableCustomQualification, setEnableCustomQualification] = useState(false);
@@ -213,7 +212,7 @@ export default function LeadSources() {
     notes: "",
   });
   const [testQualificationResult, setTestQualificationResult] = useState<{
-    status: "rejected" | "qualified" | "neutral";
+    status: "rejected" | "qualified";
     reason: string;
   } | null>(null);
 
@@ -229,7 +228,6 @@ export default function LeadSources() {
       || typeof autoQualifyWebhook?.auth_header_value === "string" && autoQualifyWebhook.auth_header_value.length > 0,
     );
 
-    setAutoQualifyIntegrationLeads(settings?.auto_qualify_integration_leads === true);
     setAutoQualifyRejectOutOfRange(settings?.auto_qualify_reject_out_of_range === true);
     setAutoQualifyRejectOutOfBudget(settings?.auto_qualify_reject_out_of_budget === true);
     setEnableCustomQualification(hasCustomQualificationConfig);
@@ -787,7 +785,7 @@ export default function LeadSources() {
 
     try {
       await updateSettingsAsync({
-        auto_qualify_integration_leads: autoQualifyIntegrationLeads,
+        auto_qualify_integration_leads: true,
         auto_qualify_reject_out_of_range: autoQualifyRejectOutOfRange,
         auto_qualify_reject_out_of_budget: autoQualifyRejectOutOfBudget,
         auto_qualify_webhook: {
@@ -797,9 +795,9 @@ export default function LeadSources() {
         },
       });
       setAutoQualifyDirty(false);
-      toast.success("Auto qualify settings saved");
+      toast.success("Intent signal filtering settings saved");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save auto qualify settings");
+      toast.error(error instanceof Error ? error.message : "Failed to save intent signal filtering settings");
     }
   };
 
@@ -829,15 +827,11 @@ export default function LeadSources() {
       }
 
       const responseStatus = typeof data?.status === "string" ? data.status : "";
-      const status: "rejected" | "qualified" | "neutral" =
-        responseStatus === "neutral"
-          ? "neutral"
-          : responseStatus === "qualified"
+      const status: "rejected" | "qualified" =
+        responseStatus === "qualified"
             ? "qualified"
             : responseStatus === "rejected"
               ? "rejected"
-              : typeof data?.reason === "string" && data.reason.toLowerCase().includes("auto-qualify disabled")
-                ? "neutral"
                 : data?.rejected
                   ? "rejected"
                   : "qualified";
@@ -856,7 +850,7 @@ export default function LeadSources() {
             ? "Rejected by qualification rules"
             : status === "qualified"
               ? "Qualified by automation rules"
-              : "Auto-qualify is currently disabled",
+              : "Rejected by qualification rules",
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to run test");
@@ -874,7 +868,7 @@ export default function LeadSources() {
     <PlanGate
       requiredPlan="basic"
       featureName="Lead Sources"
-      featureDescription="Connect platforms like Facebook, Google, Angi, and more to automatically capture and qualify leads in one place."
+      featureDescription="Connect platforms like Facebook, Google, Angi, and more to automatically capture and filter leads in one place."
       backTo="/settings"
     >
     <div className="min-h-screen bg-surface-sunken pb-24">
@@ -891,28 +885,14 @@ export default function LeadSources() {
             <CardTitle className="flex items-center justify-between gap-4">
               <span className="flex items-center gap-2">
                 <Settings2 className="h-5 w-5" />
-                Auto Qualify
+                Intent Signal Filtering
               </span>
-              <Switch
-                id="auto-qualify-integration-leads"
-                aria-label="Auto Qualify"
-                checked={autoQualifyIntegrationLeads}
-                onCheckedChange={(checked) => {
-                  setAutoQualifyIntegrationLeads(checked);
-                  if (checked && !autoQualifyRejectOutOfRange && !autoQualifyRejectOutOfBudget) {
-                    setAutoQualifyRejectOutOfRange(true);
-                    setAutoQualifyRejectOutOfBudget(true);
-                  }
-                  setAutoQualifyDirty(true);
-                }}
-              />
             </CardTitle>
             <CardDescription>
-              When enabled, new leads from integrations are inserted as approved and qualified.
+              All incoming integration leads are evaluated by intent signal filtering before qualification.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            {autoQualifyIntegrationLeads && (
               <div className="space-y-0">
                 <div>
                   <Button type="button" variant="outline" className="w-full justify-center gap-2 rounded-full" onClick={() => setTestQualificationOpen(true)}>
@@ -961,7 +941,7 @@ export default function LeadSources() {
                   {enableCustomQualification && (
                     <div className="mt-4 space-y-4 border-t pt-4">
                       <div className="space-y-2">
-                        <Label htmlFor="auto-qualify-endpoint-url">Auto-qualify endpoint URL</Label>
+                        <Label htmlFor="auto-qualify-endpoint-url">Intent filter endpoint URL</Label>
                         <Input
                           id="auto-qualify-endpoint-url"
                           type="url"
@@ -978,7 +958,7 @@ export default function LeadSources() {
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
-                          <Label htmlFor="auto-qualify-auth-header-name">Auto-qualify auth header name</Label>
+                            <Label htmlFor="auto-qualify-auth-header-name">Intent filter auth header name</Label>
                           <Input
                             id="auto-qualify-auth-header-name"
                             value={autoQualifyAuthHeaderName}
@@ -990,7 +970,7 @@ export default function LeadSources() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="auto-qualify-auth-header-value">Auto-qualify auth header value</Label>
+                          <Label htmlFor="auto-qualify-auth-header-value">Intent filter auth header value</Label>
                           <Input
                             id="auto-qualify-auth-header-value"
                             value={autoQualifyAuthHeaderValue}
@@ -1006,11 +986,10 @@ export default function LeadSources() {
                   )}
                 </div>
               </div>
-            )}
 
             <div className="pt-4">
               <Button type="button" className="w-full" onClick={handleSaveAutoQualify} disabled={!autoQualifyDirty || isSavingSettings}>
-                {isSavingSettings ? "Saving..." : "Save Auto Qualify Settings"}
+                {isSavingSettings ? "Saving..." : "Save Filtering Settings"}
               </Button>
             </div>
           </CardContent>
@@ -1174,7 +1153,7 @@ export default function LeadSources() {
           <DialogHeader>
             <DialogTitle>Test Lead Qualification</DialogTitle>
             <DialogDescription>
-              Send a test lead through auto-qualify rules. This does not create a lead in your database.
+              Send a test lead through intent signal filtering rules. This does not create a lead in your database.
             </DialogDescription>
           </DialogHeader>
 
@@ -1252,7 +1231,7 @@ export default function LeadSources() {
               (() => {
                 const showReason = !(
                   testQualificationResult.status === "qualified"
-                  && testQualificationResult.reason.trim().toLowerCase() === "auto-qualify enabled"
+                  && testQualificationResult.reason.trim().toLowerCase() === "qualified by intent signal filtering"
                 );
                 return (
                   <div
@@ -1269,23 +1248,17 @@ export default function LeadSources() {
                         <XCircle className="h-4 w-4" />
                       ) : testQualificationResult.status === "qualified" ? (
                         <CheckCircle2 className="h-4 w-4" />
-                      ) : (
-                        <MinusCircle className="h-4 w-4" />
-                      )}
+                      ) : null}
                       {testQualificationResult.status === "rejected"
                         ? "Rejected"
-                        : testQualificationResult.status === "qualified"
-                          ? "Qualified"
-                          : "Neutral"}
+                        : "Qualified"}
                     </p>
                     {showReason && (
                       <p
                         className={
                           testQualificationResult.status === "rejected"
                             ? "text-red-600/90"
-                            : testQualificationResult.status === "qualified"
-                              ? "text-green-600/90"
-                              : "text-slate-600/90"
+                            : "text-green-600/90"
                         }
                       >
                         {testQualificationResult.reason}

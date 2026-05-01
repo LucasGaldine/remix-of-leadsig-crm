@@ -36,6 +36,26 @@ function formatPhone(raw: string): string {
   return raw;
 }
 
+function formatPhoneInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (!digits) return "";
+
+  const hasCountryCode = digits.length > 10 && digits[0] === "1";
+  const local = hasCountryCode ? digits.slice(1) : digits;
+
+  if (local.length <= 3) return hasCountryCode ? `+1 (${local}` : `(${local}`;
+  if (local.length <= 6) return hasCountryCode ? `+1 (${local.slice(0, 3)}) ${local.slice(3)}` : `(${local.slice(0, 3)}) ${local.slice(3)}`;
+  return hasCountryCode
+    ? `+1 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6, 10)}`
+    : `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6, 10)}`;
+}
+
+function toPhoneDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+const EMAIL_PATTERN = "^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$";
+
 function unitShortLabel(unitType: string) {
   const opt = UNIT_OPTIONS.find((u) => u.value === unitType);
   if (!opt) return unitType;
@@ -227,7 +247,7 @@ export function LandingPageView({
           account_id: accountId,
           name: formName,
           email: formEmail,
-          phone: formPhone,
+          phone: toPhoneDigits(formPhone),
           sms_consent: formSmsConsent,
         },
       });
@@ -761,7 +781,7 @@ export function LandingPageView({
                         type="tel"
                         required
                         value={formPhone}
-                        onChange={(e) => setFormPhone(e.target.value)}
+                        onChange={(e) => setFormPhone(formatPhoneInput(e.target.value))}
                         placeholder="(555) 000-0000"
                         className={inputClass}
                         style={{ "--tw-ring-color": themeColor } as React.CSSProperties}
@@ -778,6 +798,7 @@ export function LandingPageView({
                       required
                       value={formEmail}
                       onChange={(e) => setFormEmail(e.target.value)}
+                      pattern={EMAIL_PATTERN}
                       placeholder="jane@example.com"
                       className={inputClass}
                       style={{ "--tw-ring-color": themeColor } as React.CSSProperties}

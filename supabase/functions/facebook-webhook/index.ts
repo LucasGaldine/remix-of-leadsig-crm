@@ -177,7 +177,6 @@ async function processLeadgenEvent(
     let parsingMethod = "manual";
     let aiTimeoutFallback = false;
     const automationSettings = await getIntegrationAutomationSettings(supabase, connection.account_id);
-    const autoQualify = automationSettings.autoQualifyEnabled;
 
     try {
       const aiParsed = await parseLeadWithAI(leadData);
@@ -265,11 +264,9 @@ async function processLeadgenEvent(
         lead_id: lead.id,
         type: "system",
         direction: "na",
-        summary: autoQualify
-          ? qualificationDecision.qualified
-            ? "Lead received from Facebook Lead Ads and auto-qualified"
-            : "Lead received from Facebook Lead Ads and marked not qualified"
-          : "Lead received from Facebook Lead Ads",
+        summary: qualificationDecision.qualified
+          ? "Lead received from Facebook Lead Ads and auto-qualified"
+          : "Lead received from Facebook Lead Ads and marked not qualified",
         metadata: {
           source: "facebook",
           leadgen_id,

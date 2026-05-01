@@ -64,6 +64,22 @@ function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; a
   };
 }
 
+function getFirstEnvValue(keys: string[]): string {
+  for (const key of keys) {
+    const value = Deno.env.get(key)?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function getDefaultTwilioConfig(): { accountSid: string; authToken: string; fromNumber: string } | null {
+  const accountSid = getFirstEnvValue(["TWILIO_ACCOUNT_SID", "LEADSIG_TWILIO_ACCOUNT_SID", "DEFAULT_TWILIO_ACCOUNT_SID"]);
+  const authToken = getFirstEnvValue(["TWILIO_AUTH_TOKEN", "LEADSIG_TWILIO_AUTH_TOKEN", "DEFAULT_TWILIO_AUTH_TOKEN"]);
+  const fromNumber = normalizePhone(getFirstEnvValue(["TWILIO_FROM_NUMBER", "LEADSIG_TWILIO_FROM_NUMBER", "DEFAULT_TWILIO_FROM_NUMBER"]));
+  if (!accountSid || !authToken || !fromNumber) return null;
+  return { accountSid, authToken, fromNumber };
+}
+
 async function createRetellChat(params: {
   supabase: ReturnType<typeof createClient>;
   apiKey: string;
@@ -291,10 +307,40 @@ Deno.serve(async (req: Request) => {
       return emptyTwiml(200);
     }
 
-    const matchingAccount = accounts.find((account) => {
+    let matchingAccount = accounts.find((account) => {
       const twilio = getConnectedTwilioConfig(account.settings);
       return twilio?.fromNumber === to;
     });
+
+    let matchedLeadIdFromInteraction: string | null = null;
+    const defaultTwilio = getDefaultTwilioConfig();
+
+    if (!matchingAccount && defaultTwilio?.fromNumber === to) {
+      const { data: priorInteraction } = await supabase
+        .from("interactions")
+        .select("lead_id")
+        .eq("type", "text")
+        .eq("direction", "outbound")
+        .eq("summary", "Lead automation outbound message")
+        .eq("metadata->>source", "lead_automation")
+        .eq("metadata->>from_number", to)
+        .eq("metadata->>to_number", from)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (priorInteraction?.lead_id) {
+        const { data: leadRow } = await supabase
+          .from("leads")
+          .select("id, account_id")
+          .eq("id", priorInteraction.lead_id)
+          .maybeSingle();
+        if (leadRow?.account_id) {
+          matchingAccount = accounts.find((account) => account.id === leadRow.account_id) ?? null;
+          matchedLeadIdFromInteraction = leadRow.id;
+        }
+      }
+    }
 
     if (!matchingAccount) {
       console.warn("lead-automation-inbound-sms: no account found for destination number", { to });
@@ -305,7 +351,8 @@ Deno.serve(async (req: Request) => {
       return emptyTwiml(200);
     }
 
-    const twilioConfig = getConnectedTwilioConfig(matchingAccount.settings);
+    const connectedTwilio = getConnectedTwilioConfig(matchingAccount.settings);
+    const twilioConfig = connectedTwilio ?? (defaultTwilio?.fromNumber === to ? defaultTwilio : null);
     if (!twilioConfig) {
       console.warn("lead-automation-inbound-sms: missing twilio config", { account_id: matchingAccount.id });
       return emptyTwiml(200);
@@ -324,7 +371,9 @@ Deno.serve(async (req: Request) => {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    const matchedLead = (leads ?? []).find((lead) => normalizePhone((lead.phone || "").trim()) === from);
+    const matchedLead = matchedLeadIdFromInteraction
+      ? (leads ?? []).find((lead) => lead.id === matchedLeadIdFromInteraction)
+      : (leads ?? []).find((lead) => normalizePhone((lead.phone || "").trim()) === from);
     if (!matchedLead?.id) {
       console.warn("lead-automation-inbound-sms: no lead match for sender", {
         account_id: matchingAccount.id,
@@ -411,7 +460,19 @@ Deno.serve(async (req: Request) => {
     }
 
     const qualificationDecision = extractQualificationDecisionFromRetellResponse(completionResult.responseBody);
-    if (qualificationDecision.qualified === true) {
+    const hasAddress = Boolean(qualificationDecision.address && qualificationDecision.address.trim());
+    const hasBudget = typeof qualificationDecision.budget === "number" && Number.isFinite(qualificationDecision.budget);
+    const shouldRejectForMissingRequiredFields =
+      qualificationDecision.qualified === true && (!hasAddress || !hasBudget);
+
+    const effectiveQualified = shouldRejectForMissingRequiredFields
+      ? false
+      : qualificationDecision.qualified;
+    const effectiveReason = shouldRejectForMissingRequiredFields
+      ? `Not qualified: missing required ${!hasAddress && !hasBudget ? "address and budget" : !hasAddress ? "address" : "budget"} after conversation`
+      : qualificationDecision.reason;
+
+    if (effectiveQualified === true) {
       await supabase
         .from("leads")
         .update({
@@ -420,11 +481,15 @@ Deno.serve(async (req: Request) => {
           approved_at: new Date().toISOString(),
           rejected_at: null,
           approval_reason: null,
+          ...(qualificationDecision.address ? { address: qualificationDecision.address } : {}),
+          ...(qualificationDecision.city ? { city: qualificationDecision.city } : {}),
+          ...(qualificationDecision.description ? { description: qualificationDecision.description } : {}),
+          ...(hasBudget ? { estimated_value: qualificationDecision.budget } : {}),
         })
         .eq("approval_status", "pending")
         .eq("id", matchedLead.id)
         .eq("account_id", matchingAccount.id);
-    } else if (qualificationDecision.qualified === false) {
+    } else if (effectiveQualified === false) {
       await supabase
         .from("leads")
         .update({
@@ -432,6 +497,10 @@ Deno.serve(async (req: Request) => {
           approval_reason: "other",
           rejected_at: new Date().toISOString(),
           approved_at: null,
+          ...(qualificationDecision.address ? { address: qualificationDecision.address } : {}),
+          ...(qualificationDecision.city ? { city: qualificationDecision.city } : {}),
+          ...(qualificationDecision.description ? { description: qualificationDecision.description } : {}),
+          ...(hasBudget ? { estimated_value: qualificationDecision.budget } : {}),
         })
         .eq("approval_status", "pending")
         .eq("id", matchedLead.id)
@@ -472,23 +541,23 @@ Deno.serve(async (req: Request) => {
         twilio_sid: sent.sid ?? null,
         from_number: twilioConfig.fromNumber,
         to_number: from,
-        qualification_decision: qualificationDecision.qualified,
-        qualification_reason: qualificationDecision.reason ?? null,
+        qualification_decision: effectiveQualified,
+        qualification_reason: effectiveReason ?? null,
       },
     });
 
-    if (qualificationDecision.qualified !== null) {
+    if (effectiveQualified !== null) {
       await supabase.from("interactions").insert({
         lead_id: matchedLead.id,
         type: "text",
         direction: "outbound",
-        summary: qualificationDecision.qualified ? "Lead automation marked qualified" : "Lead automation marked not qualified",
-        body: qualificationDecision.reason ?? "Qualification decision recorded from agent response.",
+        summary: effectiveQualified ? "Lead automation marked qualified" : "Lead automation marked not qualified",
+        body: effectiveReason ?? "Qualification decision recorded from agent response.",
         metadata: {
           source: "lead_automation",
           retell_chat_id: retellChatId,
-          qualified: qualificationDecision.qualified,
-          reason: qualificationDecision.reason ?? null,
+          qualified: effectiveQualified,
+          reason: effectiveReason ?? null,
         },
       });
     }

@@ -211,8 +211,8 @@ export default function LeadDetail() {
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [headerInfoOpen, setHeaderInfoOpen] = useState(false);
 
-  // Qualification state
-  const [qualNotes, setQualNotes] = useState("");
+  // Lead description state
+  const [leadDescription, setLeadDescription] = useState("");
   const [savingQual, setSavingQual] = useState(false);
 
   // Disqualify dialog
@@ -292,6 +292,7 @@ export default function LeadDetail() {
         city: leadData.customer?.city || leadData.city,
         customer: undefined,
       });
+      setLeadDescription(leadData.notes || "");
     } catch (err) {
       setNotFound(true);
     } finally {
@@ -320,7 +321,6 @@ export default function LeadDetail() {
 
     if (data) {
       setQualification(data as Qualification);
-      setQualNotes(data.notes || "");
     }
   };
 
@@ -556,6 +556,28 @@ export default function LeadDetail() {
       toast.error("An error occurred");
       setSavingQual(false);
     }
+  };
+
+  const updateLeadDescription = async () => {
+    if (!lead) return;
+
+    const trimmed = leadDescription.trim();
+    const nextDescription = trimmed || null;
+    const currentDescription = lead.notes?.trim() || null;
+    if (nextDescription === currentDescription) return;
+
+    const { error } = await supabase
+      .from("leads")
+      .update({ notes: nextDescription })
+      .eq("id", lead.id);
+
+    if (error) {
+      toast.error("Failed to update description");
+      setLeadDescription(lead.notes || "");
+      return;
+    }
+
+    setLead({ ...lead, notes: nextDescription });
   };
 
   const markQualified = async () => {
@@ -1703,12 +1725,12 @@ export default function LeadDetail() {
                         </div>
 
                         <div>
-                          <Label className="text-base md:text-sm text-foreground">Qualification Notes</Label>
+                          <Label className="text-base md:text-sm text-foreground">Project Description</Label>
                           <SpeechToTextTextarea
-                            value={qualNotes}
-                            onValueChange={setQualNotes}
-                            onBlur={() => updateQualification({ notes: qualNotes })}
-                            placeholder="Add qualification notes..."
+                            value={leadDescription}
+                            onValueChange={setLeadDescription}
+                            onBlur={updateLeadDescription}
+                            placeholder="Add description..."
                             className="mt-1.5 text-base md:text-sm"
                             rows={2}
                           />

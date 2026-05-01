@@ -44,6 +44,34 @@ function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; a
   };
 }
 
+function shouldUseDefaultNumber(rawSettings: unknown): boolean {
+  if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return true;
+  const settings = rawSettings as Record<string, unknown>;
+  const automation = settings.job_message_automation;
+  if (!automation || typeof automation !== "object" || Array.isArray(automation)) return true;
+
+  const useDefault = (automation as Record<string, unknown>).use_default_number;
+  return typeof useDefault === "boolean" ? useDefault : true;
+}
+
+function getFirstEnvValue(keys: string[]): string {
+  for (const key of keys) {
+    const value = Deno.env.get(key)?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function getDefaultTwilioConfig(): { accountSid: string; authToken: string; fromNumber: string } | null {
+  const accountSid = getFirstEnvValue(["TWILIO_ACCOUNT_SID", "LEADSIG_TWILIO_ACCOUNT_SID", "DEFAULT_TWILIO_ACCOUNT_SID"]);
+  const authToken = getFirstEnvValue(["TWILIO_AUTH_TOKEN", "LEADSIG_TWILIO_AUTH_TOKEN", "DEFAULT_TWILIO_AUTH_TOKEN"]);
+  const fromNumber = normalizePhone(getFirstEnvValue(["TWILIO_FROM_NUMBER", "LEADSIG_TWILIO_FROM_NUMBER", "DEFAULT_TWILIO_FROM_NUMBER"]));
+
+  if (!accountSid || !authToken || !fromNumber) return null;
+
+  return { accountSid, authToken, fromNumber };
+}
+
 function isLeadMessageAutomationEnabled(rawSettings: unknown): boolean {
   if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return false;
   const settings = rawSettings as Record<string, unknown>;
@@ -339,10 +367,39 @@ Deno.serve(async (req) => {
 
     const shouldSendLeadAutoText = account.pricing_plan !== "free" && isLeadMessageAutomationEnabled(account.settings);
     const toPhone = normalizePhone(phone?.trim() || "");
+    const useDefaultNumber = shouldUseDefaultNumber(account.settings);
     const connectedTwilio = getConnectedTwilioConfig(account.settings);
+    const defaultTwilio = getDefaultTwilioConfig();
+    const twilioConfig = useDefaultNumber ? (defaultTwilio ?? connectedTwilio) : connectedTwilio;
     const retellApiKey = Deno.env.get("RETELL_API_KEY")?.trim() || "";
 
-    if (shouldSendLeadAutoText && toPhone && connectedTwilio && createdLead?.id) {
+    const automationDebug: Record<string, unknown> = {
+      lead_automation_enabled: shouldSendLeadAutoText,
+      has_to_phone: Boolean(toPhone),
+      use_default_number: useDefaultNumber,
+      has_default_twilio: Boolean(defaultTwilio),
+      has_connected_twilio: Boolean(connectedTwilio),
+      has_twilio_config: Boolean(twilioConfig),
+    };
+
+    if (shouldSendLeadAutoText && createdLead?.id) {
+      if (!toPhone || !twilioConfig) {
+        const reason = !toPhone ? "missing_destination_phone" : "missing_twilio_config";
+        await supabase.from("interactions").insert({
+          lead_id: createdLead.id,
+          type: "text",
+          direction: "outbound",
+          summary: "Lead automation skipped",
+          body: reason === "missing_destination_phone"
+            ? "Lead automation skipped because the lead has no valid phone number."
+            : "Lead automation skipped because no default or connected Twilio sender config is available.",
+          metadata: {
+            source: "lead_automation",
+            skip_reason: reason,
+            ...automationDebug,
+          },
+        });
+      } else {
       try {
         const firstName = name.trim().split(/\s+/)[0] || "there";
         const companyName = account.company_name?.trim() || "our team";
@@ -359,7 +416,7 @@ Deno.serve(async (req) => {
             leadId: createdLead.id,
             accountId: account_id,
             to: toPhone,
-            from: connectedTwilio.fromNumber,
+            from: twilioConfig.fromNumber,
             accountSettings: account.settings,
           });
 
@@ -398,9 +455,9 @@ Deno.serve(async (req) => {
         const twilioResult = await sendTwilioSms({
           to: toPhone,
           body: messageToSend,
-          accountSid: connectedTwilio.accountSid,
-          authToken: connectedTwilio.authToken,
-          fromNumber: connectedTwilio.fromNumber,
+          accountSid: twilioConfig.accountSid,
+          authToken: twilioConfig.authToken,
+          fromNumber: twilioConfig.fromNumber,
         });
 
         if (!twilioResult.success) {
@@ -411,6 +468,23 @@ Deno.serve(async (req) => {
             lead_id: createdLead.id,
             account_id,
             chat_id: retellChatId,
+          });
+          await supabase.from("interactions").insert({
+            lead_id: createdLead.id,
+            type: "text",
+            direction: "outbound",
+            summary: "Lead automation outbound failed",
+            body: "Lead automation attempted to send an outbound message but Twilio returned an error.",
+            metadata: {
+              source: "lead_automation",
+              error: twilioResult.error ?? "unknown_twilio_error",
+              status: twilioResult.status ?? null,
+              response: twilioResult.responseBody ?? null,
+              retell_chat_id: retellChatId,
+              from_number: twilioConfig.fromNumber,
+              to_number: toPhone,
+              ...automationDebug,
+            },
           });
         } else {
           await supabase.from("interactions").insert({
@@ -423,7 +497,7 @@ Deno.serve(async (req) => {
               source: "lead_automation",
               retell_chat_id: retellChatId,
               twilio_sid: twilioResult.sid ?? null,
-              from_number: connectedTwilio.fromNumber,
+              from_number: twilioConfig.fromNumber,
               to_number: toPhone,
               generated_by: usedRetellMessage ? "retell" : "fallback_template",
             },
@@ -435,10 +509,23 @@ Deno.serve(async (req) => {
           lead_id: createdLead.id,
           account_id,
         });
+        await supabase.from("interactions").insert({
+          lead_id: createdLead.id,
+          type: "text",
+          direction: "outbound",
+          summary: "Lead automation outbound failed",
+          body: "Lead automation encountered an unexpected error before sending.",
+          metadata: {
+            source: "lead_automation",
+            error: automationError instanceof Error ? automationError.message : String(automationError),
+            ...automationDebug,
+          },
+        });
+      }
       }
     }
 
-    return json({ success: true });
+    return json({ success: true, automation_debug: automationDebug });
   } catch (err) {
     console.error("website-lead-submit error:", err);
     return json({

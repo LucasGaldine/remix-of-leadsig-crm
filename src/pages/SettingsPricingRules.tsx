@@ -103,6 +103,12 @@ const UNIT_SELECT_OPTIONS = [
   ...LINE_ITEM_UNIT_OPTIONS,
 ] as const;
 
+const SERVICE_TYPE_UNIT_OPTIONS = [
+  { value: "sq_ft", label: "Square Feet" },
+  { value: "linear_ft", label: "Linear Feet" },
+  ...LINE_ITEM_UNIT_OPTIONS,
+];
+
 export default function SettingsPricingRules() {
   const { user, currentAccount, refreshProfile } = useAuth();
 
@@ -1572,8 +1578,11 @@ export default function SettingsPricingRules() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sq_ft">Square Feet</SelectItem>
-                  <SelectItem value="linear_ft">Linear Feet</SelectItem>
+                  {SERVICE_TYPE_UNIT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
