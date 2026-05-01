@@ -14,6 +14,7 @@ import { useEstimate } from "@/hooks/useEstimates";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
+import { approveEstimateManuallyById } from "@/lib/estimateApproval";
 
 export default function CreateInvoice() {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ export default function CreateInvoice() {
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [creating, setCreating] = useState(false);
+  const [approvingEstimate, setApprovingEstimate] = useState(false);
   const [existingInvoicesTotal, setExistingInvoicesTotal] = useState(0);
 
   useEffect(() => {
@@ -221,6 +223,23 @@ export default function CreateInvoice() {
     }
   };
 
+  const handleApproveEstimate = async () => {
+    if (approvingEstimate) return;
+    setApprovingEstimate(true);
+    try {
+      await approveEstimateManuallyById(estimate.id);
+      await queryClient.invalidateQueries({ queryKey: ["estimate", estimateId] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      toast.success("Estimate marked as approved");
+    } catch (error) {
+      console.error("Error approving estimate:", error);
+      toast.error("Failed to approve estimate");
+    } finally {
+      setApprovingEstimate(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-32">
       <PageHeader title="Create Invoice" showBack backTo={`/payments/estimates/${estimateId}`} />
@@ -263,7 +282,18 @@ export default function CreateInvoice() {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              This estimate must be approved before an invoice can be created.
+              <div className="space-y-2">
+                <p>This estimate must be approved before an invoice can be created.</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleApproveEstimate}
+                  disabled={approvingEstimate}
+                >
+                  {approvingEstimate ? "Approving..." : "Approve Estimate Manually"}
+                </Button>
+              </div>
             </AlertDescription>
           </Alert>
         )}

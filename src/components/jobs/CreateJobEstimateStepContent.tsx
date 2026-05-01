@@ -14,6 +14,8 @@ interface EstimateLineItemDraft {
 interface CreateJobEstimateStepContentProps {
   open: boolean;
   estimateEditorDraft: any;
+  leadAddress?: string | null;
+  leadCity?: string | null;
   estimateVersionName: string;
   onEstimateVersionNameChange: (name: string) => void;
   onDraftChange: (payload: {
@@ -28,10 +30,32 @@ interface CreateJobEstimateStepContentProps {
 export function CreateJobEstimateStepContent({
   open,
   estimateEditorDraft,
+  leadAddress,
+  leadCity,
   estimateVersionName,
   onEstimateVersionNameChange,
   onDraftChange,
 }: CreateJobEstimateStepContentProps) {
+  const draftJobAddress = typeof estimateEditorDraft?.job?.address === "string" ? estimateEditorDraft.job.address.trim() : "";
+  const draftJobCity = typeof estimateEditorDraft?.job?.city === "string" ? estimateEditorDraft.job.city.trim() : "";
+  const draftCustomerAddress = typeof estimateEditorDraft?.customer?.address === "string" ? estimateEditorDraft.customer.address.trim() : "";
+  const draftCustomerCity = typeof estimateEditorDraft?.customer?.city === "string" ? estimateEditorDraft.customer.city.trim() : "";
+  const normalizedAddress = (typeof leadAddress === "string" ? leadAddress.trim() : "") || draftJobAddress || draftCustomerAddress;
+  const normalizedCity = (typeof leadCity === "string" ? leadCity.trim() : "") || draftJobCity || draftCustomerCity;
+  const estimateDraftWithLocation = {
+    ...estimateEditorDraft,
+    job: {
+      ...(estimateEditorDraft?.job || {}),
+      address: normalizedAddress,
+      city: normalizedCity,
+    },
+    customer: {
+      ...(estimateEditorDraft?.customer || {}),
+      address: normalizedAddress,
+      city: normalizedCity,
+    },
+  };
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -46,7 +70,7 @@ export function CreateJobEstimateStepContent({
       <EditEstimateModal
         open={open}
         onOpenChange={() => {}}
-        estimate={estimateEditorDraft}
+        estimate={estimateDraftWithLocation}
         versionName={estimateVersionName}
         onVersionNameChange={onEstimateVersionNameChange}
         onSuccess={() => {}}

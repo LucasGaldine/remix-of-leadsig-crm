@@ -49,5 +49,5 @@ export function loadImageDimensions(file: File) {
 }
 
 export function getCompanyLogoStoragePath(accountId: string, timestamp: number, fileExtension: string) {
-  return `avatars/${accountId}-company-logo-${timestamp}.${fileExtension}`;
+  return `website/${accountId}/company-logo-${timestamp}.${fileExtension}`;
 }

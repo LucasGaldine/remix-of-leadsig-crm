@@ -25,12 +25,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { approveLatestEstimateForJob } from "@/lib/estimateApproval";
 
 interface JobCostsModalProps {
   jobId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   startInAddMode?: boolean;
+  onEstimateApproved?: () => void | Promise<void>;
 }
 
 interface EditingLineItem {
@@ -71,7 +73,13 @@ const UPDATE_ESTIMATE_TARGET_OPTIONS: { value: EstimateUpdateTarget; label: stri
   { value: "entire_estimate", label: "entire estimate" },
 ];
 
-export const JobCostsModal = ({ jobId, open, onOpenChange, startInAddMode = false }: JobCostsModalProps) => {
+export const JobCostsModal = ({
+  jobId,
+  open,
+  onOpenChange,
+  startInAddMode = false,
+  onEstimateApproved,
+}: JobCostsModalProps) => {
   const {
     lineItems,
     isLoading,
@@ -102,6 +110,7 @@ export const JobCostsModal = ({ jobId, open, onOpenChange, startInAddMode = fals
   const [updateEstimateDialogOpen, setUpdateEstimateDialogOpen] = useState(false);
   const [updateEstimateMode, setUpdateEstimateMode] = useState<EstimateUpdateMode>("replace");
   const [updateEstimateTarget, setUpdateEstimateTarget] = useState<EstimateUpdateTarget>("materials");
+  const [approvingEstimate, setApprovingEstimate] = useState(false);
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const MAX_COLLAPSED_DESCRIPTION_LENGTH = 140;
   const editingLocked = !hasApprovedEstimate;
@@ -245,6 +254,21 @@ export const JobCostsModal = ({ jobId, open, onOpenChange, startInAddMode = fals
       category: "other" as LineItemCategory,
     });
     setIsAdding(false);
+  };
+
+  const handleApproveEstimateManually = async () => {
+    if (approvingEstimate) return;
+    setApprovingEstimate(true);
+    try {
+      await approveLatestEstimateForJob(jobId);
+      await onEstimateApproved?.();
+      toast.success("Estimate marked as approved");
+    } catch (error) {
+      console.error("Failed to approve estimate from job costs:", error);
+      toast.error("Failed to approve estimate");
+    } finally {
+      setApprovingEstimate(false);
+    }
   };
 
   const handleDelete = () => {
@@ -552,7 +576,18 @@ export const JobCostsModal = ({ jobId, open, onOpenChange, startInAddMode = fals
           <div className="space-y-4">
             {editingLocked && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Estimate must be approved before you can edit or resync job costs.
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p>Estimate must be approved before you can edit or resync job costs.</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleApproveEstimateManually}
+                    disabled={approvingEstimate}
+                    className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                  >
+                    {approvingEstimate ? "Approving..." : "Approve Estimate Manually"}
+                  </Button>
+                </div>
               </div>
             )}
 

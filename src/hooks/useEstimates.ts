@@ -218,18 +218,19 @@ export function useEstimate(id: string | undefined) {
         .from("estimates")
         .select(`
           *,
-          customer:customers(id, name, email, phone, address),
+          customer:customers(id, name, email, phone, address, city),
           job:leads!estimates_job_id_fkey(
             id,
             name,
             status,
             scheduled_date,
             address,
+            city,
             service_type,
             job_schedules!lead_id(scheduled_date, scheduled_time_start, scheduled_time_end)
           ),
           recurring_job:recurring_jobs(id, name, client_share_token),
-          account:accounts(company_name, company_email, company_phone, logo_url),
+          account:accounts(company_name, company_email, company_phone, logo_url, settings),
           line_items:estimate_line_items(
             id,
             name,

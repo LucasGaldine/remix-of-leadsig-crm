@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type MouseEvent } from "react";
 import { Send, ChevronsUp, ExternalLink, Loader as Loader2, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,6 +18,7 @@ import {
   recordLoggedPaymentAgainstInvoice,
   selectInvoiceForLoggedPayment,
 } from "@/lib/logPayment";
+import { approveLatestEstimateForJob } from "@/lib/estimateApproval";
 
 interface ExistingInvoice {
   id: string;
@@ -60,6 +61,7 @@ export function JobInvoiceCard({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [estimateStatus, setEstimateStatus] = useState<string | null>(null);
+  const [approvingEstimate, setApprovingEstimate] = useState(false);
   const [showLogPaymentModal, setShowLogPaymentModal] = useState(false);
   const [showAllInvoicesModal, setShowAllInvoicesModal] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
@@ -85,6 +87,24 @@ export function JobInvoiceCard({
     setEstimateStatus(estimate?.status || null);
 
     setLoading(false);
+  };
+
+  const handleApproveEstimateManually = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (approvingEstimate) return;
+    setApprovingEstimate(true);
+    try {
+      await approveLatestEstimateForJob(jobId);
+      toast.success("Estimate marked as approved");
+      await fetchInvoices();
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (error) {
+      console.error("Failed to approve estimate from invoice card:", error);
+      toast.error("Failed to approve estimate");
+    } finally {
+      setApprovingEstimate(false);
+    }
   };
 
   useEffect(() => {
@@ -599,6 +619,15 @@ export function JobInvoiceCard({
                 <p className="text-xs text-muted-foreground text-center">
                   The estimate must be approved before sending an invoice
                 </p>
+                <Button
+                  size="sm"
+                  variant="link"
+                  className="h-auto w-full p-0 text-xs"
+                  onClick={handleApproveEstimateManually}
+                  disabled={approvingEstimate}
+                >
+                  {approvingEstimate ? "Approving..." : "Approve Estimate Manually"}
+                </Button>
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">

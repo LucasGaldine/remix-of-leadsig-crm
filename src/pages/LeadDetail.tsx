@@ -41,6 +41,7 @@ import { parseMentionsForDisplay, parseMentionsToHTML } from "@/lib/mentionParse
 import { formatCurrency } from "@/lib/formatter";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { getEstimateCardTotal } from "@/lib/estimateCardTotals";
+import { approveEstimateManuallyById } from "@/lib/estimateApproval";
 import { getInteractionPostLabel, getInteractionPostUrl } from "@/lib/interactionPostLink";
 
 type LeadStatus = Database["public"]["Enums"]["lead_status"];
@@ -246,6 +247,7 @@ export default function LeadDetail() {
   // Convert to job dialog with optional scheduling
   const [convertJobDialogOpen, setConvertJobDialogOpen] = useState(false);
   const [convertingJob, setConvertingJob] = useState(false);
+  const [approvingEstimate, setApprovingEstimate] = useState(false);
   const [jobSchedule, setJobSchedule] = useState({
     scheduled_date: "",
     scheduled_time_start: "",
@@ -668,6 +670,25 @@ export default function LeadDetail() {
       toast.error("Failed to convert to job");
     } finally {
       setConvertingJob(false);
+    }
+  };
+
+  const handleApproveEstimateManually = async () => {
+    if (!estimate?.id || approvingEstimate) return;
+    setApprovingEstimate(true);
+    try {
+      await approveEstimateManuallyById(estimate.id);
+      await queryClient.invalidateQueries({ queryKey: ["estimate", estimate.id] });
+      await queryClient.invalidateQueries({ queryKey: ["estimates"] });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      await checkEstimate();
+      toast.success("Estimate marked as approved");
+    } catch (error) {
+      console.error("Failed to approve estimate from lead detail:", error);
+      toast.error("Failed to approve estimate");
+    } finally {
+      setApprovingEstimate(false);
     }
   };
 
@@ -1772,14 +1793,32 @@ export default function LeadDetail() {
               )}
 
               {hasEstimate && estimate && (
-                <DetailEstimateCard
-                  label="Estimate"
-                  status={String(estimate.status || "draft")}
-                  total={estimateCardTotal}
-                  lineItemCount={estimate.line_items?.length || 0}
-                  showStartingAt={hasMultipleEstimateVersions && !isAcceptedEstimate}
-                  onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
-                />
+                <div className="space-y-2">
+                  <DetailEstimateCard
+                    label="Estimate"
+                    status={String(estimate.status || "draft")}
+                    total={estimateCardTotal}
+                    lineItemCount={estimate.line_items?.length || 0}
+                    showStartingAt={hasMultipleEstimateVersions && !isAcceptedEstimate}
+                    onClick={() => navigate(`/payments/estimates/${estimate.id}`)}
+                  />
+                  {estimate.status !== "accepted" && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm text-amber-900">Estimate approval is required before converting this lead to a job.</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleApproveEstimateManually}
+                          disabled={approvingEstimate}
+                          className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                        >
+                          {approvingEstimate ? "Approving..." : "Approve Estimate Manually"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
           

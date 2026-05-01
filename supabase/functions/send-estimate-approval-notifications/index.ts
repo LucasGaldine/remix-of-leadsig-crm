@@ -608,6 +608,19 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Only send estimate-approval emails when a signature image is present.
+    // Manual approvals without a signature should not notify anyone.
+    if (eventType === "estimate_approved" && !(estimate as any).manual_approval_photo_url) {
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: "Signature is required before sending estimate approval emails",
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: account } = await supabase
       .from("accounts")
       .select("company_name, company_email, company_phone, logo_url, settings, pricing_plan")

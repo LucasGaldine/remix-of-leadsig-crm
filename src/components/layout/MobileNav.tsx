@@ -14,6 +14,7 @@ import {
   Globe,
   Handshake,
   MessageSquare,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -102,11 +103,12 @@ const DESKTOP_NAV_WIDTH_CLASS = "md:w-60";
 const DESKTOP_NAV_OFFSET = "15rem";
 const MOBILE_NAV_OFFSET = "5rem";
 const DESKTOP_SECTION_OPEN_STORAGE_KEY = "mobile-nav:desktop-more-open";
+const ADMIN_EMAIL = "lucas.galdine@gmail.com";
 
 export function MobileNav() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isCrewMember } = useAuth();
+  const { isCrewMember, user } = useAuth();
   const { data: pendingLeadsCount = 0 } = usePendingLeadsCount();
   const [bugReportOpen, setBugReportOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
@@ -157,6 +159,10 @@ export function MobileNav() {
       items: group.items.filter(filterByRole),
     }))
     .filter((group) => group.items.length > 0);
+  const isAdminEmail = (user?.email ?? "").trim().toLowerCase() === ADMIN_EMAIL;
+  const adminNavItem: NavItem | null = isAdminEmail
+    ? { icon: <Shield className="h-5 w-5" />, label: "Admin", path: "/admin", requiredRole: "all" }
+    : null;
 
   const isActiveRoute = useCallback(
     (path: string) => {
@@ -455,6 +461,21 @@ export function MobileNav() {
                 </button>
               );
             })}
+            {desktopSectionOpen && adminNavItem ? (
+              <button
+                onClick={() => handleNavigate(adminNavItem.path)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors",
+                  "active:bg-muted",
+                  isActiveRoute(adminNavItem.path)
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <div className="relative shrink-0">{adminNavItem.icon}</div>
+                <span className="flex-1 truncate">{adminNavItem.label}</span>
+              </button>
+            ) : null}
           </div>
 
           <div className="space-y-3 border-t border-border pt-3">
@@ -576,6 +597,12 @@ export function MobileNav() {
                     </DropdownMenuItem>
                   );
                 })}
+                {adminNavItem ? (
+                  <DropdownMenuItem onSelect={() => handleNavigate(adminNavItem.path)} className="gap-3 px-4 py-4 text-base">
+                    {adminNavItem.icon}
+                    <span>{adminNavItem.label}</span>
+                  </DropdownMenuItem>
+                ) : null}
                 <div className="px-4 py-1" aria-hidden="true">
                   <Separator />
                 </div>

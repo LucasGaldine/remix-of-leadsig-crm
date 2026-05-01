@@ -43,6 +43,34 @@ function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; a
   };
 }
 
+function shouldUseDefaultNumber(rawSettings: unknown): boolean {
+  if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) return true;
+  const settings = rawSettings as Record<string, unknown>;
+  const automation = settings.job_message_automation;
+  if (!automation || typeof automation !== "object" || Array.isArray(automation)) return true;
+
+  const useDefault = (automation as Record<string, unknown>).use_default_number;
+  return typeof useDefault === "boolean" ? useDefault : true;
+}
+
+function getFirstEnvValue(keys: string[]): string {
+  for (const key of keys) {
+    const value = Deno.env.get(key)?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function getDefaultTwilioConfig(): { accountSid: string; authToken: string; fromNumber: string } | null {
+  const accountSid = getFirstEnvValue(["TWILIO_ACCOUNT_SID", "LEADSIG_TWILIO_ACCOUNT_SID", "DEFAULT_TWILIO_ACCOUNT_SID"]);
+  const authToken = getFirstEnvValue(["TWILIO_AUTH_TOKEN", "LEADSIG_TWILIO_AUTH_TOKEN", "DEFAULT_TWILIO_AUTH_TOKEN"]);
+  const fromNumber = normalizePhone(getFirstEnvValue(["TWILIO_FROM_NUMBER", "LEADSIG_TWILIO_FROM_NUMBER", "DEFAULT_TWILIO_FROM_NUMBER"]));
+
+  if (!accountSid || !authToken || !fromNumber) return null;
+
+  return { accountSid, authToken, fromNumber };
+}
+
 async function sendTwilioSms(params: {
   to: string;
   body: string;
@@ -94,7 +122,7 @@ Deno.serve(async (req: Request) => {
     const toPhone = normalizePhone(typeof payload?.to === "string" ? payload.to.trim() : "");
     const testMessage = typeof payload?.message === "string" && payload.message.trim().length > 0
       ? payload.message.trim()
-      : "LeadSig auto messaging test from your connected Twilio number.";
+      : "LeadSig auto messaging test from your active sender number.";
 
     if (!accountId || !toPhone) {
       return new Response(JSON.stringify({ error: "Missing account_id or destination phone number" }), {
@@ -156,11 +184,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const useDefaultNumber = shouldUseDefaultNumber(account?.settings);
     const connectedTwilio = getConnectedTwilioConfig(account?.settings);
-    if (!connectedTwilio) {
+    const defaultTwilio = getDefaultTwilioConfig();
+    const twilioConfig = useDefaultNumber ? defaultTwilio : (connectedTwilio ?? defaultTwilio);
+    if (!twilioConfig) {
+      const debug = {
+        use_default_number: useDefaultNumber,
+        has_connected_twilio: Boolean(connectedTwilio),
+        has_default_twilio_env: Boolean(getDefaultTwilioConfig()),
+      };
       return new Response(JSON.stringify({
-        error: "Connected Twilio credentials are required for auto messaging text delivery",
-        details: "Set job_message_automation.twilio.account_sid, auth_token, and from_number before sending test texts.",
+        error: "No messaging sender is configured for auto messaging text delivery",
+        details: "Configure an outside Twilio number in settings or set platform TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER.",
+        debug,
       }), {
         status: 422,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -170,9 +207,9 @@ Deno.serve(async (req: Request) => {
     const smsResult = await sendTwilioSms({
       to: toPhone,
       body: testMessage,
-      accountSid: connectedTwilio.accountSid,
-      authToken: connectedTwilio.authToken,
-      fromNumber: connectedTwilio.fromNumber,
+      accountSid: twilioConfig.accountSid,
+      authToken: twilioConfig.authToken,
+      fromNumber: twilioConfig.fromNumber,
     });
 
     if (!smsResult.success) {

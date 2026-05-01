@@ -7,7 +7,10 @@ import { createBrowserRouter, RouterProvider, Outlet, useLocation } from "react-
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppKeyboardShortcuts } from "@/components/layout/AppKeyboardShortcuts";
+import { ReleaseUpdateModal } from "@/components/modals/ReleaseUpdateModal";
+import { useAuth } from "@/hooks/useAuth";
 import { shouldAnimateMainPageTransition } from "@/lib/pageTransition";
+import { getLatestUnseenReleaseUpdate, markReleaseUpdateSeen, type ReleaseUpdate } from "@/lib/releaseUpdates";
 import { supabaseConfigError } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Schedule from "./pages/Schedule";
@@ -104,9 +107,57 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
+  const { user, currentAccount } = useAuth();
+  const [activeReleaseUpdate, setActiveReleaseUpdate] = useState<ReleaseUpdate | null>(null);
+  const [releaseModalOpen, setReleaseModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id || !currentAccount?.id) return;
+
+    let active = true;
+
+    const loadReleaseUpdate = async () => {
+      try {
+        const latestUnseen = await getLatestUnseenReleaseUpdate(currentAccount.id, user.id);
+        if (!active || !latestUnseen) return;
+        setActiveReleaseUpdate(latestUnseen);
+        setReleaseModalOpen(true);
+      } catch (error) {
+        console.error("Failed to load release updates", error);
+      }
+    };
+
+    void loadReleaseUpdate();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, currentAccount?.id]);
+
+  const dismissReleaseUpdate = () => {
+    setReleaseModalOpen(false);
+  };
+
+  const markReleaseUpdateAsRead = async () => {
+    if (activeReleaseUpdate && user?.id) {
+      try {
+        await markReleaseUpdateSeen(activeReleaseUpdate.id, activeReleaseUpdate.account_id, user.id);
+      } catch (error) {
+        console.error("Failed to mark release update as seen", error);
+      }
+    }
+    setReleaseModalOpen(false);
+  };
+
   return (
     <ProtectedRoute>
       <AppKeyboardShortcuts />
+      <ReleaseUpdateModal
+        open={releaseModalOpen}
+        update={activeReleaseUpdate}
+        onLater={dismissReleaseUpdate}
+        onMarkAsRead={markReleaseUpdateAsRead}
+      />
       <MainPageTransition>{children}</MainPageTransition>
     </ProtectedRoute>
   );

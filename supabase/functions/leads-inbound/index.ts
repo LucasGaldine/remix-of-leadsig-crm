@@ -38,6 +38,31 @@ interface GoogleColumnData {
   column_name?: string;
 }
 
+function isWebsitePayload(rawPayload: Record<string, unknown>, detectedSource: string): boolean {
+  if (detectedSource.trim().toLowerCase() === "website") return true;
+
+  const explicitSource = typeof rawPayload.source === "string"
+    ? rawPayload.source.trim().toLowerCase()
+    : "";
+  if (explicitSource === "website" || explicitSource === "website_form" || explicitSource === "site") {
+    return true;
+  }
+
+  // Website lead forms usually include SMS consent-style fields plus basic contact fields.
+  const hasSmsConsentField =
+    typeof rawPayload.sms_consent === "boolean" ||
+    typeof rawPayload.smsConsent === "boolean" ||
+    typeof rawPayload.sms_opt_in === "boolean" ||
+    typeof rawPayload.smsOptIn === "boolean";
+
+  const hasBasicContactFields =
+    typeof rawPayload.name === "string" ||
+    typeof rawPayload.phone === "string" ||
+    typeof rawPayload.email === "string";
+
+  return hasSmsConsentField && hasBasicContactFields;
+}
+
 function parseGoogleLead(payload: Record<string, unknown>): ParsedLead | null {
   const columns = payload.user_column_data as GoogleColumnData[] | undefined;
   if (!Array.isArray(columns)) return null;
@@ -281,9 +306,12 @@ async function processLeadInBackground(
     leadData: (leadData ?? {}) as Record<string, unknown>,
     rawPayload,
   });
+  const forcePendingUntilConversationComplete = isWebsitePayload(rawPayload, source);
 
   if (!leadData || (!leadData.full_name && !leadData.phone_number && !leadData.email)) {
-    const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
+    const leadStatus = forcePendingUntilConversationComplete
+      ? buildIntegrationLeadStatus(false)
+      : buildIntegrationLeadStatus(qualificationDecision.qualified);
 
     const { data: lead } = await supabase
       .from("leads")
@@ -312,7 +340,9 @@ async function processLeadInBackground(
     return;
   }
 
-  const leadStatus = buildIntegrationLeadStatus(qualificationDecision.qualified);
+  const leadStatus = forcePendingUntilConversationComplete
+    ? buildIntegrationLeadStatus(false)
+    : buildIntegrationLeadStatus(qualificationDecision.qualified);
   const { data: lead, error: leadError } = await supabase
     .from("leads")
     .insert({
@@ -344,13 +374,16 @@ async function processLeadInBackground(
       lead_id: lead.id,
       type: "system",
       direction: "na",
-      summary: autoQualify
+      summary: forcePendingUntilConversationComplete
+        ? `Lead created via ${source} and added to pending review`
+        : autoQualify
         ? qualificationDecision.qualified
           ? `Lead created via ${source} and auto-qualified`
           : `Lead created via ${source} and marked not qualified`
         : `Lead created via ${source} (parsed directly)`,
       metadata: {
         source,
+        pending_until_conversation_complete: forcePendingUntilConversationComplete,
         parsing_method: directParsed ? "direct" : "ai",
         auto_qualify_reason: qualificationDecision.reason,
         ...qualificationDecision.metadata,

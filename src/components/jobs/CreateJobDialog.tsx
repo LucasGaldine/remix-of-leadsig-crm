@@ -1365,6 +1365,8 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
             {manualStep === "estimate-line-items" && (
               <CreateJobEstimateStepContent
                 open={open && manualStep === "estimate-line-items"}
+                leadAddress={(jobAddress || selectedCustomer?.address || newClientData.address || "").trim() || null}
+                leadCity={(selectedCustomer?.city || newClientData.city || "").trim() || null}
                 estimateEditorDraft={estimateEditorDraft}
                 estimateVersionName={estimateVersionName}
                 onEstimateVersionNameChange={setEstimateVersionName}

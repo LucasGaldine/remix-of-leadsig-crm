@@ -18,6 +18,7 @@ interface LineItemsEstimateDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: {
     id: string;
+    customer_id?: string | null;
     name: string;
     phone: string | null;
     email: string | null;
@@ -192,15 +193,19 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
     const loadingToast = toast.loading("Creating estimate...");
 
     try {
-      const { id: customerId } = await findOrCreateCustomer({
-        name: lead.name,
-        phone: lead.phone,
-        email: lead.email,
-        address: lead.address || lead.city,
-        city: lead.city,
-        created_by: user.id,
-        account_id: currentAccount.id,
-      });
+      const customerId = lead.customer_id
+        ? lead.customer_id
+        : (
+            await findOrCreateCustomer({
+              name: lead.name,
+              phone: lead.phone,
+              email: lead.email,
+              address: lead.address || lead.city,
+              city: lead.city,
+              created_by: user.id,
+              account_id: currentAccount.id,
+            })
+          ).id;
 
 
       const estimateSubtotal = validLineItems.reduce((sum, item) => {
@@ -357,6 +362,8 @@ export function LineItemsEstimateDialog({ open, onOpenChange, lead, onSuccess, i
         <div className="py-4">
           <CreateJobEstimateStepContent
             open={open}
+            leadAddress={lead.address}
+            leadCity={lead.city}
             showVoiceEstimateIntake={showVoiceEstimateIntake}
             estimateEditorDraft={estimateEditorDraft}
             estimateVersionName={estimateName}

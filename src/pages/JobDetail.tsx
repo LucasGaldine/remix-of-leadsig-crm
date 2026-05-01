@@ -2082,7 +2082,13 @@ export default function JobDetail() {
             <>
               {id && (
                 <div className="hidden">
-                  <JobCosts jobId={id} grouped openSignal={viewCostsSignal} addSignal={addCostsSignal} />
+                  <JobCosts
+                    jobId={id}
+                    grouped
+                    openSignal={viewCostsSignal}
+                    addSignal={addCostsSignal}
+                    onEstimateApproved={fetchEstimate}
+                  />
                 </div>
               )}
               {isManager() && id && (
@@ -2126,7 +2132,14 @@ export default function JobDetail() {
               ) : null}
 
               {/* Job Costs */}
-              {id && <JobCosts jobId={id} openSignal={viewCostsSignal} addSignal={addCostsSignal} />}
+              {id && (
+                <JobCosts
+                  jobId={id}
+                  openSignal={viewCostsSignal}
+                  addSignal={addCostsSignal}
+                  onEstimateApproved={fetchEstimate}
+                />
+              )}
 
               {/* Invoices Section */}
               {isManager() && id && (

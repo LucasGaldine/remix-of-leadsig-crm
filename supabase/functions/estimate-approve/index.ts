@@ -55,6 +55,9 @@ Deno.serve(async (req: Request) => {
           original_total,
           original_notes,
           has_pending_changes,
+          proposal_settings,
+          project_visualization_image_url,
+          agreement_templates,
           customer:customers(name, email, phone),
           job:leads!estimates_job_id_fkey(name, address, service_type),
           line_items:estimate_line_items(
@@ -87,7 +90,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: account } = await supabase
         .from("accounts")
-        .select("company_name, company_email, company_phone, logo_url")
+        .select("company_name, company_email, company_phone, logo_url, settings")
         .eq("id", estimate.account_id)
         .maybeSingle();
 
@@ -135,11 +138,15 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST") {
       const body = await req.json();
       const { action } = body;
+      const agreementAcceptance =
+        body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
+          ? body.agreement_acceptance
+          : null;
       const estimateVersionId = typeof body.estimate_version_id === "string" ? body.estimate_version_id : null;
 
       const { data: estimate, error: fetchError } = await supabase
         .from("estimates")
-        .select("id, status, expires_at, job_id, has_pending_changes")
+        .select("id, status, expires_at, job_id, has_pending_changes, agreement_templates")
         .eq("approval_token", token)
         .maybeSingle();
 
@@ -260,6 +267,24 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        if (action === "approve") {
+          const requiredAgreementKeys = [
+            "job_release_agreement",
+            "job_agreement",
+            "warranty_agreement",
+          ];
+          const acceptedKeys = requiredAgreementKeys.filter((key) => agreementAcceptance?.[key] === true);
+          if (acceptedKeys.length !== requiredAgreementKeys.length) {
+            return new Response(
+              JSON.stringify({ error: "All required agreements must be accepted before approval." }),
+              {
+                status: 400,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+        }
+
         const newStatus = action === "approve" ? "accepted" : "declined";
         const { error: updateError } = await supabase
           .from("estimates")
@@ -267,6 +292,15 @@ Deno.serve(async (req: Request) => {
             status: newStatus,
             accepted_at: action === "approve" ? new Date().toISOString() : null,
             approved_via: action === "approve" ? "customer_link" : null,
+            agreement_acceptance:
+              action === "approve"
+                ? {
+                    job_release_agreement: agreementAcceptance?.job_release_agreement === true,
+                    job_agreement: agreementAcceptance?.job_agreement === true,
+                    warranty_agreement: agreementAcceptance?.warranty_agreement === true,
+                    accepted_at: new Date().toISOString(),
+                  }
+                : null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", estimate.id);

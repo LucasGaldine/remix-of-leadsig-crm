@@ -268,11 +268,11 @@ export default function CustomerDetail() {
                     <DropdownMenuContent align="start">
                       <DropdownMenuItem onClick={() => setShowEditDialog(true)}>
                         <Edit className="h-4 w-4 mr-2" />
-                        Edit Customer
+                        Edit Contact
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setShowDeleteDialog(true)}>
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Delete Customer
+                        Delete Contact
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -503,7 +503,7 @@ export default function CustomerDetail() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Customer?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Contact?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete {customer.name} and all associated jobs, estimates, invoices, and data. This action cannot be undone.
             </AlertDialogDescription>
@@ -516,7 +516,7 @@ export default function CustomerDetail() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Delete Customer
+              Delete Contact
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

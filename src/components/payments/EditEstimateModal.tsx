@@ -494,6 +494,8 @@ export function EditEstimateModal({
   const [pendingAddCustomStep, setPendingAddCustomStep] = useState<PendingAddCustomStep>("name");
   const [pendingAddLineItemQuantity, setPendingAddLineItemQuantity] = useState("1");
   const [showMeasureMapDialog, setShowMeasureMapDialog] = useState(false);
+  const [resolvedMeasureAddress, setResolvedMeasureAddress] = useState("");
+  const [resolvedMeasureCity, setResolvedMeasureCity] = useState("");
   const [preserveAddPickerDuringMeasure, setPreserveAddPickerDuringMeasure] = useState(false);
   const [isEmbeddedDefaultsHydrated, setIsEmbeddedDefaultsHydrated] = useState(!embedded);
   const templateOptions = useMemo(
@@ -767,8 +769,63 @@ export function EditEstimateModal({
     setShowMeasureMapDialog(true);
   };
   const jobAddress = typeof estimate?.job?.address === "string" ? estimate.job.address.trim() : "";
+  const jobCity = typeof estimate?.job?.city === "string" ? estimate.job.city.trim() : "";
   const contactAddress = typeof estimate?.customer?.address === "string" ? estimate.customer.address.trim() : "";
-  const addressToMeasure = jobAddress || contactAddress;
+  const contactCity = typeof estimate?.customer?.city === "string" ? estimate.customer.city.trim() : "";
+  const baseAddress = jobAddress || contactAddress;
+  const baseCity = jobCity || contactCity;
+  const addressToMeasure = baseAddress;
+
+  useEffect(() => {
+    if (!showMeasureMapDialog) return;
+
+    let isCancelled = false;
+
+    const hydrateMeasureLocation = async () => {
+      let nextAddress = baseAddress;
+      let nextCity = baseCity;
+
+      if (estimate?.job_id) {
+        const { data: leadData } = await supabase
+          .from("leads")
+          .select("address, city")
+          .eq("id", estimate.job_id)
+          .maybeSingle();
+
+        if (leadData) {
+          const leadAddress = typeof leadData.address === "string" ? leadData.address.trim() : "";
+          const leadCity = typeof leadData.city === "string" ? leadData.city.trim() : "";
+          nextAddress = leadAddress || nextAddress;
+          nextCity = leadCity || nextCity;
+        }
+      }
+
+      if ((!nextAddress || !nextCity) && estimate?.customer_id) {
+        const { data: customerData } = await supabase
+          .from("customers")
+          .select("address, city")
+          .eq("id", estimate.customer_id)
+          .maybeSingle();
+
+        if (customerData) {
+          const customerAddress = typeof customerData.address === "string" ? customerData.address.trim() : "";
+          const customerCity = typeof customerData.city === "string" ? customerData.city.trim() : "";
+          nextAddress = nextAddress || customerAddress;
+          nextCity = nextCity || customerCity;
+        }
+      }
+
+      if (isCancelled) return;
+      setResolvedMeasureAddress(nextAddress);
+      setResolvedMeasureCity(nextCity);
+    };
+
+    void hydrateMeasureLocation();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [showMeasureMapDialog, estimate?.job_id, estimate?.customer_id, baseAddress, baseCity]);
 
   const savePendingCustomDraftAsTemplate = async () => {
     if (!pendingAddLineItemDraft || !estimate.account_id) {
@@ -1473,7 +1530,8 @@ export function EditEstimateModal({
             setShowAddLineItemPicker(true);
           }
         }}
-        address={addressToMeasure}
+        address={resolvedMeasureAddress || addressToMeasure}
+        city={resolvedMeasureCity || baseCity}
         onUseMeasurement={(squareFeet) => {
           setPendingAddLineItemQuantity(squareFeet.toFixed(0));
           setShowAddLineItemPicker(true);

@@ -8,9 +8,16 @@ interface JobCostsProps {
   grouped?: boolean;
   openSignal?: number;
   addSignal?: number;
+  onEstimateApproved?: () => void | Promise<void>;
 }
 
-export const JobCosts = ({ jobId, grouped = false, openSignal = 0, addSignal = 0 }: JobCostsProps) => {
+export const JobCosts = ({
+  jobId,
+  grouped = false,
+  openSignal = 0,
+  addSignal = 0,
+  onEstimateApproved,
+}: JobCostsProps) => {
   const { lineItems, isLoading, totalCost } = useJobLineItems(jobId);
   const [modalOpen, setModalOpen] = useState(false);
   const [startInAddMode, setStartInAddMode] = useState(false);
@@ -92,6 +99,7 @@ export const JobCosts = ({ jobId, grouped = false, openSignal = 0, addSignal = 0
 
       <JobCostsModal
         jobId={jobId}
+        onEstimateApproved={onEstimateApproved}
         open={modalOpen}
         onOpenChange={(nextOpen) => {
           setModalOpen(nextOpen);

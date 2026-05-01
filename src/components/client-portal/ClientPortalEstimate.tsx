@@ -20,6 +20,8 @@ interface LineItem {
 
 interface ClientPortalEstimateProps {
   estimate: {
+    id?: string;
+    job_id?: string | null;
     total: number;
     subtotal: number;
     profit_margin?: number;
@@ -49,6 +51,15 @@ interface ClientPortalEstimateProps {
       notes?: string | null;
       line_items: LineItem[];
     }>;
+    proposal_settings?: {
+      sections?: Record<string, boolean>;
+      title?: string | null;
+      team_member_ids?: string[];
+      highlight_line_item_ids?: string[];
+    } | null;
+    project_visualization_image_url?: string | null;
+    agreement_templates?: Record<string, unknown> | null;
+    agreement_source_estimate_id?: string | null;
   };
   token: string;
   apiUrl: string;
@@ -168,6 +179,7 @@ export function ClientPortalEstimate({
   portalColor = "",
   portalTextColor = "",
 }: ClientPortalEstimateProps) {
+  const REQUIRED_AGREEMENT_KEYS = ["job_release_agreement", "job_agreement", "warranty_agreement"] as const;
   const SIGNATURE_CANVAS_WIDTH = 600;
   const SIGNATURE_CANVAS_HEIGHT = 180;
   const versionWindowSize = 3;
@@ -176,7 +188,13 @@ export function ClientPortalEstimate({
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versionWindowStart, setVersionWindowStart] = useState(0);
   const [hasSignature, setHasSignature] = useState(false);
+  const [activeAgreementKey, setActiveAgreementKey] = useState<string | null>(null);
   const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
+  const [agreementChecks, setAgreementChecks] = useState({
+    job_release_agreement: true,
+    job_agreement: true,
+    warranty_agreement: true,
+  });
   const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingSignatureRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -284,6 +302,33 @@ export function ClientPortalEstimate({
     : null;
   const displayLineItemsWithProfitFolded = displayEstimateWithProfitFolded.lineItems;
   const displaySubtotalWithProfitFolded = displayEstimateWithProfitFolded.subtotal;
+  const proposalSections = estimate.proposal_settings?.sections || {};
+  const highlightedLineItemIds = new Set(estimate.proposal_settings?.highlight_line_item_ids || []);
+  const highlightedItems = displayLineItems.filter((item) => highlightedLineItemIds.has(item.id));
+  const templateRecord = useMemo(() => {
+    const directTemplates =
+      estimate.agreement_templates && typeof estimate.agreement_templates === "object"
+        ? estimate.agreement_templates
+        : null;
+    const proposalSettings =
+      estimate.proposal_settings && typeof estimate.proposal_settings === "object"
+        ? (estimate.proposal_settings as Record<string, unknown>)
+        : null;
+    const proposalTemplates =
+      proposalSettings?.agreement_templates && typeof proposalSettings.agreement_templates === "object"
+        ? (proposalSettings.agreement_templates as Record<string, unknown>)
+        : null;
+
+    return {
+      ...(directTemplates || {}),
+      ...(proposalTemplates || {}),
+    };
+  }, [estimate.agreement_templates, estimate.proposal_settings]);
+  const agreementEntries = REQUIRED_AGREEMENT_KEYS.map((key) => ({
+    key,
+    text: resolveAgreementTextByKey(templateRecord, key),
+  }));
+  const activeAgreement = agreementEntries.find((entry) => entry.key === activeAgreementKey) || null;
 
   const getSignatureContext = () => {
     const canvas = signatureCanvasRef.current;
@@ -432,6 +477,17 @@ export function ClientPortalEstimate({
   };
 
   const handleAction = async (action: "approve" | "decline") => {
+    if (action === "approve") {
+      const allAccepted =
+        agreementChecks.job_release_agreement &&
+        agreementChecks.job_agreement &&
+        agreementChecks.warranty_agreement;
+      if (!allAccepted) {
+        setError("Please accept all agreements before approving.");
+        return false;
+      }
+    }
+
     setSubmitting(action);
     setError(null);
     try {
@@ -445,6 +501,7 @@ export function ClientPortalEstimate({
           action,
           updated_at: estimate.updated_at,
           estimate_version_id: action === "approve" ? selectedVersionId : undefined,
+          agreement_acceptance: action === "approve" ? agreementChecks : undefined,
           ...(action === "approve" ? getSignaturePayloadFields() : {}),
         }),
       });
@@ -503,6 +560,11 @@ export function ClientPortalEstimate({
   const openApprovalDialog = (action: "approve" | "approve_changes") => {
     clearSignature();
     setError(null);
+    setAgreementChecks({
+      job_release_agreement: true,
+      job_agreement: true,
+      warranty_agreement: true,
+    });
     setApprovalDialogAction(action);
   };
 
@@ -630,7 +692,7 @@ export function ClientPortalEstimate({
     <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-900">E-signature (optional)</p>
+          <p className="text-sm font-medium text-slate-900">E-signature (required)</p>
           <p className="text-xs text-slate-500">
             Sign with your finger on mobile, or click and drag on desktop.
           </p>
@@ -682,13 +744,15 @@ export function ClientPortalEstimate({
           )}
         </div>
 
-        <button
-          onClick={handleDownloadPDF}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm hover:bg-slate-50 transition-colors"
-        >
-          <Download className="h-4 w-4" />
-          Download PDF
-        </button>
+        {!isVersionComparisonMode && (
+          <button
+            onClick={handleDownloadPDF}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm hover:bg-slate-50 transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            Download PDF
+          </button>
+        )}
         {isVersionComparisonMode && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
@@ -731,86 +795,97 @@ export function ClientPortalEstimate({
                 );
 
                 return (
-                  <button
-                    key={version.id}
-                    type="button"
-                    onClick={() => setSelectedVersionId(version.id)}
-                    aria-pressed={isSelectedVersion}
-                    className={[
-                      "rounded-2xl border text-left transition-all overflow-hidden",
-                      isSelectedVersion
-                        ? "shadow-md"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm",
-                    ].join(" ")}
-                    style={isSelectedVersion ? { backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor, borderColor: normalizedPortalColor } : undefined}
-                  >
-                    <div className={isSelectedVersion ? "px-4 py-3 border-b border-white/25" : "px-4 py-3 border-b border-slate-200"}>
-                      <p className="text-sm font-semibold leading-tight">{version.name}</p>
-                      <p className={isSelectedVersion ? "text-2xl font-bold mt-1 tracking-tight" : "text-2xl font-bold mt-1 tracking-tight text-slate-900"}>
-                        ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
+                  <div key={version.id} className="w-full max-w-2xl flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVersionId(version.id)}
+                      aria-pressed={isSelectedVersion}
+                      className={[
+                        "w-full rounded-2xl border text-left transition-all overflow-hidden",
+                        isSelectedVersion
+                          ? "shadow-md"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm",
+                      ].join(" ")}
+                      style={isSelectedVersion ? { backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor, borderColor: normalizedPortalColor } : undefined}
+                    >
+                      <div className={isSelectedVersion ? "px-4 py-3 border-b border-white/25" : "px-4 py-3 border-b border-slate-200"}>
+                        <p className="text-sm font-semibold leading-tight">{version.name}</p>
+                        <p className={isSelectedVersion ? "text-2xl font-bold mt-1 tracking-tight" : "text-2xl font-bold mt-1 tracking-tight text-slate-900"}>
+                          ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
 
-                    <div className="px-4 py-3 space-y-3">
-                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                        {versionWithProfitFolded.lineItems.length > 0 ? (
-                          versionWithProfitFolded.lineItems.map((item) => (
-                            <div
-                              key={item.id}
-                              className={isSelectedVersion ? "pb-2 border-b border-white/20 last:border-b-0 last:pb-0" : "pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className={isSelectedVersion ? "text-sm font-medium leading-tight" : "text-sm font-medium text-slate-900 leading-tight"}>
-                                    {item.name}
-                                  </p>
-                                  <p className={isSelectedVersion ? "text-xs mt-0.5 opacity-85" : "text-xs text-slate-500 mt-0.5"}>
-                                    {item.quantity} {item.unit} x ${Number(item.unit_price).toFixed(2)}
+                      <div className="px-4 py-3 space-y-3">
+                        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                          {versionWithProfitFolded.lineItems.length > 0 ? (
+                            versionWithProfitFolded.lineItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className={isSelectedVersion ? "pb-2 border-b border-white/20 last:border-b-0 last:pb-0" : "pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className={isSelectedVersion ? "text-sm font-medium leading-tight" : "text-sm font-medium text-slate-900 leading-tight"}>
+                                      {item.name}
+                                    </p>
+                                    <p className={isSelectedVersion ? "text-xs mt-0.5 opacity-85" : "text-xs text-slate-500 mt-0.5"}>
+                                      {item.quantity} {item.unit} x ${Number(item.unit_price).toFixed(2)}
+                                    </p>
+                                  </div>
+                                  <p className={isSelectedVersion ? "text-sm font-semibold whitespace-nowrap" : "text-sm font-semibold text-slate-900 whitespace-nowrap"}>
+                                    ${Number(item.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                   </p>
                                 </div>
-                                <p className={isSelectedVersion ? "text-sm font-semibold whitespace-nowrap" : "text-sm font-semibold text-slate-900 whitespace-nowrap"}>
-                                  ${Number(item.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </p>
                               </div>
-                            </div>
-                          ))
-                        ) : (
-                          <p className={isSelectedVersion ? "text-xs opacity-85" : "text-xs text-slate-500"}>
-                            No line items.
-                          </p>
-                        )}
-                      </div>
+                            ))
+                          ) : (
+                            <p className={isSelectedVersion ? "text-xs opacity-85" : "text-xs text-slate-500"}>
+                              No line items.
+                            </p>
+                          )}
+                        </div>
 
-                      <div className={isSelectedVersion ? "pt-2 border-t border-white/30 space-y-1.5" : "pt-2 border-t border-slate-200 space-y-1.5"}>
-                        <div className="flex justify-between text-xs">
-                          <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>Subtotal</span>
-                          <span className={isSelectedVersion ? "font-medium" : "text-slate-700 font-medium"}>
-                            ${versionWithProfitFolded.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>
-                            Tax ({(Number(version.tax_rate) * 100).toFixed(1)}%)
-                          </span>
-                          <span className={isSelectedVersion ? "font-medium" : "text-slate-700 font-medium"}>
-                            ${Number(version.tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        {Number(version.discount) > 0 && (
+                        <div className={isSelectedVersion ? "pt-2 border-t border-white/30 space-y-1.5" : "pt-2 border-t border-slate-200 space-y-1.5"}>
                           <div className="flex justify-between text-xs">
-                            <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>Discount</span>
-                            <span className={isSelectedVersion ? "font-medium" : "text-emerald-600 font-medium"}>
-                              -${Number(version.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>Subtotal</span>
+                            <span className={isSelectedVersion ? "font-medium" : "text-slate-700 font-medium"}>
+                              ${versionWithProfitFolded.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
                           </div>
-                        )}
-                        <div className={isSelectedVersion ? "flex justify-between text-sm font-bold pt-1" : "flex justify-between text-sm font-bold text-slate-900 pt-1"}>
-                          <span>Total</span>
-                          <span>${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          <div className="flex justify-between text-xs">
+                            <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>
+                              Tax ({(Number(version.tax_rate) * 100).toFixed(1)}%)
+                            </span>
+                            <span className={isSelectedVersion ? "font-medium" : "text-slate-700 font-medium"}>
+                              ${Number(version.tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          {Number(version.discount) > 0 && (
+                            <div className="flex justify-between text-xs">
+                              <span className={isSelectedVersion ? "opacity-85" : "text-slate-500"}>Discount</span>
+                              <span className={isSelectedVersion ? "font-medium" : "text-emerald-600 font-medium"}>
+                                -${Number(version.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
+                          <div className={isSelectedVersion ? "flex justify-between text-sm font-bold pt-1" : "flex justify-between text-sm font-bold text-slate-900 pt-1"}>
+                            <span>Total</span>
+                            <span>${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                    {isSelectedVersion && (
+                      <button
+                        type="button"
+                        onClick={handleDownloadPDF}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm hover:bg-slate-50 transition-colors bg-white"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download PDF
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -907,6 +982,37 @@ export function ClientPortalEstimate({
         </div>
       ) : (
         <>
+          {(proposalSections.materials ?? true) && highlightedItems.length > 0 && (
+            <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                Material Highlights
+              </p>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+                {highlightedItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-700">{item.name}</span>
+                    <span className="font-semibold text-slate-900">
+                      ${Number(item.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(proposalSections.project_visualization ?? true) && estimate.project_visualization_image_url && (
+            <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                Project Visualization
+              </p>
+              <img
+                src={estimate.project_visualization_image_url}
+                alt="Project visualization"
+                className="w-full rounded-xl border border-slate-200 object-cover"
+              />
+            </div>
+          )}
+
           {!isVersionComparisonMode && displayLineItems.length > 0 && (
             <div className="px-6 sm:px-8 py-5">
               <div className="space-y-0">
@@ -997,8 +1103,31 @@ export function ClientPortalEstimate({
               </p>
             </div>
           )}
+
         </>
       )}
+
+      <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+          Agreements
+        </p>
+        <div className="space-y-3">
+          {agreementEntries.map(({ key }) => (
+            <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-900">
+                {formatAgreementLabel(key)}
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveAgreementKey(key)}
+                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                View Document
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {isPending && !hasPendingChanges && (
         <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
@@ -1038,10 +1167,35 @@ export function ClientPortalEstimate({
               {approvalDialogAction === "approve_changes" ? "Approve Changes" : "Approve Estimate"}
             </DialogTitle>
             <DialogDescription>
-              Add an optional e-signature, then submit your approval.
+              Add your e-signature, then submit your approval.
             </DialogDescription>
           </DialogHeader>
           {signaturePad}
+          {approvalDialogAction === "approve" && (
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-medium text-slate-900">Required agreements</p>
+              {REQUIRED_AGREEMENT_KEYS.map((key) => (
+                <label key={key} className="flex items-start gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={agreementChecks[key]}
+                    onChange={(event) =>
+                      setAgreementChecks((previous) => ({ ...previous, [key]: event.target.checked }))
+                    }
+                  />
+                  <span>
+                    <span className="font-medium">{key.replaceAll("_", " ")}</span>
+                    {resolveAgreementTextByKey(templateRecord, key) ? (
+                      <span className="block text-xs text-slate-500 mt-0.5">
+                        {resolveAgreementTextByKey(templateRecord, key)}
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {error && <p className="text-sm text-red-600">{error}</p>}
           <DialogFooter className="gap-2">
             <button
               type="button"
@@ -1054,7 +1208,7 @@ export function ClientPortalEstimate({
             <button
               type="button"
               onClick={handleConfirmApproval}
-              disabled={submitting !== null}
+              disabled={submitting !== null || !hasSignature}
               className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
               style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
             >
@@ -1068,6 +1222,66 @@ export function ClientPortalEstimate({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={activeAgreementKey !== null} onOpenChange={(open) => !open && setActiveAgreementKey(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{activeAgreement ? formatAgreementLabel(activeAgreement.key) : "Agreement"}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm text-slate-700 whitespace-pre-wrap">
+              {activeAgreement?.text || "No agreement text available for this document."}
+            </p>
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setActiveAgreementKey(null)}
+              className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function formatAgreementLabel(key: string): string {
+  return key
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function readAgreementText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (typeof record.text === "string") return record.text.trim();
+  if (typeof record.content === "string") return record.content.trim();
+  if (typeof record.body === "string") return record.body.trim();
+  return "";
+}
+
+function resolveAgreementTextByKey(
+  templates: Record<string, unknown>,
+  key: string,
+): string {
+  const direct = readAgreementText(templates[key]);
+  if (direct) return direct;
+
+  const normalize = (value: string) =>
+    value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const target = normalize(key);
+
+  for (const [candidateKey, candidateValue] of Object.entries(templates)) {
+    if (normalize(candidateKey) === target) {
+      const candidateText = readAgreementText(candidateValue);
+      if (candidateText) return candidateText;
+    }
+  }
+
+  return "";
 }

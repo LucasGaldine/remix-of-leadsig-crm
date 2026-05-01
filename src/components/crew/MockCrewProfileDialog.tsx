@@ -10,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CrewRoleSelect } from "@/components/crew/CrewRoleSelect";
 import { crewOnlyRoles } from "@/lib/crewRoles";
 import { CREW_DESCRIPTION_MAX_LENGTH } from "@/lib/crewDescription";
@@ -27,6 +28,9 @@ interface MockCrewProfileDialogProps {
   onDescriptionChange: (value: string) => void;
   role: "crew_lead" | "crew_member";
   onRoleChange: (value: "crew_lead" | "crew_member") => void;
+  avatarUrl: string;
+  onAvatarFileChange: (file: File | null) => void;
+  isUploadingAvatar: boolean;
   onSave: () => void;
 }
 
@@ -43,8 +47,18 @@ export function MockCrewProfileDialog({
   onDescriptionChange,
   role,
   onRoleChange,
+  avatarUrl,
+  onAvatarFileChange,
+  isUploadingAvatar,
   onSave,
 }: MockCrewProfileDialogProps) {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "MC";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -55,6 +69,27 @@ export function MockCrewProfileDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="mock-profile-avatar">Profile Photo (optional)</Label>
+            <div className="flex items-center gap-3">
+              <Avatar className="h-14 w-14 border border-border">
+                {avatarUrl ? <AvatarImage src={avatarUrl} alt={name || "Mock crew profile"} /> : null}
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+              <div className="space-y-1">
+                <Input
+                  id="mock-profile-avatar"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => onAvatarFileChange(event.target.files?.[0] || null)}
+                  disabled={isUploadingAvatar}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {isUploadingAvatar ? "Uploading photo..." : "PNG/JPG/WebP, up to 5MB."}
+                </p>
+              </div>
+            </div>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="mock-profile-name">Name</Label>
             <Input

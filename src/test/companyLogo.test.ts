@@ -33,9 +33,9 @@ describe("company logo validation", () => {
     expect(getCompanyLogoValidationError(file, { width: 1200, height: 400 })).toBeNull();
   });
 
-  it("uses the allowed avatars folder for company logo uploads", () => {
+  it("uses the account website folder for company logo uploads", () => {
     expect(getCompanyLogoStoragePath("acct_1", 1234567890, "png")).toBe(
-      "avatars/acct_1-company-logo-1234567890.png",
+      "website/acct_1/company-logo-1234567890.png",
     );
   });
 });

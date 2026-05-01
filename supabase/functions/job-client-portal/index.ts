@@ -389,6 +389,10 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
         : typeof body.signatureDataUrl === "string"
           ? body.signatureDataUrl
           : null;
+    const agreementAcceptance =
+      body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
+        ? body.agreement_acceptance
+        : null;
 
     if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
       return jsonResponse({ error: "Invalid action" }, 400);
@@ -404,7 +408,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       return jsonResponse({ error: "No quote found for this job schedule" }, 404);
     }
 
-    return await handleEstimateAction(supabase, estimate, action, null, clientUpdatedAt, estimateVersionId, signatureDataUrl);
+    return await handleEstimateAction(supabase, estimate, action, null, clientUpdatedAt, estimateVersionId, signatureDataUrl, agreementAcceptance);
   }
 
   if (req.method !== "GET") {
@@ -436,8 +440,9 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     supabase
       .from("estimates")
       .select(`
-        id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
+        id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
         original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
+        proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
           sort_order, is_change_order, change_order_type, change_order_approved, changed_at
@@ -527,6 +532,8 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     };
   });
 
+  const recurringResolvedAgreement = resolveAgreementTemplatesForEstimates([estimate]);
+
   return jsonResponse({
     job: {
       name: recurringJob.name,
@@ -555,6 +562,8 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
     schedules: schedulesWithVisit,
     estimate: estimate
       ? {
+          id: estimate.id,
+          job_id: estimate.job_id ?? null,
           total: estimate.total,
           subtotal: estimate.subtotal,
           profit_margin: estimate.profit_margin,
@@ -572,6 +581,11 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
           original_notes: estimate.original_notes,
           original_line_items: originalLineItemsRecurring,
           has_pending_changes: estimate.has_pending_changes,
+          proposal_settings: estimate.proposal_settings || null,
+          project_visualization_image_url: estimate.project_visualization_image_url || null,
+          agreement_templates: recurringResolvedAgreement.templates,
+          agreement_source_estimate_id: recurringResolvedAgreement.sourceEstimateId,
+          agreement_acceptance: estimate.agreement_acceptance || null,
           estimate_versions: estimateVersionsRecurring || [],
         }
       : null,
@@ -600,6 +614,10 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
       : typeof body.signatureDataUrl === "string"
         ? body.signatureDataUrl
         : null;
+  const agreementAcceptance =
+    body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
+      ? body.agreement_acceptance
+      : null;
 
   if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
     return jsonResponse({ error: "Invalid action" }, 400);
@@ -632,10 +650,10 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
       return jsonResponse({ error: "No estimate found for this job" }, 404);
     }
 
-    return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl);
+    return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl, agreementAcceptance);
   }
 
-  return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl);
+  return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl, agreementAcceptance);
 }
 
 async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) {
@@ -663,8 +681,9 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
       .from("estimates")
       .select(
         `
-        id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
+        id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
         original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
+        proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
           sort_order, is_change_order, change_order_type, change_order_approved, changed_at
@@ -710,8 +729,9 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         .from("estimates")
         .select(
           `
-          id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
+          id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at,
           original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
+          proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
           line_items:estimate_line_items(
             id, name, description, quantity, unit, unit_price, total,
             sort_order, is_change_order, change_order_type, change_order_approved
@@ -778,6 +798,28 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         .order("created_at", { ascending: true })
     : { data: [] };
 
+  const relatedEstimateJobIds = new Set<string>();
+  if (job?.id) relatedEstimateJobIds.add(job.id);
+  if (job?.estimate_job_id) relatedEstimateJobIds.add(job.estimate_job_id);
+  if (estimate?.job_id) relatedEstimateJobIds.add(estimate.job_id);
+  if (parentEstimate?.job_id) relatedEstimateJobIds.add(parentEstimate.job_id);
+
+  let fallbackEstimates: any[] = [];
+  if (relatedEstimateJobIds.size > 0) {
+    const { data: relatedEstimates } = await supabase
+      .from("estimates")
+      .select("id, job_id, agreement_templates, updated_at")
+      .in("job_id", Array.from(relatedEstimateJobIds))
+      .order("updated_at", { ascending: false });
+    fallbackEstimates = relatedEstimates || [];
+  }
+
+  const resolvedAgreement = resolveAgreementTemplatesForEstimates([
+    parentEstimate,
+    estimate,
+    ...fallbackEstimates,
+  ]);
+
   return jsonResponse({
     job: {
       name: job.name,
@@ -809,6 +851,8 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
     })),
     estimate: parentEstimate
       ? {
+          id: parentEstimate.id,
+          job_id: parentEstimate.job_id ?? null,
           total: parentEstimate.total,
           subtotal: parentEstimate.subtotal,
           profit_margin: parentEstimate.profit_margin,
@@ -826,6 +870,11 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
           original_notes: parentEstimate.original_notes,
           original_line_items: originalLineItems,
           has_pending_changes: parentEstimate.has_pending_changes,
+          proposal_settings: parentEstimate.proposal_settings || null,
+          project_visualization_image_url: parentEstimate.project_visualization_image_url || null,
+          agreement_templates: resolvedAgreement.templates,
+          agreement_source_estimate_id: resolvedAgreement.sourceEstimateId,
+          agreement_acceptance: parentEstimate.agreement_acceptance || null,
           estimate_versions: estimateVersions || [],
         }
       : null,
@@ -851,6 +900,122 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
   });
 }
 
+function hasAgreementTemplateText(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return Object.values(record).some((entry) => {
+    if (typeof entry === "string") return entry.trim().length > 0;
+    if (!entry || typeof entry !== "object") return false;
+    const nested = entry as Record<string, unknown>;
+    return (
+      (typeof nested.text === "string" && nested.text.trim().length > 0) ||
+      (typeof nested.content === "string" && nested.content.trim().length > 0) ||
+      (typeof nested.body === "string" && nested.body.trim().length > 0)
+    );
+  });
+}
+
+function getAgreementTemplatesCandidate(estimate: any): unknown[] {
+  if (!estimate || typeof estimate !== "object") return [];
+  const record = estimate as Record<string, unknown>;
+  const proposalSettings =
+    record.proposal_settings && typeof record.proposal_settings === "object"
+      ? (record.proposal_settings as Record<string, unknown>)
+      : null;
+
+  return [
+    record.agreement_templates,
+    proposalSettings?.agreement_templates,
+    proposalSettings?.agreementTemplates,
+  ];
+}
+
+function resolveAgreementTemplates(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") return null;
+  return hasAgreementTemplateText(value) ? (value as Record<string, unknown>) : null;
+}
+
+function resolveAgreementTemplatesFromEstimate(estimate: any): Record<string, unknown> | null {
+  const candidates = getAgreementTemplatesCandidate(estimate);
+  for (const candidate of candidates) {
+    const resolved = resolveAgreementTemplates(candidate);
+    if (resolved) return resolved;
+  }
+  return null;
+}
+
+function resolveAgreementTemplatesForEstimates(estimates: any[]): {
+  templates: Record<string, unknown> | null;
+  sourceEstimateId: string | null;
+} {
+  const requiredKeys = ["job_release_agreement", "job_agreement", "warranty_agreement"] as const;
+  const valid = estimates.filter((item) => item && typeof item === "object");
+  const merged: Record<string, unknown> = {};
+  let sourceEstimateId: string | null = null;
+  const genericPhrases = [
+    "by approving this estimate",
+    "authorize release of work",
+    "agreed scope",
+  ];
+  const extractText = (value: unknown): string => {
+    if (typeof value === "string") return value.trim();
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      if (typeof record.text === "string") return record.text.trim();
+      if (typeof record.content === "string") return record.content.trim();
+      if (typeof record.body === "string") return record.body.trim();
+    }
+    return "";
+  };
+  const scoreText = (text: string): number => {
+    if (!text) return -1;
+    const normalized = text.toLowerCase();
+    const isGeneric = genericPhrases.some((phrase) => normalized.includes(phrase));
+    return isGeneric ? Math.min(text.length, 120) : text.length + 1000;
+  };
+
+  for (const key of requiredKeys) {
+    let bestValue: unknown = null;
+    let bestEstimateId: string | null = null;
+    let bestScore = -1;
+    for (const estimate of valid) {
+      const resolved = resolveAgreementTemplatesFromEstimate(estimate);
+      if (!resolved) continue;
+      const value = resolved[key];
+      const text = extractText(value);
+      if (!text) continue;
+      const score = scoreText(text);
+      if (score > bestScore) {
+        bestScore = score;
+        bestValue = value;
+        bestEstimateId = typeof estimate.id === "string" ? estimate.id : null;
+      }
+    }
+    if (bestValue !== null) {
+      merged[key] = bestValue;
+      if (!sourceEstimateId && bestEstimateId) {
+        sourceEstimateId = bestEstimateId;
+      }
+    }
+  }
+
+  if (Object.keys(merged).length > 0) {
+    return { templates: merged, sourceEstimateId };
+  }
+
+  for (const estimate of valid) {
+    const resolved = resolveAgreementTemplatesFromEstimate(estimate);
+    if (resolved) {
+      return {
+        templates: resolved,
+        sourceEstimateId: typeof estimate.id === "string" ? estimate.id : null,
+      };
+    }
+  }
+
+  return { templates: null, sourceEstimateId: null };
+}
+
 async function handleEstimateAction(
   supabase: any,
   estimate: { id: string; status: string; expires_at: string | null; job_id: string | null; recurring_job_id?: string | null; updated_at: string; has_pending_changes?: boolean },
@@ -859,6 +1024,7 @@ async function handleEstimateAction(
   clientUpdatedAt?: string,
   estimateVersionId?: string | null,
   signatureDataUrl?: string | null,
+  agreementAcceptance?: Record<string, boolean> | null,
 ) {
   if (clientUpdatedAt && estimate.updated_at !== clientUpdatedAt) {
     return jsonResponse({
@@ -964,6 +1130,12 @@ async function handleEstimateAction(
   }
 
   if (action === "approve") {
+    const requiredAgreementKeys = ["job_release_agreement", "job_agreement", "warranty_agreement"];
+    const acceptedKeys = requiredAgreementKeys.filter((key) => agreementAcceptance?.[key] === true);
+    if (acceptedKeys.length !== requiredAgreementKeys.length) {
+      return jsonResponse({ error: "All required agreements must be accepted before approval." }, 400);
+    }
+
     let uploadedSignature: { filePath: string; publicUrl: string } | null = null;
     if (signatureDataUrl) {
       const uploadedResult = await uploadSignatureDataUrl(supabase, estimate.id, signatureDataUrl);
@@ -987,6 +1159,12 @@ async function handleEstimateAction(
       status: "accepted",
       accepted_at: new Date().toISOString(),
       approved_via: "customer_link",
+      agreement_acceptance: {
+        job_release_agreement: agreementAcceptance?.job_release_agreement === true,
+        job_agreement: agreementAcceptance?.job_agreement === true,
+        warranty_agreement: agreementAcceptance?.warranty_agreement === true,
+        accepted_at: new Date().toISOString(),
+      },
       updated_at: new Date().toISOString(),
     };
 

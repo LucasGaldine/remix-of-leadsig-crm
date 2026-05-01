@@ -34,6 +34,7 @@ import { prepareLeadPhotoForUpload } from "@/lib/photoCompression";
 import { createEstimateVersionSnapshot, isEstimateVersionsUnavailableError } from "@/lib/estimateVersions";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { EstimateProposalPanel } from "@/components/estimates/EstimateProposalPanel";
 
 const CATEGORY_ORDER = ["equipment", "materials", "labor", "other"] as const;
 const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
@@ -181,6 +182,7 @@ export default function EstimateDetail() {
   const { isManager, user, currentAccount } = useAuth();
   const { data: estimate, isLoading } = useEstimate(id);
   const isMobile = useIsMobile();
+  const showProposalPanel = import.meta.env.MODE !== "test";
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [portalDialogOpen, setPortalDialogOpen] = useState(false);
@@ -1306,9 +1308,9 @@ export default function EstimateDetail() {
     ? manualApproving
       ? "Approving..."
       : "Approved"
-    : "Approve";
+    : "Manually Approve";
   const canLogPayments = typeof isManager === "function" ? isManager() : false;
-  const portalLabel = portalLoading ? "Generating..." : "Client Portal";
+  const portalLabel = portalLoading ? "Generating..." : "Send Customer Portal";
   const mobileQuickActions = [
     {
       icon: <Check className="h-5 w-5" />,
@@ -1410,7 +1412,7 @@ export default function EstimateDetail() {
                   ? "Approved"
                   : manualApproving
                     ? "Approving..."
-                    : "Approve"}
+                    : "Manually Approve"}
               </Button>
               <Button
                 variant="secondary"
@@ -1420,7 +1422,7 @@ export default function EstimateDetail() {
                 disabled={portalLoading}
               >
                 <Link2 className="h-4 w-4" />
-                {portalLoading ? "Generating..." : "Client Portal"}
+                {portalLoading ? "Generating..." : "Send Customer Portal"}
               </Button>
             </div>
           )}
@@ -1886,6 +1888,18 @@ export default function EstimateDetail() {
               )}
             </div>
 
+            {showProposalPanel && (
+              <EstimateProposalPanel
+                estimate={estimate}
+                estimateVersions={estimateVersions}
+                displayLineItems={displayLineItems}
+                onRefresh={async () => {
+                  await queryClient.invalidateQueries({ queryKey: ["estimate", id] });
+                  await fetchEstimateVersions();
+                }}
+              />
+            )}
+
           </div>
 
           <div className="space-y-4" data-testid="estimate-details-right-column">
@@ -1896,7 +1910,7 @@ export default function EstimateDetail() {
               <div className="flex items-center justify-between text-muted-foreground gap-1 flex-wrap">
                 <div className="flex gap-2 items-center">
                   <User className="w-3 h-3" />
-                  <p className="text-xs uppercase tracking-wide">Contact</p>
+                  <p className="text-xs uppercase tracking-wide">Client</p>
                 </div>
                 <span className="inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   View

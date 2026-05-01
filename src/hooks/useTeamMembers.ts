@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { getTeamMemberDisplayName } from "@/lib/teamMembers";
 import { buildMockCrewAssigneeId } from "@/lib/crewIdentifiers";
-import { isMissingRelationError } from "@/lib/supabaseErrors";
+import { isMissingColumnError, isMissingRelationError } from "@/lib/supabaseErrors";
 import { fetchAccountMembersWithDescriptionFallback } from "@/lib/accountMembers";
 
 export interface TeamMember {
@@ -12,6 +12,7 @@ export interface TeamMember {
   email: string;
   role: string;
   description?: string | null;
+  avatar_url?: string | null;
   invited_at?: string | null;
   is_mock_profile: boolean;
   mock_profile_id?: string | null;
@@ -43,16 +44,26 @@ export function useTeamMembers() {
       const userIds = members.map(m => m.user_id);
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("user_id, full_name, email")
+        .select("user_id, full_name, email, avatar_url")
         .in("user_id", userIds);
 
       if (profilesError) throw profilesError;
 
-      const { data: mockProfiles, error: mockProfilesError } = await supabase
+      let mockProfilesQuery = await supabase
         .from("mock_crew_profiles")
-        .select("id, full_name, phone, role, description")
+        .select("id, full_name, phone, role, description, avatar_url")
         .eq("account_id", currentAccount.id)
         .order("full_name", { ascending: true });
+
+      if (isMissingColumnError(mockProfilesQuery.error, "avatar_url", "mock_crew_profiles")) {
+        mockProfilesQuery = await supabase
+          .from("mock_crew_profiles")
+          .select("id, full_name, phone, role, description")
+          .eq("account_id", currentAccount.id)
+          .order("full_name", { ascending: true });
+      }
+
+      const { data: mockProfiles, error: mockProfilesError } = mockProfilesQuery;
 
       const mockProfilesTableMissing = isMissingRelationError(mockProfilesError, "mock_crew_profiles");
 
@@ -79,6 +90,7 @@ export function useTeamMembers() {
             email: profile?.email || "",
             role: member.role,
             description: member.description || null,
+            avatar_url: profile?.avatar_url || null,
             invited_at: member.invited_at,
             is_mock_profile: !profile?.full_name,
             mock_profile_id: null,
@@ -97,6 +109,9 @@ export function useTeamMembers() {
         email: "",
         role: mockProfile.role,
         description: mockProfile.description || null,
+        avatar_url: ("avatar_url" in mockProfile && typeof mockProfile.avatar_url === "string")
+          ? mockProfile.avatar_url
+          : null,
         invited_at: null,
         is_mock_profile: true,
         mock_profile_id: mockProfile.id,

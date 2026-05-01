@@ -201,10 +201,10 @@ export function JobChecklist({
         materialChecklistByLineItemId.get(lineItem.id) ||
         materialChecklistFallbackByName.get(lineItem.name.trim().toLowerCase()) ||
         null;
-      return linked?.is_completed ?? false;
+      return isJobCompleted ? true : linked?.is_completed ?? false;
     });
   const completedCount =
-    checklistProgressItems.filter((i) => i.is_completed).length +
+    checklistProgressItems.filter((i) => (isJobCompleted ? true : i.is_completed)).length +
     materialProgress.filter(Boolean).length;
   const totalCount = checklistProgressItems.length + materialProgress.length;
   const allComplete = totalCount > 0 && completedCount === totalCount;
@@ -847,6 +847,7 @@ export function JobChecklist({
                     if (section.category === "material") {
                       const materialItem = item as JobLineItem;
                       const linkedChecklistItem = getMaterialChecklistItem(materialItem);
+                      const isMaterialCompleted = isJobCompleted || Boolean(linkedChecklistItem?.is_completed);
                       return (
                         <div
                           key={materialItem.id}
@@ -862,14 +863,14 @@ export function JobChecklist({
                               size="icon"
                               className="h-10 w-10 md:h-8 md:w-8 flex-shrink-0 [&_svg]:!h-6 [&_svg]:!w-6 md:[&_svg]:!h-4 md:[&_svg]:!w-4"
                               aria-label={
-                                linkedChecklistItem?.is_completed
+                                isMaterialCompleted
                                   ? `Mark ${materialItem.name} as incomplete`
                                   : `Mark ${materialItem.name} as complete`
                               }
                               onClick={() => handleMaterialToggle(materialItem)}
                               disabled={isJobCompleted}
                             >
-                              {linkedChecklistItem?.is_completed ? (
+                              {isMaterialCompleted ? (
                                 <CheckCircle2 className="text-green-600" />
                               ) : (
                                 <Circle className="text-muted-foreground" />
@@ -884,7 +885,7 @@ export function JobChecklist({
                             <span
                               className={cn(
                                 "block text-xl md:text-sm font-semibold",
-                                linkedChecklistItem?.is_completed &&
+                                isMaterialCompleted &&
                                   !editMode &&
                                   "line-through text-muted-foreground",
                               )}
@@ -931,6 +932,7 @@ export function JobChecklist({
                     }
 
                     const checklistItem = item as ChecklistItem;
+                    const isChecklistItemCompleted = isJobCompleted || checklistItem.is_completed;
                     const normalizedLabel = checklistItem.label.toLowerCase();
                     const isPortalItem =
                       normalizedLabel === SEND_CLIENT_PORTAL_CHECKLIST_LABEL.toLowerCase();
@@ -943,7 +945,7 @@ export function JobChecklist({
                         className={cn(
                           "flex items-center gap-3 p-3 transition-colors",
                           !editMode && !isJobCompleted && "hover:bg-muted/50",
-                          checklistItem.is_completed && !editMode && "bg-muted/30",
+                          isChecklistItemCompleted && !editMode && "bg-muted/30",
                           section.category === "task" &&
                             editMode &&
                             dragOverTaskId === checklistItem.id &&
@@ -986,14 +988,14 @@ export function JobChecklist({
                             size="icon"
                             className="h-10 w-10 md:h-8 md:w-8 flex-shrink-0 [&_svg]:!h-6 [&_svg]:!w-6 md:[&_svg]:!h-4 md:[&_svg]:!w-4"
                             aria-label={
-                              checklistItem.is_completed
+                              isChecklistItemCompleted
                                 ? `Mark ${checklistItem.label} as incomplete`
                                 : `Mark ${checklistItem.label} as complete`
                             }
                             onClick={() => handleToggle(checklistItem)}
                             disabled={isJobCompleted}
                           >
-                            {checklistItem.is_completed ? (
+                            {isChecklistItemCompleted ? (
                               <CheckCircle2 className="text-green-600" />
                             ) : (
                               <Circle className="text-muted-foreground" />
@@ -1032,7 +1034,7 @@ export function JobChecklist({
                               normalizedLabel === "navigate to address"
                                 ? "text-base"
                                 : "text-xl md:text-sm",
-                              checklistItem.is_completed && !editMode && "line-through text-muted-foreground",
+                              isChecklistItemCompleted && !editMode && "line-through text-muted-foreground",
                             )}
                           >
                             {checklistItem.label}

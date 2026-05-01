@@ -1,4 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  buildLeadAutomationDynamicVars,
+  extractQualificationDecisionFromRetellResponse,
+} from "../_shared/lead-automation-context.ts";
 
 const HARDCODED_RETELL_AGENT_ID = "agent_84800e79b94377a4f275cf63b6";
 
@@ -60,20 +64,8 @@ function getConnectedTwilioConfig(rawSettings: unknown): { accountSid: string; a
   };
 }
 
-function buildDynamicVars(firstName: string, companyName: string): Record<string, string> {
-  return {
-    "contact.first_name": firstName,
-    "company name": companyName,
-    "companies name": companyName,
-    company: companyName,
-    contact_first_name: firstName,
-    first_name: firstName,
-    company_name: companyName,
-    companies_name: companyName,
-  };
-}
-
 async function createRetellChat(params: {
+  supabase: ReturnType<typeof createClient>;
   apiKey: string;
   firstName: string;
   companyName: string;
@@ -81,7 +73,16 @@ async function createRetellChat(params: {
   accountId: string;
   to: string;
   from: string;
+  accountSettings?: unknown;
 }): Promise<{ success: boolean; chatId?: string; error?: string; status?: number; responseBody?: unknown }> {
+  const dynamicVars = await buildLeadAutomationDynamicVars({
+    supabase: params.supabase,
+    accountId: params.accountId,
+    firstName: params.firstName,
+    companyName: params.companyName,
+    accountSettings: params.accountSettings,
+  });
+
   const response = await fetch("https://api.retellai.com/create-chat", {
     method: "POST",
     headers: {
@@ -90,7 +91,7 @@ async function createRetellChat(params: {
     },
     body: JSON.stringify({
       agent_id: HARDCODED_RETELL_AGENT_ID,
-      retell_llm_dynamic_variables: buildDynamicVars(params.firstName, params.companyName),
+      retell_llm_dynamic_variables: dynamicVars,
       metadata: {
         source: "website_sms",
         lead_id: params.leadId,
@@ -350,6 +351,7 @@ Deno.serve(async (req: Request) => {
 
     if (!retellChatId) {
       const chatResult = await createRetellChat({
+        supabase,
         apiKey: retellApiKey,
         firstName,
         companyName,
@@ -357,6 +359,7 @@ Deno.serve(async (req: Request) => {
         accountId: matchingAccount.id,
         to: from,
         from: twilioConfig.fromNumber,
+        accountSettings: matchingAccount.settings,
       });
 
       if (!chatResult.success || !chatResult.chatId) {
@@ -407,6 +410,34 @@ Deno.serve(async (req: Request) => {
       return emptyTwiml(200);
     }
 
+    const qualificationDecision = extractQualificationDecisionFromRetellResponse(completionResult.responseBody);
+    if (qualificationDecision.qualified === true) {
+      await supabase
+        .from("leads")
+        .update({
+          status: "qualified",
+          approval_status: "approved",
+          approved_at: new Date().toISOString(),
+          rejected_at: null,
+          approval_reason: null,
+        })
+        .eq("approval_status", "pending")
+        .eq("id", matchedLead.id)
+        .eq("account_id", matchingAccount.id);
+    } else if (qualificationDecision.qualified === false) {
+      await supabase
+        .from("leads")
+        .update({
+          approval_status: "rejected",
+          approval_reason: "other",
+          rejected_at: new Date().toISOString(),
+          approved_at: null,
+        })
+        .eq("approval_status", "pending")
+        .eq("id", matchedLead.id)
+        .eq("account_id", matchingAccount.id);
+    }
+
     const sent = await sendTwilioSms({
       to: from,
       body: completionResult.message,
@@ -441,8 +472,26 @@ Deno.serve(async (req: Request) => {
         twilio_sid: sent.sid ?? null,
         from_number: twilioConfig.fromNumber,
         to_number: from,
+        qualification_decision: qualificationDecision.qualified,
+        qualification_reason: qualificationDecision.reason ?? null,
       },
     });
+
+    if (qualificationDecision.qualified !== null) {
+      await supabase.from("interactions").insert({
+        lead_id: matchedLead.id,
+        type: "text",
+        direction: "outbound",
+        summary: qualificationDecision.qualified ? "Lead automation marked qualified" : "Lead automation marked not qualified",
+        body: qualificationDecision.reason ?? "Qualification decision recorded from agent response.",
+        metadata: {
+          source: "lead_automation",
+          retell_chat_id: retellChatId,
+          qualified: qualificationDecision.qualified,
+          reason: qualificationDecision.reason ?? null,
+        },
+      });
+    }
 
     return emptyTwiml(200);
   } catch (error) {

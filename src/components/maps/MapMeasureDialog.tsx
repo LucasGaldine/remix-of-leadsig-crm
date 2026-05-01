@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
+import area from "@turf/area";
+import { polygon } from "@turf/helpers";
 import "leaflet/dist/leaflet.css";
 import "@geoman-io/leaflet-geoman-free";
 import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
-import { MapContainer, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -11,26 +13,27 @@ type MapMeasureDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   address: string;
+  city?: string;
   onUseMeasurement: (squareFeet: number) => void;
 };
 
 const SQ_METERS_TO_SQ_FEET = 10.763910416709722;
-const EARTH_RADIUS_METERS = 6378137;
-
-function geodesicAreaSquareMeters(latLngs: L.LatLng[]): number {
+function polygonAreaSquareMeters(latLngs: L.LatLng[]): number {
   if (!Array.isArray(latLngs) || latLngs.length < 3) return 0;
 
-  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-  let area = 0;
+  const ring = latLngs.map((point) => [point.lng, point.lat] as [number, number]);
+  const first = ring[0];
+  const last = ring[ring.length - 1];
 
-  for (let i = 0; i < latLngs.length; i += 1) {
-    const p1 = latLngs[i];
-    const p2 = latLngs[(i + 1) % latLngs.length];
-    area += toRadians(p2.lng - p1.lng) * (2 + Math.sin(toRadians(p1.lat)) + Math.sin(toRadians(p2.lat)));
+  if (!first || !last) return 0;
+
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    ring.push([first[0], first[1]]);
   }
 
-  area = (area * EARTH_RADIUS_METERS * EARTH_RADIUS_METERS) / 2;
-  return Math.abs(area);
+  if (ring.length < 4) return 0;
+
+  return area(polygon([ring]));
 }
 
 function DrawTools({
@@ -40,9 +43,10 @@ function DrawTools({
 }) {
   const map = useMap();
   const drawnLayerRef = useRef<L.Polygon | null>(null);
+  const detachLayerListenersRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const updateAreaFromLayer = (layer: L.Layer) => {
+    const updateAreaFromLayer = (layer: L.Layer | null | undefined) => {
       if (!(layer instanceof L.Polygon)) return;
       const latlngRings = layer.getLatLngs();
       const firstRing = Array.isArray(latlngRings) ? latlngRings[0] : [];
@@ -50,16 +54,39 @@ function DrawTools({
         onAreaChange(0);
         return;
       }
-      const areaSqMeters = geodesicAreaSquareMeters(firstRing as L.LatLng[]);
+      const areaSqMeters = polygonAreaSquareMeters(firstRing as L.LatLng[]);
       onAreaChange(areaSqMeters);
     };
 
     const removeCurrentLayer = () => {
+      if (detachLayerListenersRef.current) {
+        detachLayerListenersRef.current();
+        detachLayerListenersRef.current = null;
+      }
       const layer = drawnLayerRef.current;
       if (layer && map.hasLayer(layer)) {
         map.removeLayer(layer);
       }
       drawnLayerRef.current = null;
+    };
+
+    const attachLayerListeners = (layer: L.Polygon) => {
+      const handleLayerChange = () => updateAreaFromLayer(layer);
+      layer.on("pm:edit", handleLayerChange as L.LeafletEventHandlerFn);
+      layer.on("pm:update", handleLayerChange as L.LeafletEventHandlerFn);
+      layer.on("pm:change", handleLayerChange as L.LeafletEventHandlerFn);
+      layer.on("pm:markerdragend", handleLayerChange as L.LeafletEventHandlerFn);
+      layer.on("pm:vertexadded", handleLayerChange as L.LeafletEventHandlerFn);
+      layer.on("pm:vertexremoved", handleLayerChange as L.LeafletEventHandlerFn);
+
+      detachLayerListenersRef.current = () => {
+        layer.off("pm:edit", handleLayerChange as L.LeafletEventHandlerFn);
+        layer.off("pm:update", handleLayerChange as L.LeafletEventHandlerFn);
+        layer.off("pm:change", handleLayerChange as L.LeafletEventHandlerFn);
+        layer.off("pm:markerdragend", handleLayerChange as L.LeafletEventHandlerFn);
+        layer.off("pm:vertexadded", handleLayerChange as L.LeafletEventHandlerFn);
+        layer.off("pm:vertexremoved", handleLayerChange as L.LeafletEventHandlerFn);
+      };
     };
 
     (map as L.Map & { pm: any }).pm.addControls({
@@ -90,11 +117,18 @@ function DrawTools({
       if (!(layer instanceof L.Polygon)) return;
       removeCurrentLayer();
       drawnLayerRef.current = layer;
+      attachLayerListeners(layer);
       updateAreaFromLayer(layer);
     };
 
-    const onEdit = (event: { layer: L.Layer }) => {
-      updateAreaFromLayer(event.layer);
+    const onEdit = (event: { layer?: L.Layer; layers?: L.LayerGroup }) => {
+      if (event.layer) {
+        updateAreaFromLayer(event.layer);
+        return;
+      }
+      if (event.layers) {
+        event.layers.eachLayer((layer) => updateAreaFromLayer(layer));
+      }
     };
 
     const onRemove = (event: { layer: L.Layer }) => {
@@ -120,21 +154,34 @@ function DrawTools({
   return null;
 }
 
-function MapCenterFromAddress({ address }: { address: string }) {
+function MapCenterFromAddress({
+  address,
+  onGeocode,
+}: {
+  address: string;
+  onGeocode: (point: [number, number] | null) => void;
+}) {
   const map = useMap();
 
   useEffect(() => {
     let isCancelled = false;
 
     const geocode = async () => {
+      if (!address.trim()) return;
       const encoded = encodeURIComponent(address);
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encoded}`);
       const data = (await response.json()) as Array<{ lat: string; lon: string }>;
-      if (isCancelled || !Array.isArray(data) || data.length === 0) return;
+      if (isCancelled || !Array.isArray(data) || data.length === 0) {
+        onGeocode(null);
+        return;
+      }
       const lat = parseFloat(data[0].lat);
       const lon = parseFloat(data[0].lon);
       if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        map.setView([lat, lon], 19);
+        map.setView([lat, lon], 22);
+        onGeocode([lat, lon]);
+      } else {
+        onGeocode(null);
       }
     };
 
@@ -142,7 +189,7 @@ function MapCenterFromAddress({ address }: { address: string }) {
     return () => {
       isCancelled = true;
     };
-  }, [address, map]);
+  }, [address, map, onGeocode]);
 
   return null;
 }
@@ -151,12 +198,20 @@ export function MapMeasureDialog({
   open,
   onOpenChange,
   address,
+  city,
   onUseMeasurement,
 }: MapMeasureDialogProps) {
   const [areaSqMeters, setAreaSqMeters] = useState(0);
+  const [geocodedPoint, setGeocodedPoint] = useState<[number, number] | null>(null);
+  const fullAddress = useMemo(() => {
+    return [address, city].map((value) => (value || "").trim()).filter(Boolean).join(", ");
+  }, [address, city]);
 
   useEffect(() => {
-    if (!open) setAreaSqMeters(0);
+    if (!open) {
+      setAreaSqMeters(0);
+      setGeocodedPoint(null);
+    }
   }, [open]);
 
   const areaSqFeet = useMemo(() => areaSqMeters * SQ_METERS_TO_SQ_FEET, [areaSqMeters]);
@@ -172,7 +227,7 @@ export function MapMeasureDialog({
         </DialogHeader>
         <div className="px-4 pb-2">
           <div className="rounded-md border bg-muted/40 px-3 py-2">
-            <p className="text-sm text-muted-foreground truncate">{address}</p>
+            <p className="text-sm text-muted-foreground break-words">{fullAddress}</p>
             <p className="font-medium mt-1 text-base">
               Measured Area: {areaSqFeet > 0 ? areaSqFeet.toFixed(0) : "0"} sq ft
             </p>
@@ -182,19 +237,26 @@ export function MapMeasureDialog({
           <div className="h-full min-h-[320px] w-full rounded-md overflow-hidden border">
             <MapContainer
               center={[39.5, -98.35]}
-              zoom={4}
-              maxZoom={19}
+              zoom={22}
+              maxZoom={22}
               zoomSnap={0}
               zoomDelta={0.5}
               style={{ height: "100%", width: "100%" }}
             >
               <TileLayer
-                attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                maxZoom={19}
-                maxNativeZoom={19}
+                attribution='&copy; <a href="https://www.esri.com/">Esri</a> & contributors'
+                url="https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={22}
+                maxNativeZoom={20}
               />
-              <MapCenterFromAddress address={address} />
+              <MapCenterFromAddress address={fullAddress} onGeocode={setGeocodedPoint} />
+              {geocodedPoint ? (
+                <Marker position={geocodedPoint}>
+                  <Tooltip direction="top" offset={[0, -8]} permanent>
+                    Property Address
+                  </Tooltip>
+                </Marker>
+              ) : null}
               <DrawTools onAreaChange={setAreaSqMeters} />
             </MapContainer>
           </div>

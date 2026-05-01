@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { isMissingRelationError } from "@/lib/supabaseErrors";
+import { isMissingColumnError, isMissingRelationError } from "@/lib/supabaseErrors";
 import { CREW_DESCRIPTION_MAX_LENGTH, normalizeCrewDescription } from "@/lib/crewDescription";
 import {
   fetchAccountMembersWithDescriptionFallback,
@@ -67,6 +67,7 @@ interface MockCrewProfile {
   phone: string | null;
   description: string | null;
   role: "crew_lead" | "crew_member";
+  avatar_url: string | null;
   created_at: string;
 }
 
@@ -85,6 +86,11 @@ export default function SettingsCrewManagement() {
   const [mockProfilePhone, setMockProfilePhone] = useState("");
   const [mockProfileDescription, setMockProfileDescription] = useState("");
   const [mockProfileRole, setMockProfileRole] = useState<"crew_lead" | "crew_member">("crew_member");
+  const [mockProfileAvatarUrl, setMockProfileAvatarUrl] = useState("");
+  const [uploadingMockAvatar, setUploadingMockAvatar] = useState(false);
+  const [showInviteEmailDialog, setShowInviteEmailDialog] = useState(false);
+  const [inviteRecipientName, setInviteRecipientName] = useState("");
+  const [inviteRecipientEmail, setInviteRecipientEmail] = useState("");
 
   const { data: members, isLoading } = useQuery({
     queryKey: ['account-members', currentAccount?.id],
@@ -156,16 +162,29 @@ export default function SettingsCrewManagement() {
     queryFn: async () => {
       if (!currentAccount?.id) return [];
 
-      const { data, error } = await supabase
+      let response = await supabase
         .from("mock_crew_profiles")
-        .select("id, full_name, phone, description, role, created_at")
+        .select("id, full_name, phone, description, role, avatar_url, created_at")
         .eq("account_id", currentAccount.id)
         .order("created_at", { ascending: false });
+
+      if (isMissingColumnError(response.error, "avatar_url", "mock_crew_profiles")) {
+        response = await supabase
+          .from("mock_crew_profiles")
+          .select("id, full_name, phone, description, role, created_at")
+          .eq("account_id", currentAccount.id)
+          .order("created_at", { ascending: false });
+      }
+
+      const { data, error } = response;
 
       const tableMissing = isMissingRelationError(error, "mock_crew_profiles");
       if (error && !tableMissing) throw error;
 
-      return (data || []) as MockCrewProfile[];
+      return (data || []).map((profile: any) => ({
+        ...profile,
+        avatar_url: typeof profile.avatar_url === "string" ? profile.avatar_url : null,
+      })) as MockCrewProfile[];
     },
     enabled: !!currentAccount?.id,
   });
@@ -183,6 +202,7 @@ export default function SettingsCrewManagement() {
             phone: mockProfilePhone.trim() || null,
             description: normalizeCrewDescription(mockProfileDescription),
             role: mockProfileRole,
+            avatar_url: mockProfileAvatarUrl.trim() || null,
           })
           .eq("id", mockProfileToEdit.id)
           .eq("account_id", currentAccount.id);
@@ -198,6 +218,7 @@ export default function SettingsCrewManagement() {
           phone: mockProfilePhone.trim() || null,
           description: normalizeCrewDescription(mockProfileDescription),
           role: mockProfileRole,
+          avatar_url: mockProfileAvatarUrl.trim() || null,
         });
       if (error) {
         if (isMissingRelationError(error, "mock_crew_profiles")) {
@@ -215,6 +236,7 @@ export default function SettingsCrewManagement() {
       setMockProfilePhone("");
       setMockProfileDescription("");
       setMockProfileRole("crew_member");
+      setMockProfileAvatarUrl("");
     },
     onError: (error: Error) => {
       toast.error("Failed to save mock crew profile: " + error.message);
@@ -244,11 +266,23 @@ export default function SettingsCrewManagement() {
     mutationFn: async ({
       memberId,
       updates,
+      isSelfUpdate,
     }: {
       memberId: string;
       updates: { role?: AppRole; description?: string | null };
+      isSelfUpdate?: boolean;
     }) => {
       if (Object.keys(updates).length > 0) {
+        if (isSelfUpdate && updates.description !== undefined && updates.role === undefined) {
+          const { error } = await supabase.rpc("update_own_account_member_description", {
+            member_id_param: memberId,
+            description_param: updates.description,
+          });
+
+          if (error) throw error;
+          return;
+        }
+
         await updateAccountMemberWithDescriptionFallback(async (updatePayload) => {
           const { error } = await supabase
             .from('account_members')
@@ -267,6 +301,35 @@ export default function SettingsCrewManagement() {
     },
     onError: (error: Error) => {
       toast.error('Failed to update member: ' + error.message);
+    },
+  });
+
+  const sendInviteCodeEmailMutation = useMutation({
+    mutationFn: async ({ toEmail, toName }: { toEmail: string; toName?: string }) => {
+      if (!currentAccount?.id) throw new Error("Missing account");
+
+      const { data, error } = await supabase.functions.invoke("send-company-invite-code", {
+        body: {
+          accountId: currentAccount.id,
+          recipientEmail: toEmail,
+          recipientName: toName?.trim() || null,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(String(data.error));
+
+      return data as { senderType?: "google" | "smtp" };
+    },
+    onSuccess: (data) => {
+      const senderLabel = data?.senderType === "google" ? "company email" : "LeadSig email";
+      toast.success(`Company code sent via ${senderLabel}`);
+      setShowInviteEmailDialog(false);
+      setInviteRecipientName("");
+      setInviteRecipientEmail("");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to send company code email");
     },
   });
 
@@ -293,6 +356,7 @@ export default function SettingsCrewManagement() {
 
   const handleUpdateMember = () => {
     if (!memberToEdit) return;
+    const isSelfUpdate = memberToEdit.user_id === user?.id;
 
     const updates: { role?: AppRole; description?: string | null } = {};
 
@@ -314,6 +378,7 @@ export default function SettingsCrewManagement() {
     updateMemberMutation.mutate({
       memberId: memberToEdit.id,
       updates,
+      isSelfUpdate,
     });
   };
 
@@ -323,6 +388,7 @@ export default function SettingsCrewManagement() {
     setMockProfilePhone("");
     setMockProfileDescription("");
     setMockProfileRole("crew_member");
+    setMockProfileAvatarUrl("");
   };
 
   const openEditMockProfile = (profile: MockCrewProfile) => {
@@ -331,6 +397,45 @@ export default function SettingsCrewManagement() {
     setMockProfilePhone(profile.phone || "");
     setMockProfileDescription(profile.description || "");
     setMockProfileRole(profile.role || "crew_member");
+    setMockProfileAvatarUrl(profile.avatar_url || "");
+  };
+
+  const handleMockAvatarFileChange = async (file: File | null) => {
+    if (!file || !currentAccount?.id) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
+      return;
+    }
+
+    setUploadingMockAvatar(true);
+    try {
+      const extension = file.name.split(".").pop() || "jpg";
+      const path = `mock-crew-avatars/${currentAccount.id}/${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("lead-photos")
+        .upload(path, file, {
+          upsert: false,
+          cacheControl: "3600",
+          contentType: file.type,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("lead-photos").getPublicUrl(path);
+      setMockProfileAvatarUrl(data.publicUrl);
+      toast.success("Photo uploaded");
+    } catch (error) {
+      console.error("Failed to upload mock crew avatar:", error);
+      toast.error("Failed to upload photo");
+    } finally {
+      setUploadingMockAvatar(false);
+    }
   };
 
   const handleSaveMockProfile = () => {
@@ -340,6 +445,19 @@ export default function SettingsCrewManagement() {
   const handleRemoveMockProfile = () => {
     if (!mockProfileToRemove) return;
     removeMockProfileMutation.mutate(mockProfileToRemove.id);
+  };
+
+  const handleSendInviteCodeEmail = () => {
+    const email = inviteRecipientEmail.trim();
+    if (!email) {
+      toast.error("Recipient email is required");
+      return;
+    }
+
+    sendInviteCodeEmailMutation.mutate({
+      toEmail: email,
+      toName: inviteRecipientName.trim(),
+    });
   };
 
   const canManageMembers = currentAccount && user;
@@ -372,23 +490,36 @@ export default function SettingsCrewManagement() {
               <p className="text-sm text-muted-foreground mb-3">
                 Share this company code with new members to join your team:
               </p>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 bg-muted rounded-lg p-4 font-mono text-lg font-semibold">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1 bg-muted rounded-lg p-4 font-mono text-lg font-semibold">
                   {currentAccount?.invite_code || 'Loading...'}
                 </div>
-                <Button
-                  onClick={handleCopyInviteCode}
-                  variant="outline"
-                  size="lg"
-                  disabled={!currentAccount?.invite_code}
-                >
-                  {copiedCode ? (
-                    <CheckCircle2 className="h-5 w-5 mr-2" />
-                  ) : (
-                    <Copy className="h-5 w-5 mr-2" />
-                  )}
-                  {copiedCode ? 'Copied!' : 'Copy Code'}
-                </Button>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button
+                    onClick={handleCopyInviteCode}
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    disabled={!currentAccount?.invite_code}
+                  >
+                    {copiedCode ? (
+                      <CheckCircle2 className="h-5 w-5 mr-2" />
+                    ) : (
+                      <Copy className="h-5 w-5 mr-2" />
+                    )}
+                    {copiedCode ? 'Copied!' : 'Copy Code'}
+                  </Button>
+                  <Button
+                    onClick={() => setShowInviteEmailDialog(true)}
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    disabled={!currentAccount?.invite_code}
+                  >
+                    <Mail className="h-5 w-5 mr-2" />
+                    Send via Email
+                  </Button>
+                </div>
               </div>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -478,7 +609,7 @@ export default function SettingsCrewManagement() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {canEditMemberDetails && member.user_id !== user?.id && (
+                            {(canEditMemberDetails || member.user_id === user?.id) && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -691,6 +822,50 @@ export default function SettingsCrewManagement() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <Dialog open={showInviteEmailDialog} onOpenChange={setShowInviteEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Company Code</DialogTitle>
+            <DialogDescription>
+              Email the company code to a new team member. If your company email sender is configured, we send from that address; otherwise we use LeadSig email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="invite-recipient-name">Recipient Name (optional)</Label>
+              <Input
+                id="invite-recipient-name"
+                value={inviteRecipientName}
+                onChange={(event) => setInviteRecipientName(event.target.value)}
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-recipient-email">Recipient Email</Label>
+              <Input
+                id="invite-recipient-email"
+                type="email"
+                value={inviteRecipientEmail}
+                onChange={(event) => setInviteRecipientEmail(event.target.value)}
+                placeholder="jane@company.com"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowInviteEmailDialog(false)}
+              disabled={sendInviteCodeEmailMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSendInviteCodeEmail} disabled={sendInviteCodeEmailMutation.isPending}>
+              {sendInviteCodeEmailMutation.isPending ? "Sending..." : "Send Code"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <MockCrewProfileDialog
         open={Boolean(mockProfileToEdit)}
         onOpenChange={(open) => {
@@ -700,6 +875,7 @@ export default function SettingsCrewManagement() {
             setMockProfilePhone("");
             setMockProfileDescription("");
             setMockProfileRole("crew_member");
+            setMockProfileAvatarUrl("");
           }
         }}
         isEdit={Boolean(mockProfileToEdit?.id)}
@@ -712,6 +888,9 @@ export default function SettingsCrewManagement() {
         onDescriptionChange={setMockProfileDescription}
         role={mockProfileRole}
         onRoleChange={setMockProfileRole}
+        avatarUrl={mockProfileAvatarUrl}
+        onAvatarFileChange={(file) => void handleMockAvatarFileChange(file)}
+        isUploadingAvatar={uploadingMockAvatar}
         onSave={handleSaveMockProfile}
       />
 

@@ -92,6 +92,84 @@ export type Database = {
         }
         Relationships: []
       }
+      release_update_reads: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          read_at: string
+          release_update_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          read_at?: string
+          release_update_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          read_at?: string
+          release_update_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      release_updates: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string
+          cta_href: string | null
+          cta_label: string | null
+          description: string
+          highlights: Json
+          id: string
+          is_published: boolean
+          released_at: string
+          title: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by: string
+          cta_href?: string | null
+          cta_label?: string | null
+          description: string
+          highlights?: Json
+          id?: string
+          is_published?: boolean
+          released_at: string
+          title: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string
+          cta_href?: string | null
+          cta_label?: string | null
+          description?: string
+          highlights?: Json
+          id?: string
+          is_published?: boolean
+          released_at?: string
+          title?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
+      }
       job_crew_assignments: {
         Row: {
           account_id: string | null

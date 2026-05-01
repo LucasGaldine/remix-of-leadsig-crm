@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { buildLeadAutomationDynamicVars } from "../_shared/lead-automation-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,19 +53,6 @@ function isLeadMessageAutomationEnabled(rawSettings: unknown): boolean {
   return (leadAutomation as Record<string, unknown>).enabled === true;
 }
 
-function buildDynamicVars(firstName: string, companyName: string): Record<string, string> {
-  return {
-    "contact.first_name": firstName,
-    "company name": companyName,
-    "companies name": companyName,
-    company: companyName,
-    contact_first_name: firstName,
-    first_name: firstName,
-    company_name: companyName,
-    companies_name: companyName,
-  };
-}
-
 function buildWebsiteFallbackMessage(firstName: string, companyName: string): string {
   return `Hey ${firstName}, we received your request for a quote with ${companyName}. What kind of project are you looking to get done?`;
 }
@@ -102,6 +90,7 @@ function isAssistantLikeRole(role: unknown): boolean {
 }
 
 async function createRetellChat(params: {
+  supabase: ReturnType<typeof createClient>;
   apiKey: string;
   firstName: string;
   companyName: string;
@@ -109,8 +98,17 @@ async function createRetellChat(params: {
   accountId: string;
   to: string;
   from: string;
+  accountSettings?: unknown;
 }): Promise<{ success: boolean; chatId?: string; error?: string; status?: number; responseBody?: unknown }> {
   try {
+    const dynamicVars = await buildLeadAutomationDynamicVars({
+      supabase: params.supabase,
+      accountId: params.accountId,
+      firstName: params.firstName,
+      companyName: params.companyName,
+      accountSettings: params.accountSettings,
+    });
+
     const response = await fetch("https://api.retellai.com/create-chat", {
       method: "POST",
       headers: {
@@ -119,7 +117,7 @@ async function createRetellChat(params: {
       },
       body: JSON.stringify({
         agent_id: HARDCODED_RETELL_AGENT_ID,
-        retell_llm_dynamic_variables: buildDynamicVars(params.firstName, params.companyName),
+        retell_llm_dynamic_variables: dynamicVars,
         metadata: {
           source: "website",
           lead_id: params.leadId,
@@ -317,6 +315,10 @@ Deno.serve(async (req) => {
         notes: notes?.trim() || null,
         source: "website",
         created_by: member.user_id,
+        approval_status: "pending",
+        submitted_at: new Date().toISOString(),
+        approved_at: null,
+        rejected_at: null,
       })
       .select("id")
       .maybeSingle();
@@ -350,6 +352,7 @@ Deno.serve(async (req) => {
 
         if (retellApiKey) {
           const chatResult = await createRetellChat({
+            supabase,
             apiKey: retellApiKey,
             firstName,
             companyName,
@@ -357,6 +360,7 @@ Deno.serve(async (req) => {
             accountId: account_id,
             to: toPhone,
             from: connectedTwilio.fromNumber,
+            accountSettings: account.settings,
           });
 
           if (!chatResult.success || !chatResult.chatId) {

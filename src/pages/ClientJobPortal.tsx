@@ -69,6 +69,8 @@ interface CompanyData {
   company_name?: string;
   company_email?: string;
   company_phone?: string;
+  company_address?: string;
+  website?: string;
   logo_url?: string;
   portal_color?: string | null;
   portal_text_color?: string | null;
@@ -106,6 +108,8 @@ interface LineItem {
 }
 
 interface EstimateData {
+  id?: string;
+  job_id?: string | null;
   total: number;
   subtotal: number;
   profit_margin?: number;
@@ -135,6 +139,16 @@ interface EstimateData {
     notes?: string | null;
     line_items: LineItem[];
   }>;
+  proposal_settings?: {
+    sections?: Record<string, boolean>;
+    title?: string | null;
+    team_member_ids?: string[];
+    highlight_line_item_ids?: string[];
+  } | null;
+  project_visualization_image_url?: string | null;
+  agreement_templates?: Record<string, unknown> | null;
+  agreement_acceptance?: Record<string, unknown> | null;
+  agreement_source_estimate_id?: string | null;
 }
 
 interface PhotoItem {
@@ -221,6 +235,8 @@ export default function ClientJobPortal() {
   const activeCompany = customerData?.company ?? data?.company;
   const headingFontOption = getBrandFontOption(activeCompany?.settings?.website?.font);
   const bodyFontOption = getBrandFontOption(activeCompany?.settings?.website?.body_font);
+  const currentProjects = customerData?.jobs.filter((job) => !isPastProjectStatus(job.status)) ?? [];
+  const pastProjects = customerData?.jobs.filter((job) => isPastProjectStatus(job.status)) ?? [];
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/job-client-portal`;
   const apiHeaders = {
@@ -279,6 +295,28 @@ export default function ClientJobPortal() {
       }
 
       const result = await response.json();
+
+      if (import.meta.env.DEV && result?.estimate) {
+        const templates = result.estimate.agreement_templates ?? {};
+        const snippet = (key: string) => {
+          const value = templates?.[key];
+          if (typeof value === "string") return value.slice(0, 80);
+          if (value && typeof value === "object") {
+            const record = value as Record<string, unknown>;
+            if (typeof record.text === "string") return record.text.slice(0, 80);
+            if (typeof record.content === "string") return record.content.slice(0, 80);
+            if (typeof record.body === "string") return record.body.slice(0, 80);
+          }
+          return "";
+        };
+        console.debug("[ClientPortal] agreement payload", {
+          estimateId: result.estimate.id ?? null,
+          agreementSourceEstimateId: result.estimate.agreement_source_estimate_id ?? null,
+          jobRelease: snippet("job_release_agreement"),
+          jobAgreement: snippet("job_agreement"),
+          warrantyAgreement: snippet("warranty_agreement"),
+        });
+      }
 
       if (result.jobs !== undefined) {
         setCustomerData(result);
@@ -378,8 +416,47 @@ export default function ClientJobPortal() {
                 Welcome, {customerData.customer.name}
               </h1>
               <p className="mt-1" style={{ color: hexToRgba(customerPortalTextColor, 0.78) }}>
-                View your jobs and project details
+                View your project detaiils
               </p>
+              {(customerData.company.company_phone ||
+                customerData.company.company_email ||
+                customerData.company.company_address ||
+                customerData.company.website) && (
+                <div
+                  className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+                  style={{ color: hexToRgba(customerPortalTextColor, 0.82) }}
+                >
+                  {customerData.company.company_phone && (
+                    <a
+                      href={`tel:${customerData.company.company_phone}`}
+                      className="hover:underline"
+                    >
+                      {formatPhoneNumber(customerData.company.company_phone)}
+                    </a>
+                  )}
+                  {customerData.company.company_email && (
+                    <a
+                      href={`mailto:${customerData.company.company_email}`}
+                      className="hover:underline"
+                    >
+                      {customerData.company.company_email}
+                    </a>
+                  )}
+                  {customerData.company.company_address && (
+                    <span>{customerData.company.company_address}</span>
+                  )}
+                  {customerData.company.website && (
+                    <a
+                      href={formatWebsiteUrl(customerData.company.website)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {customerData.company.website}
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -430,36 +507,78 @@ export default function ClientJobPortal() {
 
           {customerData.jobs.length > 0 && (
             <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-              <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
-                <h2 className="text-lg font-semibold text-slate-900">Your Jobs</h2>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {customerData.jobs.map((job) => (
-                  <button
-                    key={job.id}
-                    onClick={() => handleSelectJob(job.id)}
-                    className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-slate-900 truncate">
-                          {job.service_type ? formatServiceType(job.service_type) : job.name}
-                        </h3>
-                        <div className="flex items-center gap-3 mt-2">
-                          <span className="text-sm text-slate-600">{job.name}</span>
-                          <span className={cn(
-                            "text-xs px-2 py-0.5 rounded-full font-medium",
-                            getStatusColor(job.status, [])
-                          )}>
-                            {getStatusLabel(job.status, [])}
-                          </span>
+              {currentProjects.length > 0 && (
+                <div>
+                  <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                    <h2 className="text-lg font-semibold text-slate-900">Current Projects</h2>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {currentProjects.map((job) => (
+                      <button
+                        key={job.id}
+                        onClick={() => handleSelectJob(job.id)}
+                        className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-slate-900 truncate">
+                              {job.name}
+                            </h3>
+                            <div className="flex items-center gap-3 mt-2">
+                              {job.service_type && (
+                                <span className="text-sm text-slate-600">{formatServiceType(job.service_type)}</span>
+                              )}
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded-full font-medium",
+                                getStatusColor(job.status, [])
+                              )}>
+                                {getStatusLabel(job.status, [])}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
                         </div>
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
-                    </div>
-                  </button>
-                ))}
-              </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {pastProjects.length > 0 && (
+                <div>
+                  <div className="px-6 sm:px-8 py-5 border-y border-slate-100">
+                    <h2 className="text-lg font-semibold text-slate-900">Your Past Projects</h2>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {pastProjects.map((job) => (
+                      <button
+                        key={job.id}
+                        onClick={() => handleSelectJob(job.id)}
+                        className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-slate-900 truncate">
+                              {job.name}
+                            </h3>
+                            <div className="flex items-center gap-3 mt-2">
+                              {job.service_type && (
+                                <span className="text-sm text-slate-600">{formatServiceType(job.service_type)}</span>
+                              )}
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded-full font-medium",
+                                getStatusColor(job.status, [])
+                              )}>
+                                {getStatusLabel(job.status, [])}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -504,19 +623,6 @@ export default function ClientJobPortal() {
             </div>
           )}
 
-          {customerData.company.company_name && (
-            <p className="text-center text-sm text-slate-400 pt-2 pb-4">
-              Powered by {customerData.company.company_name}
-              {customerData.company.company_phone && (
-                <>
-                  {" -- "}
-                  <a href={`tel:${customerData.company.company_phone}`} className="hover:text-slate-600 transition-colors">
-                    {customerData.company.company_phone}
-                  </a>
-                </>
-              )}
-            </p>
-          )}
         </div>
       </div>
     );
@@ -663,7 +769,7 @@ export default function ClientJobPortal() {
               <>
                 {" -- "}
                 <a href={`tel:${company.company_phone}`} className="hover:text-slate-600 transition-colors">
-                  {company.company_phone}
+                  {formatPhoneNumber(company.company_phone)}
                 </a>
               </>
             )}
@@ -713,4 +819,23 @@ function getStatusColor(status: string, schedules: ScheduleItem[]): string {
     default:
       return "bg-slate-100 text-slate-800";
   }
+}
+
+function isPastProjectStatus(status: string): boolean {
+  return status === "completed" || status === "paid";
+}
+
+function formatWebsiteUrl(website: string): string {
+  return /^https?:\/\//i.test(website) ? website : `https://${website}`;
+}
+
+function formatPhoneNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return phone;
 }

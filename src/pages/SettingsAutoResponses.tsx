@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronsUpDown, Loader2, Mail, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronDown, Loader2, Mail, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PlanGate } from "@/components/features/PlanGate";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { SERVICE_TYPES } from "@/constants/serviceTypes";
@@ -43,6 +44,47 @@ const DEFAULT_PAYMENT_EMAILS: Record<PaymentEmailKey, boolean> = {
   invoice_sent: true,
   payment_logged: true,
 };
+const COMMON_AUTO_MESSAGE_TEMPLATES: Array<{
+  key: string;
+  name: string;
+  content: string;
+  trigger: {
+    type: "immediate" | "before_schedule_start" | "after_schedule_start" | "after_job_completion";
+    offset_value: number;
+    offset_unit: OffsetUnit;
+  };
+}> = [
+  {
+    key: "preset-24-hour-reminder",
+    name: "24-Hour Reminder",
+    content: "Reminder: {{job_name}} is scheduled for {{scheduled_date}} at {{scheduled_time}}.",
+    trigger: {
+      type: "before_schedule_start",
+      offset_value: 24,
+      offset_unit: "hours",
+    },
+  },
+  {
+    key: "preset-2-hour-reminder",
+    name: "2-Hour Reminder",
+    content: "Quick reminder: your {{job_name}} appointment is in 2 hours at {{scheduled_time}}.",
+    trigger: {
+      type: "before_schedule_start",
+      offset_value: 2,
+      offset_unit: "hours",
+    },
+  },
+  {
+    key: "preset-ask-for-review",
+    name: "Ask for Review",
+    content: "Thanks for choosing us for {{job_name}}. If everything looks great, would you mind leaving us a review?",
+    trigger: {
+      type: "after_job_completion",
+      offset_value: 2,
+      offset_unit: "hours",
+    },
+  },
+];
 
 const offsetToMinutes = (offsetValue: number, offsetUnit: OffsetUnit): number => {
   if (!Number.isFinite(offsetValue) || offsetValue <= 0) return 0;
@@ -102,6 +144,8 @@ export default function SettingsAutoResponses() {
   const [leadTestMessagePhoneNumber, setLeadTestMessagePhoneNumber] = useState("");
   const [isSendingTestMessage, setIsSendingTestMessage] = useState(false);
   const [isSendingLeadTestMessage, setIsSendingLeadTestMessage] = useState(false);
+  const [outsideNumberOpen, setOutsideNumberOpen] = useState(false);
+  const [useDefaultNumber, setUseDefaultNumber] = useState(true);
   const [serviceTypePopoverOpen, setServiceTypePopoverOpen] = useState(false);
   const [paymentEmails, setPaymentEmails] = useState<Record<PaymentEmailKey, boolean>>(DEFAULT_PAYMENT_EMAILS);
 
@@ -247,18 +291,15 @@ export default function SettingsAutoResponses() {
             ...(automation?.payment_emails ?? {}),
           },
     );
+    setUseDefaultNumber(
+      isFreePlan
+        ? true
+        : (typeof automation?.use_default_number === "boolean" ? automation.use_default_number : true),
+    );
     setIsDirty(false);
   }, [settings, isFreePlan]);
 
   const isTwilioConnected = Boolean(twilioAccountSid.trim() && twilioAuthToken.trim() && twilioFromNumber.trim());
-  const isJobAutomationDisabledByTwilio = !isFreePlan && !isTwilioConnected;
-
-  useEffect(() => {
-    if (isJobAutomationDisabledByTwilio && jobMessageAutomationEnabled) {
-      setJobMessageAutomationEnabled(false);
-      setIsDirty(true);
-    }
-  }, [isJobAutomationDisabledByTwilio, jobMessageAutomationEnabled]);
 
   const handleSave = async () => {
     const fallbackTemplate = jobMessageTemplates[0];
@@ -273,23 +314,13 @@ export default function SettingsAutoResponses() {
       ? { estimate_approved: false, invoice_sent: false, payment_logged: false }
       : paymentEmails;
 
-    if (
-      !isFreePlan &&
-      jobMessageAutomationEnabled &&
-      hasTextDeliveryTemplate &&
-      (!trimmedTwilioAccountSid || !trimmedTwilioAuthToken || !trimmedTwilioFromNumber)
-    ) {
-      toast.error("Connect your Twilio account SID, auth token, and sender number to send automated text messages.");
-      return false;
-    }
-
     try {
       await updateSettingsAsync({
         lead_message_automation: {
           enabled: isFreePlan ? false : leadMessageAutomationEnabled,
         },
         job_message_automation: {
-          enabled: isFreePlan ? false : (isTwilioConnected ? jobMessageAutomationEnabled : false),
+          enabled: isFreePlan ? false : jobMessageAutomationEnabled,
           message_template: isFreePlan ? "" : (jobMessageTemplates[0]?.content ?? ""),
           message_templates: isFreePlan ? [] : jobMessageTemplates.map((template) => ({
             id: template.id,
@@ -317,6 +348,7 @@ export default function SettingsAutoResponses() {
             max_attempts: 3,
             backoff_minutes: 5,
           },
+          use_default_number: isFreePlan ? true : useDefaultNumber,
           twilio: {
             account_sid: isFreePlan ? "" : trimmedTwilioAccountSid,
             auth_token: isFreePlan ? "" : trimmedTwilioAuthToken,
@@ -417,6 +449,26 @@ export default function SettingsAutoResponses() {
     setDraftDeliveryChannel("text");
     setIsAddingTemplate(false);
     setIsDirty(true);
+  };
+
+  const addCommonMessageTemplates = () => {
+    setJobMessageTemplates((current) => {
+      const existingTemplateNames = new Set(current.map((template) => template.name.trim().toLowerCase()));
+      const templatesToAdd = COMMON_AUTO_MESSAGE_TEMPLATES
+        .filter((template) => !existingTemplateNames.has(template.name.trim().toLowerCase()))
+        .map((template, index) => ({
+          id: `${template.key}-${Date.now()}-${index}`,
+          name: template.name,
+          content: template.content,
+          is_finished: true,
+          delivery_channel: "text" as const,
+          job_service_types: [] as string[],
+          trigger: template.trigger,
+        }));
+      return templatesToAdd.length > 0 ? [...current, ...templatesToAdd] : current;
+    });
+    setIsDirty(true);
+    toast.success("Common templates added");
   };
 
   const removeMessageTemplate = (templateId: string) => {
@@ -627,56 +679,101 @@ export default function SettingsAutoResponses() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <img src="/twilio-logo.svg" alt="" aria-hidden="true" className="h-5 w-5" />
-                Connect your Twilio number
+                Connect a phone number
               </CardTitle>
               <CardDescription>
-                Auto messaging sends from this connected Twilio number. LeadSig&apos;s number is only used for account notifications.
+                Auto messaging can send from your LeadSig default number or your own connected Twilio number.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="job-message-twilio-account-sid">Twilio Account SID</Label>
-                  <Input
-                    id="job-message-twilio-account-sid"
-                    aria-label="Twilio account sid"
-                    value={twilioAccountSid}
-                    onChange={(event) => {
-                      setTwilioAccountSid(event.target.value);
+              <div className="space-y-2 rounded-lg border bg-background p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Use default number</p>
+                    <p className="text-sm text-muted-foreground">Send auto messages through LeadSig&apos;s default number.</p>
+                  </div>
+                  <Switch
+                    id="use-default-auto-messaging-number"
+                    aria-label="Use default number"
+                    checked={useDefaultNumber}
+                    onCheckedChange={(checked) => {
+                      setUseDefaultNumber(checked);
+                      if (checked) setOutsideNumberOpen(false);
                       setIsDirty(true);
                     }}
-                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="job-message-twilio-auth-token">Twilio Auth Token</Label>
-                  <Input
-                    id="job-message-twilio-auth-token"
-                    aria-label="Twilio auth token"
-                    type="password"
-                    value={twilioAuthToken}
-                    onChange={(event) => {
-                      setTwilioAuthToken(event.target.value);
-                      setIsDirty(true);
-                    }}
-                    placeholder="Your Twilio auth token"
+                    disabled={isFreePlan}
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="job-message-twilio-from-number">Twilio sender number</Label>
-                <Input
-                  id="job-message-twilio-from-number"
-                  aria-label="Connected twilio sender number"
-                  type="tel"
-                  value={twilioFromNumber}
-                  onChange={(event) => {
-                    setTwilioFromNumber(event.target.value);
-                    setIsDirty(true);
-                  }}
-                  placeholder="+15551234567"
-                />
+              <div className={`space-y-2 rounded-lg border bg-background p-4 ${useDefaultNumber ? "opacity-60" : ""}`}>
+                <p className="text-sm font-medium">Get a custom number through LeadSig</p>
+                <p className="text-sm text-muted-foreground">Buy and connect a new number directly in LeadSig.</p>
+                <Button type="button" variant="secondary" disabled={useDefaultNumber} onClick={() => toast.success("Coming soon")}>
+                  Get number
+                </Button>
               </div>
+
+              <Collapsible
+                open={outsideNumberOpen && !useDefaultNumber}
+                onOpenChange={(open) => setOutsideNumberOpen(useDefaultNumber ? false : open)}
+                className={`rounded-lg border bg-background p-4 ${useDefaultNumber ? "opacity-60" : ""}`}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="ghost" className="h-auto w-full justify-between px-0 py-0" disabled={useDefaultNumber}>
+                    <span className="text-sm font-medium text-muted-foreground">Or use outside number</span>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-4 space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-twilio-account-sid">Twilio Account SID</Label>
+                      <Input
+                        id="job-message-twilio-account-sid"
+                        aria-label="Twilio account sid"
+                        value={twilioAccountSid}
+                        onChange={(event) => {
+                          setTwilioAccountSid(event.target.value);
+                          setIsDirty(true);
+                        }}
+                        placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        disabled={useDefaultNumber}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="job-message-twilio-auth-token">Twilio Auth Token</Label>
+                      <Input
+                        id="job-message-twilio-auth-token"
+                        aria-label="Twilio auth token"
+                        type="password"
+                        value={twilioAuthToken}
+                        onChange={(event) => {
+                          setTwilioAuthToken(event.target.value);
+                          setIsDirty(true);
+                        }}
+                        placeholder="Your Twilio auth token"
+                        disabled={useDefaultNumber}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="job-message-twilio-from-number">Twilio sender number</Label>
+                    <Input
+                      id="job-message-twilio-from-number"
+                      aria-label="Connected twilio sender number"
+                      type="tel"
+                      value={twilioFromNumber}
+                      onChange={(event) => {
+                        setTwilioFromNumber(event.target.value);
+                        setIsDirty(true);
+                      }}
+                      placeholder="+15551234567"
+                      disabled={useDefaultNumber}
+                    />
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
               <div className="flex justify-end">
                 <Button
                   type="button"
@@ -777,7 +874,7 @@ export default function SettingsAutoResponses() {
             </CardHeader>
             <CardContent className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                Uses your connected Twilio sender number for outbound website lead texts.
+                Uses your LeadSig default number or connected Twilio sender number for outbound website lead texts.
               </p>
               <div className="flex justify-end">
                 <Button
@@ -803,7 +900,7 @@ export default function SettingsAutoResponses() {
                     Job Message Automation
                   </CardTitle>
                   <CardDescription>
-                    Configure automatic job messages that always send from your connected Twilio number.
+                    Configure automatic job messages from your LeadSig default number or your connected Twilio number.
                   </CardDescription>
                 </div>
                 <div className="flex items-center sm:pt-1">
@@ -811,7 +908,7 @@ export default function SettingsAutoResponses() {
                     id="enable-job-message-automation"
                     aria-label="Enable job message automation"
                     checked={jobMessageAutomationEnabled}
-                    disabled={isFreePlan || isJobAutomationDisabledByTwilio}
+                    disabled={isFreePlan}
                     onCheckedChange={(checked) => {
                       setJobMessageAutomationEnabled(checked);
                       setIsDirty(true);
@@ -821,16 +918,11 @@ export default function SettingsAutoResponses() {
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
-              {isJobAutomationDisabledByTwilio ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Connect a Twilio account SID, auth token, and sender number above to enable Job Message Automation.
-                </div>
-              ) : null}
               {jobMessageAutomationEnabled ? (
                 <>
 
               <div className="space-y-3">
-                <Label>Templates</Label>
+                <Label>Message schedules</Label>
                 <div className="rounded-lg border bg-background p-3">
                   {jobMessageTemplates.length > 0 ? (
                     <div className="divide-y">
@@ -893,7 +985,16 @@ export default function SettingsAutoResponses() {
                 </div>
               </div>
 
-              <div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={addCommonMessageTemplates}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add template
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -916,7 +1017,7 @@ export default function SettingsAutoResponses() {
                   }}
                 >
                   {isAddingTemplate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                  {isAddingTemplate ? "Cancel template" : "Add template"}
+                  {isAddingTemplate ? "Cancel message" : "Add message"}
                 </Button>
               </div>
 
@@ -1190,7 +1291,7 @@ export default function SettingsAutoResponses() {
             <DialogHeader>
               <DialogTitle>Send test message</DialogTitle>
               <DialogDescription>
-                Enter the phone number that should receive a test text from your connected Twilio number.
+                Enter the phone number that should receive a test text from your active automation sender.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2">

@@ -23,7 +23,7 @@ interface AddJobDialogProps {
 }
 
 export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogProps) {
-  const { user } = useAuth();
+  const { user, currentAccount } = useAuth();
   const [saving, setSaving] = useState(false);
   const serviceTypeOptions = useServiceTypeOptions(open);
   const { verify, verifying, result: addressResult, reset: resetVerification } = useAddressVerification();
@@ -56,6 +56,10 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
       toast.error("You must be logged in");
       return;
     }
+    if (!currentAccount?.id) {
+      toast.error("No account selected");
+      return;
+    }
 
     setSaving(true);
 
@@ -67,6 +71,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
         email: formData.customerEmail.trim() || null,
         address: formData.address.trim() || null,
         created_by: user.id,
+        account_id: currentAccount.id,
       });
 
       // Then create the job (in the leads table)
@@ -84,6 +89,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
           description: formData.description.trim() || null,
           notes: formData.notes.trim() || null,
           created_by: user.id,
+          account_id: currentAccount.id,
           status: "job",
           approval_status: "approved",
         }])

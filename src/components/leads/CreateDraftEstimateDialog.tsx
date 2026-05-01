@@ -19,6 +19,7 @@ interface CreateDraftEstimateDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: {
     id: string;
+    customer_id?: string | null;
     name: string;
     phone: string | null;
     email: string | null;
@@ -63,15 +64,19 @@ export function CreateDraftEstimateDialog({ open, onOpenChange, lead, lineItems,
     const loadingToast = toast.loading("Creating estimate...");
 
     try {
-      const { id: customerId } = await findOrCreateCustomer({
-        name: lead.name,
-        phone: lead.phone,
-        email: lead.email,
-        address: lead.address || lead.city,
-        city: lead.city,
-        created_by: user.id,
-        account_id: currentAccount.id,
-      });
+      const customerId = lead.customer_id
+        ? lead.customer_id
+        : (
+            await findOrCreateCustomer({
+              name: lead.name,
+              phone: lead.phone,
+              email: lead.email,
+              address: lead.address || lead.city,
+              city: lead.city,
+              created_by: user.id,
+              account_id: currentAccount.id,
+            })
+          ).id;
 
 
       if (scheduledDate) {

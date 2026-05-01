@@ -71,3 +71,6 @@ verify_jwt = true
 
 [functions.google-email-disconnect]
 verify_jwt = true
+
+[functions.send-company-invite-code]
+verify_jwt = false

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Check, Crown, Leaf, X, Zap } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +24,8 @@ type PremiumServiceOption = "done-with-you" | "done-for-you";
 function getPremiumServiceMonthlyPrice(option: PremiumServiceOption): number {
   return option === "done-for-you" ? 5000 : 3000;
 }
+
+const ELO_ACCELERATOR_LEARN_MORE_URL = "https://www.elitelandscapingoperator.com/join";
 
 function getUserFeature(plan: PlanKey, basicTier: BasicTier): PlanFeature {
   if (plan === "free") {
@@ -161,7 +162,6 @@ type PricingPlanCardProps =
     };
 
 export function PricingPlanCard(props: PricingPlanCardProps) {
-  const navigate = useNavigate();
   const { plan, selectedBasicTier, onSelectBasicTier, isUpdating } = props;
   const displayTier = selectedBasicTier;
   const [selectedPremiumService, setSelectedPremiumService] = useState<PremiumServiceOption>("done-with-you");
@@ -217,7 +217,7 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
     }
 
     if (plan.key === "premium") {
-      navigate("/coming-soon");
+      window.location.assign(ELO_ACCELERATOR_LEARN_MORE_URL);
       return;
     }
 

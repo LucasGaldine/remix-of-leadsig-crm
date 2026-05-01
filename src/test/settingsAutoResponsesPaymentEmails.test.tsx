@@ -280,12 +280,14 @@ describe("SettingsAutoResponses payment emails", () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole("switch", { name: /use default number/i }));
+    fireEvent.click(screen.getByRole("button", { name: /or use outside number/i }));
     expect(screen.getByLabelText(/twilio account sid/i)).toHaveValue("AC1234567890abcdef1234567890abcd");
     expect(screen.getByLabelText(/twilio auth token/i)).toHaveValue("twilio_auth_token");
     expect(screen.getByLabelText(/connected twilio sender number/i)).toHaveValue("+15550001111");
   });
 
-  it("disables job message automation when Twilio is not connected", async () => {
+  it("keeps job message automation enabled when Twilio is not connected", async () => {
     mockSettings = {
       job_message_automation: {
         enabled: true,
@@ -312,8 +314,6 @@ describe("SettingsAutoResponses payment emails", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("switch", { name: /enable job message automation/i })).toBeDisabled();
-
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => {
@@ -324,7 +324,7 @@ describe("SettingsAutoResponses payment emails", () => {
       job_message_automation?: { enabled?: boolean };
     };
 
-    expect(payload.job_message_automation?.enabled).toBe(false);
+    expect(payload.job_message_automation?.enabled).toBe(true);
   });
 
   it("saves connected twilio credentials into job message automation settings", async () => {
@@ -351,6 +351,8 @@ describe("SettingsAutoResponses payment emails", () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole("switch", { name: /use default number/i }));
+    fireEvent.click(screen.getByRole("button", { name: /or use outside number/i }));
     fireEvent.change(screen.getByLabelText(/twilio account sid/i), { target: { value: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } });
     fireEvent.change(screen.getByLabelText(/twilio auth token/i), { target: { value: "twilio_secret_token" } });
     fireEvent.change(screen.getByLabelText(/connected twilio sender number/i), { target: { value: "+15554443333" } });
@@ -371,6 +373,19 @@ describe("SettingsAutoResponses payment emails", () => {
       auth_token: "twilio_secret_token",
       from_number: "+15554443333",
     });
+  });
+
+  it("shows coming soon when Get number is clicked", () => {
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /use default number/i }));
+    fireEvent.click(screen.getByRole("button", { name: /get number/i }));
+
+    expect(toastSuccessMock).toHaveBeenCalledWith("Coming soon");
   });
 
   it("shows the account Google Email connection and starts connect", () => {
@@ -475,5 +490,20 @@ describe("SettingsAutoResponses payment emails", () => {
       expect(toastErrorMock).toHaveBeenCalledWith("Enter a valid phone number to send the test message.");
     });
     expect(invokeFunctionMock).not.toHaveBeenCalled();
+  });
+
+  it("adds common auto-message templates from the Add template button", () => {
+    render(
+      <MemoryRouter>
+        <SettingsAutoResponses />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /enable job message automation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add template$/i }));
+
+    expect(screen.getByText("24-Hour Reminder")).toBeInTheDocument();
+    expect(screen.getByText("2-Hour Reminder")).toBeInTheDocument();
+    expect(screen.getByText("Ask for Review")).toBeInTheDocument();
   });
 });

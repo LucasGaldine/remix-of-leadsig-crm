@@ -44,6 +44,7 @@ interface EstimateData {
     notes?: string | null;
     line_items: LineItem[];
   }>;
+  agreement_templates?: Record<string, string> | null;
 }
 
 interface CompanyData {
@@ -65,6 +66,11 @@ export default function EstimateApproval() {
   const [errorMessage, setErrorMessage] = useState("");
   const [approving, setApproving] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [agreementChecks, setAgreementChecks] = useState({
+    job_release_agreement: true,
+    job_agreement: true,
+    warranty_agreement: true,
+  });
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/estimate-approve`;
   const apiHeaders = {
@@ -118,6 +124,10 @@ export default function EstimateApproval() {
 
   const handleApprove = async () => {
     if (!token) return;
+    if (!agreementChecks.job_release_agreement || !agreementChecks.job_agreement || !agreementChecks.warranty_agreement) {
+      setErrorMessage("Please accept all required agreements before approval.");
+      return;
+    }
     setApproving(true);
 
     try {
@@ -127,6 +137,7 @@ export default function EstimateApproval() {
         body: JSON.stringify({
           action: "approve",
           estimate_version_id: selectedVersionId,
+          agreement_acceptance: agreementChecks,
         }),
       });
 
@@ -442,6 +453,31 @@ export default function EstimateApproval() {
           )}
 
           <div className="px-6 sm:px-8 py-6 border-t border-slate-100">
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900 mb-2">Required agreements</p>
+              {(["job_release_agreement", "job_agreement", "warranty_agreement"] as const).map((key) => (
+                <label key={key} className="flex items-start gap-2 text-sm text-slate-700 mb-2 last:mb-0">
+                  <input
+                    type="checkbox"
+                    checked={agreementChecks[key]}
+                    onChange={(event) =>
+                      setAgreementChecks((previous) => ({ ...previous, [key]: event.target.checked }))
+                    }
+                  />
+                  <span>
+                    <span className="font-medium">{key.replaceAll("_", " ")}</span>
+                    {estimate.agreement_templates?.[key] ? (
+                      <span className="block text-xs text-slate-500 mt-0.5">
+                        {estimate.agreement_templates[key]}
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {errorMessage ? (
+              <p className="text-center text-sm text-red-600 mb-3">{errorMessage}</p>
+            ) : null}
             <Button
               onClick={handleApprove}
               disabled={approving || ((estimate.estimate_versions?.length || 0) > 0 && !selectedVersionId)}
