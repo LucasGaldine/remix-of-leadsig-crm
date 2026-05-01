@@ -98,6 +98,16 @@ const titleCaseServiceType = (serviceType: string) => {
     .join(" ");
 };
 
+const getUnitTypeLabel = (unitType: string) => {
+  if (unitType === "sq_ft") return "sq ft";
+  if (unitType === "linear_ft") return "linear ft";
+
+  const matched = LINE_ITEM_UNIT_OPTIONS.find((option) => option.value === unitType);
+  if (matched) return matched.label.toLowerCase();
+
+  return unitType.replace(/_/g, " ");
+};
+
 const UNIT_SELECT_OPTIONS = [
   { value: "bundle", label: "Bundle" },
   ...LINE_ITEM_UNIT_OPTIONS,
@@ -1163,7 +1173,6 @@ export default function SettingsPricingRules() {
                       const rule = rules[serviceType];
                       if (!rule) return null;
 
-                      const isLinearFeet = rule.unit_type === "linear_ft";
                       const isDefault = isDefaultServiceType(serviceType);
                       const isProtected = isProtectedServiceType(serviceType);
                       const unitPrice = Number(rule.base_labor_rate) + Number(rule.material_rate);
@@ -1176,7 +1185,7 @@ export default function SettingsPricingRules() {
                               {isDefault ? "Default service type" : "Custom service type"}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              ${unitPrice.toFixed(2)} / {isLinearFeet ? "linear ft" : "sq ft"}{rule.notes ? ` • ${rule.notes}` : ""}
+                              ${unitPrice.toFixed(2)} / {getUnitTypeLabel(rule.unit_type)}{rule.notes ? ` • ${rule.notes}` : ""}
                             </p>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
