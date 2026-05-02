@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { evaluateMessagingPolicy, recordMessagingOutcome } from "../_shared/messaging-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -241,7 +242,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("user_id, phone, notification_preferences, sms_consent_status")
+      .select("user_id, phone, notification_preferences, sms_consent_status, sms_consent_source")
       .in("user_id", userIds);
 
     if (!profiles?.length) {
@@ -356,6 +357,24 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
+      const policy = await evaluateMessagingPolicy(supabase, {
+        accountId: account_id,
+        to: profile.phone,
+        body: messageBody,
+        channel: "sms",
+        templateId: event_type,
+        consentStatus: profile.sms_consent_status,
+        consentSource: profile.sms_consent_source ?? "profile_settings",
+      });
+
+      if (!policy.allow) {
+        results.push({
+          user_id: profile.user_id,
+          sent: false,
+          reason: `Blocked by policy: ${policy.reason}`,
+        });
+        continue;
+      }
       const twilioResult = await sendTwilioSms(
         profile.phone,
         messageBody,
@@ -377,6 +396,12 @@ Deno.serve(async (req: Request) => {
       });
 
       if (twilioResult.success) {
+        await recordMessagingOutcome(supabase, {
+          accountId: account_id,
+          channel: "sms",
+          recipient: profile.phone,
+          success: true,
+        });
         const ref = getReferenceInfo(event_type, data || {});
         await supabase.from("notifications").insert({
           account_id,
@@ -386,6 +411,15 @@ Deno.serve(async (req: Request) => {
           event_type: mapEventType(event_type),
           reference_id: ref.reference_id,
           reference_type: ref.reference_type,
+        });
+      }
+      if (!twilioResult.success) {
+        await recordMessagingOutcome(supabase, {
+          accountId: account_id,
+          channel: "sms",
+          recipient: profile.phone,
+          success: false,
+          errorMessage: twilioResult.error || null,
         });
       }
 

@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { evaluateMessagingPolicy, recordMessagingOutcome } from "../_shared/messaging-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,6 +156,7 @@ Deno.serve(async (req: Request) => {
   try {
     const payload = await req.json().catch(() => ({}));
     const accountId = payload?.account_id || payload?.lead?.account_id;
+    const eventId = typeof payload?.delivery?.event_id === "string" ? payload.delivery.event_id : null;
     const leadId = payload?.lead?.id;
     const message = String(payload?.message || "").trim();
     const channel = (payload?.template?.delivery_channel || "text") as DeliveryChannel;
@@ -187,7 +189,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: customer } = await supabase
       .from("customers")
-      .select("id, name, email, phone")
+      .select("id, name, email, phone, sms_consent_status, sms_consent_source")
       .eq("id", lead.customer_id)
       .maybeSingle();
 
@@ -213,6 +215,8 @@ Deno.serve(async (req: Request) => {
       email_sent: false,
       sms_error: null,
       email_error: null,
+      sms_policy_decision: null,
+      email_policy_decision: null,
     };
 
     if (channel === "text" || channel === "both") {
@@ -239,6 +243,30 @@ Deno.serve(async (req: Request) => {
       } else if (!toPhone) {
         summary.sms_error = "Customer phone missing";
       } else {
+        const smsPolicy = await evaluateMessagingPolicy(supabase, {
+          accountId,
+          to: toPhone,
+          body: message,
+          channel: "sms",
+          templateId: payload?.template?.name ? String(payload.template.name) : null,
+          consentStatus: typeof customer?.sms_consent_status === "string" ? customer.sms_consent_status : "unknown",
+          consentSource: typeof customer?.sms_consent_source === "string" ? customer.sms_consent_source : null,
+        });
+        summary.sms_policy_decision = smsPolicy.decision;
+        if (!smsPolicy.allow) {
+          summary.sms_error = `Blocked by policy: ${smsPolicy.reason}`;
+          if (eventId) {
+            await supabase
+              .from("message_automation_events")
+              .update({
+                risk_score: smsPolicy.riskScore,
+                block_reason: smsPolicy.reason,
+                policy_version: smsPolicy.policyVersion,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", eventId);
+          }
+        } else {
         const smsResult = await sendTwilioSms({
           to: toPhone,
           body: message,
@@ -248,9 +276,23 @@ Deno.serve(async (req: Request) => {
         });
         if (smsResult.success) {
           summary.sms_sent = true;
+          await recordMessagingOutcome(supabase, {
+            accountId,
+            channel: "sms",
+            recipient: toPhone,
+            success: true,
+          });
         } else {
           summary.sms_error = smsResult.error || "SMS failed";
+          await recordMessagingOutcome(supabase, {
+            accountId,
+            channel: "sms",
+            recipient: toPhone,
+            success: false,
+            errorMessage: smsResult.error || null,
+          });
         }
+      }
       }
     }
 
@@ -267,6 +309,19 @@ Deno.serve(async (req: Request) => {
       } else if (!customer?.email?.trim()) {
         summary.email_error = "Customer email missing";
       } else {
+        const emailPolicy = await evaluateMessagingPolicy(supabase, {
+          accountId,
+          to: customer.email.trim().toLowerCase(),
+          body: message,
+          channel: "email",
+          templateId: payload?.template?.name ? String(payload.template.name) : null,
+          consentStatus: "opted_in",
+          consentSource: "customer_record",
+        });
+        summary.email_policy_decision = emailPolicy.decision;
+        if (!emailPolicy.allow) {
+          summary.email_error = `Blocked by policy: ${emailPolicy.reason}`;
+        } else {
         const nodemailer = await import("npm:nodemailer@6.10.1");
         const transporter = nodemailer.default.createTransport({
           host: smtpHost,
@@ -285,9 +340,23 @@ Deno.serve(async (req: Request) => {
             html: buildHtml({ companyName, customerName, message }),
           });
           summary.email_sent = true;
+          await recordMessagingOutcome(supabase, {
+            accountId,
+            channel: "email",
+            recipient: customer.email.trim().toLowerCase(),
+            success: true,
+          });
         } catch (error) {
           summary.email_error = error instanceof Error ? error.message : "Email failed";
+          await recordMessagingOutcome(supabase, {
+            accountId,
+            channel: "email",
+            recipient: customer.email.trim().toLowerCase(),
+            success: false,
+            errorMessage: error instanceof Error ? error.message : "Email failed",
+          });
         }
+      }
       }
     }
 

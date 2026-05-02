@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { evaluateMessagingPolicy, recordMessagingOutcome } from "../_shared/messaging-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -204,6 +205,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const smsPolicy = await evaluateMessagingPolicy(supabase, {
+      accountId,
+      to: toPhone,
+      body: testMessage,
+      channel: "sms",
+      templateId: "job_automation_test",
+      consentStatus: "opted_in",
+      consentSource: "manual_test",
+    });
+
+    if (!smsPolicy.allow) {
+      return new Response(JSON.stringify({
+        error: `Blocked by messaging policy: ${smsPolicy.reason}`,
+        decision: smsPolicy.decision,
+        risk_score: smsPolicy.riskScore,
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const smsResult = await sendTwilioSms({
       to: toPhone,
       body: testMessage,
@@ -213,11 +235,25 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!smsResult.success) {
+      await recordMessagingOutcome(supabase, {
+        accountId,
+        channel: "sms",
+        recipient: toPhone,
+        success: false,
+        errorMessage: smsResult.error || null,
+      });
       return new Response(JSON.stringify({ error: smsResult.error || "Failed to send test message" }), {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    await recordMessagingOutcome(supabase, {
+      accountId,
+      channel: "sms",
+      recipient: toPhone,
+      success: true,
+    });
 
     return new Response(JSON.stringify({ success: true, sid: smsResult.sid, to: toPhone }), {
       status: 200,

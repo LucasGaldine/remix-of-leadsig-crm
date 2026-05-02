@@ -1443,9 +1443,44 @@ export function EditEstimateModal({
       }
 
       if (shouldTrackChanges && createdPendingChangeOrder) {
+        const shouldCaptureLatestApprovedSnapshot = estimate.has_pending_changes !== true;
+        const existingProposalSettings =
+          estimate.proposal_settings && typeof estimate.proposal_settings === "object"
+            ? (estimate.proposal_settings as Record<string, unknown>)
+            : {};
+        const latestApprovedSnapshot = shouldCaptureLatestApprovedSnapshot
+          ? {
+              line_items: effectiveEstimateLineItems.map((item: any) => ({
+                id: item.id,
+                name: item.name,
+                description: item.description || null,
+                quantity: Number(item.quantity) || 0,
+                unit: item.unit || "item",
+                unit_price: Number(item.unit_price) || 0,
+                total: Number(item.total) || 0,
+                sort_order: Number(item.sort_order ?? 0),
+                category: item.category || "other",
+              })),
+              subtotal: Number(estimate.subtotal || 0),
+              tax_rate: Number(estimate.tax_rate || 0),
+              tax: Number(estimate.tax || 0),
+              discount: Number(estimate.discount || 0),
+              total: Number(estimate.total || 0),
+              captured_at: new Date().toISOString(),
+            }
+          : null;
+
         estimateUpdateValues = {
           ...(estimateUpdateValues || { updated_at: new Date().toISOString() }),
           has_pending_changes: true,
+          ...(latestApprovedSnapshot
+            ? {
+                proposal_settings: {
+                  ...existingProposalSettings,
+                  latest_approved_snapshot: latestApprovedSnapshot,
+                },
+              }
+            : {}),
         };
       }
 
@@ -1883,6 +1918,7 @@ export function EditEstimateModal({
                 emptyText="No matching labels"
                 query={addLineItemQuery}
                 onQueryChange={setAddLineItemQuery}
+                listClassName="max-h-[13.5rem] md:max-h-[300px]"
                 sections={[
                   {
                     heading: "Your Templates",

@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { evaluateMessagingPolicy, recordMessagingOutcome } from "../_shared/messaging-policy.ts";
 import { buildLeadAutomationDynamicVars } from "../_shared/lead-automation-context.ts";
 
 const corsHeaders = {
@@ -465,6 +466,28 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const smsPolicy = await evaluateMessagingPolicy(supabase, {
+      accountId,
+      to: toPhone,
+      body: completionResult.message,
+      channel: "sms",
+      templateId: "lead_automation_test",
+      consentStatus: "opted_in",
+      consentSource: "manual_test",
+    });
+
+    if (!smsPolicy.allow) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Blocked by messaging policy: ${smsPolicy.reason}`,
+        decision: smsPolicy.decision,
+        risk_score: smsPolicy.riskScore,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const twilioResult = await sendTwilioSms({
       to: toPhone,
       body: completionResult.message,
@@ -474,6 +497,13 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!twilioResult.success) {
+      await recordMessagingOutcome(supabase, {
+        accountId,
+        channel: "sms",
+        recipient: toPhone,
+        success: false,
+        errorMessage: twilioResult.error || null,
+      });
       return new Response(JSON.stringify({
         success: false,
         error: twilioResult.error || "Failed to send lead test message",
@@ -491,6 +521,13 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    await recordMessagingOutcome(supabase, {
+      accountId,
+      channel: "sms",
+      recipient: toPhone,
+      success: true,
+    });
 
     await supabase.from("interactions").insert({
       lead_id: matchedLead.id,

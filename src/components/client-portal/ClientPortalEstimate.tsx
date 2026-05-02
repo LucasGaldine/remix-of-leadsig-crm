@@ -58,6 +58,15 @@ interface ClientPortalEstimateProps {
       team_member_ids?: string[];
       highlight_line_item_ids?: string[];
       recommended_version_id?: string | null;
+      latest_approved_snapshot?: {
+        line_items?: LineItem[];
+        subtotal?: number;
+        tax_rate?: number;
+        tax?: number;
+        discount?: number;
+        total?: number;
+        captured_at?: string;
+      } | null;
       payment_schedule?: {
         deposit_percentage?: number;
         midpoint_percentage?: number;
@@ -69,6 +78,9 @@ interface ClientPortalEstimateProps {
     project_visualization_image_url?: string | null;
     agreement_templates?: Record<string, unknown> | null;
     agreement_source_estimate_id?: string | null;
+    approved_via?: string | null;
+    accepted_at?: string | null;
+    manual_approval_photo_url?: string | null;
   };
   token: string;
   apiUrl: string;
@@ -197,7 +209,7 @@ export function ClientPortalEstimate({
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versionWindowStart, setVersionWindowStart] = useState(0);
   const [hasSignature, setHasSignature] = useState(false);
-  const [activeAgreementKey, setActiveAgreementKey] = useState<string | null>(null);
+  const [activeDocument, setActiveDocument] = useState<{ title: string; content: string } | null>(null);
   const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
   const [approvalAgreementTemplates, setApprovalAgreementTemplates] = useState<Record<string, string> | null>(null);
   const [agreementChecks, setAgreementChecks] = useState({
@@ -210,8 +222,6 @@ export function ClientPortalEstimate({
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   const isPending = estimate.status !== "accepted" && estimate.status !== "declined";
-  const hasOriginalEstimate =
-    estimate.original_total != null && Array.isArray(estimate.original_line_items);
   const hasPendingChanges = estimate.has_pending_changes === true;
   const shouldShowChangeOrderReview = hasPendingChanges;
   const availableVersions = useMemo(
@@ -275,6 +285,53 @@ export function ClientPortalEstimate({
   const currentLineItems = estimate.line_items.filter((item) =>
     !item.is_change_order || item.change_order_type !== 'deleted'
   );
+  const latestApprovedSnapshot =
+    estimate.proposal_settings?.latest_approved_snapshot &&
+    typeof estimate.proposal_settings.latest_approved_snapshot === "object"
+      ? estimate.proposal_settings.latest_approved_snapshot
+      : null;
+
+  const fallbackApprovedBaselineLineItems = useMemo(
+    () =>
+      estimate.line_items.filter((item) =>
+        (!item.is_change_order || item.change_order_approved === true) && item.change_order_type !== "deleted"
+      ),
+    [estimate.line_items],
+  );
+  const hasOriginalSnapshotBaseline =
+    Array.isArray(estimate.original_line_items) &&
+    estimate.original_line_items.length > 0 &&
+    typeof estimate.original_total === "number";
+  const hasLatestApprovedSnapshotBaseline =
+    Array.isArray(latestApprovedSnapshot?.line_items) &&
+    latestApprovedSnapshot.line_items.length > 0 &&
+    typeof latestApprovedSnapshot.total === "number";
+  const mostRecentApprovedBaselineLineItems = hasLatestApprovedSnapshotBaseline
+    ? latestApprovedSnapshot!.line_items!
+    : hasOriginalSnapshotBaseline
+    ? estimate.original_line_items!
+    : fallbackApprovedBaselineLineItems;
+  const approvedBaselineSubtotal = hasLatestApprovedSnapshotBaseline
+    ? Number(latestApprovedSnapshot?.subtotal || 0)
+    : hasOriginalSnapshotBaseline
+    ? Number(estimate.original_subtotal || 0)
+    : fallbackApprovedBaselineLineItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const approvedBaselineTax = hasLatestApprovedSnapshotBaseline
+    ? Number(latestApprovedSnapshot?.tax || 0)
+    : hasOriginalSnapshotBaseline
+    ? Number(estimate.original_tax || 0)
+    : approvedBaselineSubtotal * Number(estimate.tax_rate || 0);
+  const approvedBaselineDiscount = hasLatestApprovedSnapshotBaseline
+    ? Number(latestApprovedSnapshot?.discount || 0)
+    : hasOriginalSnapshotBaseline
+    ? Number(estimate.original_discount || 0)
+    : Number(estimate.discount || 0);
+  const approvedBaselineTotal = hasLatestApprovedSnapshotBaseline
+    ? Number(latestApprovedSnapshot?.total || 0)
+    : hasOriginalSnapshotBaseline
+    ? Number(estimate.original_total || 0)
+    : approvedBaselineSubtotal + approvedBaselineTax - approvedBaselineDiscount;
+  const hasApprovedBaselineEstimate = mostRecentApprovedBaselineLineItems.length > 0;
 
   const displayLineItems = isPending && !hasPendingChanges && selectedVersion
     ? selectedVersion.line_items
@@ -307,8 +364,8 @@ export function ClientPortalEstimate({
     () => foldProfitMarginIntoLineItems(displayLineItems, Number(displaySubtotal), displayProfitMargin),
     [displayLineItems, displayProfitMargin, displaySubtotal],
   );
-  const changeOrderDelta = hasOriginalEstimate
-    ? Number(estimate.total || 0) - Number(estimate.original_total || 0)
+  const changeOrderDelta = hasApprovedBaselineEstimate
+    ? Number(estimate.total || 0) - Number(approvedBaselineTotal || 0)
     : null;
   const displayLineItemsWithProfitFolded = displayEstimateWithProfitFolded.lineItems;
   const displaySubtotalWithProfitFolded = displayEstimateWithProfitFolded.subtotal;
@@ -342,7 +399,31 @@ export function ClientPortalEstimate({
     key,
     text: resolveAgreementTextByKey(effectiveAgreementRecord, key),
   }));
-  const activeAgreement = agreementEntries.find((entry) => entry.key === activeAgreementKey) || null;
+  const approvedChangeOrderEntries = useMemo(
+    () => estimate.line_items.filter((item) => item.is_change_order === true && item.change_order_approved === true),
+    [estimate.line_items],
+  );
+  const mostRecentApprovedChangeOrder = useMemo(() => {
+    if (approvedChangeOrderEntries.length === 0) return null;
+
+    const entriesWithChangedAt = approvedChangeOrderEntries.filter((item) => Boolean(item.changed_at));
+    if (entriesWithChangedAt.length === 0) {
+      return {
+        changedAt: null as string | null,
+        items: approvedChangeOrderEntries,
+      };
+    }
+
+    let latestTimestamp = entriesWithChangedAt[0].changed_at as string;
+    for (const item of entriesWithChangedAt) {
+      if ((item.changed_at as string) > latestTimestamp) latestTimestamp = item.changed_at as string;
+    }
+
+    return {
+      changedAt: latestTimestamp,
+      items: approvedChangeOrderEntries.filter((item) => item.changed_at === latestTimestamp),
+    };
+  }, [approvedChangeOrderEntries]);
 
   const getSignatureContext = () => {
     const canvas = signatureCanvasRef.current;
@@ -575,7 +656,7 @@ export function ClientPortalEstimate({
   const openApprovalDialog = (action: "approve" | "approve_changes") => {
     clearSignature();
     setError(null);
-    setActiveAgreementKey(null);
+    setActiveDocument(null);
     setAgreementChecks({
       job_release_agreement: true,
       job_agreement: true,
@@ -1026,7 +1107,7 @@ export function ClientPortalEstimate({
                 Changes Requiring Approval
               </p>
               <p className="text-xs text-amber-700 mt-1">
-                The contractor has proposed changes to the original estimate. Please review both versions below.
+                The contractor has proposed changes to your most recent approved estimate. Please review both versions below.
               </p>
               {changeOrderDelta !== null && (
                 <p className="text-xs text-amber-800 mt-1 font-semibold">
@@ -1040,16 +1121,16 @@ export function ClientPortalEstimate({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {hasOriginalEstimate
+            {hasApprovedBaselineEstimate
               ? renderComparisonCard(
-                  "Original Approved Estimate",
-                  estimate.original_line_items!,
-                  estimate.original_subtotal!,
+                  "Most Recent Approved Estimate",
+                  mostRecentApprovedBaselineLineItems,
+                  approvedBaselineSubtotal,
                   estimate.tax_rate,
                   estimate.profit_margin || 0,
-                  estimate.original_tax!,
-                  estimate.original_discount!,
-                  estimate.original_total!,
+                  approvedBaselineTax,
+                  approvedBaselineDiscount,
+                  approvedBaselineTotal,
                 )
               : renderComparisonCard(
                   "Current Estimate",
@@ -1063,7 +1144,7 @@ export function ClientPortalEstimate({
                 )}
 
             {renderComparisonCard(
-              hasOriginalEstimate ? "Proposed Changes" : "Proposed Changes (Awaiting Approval)",
+              hasApprovedBaselineEstimate ? "Proposed Changes" : "Proposed Changes (Awaiting Approval)",
               currentLineItems,
               estimate.subtotal,
               estimate.tax_rate,
@@ -1234,7 +1315,7 @@ export function ClientPortalEstimate({
       {!isPending && (
         <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
           <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-            Agreements
+            Documents
           </p>
           <div className="space-y-3">
             {agreementEntries.map(({ key }) => (
@@ -1244,13 +1325,80 @@ export function ClientPortalEstimate({
                 </p>
                 <button
                   type="button"
-                  onClick={() => setActiveAgreementKey(key)}
+                  onClick={() => {
+                    const entry = agreementEntries.find((value) => value.key === key);
+                    setActiveDocument({
+                      title: formatAgreementLabel(key),
+                      content: entry?.text || "No agreement text available for this document.",
+                    });
+                  }}
                   className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
                 >
                   View Document
                 </button>
               </div>
             ))}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-900">Original Estimate</p>
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveDocument({
+                    title: "Original Estimate",
+                    content: buildOriginalEstimateDocumentText({
+                      lineItems:
+                        Array.isArray(estimate.original_line_items) && estimate.original_line_items.length > 0
+                          ? estimate.original_line_items
+                          : mostRecentApprovedBaselineLineItems,
+                      subtotal:
+                        typeof estimate.original_subtotal === "number"
+                          ? estimate.original_subtotal
+                          : approvedBaselineSubtotal,
+                      tax:
+                        typeof estimate.original_tax === "number"
+                          ? estimate.original_tax
+                          : approvedBaselineTax,
+                      discount:
+                        typeof estimate.original_discount === "number"
+                          ? estimate.original_discount
+                          : approvedBaselineDiscount,
+                      total:
+                        typeof estimate.original_total === "number"
+                          ? estimate.original_total
+                          : approvedBaselineTotal,
+                      taxRate: Number(estimate.tax_rate || 0),
+                    }),
+                  })}
+                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                View Document
+              </button>
+            </div>
+            {mostRecentApprovedChangeOrder && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">
+                  Most Recent Approved Change Order
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveDocument({
+                      title: "Most Recent Approved Change Order",
+                      content: buildApprovedChangeOrderDocumentText({
+                        changedAt: mostRecentApprovedChangeOrder.changedAt,
+                        items: mostRecentApprovedChangeOrder.items,
+                        approvedVia: estimate.approved_via || null,
+                        approvedAt: estimate.accepted_at || null,
+                        hasSignature: Boolean(estimate.manual_approval_photo_url),
+                        total: Number(estimate.total || 0),
+                      }),
+                    })}
+                  className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  View Document
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1315,7 +1463,13 @@ export function ClientPortalEstimate({
                     </label>
                     <button
                       type="button"
-                      onClick={() => setActiveAgreementKey(key)}
+                      onClick={() => {
+                        const entry = agreementEntries.find((value) => value.key === key);
+                        setActiveDocument({
+                          title: formatAgreementLabel(key),
+                          content: entry?.text || "No agreement text available for this document.",
+                        });
+                      }}
                       className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
                     >
                       View Document
@@ -1353,20 +1507,20 @@ export function ClientPortalEstimate({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={activeAgreementKey !== null} onOpenChange={(open) => !open && setActiveAgreementKey(null)}>
+      <Dialog open={activeDocument !== null} onOpenChange={(open) => !open && setActiveDocument(null)}>
         <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden">
           <DialogHeader>
-            <DialogTitle>{activeAgreement ? formatAgreementLabel(activeAgreement.key) : "Agreement"}</DialogTitle>
+            <DialogTitle>{activeDocument?.title || "Document"}</DialogTitle>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm text-slate-700 whitespace-pre-wrap">
-              {activeAgreement?.text || "No agreement text available for this document."}
+              {activeDocument?.content || "No document available."}
             </p>
           </div>
           <DialogFooter>
             <button
               type="button"
-              onClick={() => setActiveAgreementKey(null)}
+              onClick={() => setActiveDocument(null)}
               className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Close
@@ -1383,6 +1537,85 @@ function formatAgreementLabel(key: string): string {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function buildApprovedChangeOrderDocumentText(params: {
+  changedAt: string | null;
+  items: LineItem[];
+  approvedVia: string | null;
+  approvedAt: string | null;
+  hasSignature: boolean;
+  total: number;
+}): string {
+  const dateLabel = params.changedAt
+    ? new Date(params.changedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+    : "Unknown date";
+  const approvalDateLabel = params.approvedAt
+    ? new Date(params.approvedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+    : dateLabel;
+  const approvedByLabel =
+    params.hasSignature || params.approvedVia === "customer_link" || params.approvedVia === "manual_signature"
+      ? `By Signature on ${approvalDateLabel}`
+      : "By company approval";
+
+  const lines = [
+    "CHANGE ORDER",
+    `Approved On: ${dateLabel}`,
+    `Approved By: ${approvedByLabel}`,
+    "",
+    "Edited Line Items:",
+  ];
+
+  if (params.items.length === 0) {
+    lines.push("No line items found.");
+    lines.push("");
+    lines.push(`Total: $${Number(params.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    return lines.join("\n");
+  }
+
+  for (const item of params.items) {
+    const typeLabel = item.change_order_type ? item.change_order_type.toUpperCase() : "UPDATED";
+    lines.push(`- [${typeLabel}] ${item.name}`);
+    if (item.description) {
+      lines.push(`  ${item.description}`);
+    }
+    lines.push(`  ${Number(item.quantity || 0)} ${item.unit || "item"} x $${Number(item.unit_price || 0).toFixed(2)} = $${Number(item.total || 0).toFixed(2)}`);
+  }
+
+  lines.push("");
+  lines.push(`Total: $${Number(params.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  return lines.join("\n");
+}
+
+function buildOriginalEstimateDocumentText(params: {
+  lineItems: LineItem[];
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  taxRate: number;
+}): string {
+  const lines = ["ORIGINAL ESTIMATE", "", "Line Items:"];
+
+  if (!params.lineItems || params.lineItems.length === 0) {
+    lines.push("No line items found.");
+  } else {
+    for (const item of params.lineItems) {
+      lines.push(`- ${item.name}`);
+      if (item.description) lines.push(`  ${item.description}`);
+      lines.push(`  ${Number(item.quantity || 0)} ${item.unit || "item"} x $${Number(item.unit_price || 0).toFixed(2)} = $${Number(item.total || 0).toFixed(2)}`);
+    }
+  }
+
+  lines.push("");
+  lines.push(`Subtotal: $${Number(params.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  lines.push(`Tax (${(Number(params.taxRate || 0) * 100).toFixed(1)}%): $${Number(params.tax || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  if (Number(params.discount || 0) > 0) {
+    lines.push(`Discount: -$${Number(params.discount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  }
+  lines.push(`Total: $${Number(params.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
+  return lines.join("\n");
 }
 
 function readAgreementText(value: unknown): string {

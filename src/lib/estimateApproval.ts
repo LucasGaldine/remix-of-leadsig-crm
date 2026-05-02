@@ -76,7 +76,7 @@ export async function approveEstimateManuallyById(estimateId: string, signatureD
 
   const estimateUpdatePayload: Record<string, unknown> = {
     status: "accepted",
-    approved_via: "manual",
+    approved_via: uploadedSignature?.publicUrl ? "manual_signature" : "manual",
     accepted_at: nowIso,
     updated_at: nowIso,
   };

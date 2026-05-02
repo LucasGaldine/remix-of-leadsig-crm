@@ -823,7 +823,7 @@ export default function EstimateDetail() {
       }
 
       const estimateApprovalUpdate: Record<string, unknown> = {
-        approved_via: "manual",
+        approved_via: uploadedPhoto?.publicUrl ? "manual_signature" : "manual",
         updated_at: new Date().toISOString(),
       };
 
@@ -1693,6 +1693,8 @@ export default function EstimateDetail() {
                         <p className="text-sm text-muted-foreground">
                           {(estimate as any).approved_via === "customer_link"
                             ? "Approved by customer via approval link"
+                            : (estimate as any).approved_via === "manual_signature"
+                              ? "Manually approved with signature"
                             : (estimate as any).approved_via === "manual"
                               ? "Manually marked as approved"
                               : "This estimate has been approved"}

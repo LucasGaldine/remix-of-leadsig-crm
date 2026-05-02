@@ -63,6 +63,108 @@ function parseSignatureDataUrl(signatureDataUrl: string): { bytes: Uint8Array; c
   return { bytes, contentType, extension };
 }
 
+async function restoreEstimateFromLatestApprovedSnapshot(
+  supabase: any,
+  estimate: {
+    id: string;
+    account_id?: string | null;
+    proposal_settings?: Record<string, unknown> | null;
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const snapshotRaw =
+    estimate.proposal_settings &&
+    typeof estimate.proposal_settings === "object" &&
+    estimate.proposal_settings.latest_approved_snapshot &&
+    typeof estimate.proposal_settings.latest_approved_snapshot === "object"
+      ? (estimate.proposal_settings.latest_approved_snapshot as Record<string, unknown>)
+      : null;
+
+  if (!snapshotRaw) {
+    const { error: fallbackDeleteError } = await supabase
+      .from("estimate_line_items")
+      .delete()
+      .eq("estimate_id", estimate.id)
+      .eq("is_change_order", true)
+      .eq("change_order_approved", false);
+
+    if (fallbackDeleteError) {
+      return { ok: false, error: "Failed to decline changes" };
+    }
+
+    const { error: fallbackEstimateUpdateError } = await supabase
+      .from("estimates")
+      .update({
+        has_pending_changes: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", estimate.id);
+
+    if (fallbackEstimateUpdateError) {
+      return { ok: false, error: "Failed to finalize declined changes" };
+    }
+
+    return { ok: true };
+  }
+
+  const snapshotLineItems = Array.isArray(snapshotRaw.line_items) ? snapshotRaw.line_items : [];
+
+  const { error: deleteAllLineItemsError } = await supabase
+    .from("estimate_line_items")
+    .delete()
+    .eq("estimate_id", estimate.id);
+
+  if (deleteAllLineItemsError) {
+    return { ok: false, error: "Failed to restore estimate after declining changes" };
+  }
+
+  if (snapshotLineItems.length > 0) {
+    const restoreLineItems = snapshotLineItems.map((item: any, index: number) => ({
+      estimate_id: estimate.id,
+      account_id: estimate.account_id ?? null,
+      name: item.name || "Line item",
+      description: item.description || null,
+      quantity: Number(item.quantity) || 0,
+      unit: item.unit || "item",
+      unit_price: Number(item.unit_price) || 0,
+      total: Number(item.total) || 0,
+      sort_order: Number(item.sort_order ?? index),
+      category: item.category || "other",
+      is_change_order: false,
+      change_order_type: null,
+      change_order_approved: null,
+      changed_at: null,
+      original_line_item_id: null,
+    }));
+
+    const { error: restoreLineItemsError } = await supabase
+      .from("estimate_line_items")
+      .insert(restoreLineItems);
+
+    if (restoreLineItemsError) {
+      return { ok: false, error: "Failed to restore estimate after declining changes" };
+    }
+  }
+
+  const { error: restoreEstimateError } = await supabase
+    .from("estimates")
+    .update({
+      subtotal: Number(snapshotRaw.subtotal) || 0,
+      tax_rate: Number(snapshotRaw.tax_rate) || 0,
+      tax: Number(snapshotRaw.tax) || 0,
+      discount: Number(snapshotRaw.discount) || 0,
+      total: Number(snapshotRaw.total) || 0,
+      has_pending_changes: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", estimate.id);
+
+  if (restoreEstimateError) {
+    return { ok: false, error: "Failed to restore estimate after declining changes" };
+  }
+
+  return { ok: true };
+}
+
 async function uploadSignatureDataUrl(
   supabase: any,
   estimateId: string,
@@ -234,7 +336,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: estimate, error: fetchError } = await supabase
         .from("estimates")
-        .select("id, status, expires_at, job_id, has_pending_changes, agreement_templates")
+        .select("id, status, expires_at, job_id, has_pending_changes, account_id, proposal_settings, agreement_templates")
         .eq("approval_token", token)
         .maybeSingle();
 
@@ -285,16 +387,10 @@ Deno.serve(async (req: Request) => {
             }
           );
         } else {
-          const { error: declineError } = await supabase
-            .from("estimate_line_items")
-            .delete()
-            .eq("estimate_id", estimate.id)
-            .eq("is_change_order", true)
-            .eq("change_order_approved", false);
-
-          if (declineError) {
+          const restoreResult = await restoreEstimateFromLatestApprovedSnapshot(supabase, estimate);
+          if (!restoreResult.ok) {
             return new Response(
-              JSON.stringify({ error: "Failed to decline changes" }),
+              JSON.stringify({ error: restoreResult.error }),
               {
                 status: 500,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },

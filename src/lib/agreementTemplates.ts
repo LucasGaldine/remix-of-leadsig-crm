@@ -118,16 +118,7 @@ The Client confirms that:
 
 The scope of work is accurate and understood
 The pricing and payment schedule are agreed upon
-Authorization is granted to begin work upon deposit receipt
-SIGNATURES
-
-Client Signature: ___________________________
-Printed Name: ${params.clientName}
-Date: _______________
-
-Contractor Signature: ___________________________
-Printed Name: ${params.contractorName}
-Date: _______________`,
+Authorization is granted to begin work upon deposit receipt`,
     job_agreement: `CONSTRUCTION CONTRACT / JOB AGREEMENT
 
 Date: ${params.todayIso}
@@ -228,16 +219,7 @@ The Contractor shall cease work promptly
 11. ENTIRE AGREEMENT
 
 This document represents the full agreement between the parties and supersedes all prior discussions, agreements, or representations.
-
-SIGNATURES
-
-Client Signature: ___________________________
-Printed Name: ${params.clientName}
-Date: _______________
-
-Contractor Signature: ___________________________
-Printed Name: ${params.contractorName}
-Date: _______________`,
+`,
     warranty_agreement: `WARRANTY AGREEMENT
 
 Date: ${params.todayIso}
@@ -308,15 +290,6 @@ The Contractor’s total liability under this warranty shall not exceed:
 $${formatCurrency(params.totalCost)}
 
 (as defined in the associated Construction Contract / Job Agreement)
-
-SIGNATURES
-
-Client Signature: ___________________________
-Printed Name: ${params.clientName}
-Date: _______________
-
-Contractor Signature: ___________________________
-Printed Name: ${params.contractorName}
-Date: _______________`,
+`,
   };
 }

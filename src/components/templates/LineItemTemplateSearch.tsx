@@ -37,6 +37,7 @@ interface LineItemTemplateSearchProps {
   query?: string;
   onQueryChange?: (value: string) => void;
   hideListUntilQuery?: boolean;
+  listClassName?: string;
 }
 
 export function LineItemTemplateSearch({
@@ -46,6 +47,7 @@ export function LineItemTemplateSearch({
   query,
   onQueryChange,
   hideListUntilQuery = false,
+  listClassName,
 }: LineItemTemplateSearchProps) {
   const shouldShowList = !hideListUntilQuery || Boolean(query?.trim());
 
@@ -57,7 +59,7 @@ export function LineItemTemplateSearch({
         onValueChange={onQueryChange}
       />
       {shouldShowList ? (
-        <CommandList>
+        <CommandList className={listClassName}>
           <CommandEmpty>{emptyText}</CommandEmpty>
           {sections.map((section) => (
             <CommandGroup

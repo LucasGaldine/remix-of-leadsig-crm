@@ -77,3 +77,9 @@ verify_jwt = false
 
 [functions.send-estimate-approval-notifications]
 verify_jwt = false
+
+[functions.send-change-order-request-email]
+verify_jwt = false
+
+[functions.send-change-order-declined-notifications]
+verify_jwt = false

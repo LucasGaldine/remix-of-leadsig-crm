@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -23,6 +23,8 @@ export function ServiceTypeSelect({
   className,
 }: ServiceTypeSelectProps) {
   const [open, setOpen] = useState(false);
+  const touchStartYRef = useRef<number | null>(null);
+  const isTouchDraggingRef = useRef(false);
 
   const selectedLabel = useMemo(
     () => options.find((option) => option === value) || "",
@@ -30,7 +32,7 @@ export function ServiceTypeSelect({
   );
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -49,7 +51,27 @@ export function ServiceTypeSelect({
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search service types..." />
-          <CommandList>
+          <CommandList
+            className="max-h-[9.5rem] overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] md:max-h-[300px]"
+            onTouchStart={(event) => {
+              touchStartYRef.current = event.touches[0]?.clientY ?? null;
+              isTouchDraggingRef.current = false;
+            }}
+            onTouchMove={(event) => {
+              const startY = touchStartYRef.current;
+              const currentY = event.touches[0]?.clientY;
+              if (startY == null || currentY == null) return;
+              if (Math.abs(currentY - startY) > 8) {
+                isTouchDraggingRef.current = true;
+              }
+            }}
+            onTouchEnd={() => {
+              touchStartYRef.current = null;
+              requestAnimationFrame(() => {
+                isTouchDraggingRef.current = false;
+              });
+            }}
+          >
             <CommandEmpty>No service types found.</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
@@ -59,6 +81,7 @@ export function ServiceTypeSelect({
                     key={option}
                     value={option}
                     onSelect={() => {
+                      if (isTouchDraggingRef.current) return;
                       onValueChange(option);
                       setOpen(false);
                     }}

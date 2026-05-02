@@ -3,6 +3,12 @@ import {
   buildLeadAutomationDynamicVars,
   extractQualificationDecisionFromRetellResponse,
 } from "../_shared/lead-automation-context.ts";
+import {
+  evaluateMessagingPolicy,
+  isStopLikeMessage,
+  normalizeSmsAddress,
+  recordMessagingOutcome,
+} from "../_shared/messaging-policy.ts";
 
 const HARDCODED_RETELL_AGENT_ID = "agent_84800e79b94377a4f275cf63b6";
 
@@ -288,11 +294,6 @@ Deno.serve(async (req: Request) => {
       return emptyTwiml(200);
     }
 
-    const lowerBody = body.toLowerCase();
-    if (["stop", "stopall", "unsubscribe", "cancel", "end", "quit", "help", "start", "unstop"].includes(lowerBody)) {
-      return emptyTwiml(200);
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -344,6 +345,31 @@ Deno.serve(async (req: Request) => {
 
     if (!matchingAccount) {
       console.warn("lead-automation-inbound-sms: no account found for destination number", { to });
+      return emptyTwiml(200);
+    }
+
+    if (isStopLikeMessage(body)) {
+      const { data: rep } = await supabase
+        .from("account_messaging_reputation")
+        .select("opt_out_count")
+        .eq("account_id", matchingAccount.id)
+        .maybeSingle();
+
+      await supabase.from("message_suppression_list").upsert({
+        account_id: matchingAccount.id,
+        channel: "sms",
+        address: normalizeSmsAddress(from),
+        reason: "stop_keyword",
+        source: "inbound_sms",
+        active: true,
+      });
+
+      await supabase.from("account_messaging_reputation").upsert({
+        account_id: matchingAccount.id,
+        opt_out_count: (rep?.opt_out_count || 0) + 1,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "account_id" });
+
       return emptyTwiml(200);
     }
 
@@ -507,6 +533,26 @@ Deno.serve(async (req: Request) => {
         .eq("account_id", matchingAccount.id);
     }
 
+    const replyPolicy = await evaluateMessagingPolicy(supabase, {
+      accountId: matchingAccount.id,
+      to: from,
+      body: completionResult.message,
+      channel: "sms",
+      templateId: "lead_automation_reply",
+      consentStatus: "opted_in",
+      consentSource: "prior_inbound_message",
+    });
+
+    if (!replyPolicy.allow) {
+      console.warn("lead-automation-inbound-sms: outbound reply blocked by policy", {
+        account_id: matchingAccount.id,
+        lead_id: matchedLead.id,
+        reason: replyPolicy.reason,
+        decision: replyPolicy.decision,
+      });
+      return emptyTwiml(200);
+    }
+
     const sent = await sendTwilioSms({
       to: from,
       body: completionResult.message,
@@ -516,6 +562,13 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!sent.success) {
+      await recordMessagingOutcome(supabase, {
+        accountId: matchingAccount.id,
+        channel: "sms",
+        recipient: from,
+        success: false,
+        errorMessage: sent.error || null,
+      });
       console.error("lead-automation-inbound-sms: twilio send failed", {
         error: sent.error,
         status: sent.status,
@@ -528,6 +581,12 @@ Deno.serve(async (req: Request) => {
       });
       return emptyTwiml(200);
     }
+    await recordMessagingOutcome(supabase, {
+      accountId: matchingAccount.id,
+      channel: "sms",
+      recipient: from,
+      success: true,
+    });
 
     await supabase.from("interactions").insert({
       lead_id: matchedLead.id,
@@ -568,3 +627,13 @@ Deno.serve(async (req: Request) => {
     return emptyTwiml(200);
   }
 });
+    if (isStopLikeMessage(body)) {
+      await supabase.from("message_suppression_list").upsert({
+        account_id: null,
+        channel: "sms",
+        address: normalizeSmsAddress(from),
+        reason: "stop_keyword",
+        source: "inbound_sms",
+        active: true,
+      });
+    }

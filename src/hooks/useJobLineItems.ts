@@ -33,7 +33,7 @@ export const useJobLineItems = (jobId: string | undefined) => {
 
     const { data: estimate, error: estimateError } = await supabase
       .from("estimates")
-      .select("id, tax_rate, discount, profit_margin, surcharge")
+      .select("id, tax_rate, discount, profit_margin, surcharge, subtotal, tax, total, has_pending_changes, proposal_settings")
       .eq("job_id", jobId)
       .eq("account_id", currentAccount.id)
       .eq("status", "accepted")
@@ -280,6 +280,17 @@ export const useJobLineItems = (jobId: string | undefined) => {
     }) => {
       if (!jobId || !currentAccount?.id) throw new Error("No job or account selected");
       const estimate = await fetchCurrentAcceptedEstimate();
+      const shouldCaptureLatestApprovedSnapshot = estimate.has_pending_changes !== true;
+
+      const { data: approvedBaselineItems, error: approvedBaselineItemsError } = await supabase
+        .from("estimate_line_items")
+        .select("id, name, description, quantity, unit, unit_price, total, sort_order, category, is_change_order, change_order_type")
+        .eq("estimate_id", estimate.id)
+        .eq("account_id", currentAccount.id)
+        .or("is_change_order.is.null,and(is_change_order.eq.false),and(is_change_order.eq.true,change_order_approved.eq.true)")
+        .order("sort_order", { ascending: true });
+
+      if (approvedBaselineItemsError) throw approvedBaselineItemsError;
 
       const { data: jobCostItems, error: jobCostItemsError } = await supabase
         .from("job_line_items")
@@ -429,6 +440,37 @@ export const useJobLineItems = (jobId: string | undefined) => {
           subtotal: adjustedSubtotalValue,
           tax,
           total,
+          ...(shouldCaptureLatestApprovedSnapshot
+            ? {
+                proposal_settings: {
+                  ...((estimate.proposal_settings && typeof estimate.proposal_settings === "object")
+                    ? (estimate.proposal_settings as Record<string, unknown>)
+                    : {}),
+                  latest_approved_snapshot: {
+                    line_items: (approvedBaselineItems || [])
+                      .filter((item: any) => !item.is_change_order || item.change_order_type !== "deleted")
+                      .map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        description: item.description || null,
+                        quantity: Number(item.quantity) || 0,
+                        unit: item.unit || "item",
+                        unit_price: Number(item.unit_price) || 0,
+                        total: Number(item.total) || 0,
+                        sort_order: Number(item.sort_order ?? 0),
+                        category: item.category || "other",
+                      })),
+                    subtotal: Number(estimate.subtotal || 0),
+                    tax_rate: Number(estimate.tax_rate || 0),
+                    tax: Number(estimate.tax || 0),
+                    discount: Number(estimate.discount || 0),
+                    total: Number(estimate.total || 0),
+                    captured_at: new Date().toISOString(),
+                  },
+                },
+              }
+            : {}),
+          has_pending_changes: true,
           updated_at: new Date().toISOString(),
         })
         .eq("id", estimate.id)
