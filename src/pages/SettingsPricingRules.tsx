@@ -108,6 +108,26 @@ const getUnitTypeLabel = (unitType: string) => {
   return unitType.replace(/_/g, " ");
 };
 
+const normalizeServiceTypeUnitForDisplay = (unitType: string | undefined) => {
+  const value = String(unitType || "").trim().toLowerCase();
+  if (!value) return "sq ft";
+  if (value === "sq_ft" || value === "sq ft" || value === "square feet") return "sq ft";
+  if (value === "linear_ft" || value === "linear ft") return "linear ft";
+  if (value === "cubic_yd" || value === "cubic yd") return "cubic yd";
+  if (value === "cubic_ft" || value === "cubic ft") return "cubic ft";
+  return getUnitTypeLabel(value);
+};
+
+const getServiceTypeNotesForDisplay = (notes: string | undefined, unitType: string) => {
+  if (!notes) return "";
+
+  const normalizedUnit = normalizeServiceTypeUnitForDisplay(unitType);
+  return notes.replace(
+    /^\s*per\s+(sq\s*ft|square\s*feet|linear\s*ft|cubic\s*yd|cubic\s*ft|yard|yards)\b\s*/i,
+    `Per ${normalizedUnit} `,
+  );
+};
+
 const UNIT_SELECT_OPTIONS = [
   { value: "bundle", label: "Bundle" },
   ...LINE_ITEM_UNIT_OPTIONS,
@@ -298,40 +318,24 @@ export default function SettingsPricingRules() {
     const parsedMinJobSize = parseFloat(serviceTypeDraft.min_job_size) || 0;
 
     try {
-      if (previousRule?.id) {
-        const { error } = await supabase
-          .from("pricing_rules")
-          .update({
-            service_type: nextRule.service_type,
-            base_labor_rate: nextRule.base_labor_rate,
-            material_rate: nextRule.material_rate,
-            waste_factor: nextRule.waste_factor,
-            overhead_multiplier: nextRule.overhead_multiplier,
-            profit_margin: nextRule.profit_margin,
-            unit_type: nextRule.unit_type,
-            notes: nextRule.notes,
-          })
-          .eq("id", previousRule.id);
+      const { data: savedRule, error: upsertError } = await supabase
+        .from("pricing_rules")
+        .upsert({
+          user_id: user.id,
+          account_id: currentAccount.id,
+          service_type: nextRule.service_type,
+          base_labor_rate: nextRule.base_labor_rate,
+          material_rate: nextRule.material_rate,
+          waste_factor: nextRule.waste_factor,
+          overhead_multiplier: nextRule.overhead_multiplier,
+          profit_margin: nextRule.profit_margin,
+          unit_type: nextRule.unit_type,
+          notes: nextRule.notes,
+        }, { onConflict: "user_id,service_type" })
+        .select("*")
+        .single();
 
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("pricing_rules")
-          .insert({
-            user_id: user.id,
-            account_id: currentAccount.id,
-            service_type: nextRule.service_type,
-            base_labor_rate: nextRule.base_labor_rate,
-            material_rate: nextRule.material_rate,
-            waste_factor: nextRule.waste_factor,
-            overhead_multiplier: nextRule.overhead_multiplier,
-            profit_margin: nextRule.profit_margin,
-            unit_type: nextRule.unit_type,
-            notes: nextRule.notes,
-          });
-
-        if (error) throw error;
-      }
+      if (upsertError) throw upsertError;
 
       const { data: accountRow, error: accountReadError } = await supabase
         .from("accounts")
@@ -372,10 +376,24 @@ export default function SettingsPricingRules() {
       if (accountUpdateError) throw accountUpdateError;
 
       setServiceTypeMinimums(nextMinimums);
+      setRules((prev) => {
+        const next = { ...prev };
+        if (previousKey && previousKey !== nextKey) {
+          delete next[previousKey];
+        }
+        next[nextKey] = {
+          ...(savedRule as PricingRule),
+          base_labor_rate: Number(savedRule?.base_labor_rate ?? nextRule.base_labor_rate ?? 0),
+          material_rate: Number(savedRule?.material_rate ?? nextRule.material_rate ?? 0),
+          waste_factor: Number(savedRule?.waste_factor ?? nextRule.waste_factor ?? 0),
+          overhead_multiplier: Number(savedRule?.overhead_multiplier ?? nextRule.overhead_multiplier ?? 1),
+          profit_margin: Number(savedRule?.profit_margin ?? nextRule.profit_margin ?? 0),
+        } as PricingRule;
+        return next;
+      });
 
       toast.success(previousKey ? "Service type updated" : "Service type added");
       resetServiceTypeDraft();
-      await fetchRules();
     } catch (error) {
       console.error("Error saving service type:", error);
       toast.error("Failed to save service type");
@@ -774,7 +792,9 @@ export default function SettingsPricingRules() {
     const { data, error } = await supabase
       .from("pricing_rules")
       .select("*")
-      .eq("account_id", currentAccount.id);
+      .eq("account_id", currentAccount.id)
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false });
 
     if (error) {
       console.error("Error fetching rules:", error);
@@ -810,6 +830,7 @@ export default function SettingsPricingRules() {
     const initialRules: Record<string, PricingRule> = {};
 
     (data || []).forEach((rule) => {
+      if (initialRules[rule.service_type]) return;
       const combinedUnitPrice = Number(rule.base_labor_rate ?? 0) + Number(rule.material_rate ?? 0);
       initialRules[rule.service_type] = {
         ...(rule as PricingRule),
@@ -881,40 +902,22 @@ export default function SettingsPricingRules() {
         const rule = rules[serviceType];
         if (!rule) continue;
 
-        if (rule.id) {
-          const { error } = await supabase
-            .from("pricing_rules")
-            .update({
-              service_type: rule.service_type,
-              base_labor_rate: rule.base_labor_rate,
-              material_rate: rule.material_rate,
-              waste_factor: rule.waste_factor,
-              overhead_multiplier: rule.overhead_multiplier,
-              profit_margin: rule.profit_margin,
-              unit_type: rule.unit_type,
-              notes: rule.notes,
-            })
-            .eq("id", rule.id);
+        const { error } = await supabase
+          .from("pricing_rules")
+          .upsert({
+            user_id: user.id,
+            account_id: currentAccount.id,
+            service_type: rule.service_type,
+            base_labor_rate: rule.base_labor_rate,
+            material_rate: rule.material_rate,
+            waste_factor: rule.waste_factor,
+            overhead_multiplier: rule.overhead_multiplier,
+            profit_margin: rule.profit_margin,
+            unit_type: rule.unit_type,
+            notes: rule.notes,
+          }, { onConflict: "user_id,service_type" });
 
-          if (error) throw error;
-        } else {
-          const { error } = await supabase
-            .from("pricing_rules")
-            .insert({
-              user_id: user.id,
-              account_id: currentAccount.id,
-              service_type: rule.service_type,
-              base_labor_rate: rule.base_labor_rate,
-              material_rate: rule.material_rate,
-              waste_factor: rule.waste_factor,
-              overhead_multiplier: rule.overhead_multiplier,
-              profit_margin: rule.profit_margin,
-              unit_type: rule.unit_type,
-              notes: rule.notes,
-            });
-
-          if (error) throw error;
-        }
+        if (error) throw error;
       }
 
       // Keep website calculator services/rates aligned with Pricing Rules.
@@ -1176,6 +1179,8 @@ export default function SettingsPricingRules() {
                       const isDefault = isDefaultServiceType(serviceType);
                       const isProtected = isProtectedServiceType(serviceType);
                       const unitPrice = Number(rule.base_labor_rate) + Number(rule.material_rate);
+                      const displayUnit = normalizeServiceTypeUnitForDisplay(rule.unit_type);
+                      const displayNotes = getServiceTypeNotesForDisplay(rule.notes, rule.unit_type);
 
                       return (
                         <div key={serviceType} className="rounded-lg border border-border p-3 flex items-start justify-between gap-3">
@@ -1185,7 +1190,7 @@ export default function SettingsPricingRules() {
                               {isDefault ? "Default service type" : "Custom service type"}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              ${unitPrice.toFixed(2)} / {getUnitTypeLabel(rule.unit_type)}{rule.notes ? ` • ${rule.notes}` : ""}
+                              ${unitPrice.toFixed(2)} / {displayUnit}{displayNotes ? ` • ${displayNotes}` : ""}
                             </p>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
