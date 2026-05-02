@@ -150,11 +150,11 @@ function CompactLineItem({
     return (
       <div className="p-3 border border-destructive/30 rounded-lg flex items-center justify-between gap-3 bg-destructive/5">
         <div className="flex-1 min-w-0 opacity-50">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-medium truncate line-through">
               {item.name || `Item ${index + 1}`}
             </span>
-            <span className="text-xs text-muted-foreground whitespace-nowrap line-through">
+            <span className="text-xs text-muted-foreground whitespace-nowrap line-through shrink-0">
               {item.quantity} x ${formatDollar(price)}
             </span>
           </div>
@@ -181,7 +181,7 @@ function CompactLineItem({
             <span className="text-sm font-medium truncate">
               {item.name || `Item ${index + 1}`}
             </span>
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
               {item.quantity} x ${formatDollar(price)}
             </span>
           </div>
@@ -2092,7 +2092,7 @@ export function EditEstimateModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100dvw-1rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100dvw-1rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>Edit Estimate</DialogTitle>
           <DialogDescription>
