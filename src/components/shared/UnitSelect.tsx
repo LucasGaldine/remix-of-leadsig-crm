@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +34,7 @@ export function UnitSelect({
   disabled = false,
 }: UnitSelectProps) {
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const touchStartYRef = useRef<number | null>(null);
   const isTouchDraggingRef = useRef(false);
 
@@ -56,28 +57,47 @@ export function UnitSelect({
     () => normalizedOptions.find((option) => option.value === value)?.label ?? "",
     [normalizedOptions, value],
   );
+  const filteredOptions = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return normalizedOptions;
+    return normalizedOptions.filter((option) => `${option.label} ${option.value}`.toLowerCase().includes(query));
+  }, [normalizedOptions, searchQuery]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen} modal>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setSearchQuery("");
+        }
+      }}
+      modal
+    >
       <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className={cn("w-full justify-between font-normal", className)}
-        >
-          <span className="truncate text-left">
-            {selectedLabel || <span className="text-muted-foreground">{placeholder}</span>}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+        <div className={cn("relative w-full", className)}>
+          <Input
+            id={id}
+            role="combobox"
+            aria-expanded={open}
+            disabled={disabled}
+            value={open ? searchQuery : selectedLabel}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              if (!open) setOpen(true);
+            }}
+            placeholder={open ? searchPlaceholder : placeholder}
+            className="pr-10"
+          />
+          <ChevronsUpDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-50" />
+        </div>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+        align="start"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <Command shouldFilter={false}>
           <CommandList
             className="max-h-[9.5rem] overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] md:max-h-[300px]"
             onTouchStart={(event) => {
@@ -101,7 +121,7 @@ export function UnitSelect({
           >
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {normalizedOptions.map((option) => {
+              {filteredOptions.map((option) => {
                 const isSelected = value === option.value;
                 return (
                   <CommandItem
