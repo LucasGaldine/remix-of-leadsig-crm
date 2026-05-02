@@ -106,6 +106,25 @@ describe("JobCard", () => {
     expect(screen.getByText("Needs Invoice")).toBeInTheDocument();
   });
 
+  it("shows completed when status is completed even if display status is unscheduled", () => {
+    render(
+      <MemoryRouter>
+        <JobCard
+          job={{
+            ...baseJob,
+            status: "completed",
+            display_status: "unscheduled",
+            has_invoice: true,
+            has_unassigned_schedule: true,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Unscheduled")).not.toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+  });
+
   it("triggers onClick when selected", () => {
     const onClick = vi.fn();
     render(

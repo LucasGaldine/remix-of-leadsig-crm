@@ -931,7 +931,7 @@ export default function EstimateDetail() {
     await fetchEstimateVersions();
   };
 
-  const resolveCustomerPortalLink = async () => {
+  const resolveClientPortalLink = async () => {
     const customerId = estimate?.customer?.id;
     if (!customerId) {
       throw new Error("No customer associated with this estimate");
@@ -969,7 +969,7 @@ export default function EstimateDetail() {
     if (portalLoading) return;
     setPortalLoading(true);
     try {
-      const portalData = await resolveCustomerPortalLink();
+      const portalData = await resolveClientPortalLink();
       setPortalLink(portalData.link);
       setPortalClientPhone(portalData.phone);
       setPortalClientEmail(portalData.email);
@@ -1310,7 +1310,7 @@ export default function EstimateDetail() {
       : "Approved"
     : "Manually Approve";
   const canLogPayments = typeof isManager === "function" ? isManager() : false;
-  const portalLabel = portalLoading ? "Generating..." : "Send Customer Portal";
+  const portalLabel = portalLoading ? "Generating..." : "Send Client Portal";
   const mobileQuickActions = [
     {
       icon: <Check className="h-5 w-5" />,
@@ -1422,7 +1422,7 @@ export default function EstimateDetail() {
                 disabled={portalLoading}
               >
                 <Link2 className="h-4 w-4" />
-                {portalLoading ? "Generating..." : "Send Customer Portal"}
+                {portalLoading ? "Generating..." : "Send Client Portal"}
               </Button>
             </div>
           )}

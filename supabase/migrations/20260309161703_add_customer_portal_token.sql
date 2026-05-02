@@ -3,7 +3,7 @@
 
   1. Modified Tables
     - `customers`
-      - `client_portal_token` (uuid, unique, nullable) - Token for sharing customer portal with clients
+      - `client_portal_token` (uuid, unique, nullable) - Token for sharing client portal with clients
 
   2. Indexes
     - Partial index on `client_portal_token` for fast lookups

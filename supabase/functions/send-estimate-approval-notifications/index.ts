@@ -16,6 +16,17 @@ type RequestBody = {
 };
 
 type RecipientType = "customer" | "user";
+type AgreementKey = "job_release_agreement" | "job_agreement" | "warranty_agreement";
+type PdfAttachment = {
+  filename: string;
+  content: Uint8Array;
+  contentType: string;
+};
+const AGREEMENT_LABELS: Record<AgreementKey, string> = {
+  job_release_agreement: "Job Release Agreement",
+  job_agreement: "Job Agreement",
+  warranty_agreement: "Warranty Agreement",
+};
 
 function escapeHtml(value: string): string {
   return value
@@ -488,6 +499,163 @@ async function buildEstimatePdfAttachment(params: {
   };
 }
 
+function normalizeAgreementText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stripAgreementSignaturePlaceholders(agreementText: string): string {
+  const lines = agreementText.split(/\r?\n/);
+  const signatureLinePattern = /^(client signature|contractor signature|printed name|date)\s*:/i;
+  const underlineOnlyPattern = /^[_\s.-]+$/;
+
+  const filtered = lines.filter((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return true;
+    if (signatureLinePattern.test(line)) return false;
+    if (underlineOnlyPattern.test(line)) return false;
+    return true;
+  });
+
+  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function addAgreementBody(doc: JsPdfDoc, agreementText: string, margin: number, pageWidth: number, startY: number) {
+  const maxTextWidth = pageWidth - margin * 2;
+  const lines = agreementText.split(/\r?\n/);
+  let yPosition = startY;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const printable = line.length > 0 ? line : " ";
+    const wrapped = doc.splitTextToSize(printable, maxTextWidth);
+
+    for (const chunk of wrapped) {
+      if (yPosition > 275) {
+        doc.addPage();
+        yPosition = margin;
+      }
+      doc.text(chunk, margin, yPosition);
+      yPosition += 6;
+    }
+  }
+
+  return yPosition;
+}
+
+async function addAgreementApprovalDetails(
+  doc: JsPdfDoc,
+  params: {
+    customerName: string;
+    companyName: string;
+    acceptedAt?: string | null;
+    signatureImageUrl?: string | null;
+  },
+  margin: number,
+  pageWidth: number,
+  startY: number,
+) {
+  let yPosition = startY + 6;
+  if (yPosition > 255) {
+    doc.addPage();
+    yPosition = margin;
+  }
+
+  doc.setDrawColor(220, 220, 220);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 8;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Approval Details", margin, yPosition);
+  yPosition += 7;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const approvedDate = params.acceptedAt ? format(new Date(params.acceptedAt), "MMMM d, yyyy") : "N/A";
+  doc.text(`Client Printed Name: ${params.customerName}`, margin, yPosition);
+  yPosition += 6;
+  doc.text(`Client Approval Date: ${approvedDate}`, margin, yPosition);
+  yPosition += 8;
+
+  if (params.signatureImageUrl) {
+    try {
+      const signatureDataUrl = await getImageDataUrl(params.signatureImageUrl);
+      const signatureProps = doc.getImageProperties(signatureDataUrl);
+      const imageFormat = resolveImageFormat(signatureDataUrl);
+      const maxImageWidth = Math.min(95, pageWidth - margin * 2);
+      const maxImageHeight = 36;
+      const widthScale = maxImageWidth / signatureProps.width;
+      const heightScale = maxImageHeight / signatureProps.height;
+      const imageScale = Math.min(widthScale, heightScale);
+      const imageWidth = signatureProps.width * imageScale;
+      const imageHeight = signatureProps.height * imageScale;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text("Client Signature:", margin, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 2;
+
+      doc.addImage(signatureDataUrl, imageFormat, margin, yPosition, imageWidth, imageHeight);
+      yPosition += imageHeight + 6;
+    } catch {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text("Client Signature: captured on file", margin, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 6;
+    }
+  }
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Contractor Printed Name: ${params.companyName}`, margin, yPosition);
+  yPosition += 6;
+  doc.text(`Contractor Acknowledgement Date: ${approvedDate}`, margin, yPosition);
+}
+
+async function buildAgreementPdfAttachment(params: {
+  customerName: string;
+  companyName: string;
+  acceptedAt?: string | null;
+  signatureImageUrl?: string | null;
+  agreementKey: AgreementKey;
+  agreementText: string;
+}): Promise<PdfAttachment> {
+  const doc = new JsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 20;
+  const label = AGREEMENT_LABELS[params.agreementKey];
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text(label, margin, 24);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated: ${format(new Date(), "MMMM d, yyyy 'at' h:mm a")}`, margin, 31);
+  doc.setTextColor(0, 0, 0);
+
+  const bodyText = stripAgreementSignaturePlaceholders(params.agreementText);
+  const bodyEndY = addAgreementBody(doc, bodyText, margin, pageWidth, 40);
+  await addAgreementApprovalDetails(doc, params, margin, pageWidth, bodyEndY);
+
+  const filenameSafeCustomer = params.customerName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "customer";
+  const filePrefix = params.agreementKey.replaceAll("_agreement", "").replaceAll("_", "-");
+
+  return {
+    filename: `${filePrefix}-${filenameSafeCustomer}-${format(new Date(), "yyyy-MM-dd")}.pdf`,
+    content: new Uint8Array(doc.output("arraybuffer")),
+    contentType: "application/pdf",
+  };
+}
+
 async function sendEmail(params: {
   smtpHost: string;
   smtpPort: number;
@@ -587,6 +755,7 @@ Deno.serve(async (req: Request) => {
         status,
         accepted_at,
         manual_approval_photo_url,
+        agreement_templates,
         customer:customers(name, email),
         job:leads!estimates_job_id_fkey(name, address),
         line_items:estimate_line_items(name, description, quantity, unit, unit_price, total, sort_order, is_change_order, change_order_type)
@@ -667,6 +836,25 @@ Deno.serve(async (req: Request) => {
       acceptedAt: estimate.accepted_at || null,
       lineItems: (estimate as any).line_items || [],
     });
+    const attachments: PdfAttachment[] = [pdfAttachment];
+    const agreementTemplates = (estimate as any).agreement_templates && typeof (estimate as any).agreement_templates === "object"
+      ? ((estimate as any).agreement_templates as Record<string, unknown>)
+      : {};
+
+    for (const key of Object.keys(AGREEMENT_LABELS) as AgreementKey[]) {
+      const agreementText = normalizeAgreementText(agreementTemplates[key]);
+      if (!agreementText) continue;
+      attachments.push(
+        await buildAgreementPdfAttachment({
+          customerName,
+          companyName,
+          acceptedAt: estimate.accepted_at || null,
+          signatureImageUrl: (estimate as any).manual_approval_photo_url || null,
+          agreementKey: key,
+          agreementText,
+        }),
+      );
+    }
 
     const { data: members } = await supabase
       .from("account_members")
@@ -770,7 +958,7 @@ Deno.serve(async (req: Request) => {
           html,
           text,
           replyTo: companyReplyTo,
-          attachments: [pdfAttachment],
+          attachments,
         });
 
         sent += 1;

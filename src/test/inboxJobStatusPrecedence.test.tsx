@@ -4,6 +4,23 @@ import { describe, expect, it, vi } from "vitest";
 
 import Inbox from "@/pages/Inbox";
 
+const mockedJobs = vi.hoisted(() => ({
+  data: [
+    {
+      id: "job_1",
+      name: "Bob Miller",
+      created_at: "2026-04-20T10:00:00.000Z",
+      display_status: "unscheduled",
+      status: "job",
+      service_type: null,
+      has_unassigned_schedule: true,
+      has_invoice: false,
+      is_estimate_visit: false,
+      customer: { name: "Bob Miller" },
+    },
+  ] as any[],
+}));
+
 vi.mock("@/components/layout/PageHeader", () => ({
   PageHeader: () => <header>Inbox</header>,
 }));
@@ -41,20 +58,7 @@ vi.mock("@/hooks/useLeads", () => ({
 
 vi.mock("@/hooks/useJobs", () => ({
   useJobs: () => ({
-    data: [
-      {
-        id: "job_1",
-        name: "Bob Miller",
-        created_at: "2026-04-20T10:00:00.000Z",
-        display_status: "unscheduled",
-        status: "job",
-        service_type: null,
-        has_unassigned_schedule: true,
-        has_invoice: false,
-        is_estimate_visit: false,
-        customer: { name: "Bob Miller" },
-      },
-    ],
+    data: mockedJobs.data,
     isLoading: false,
     refetch: vi.fn(),
   }),
@@ -74,6 +78,21 @@ vi.mock("@/hooks/usePayments", () => ({
 
 describe("Inbox job status precedence", () => {
   it("shows unscheduled before unassigned", () => {
+    mockedJobs.data = [
+      {
+        id: "job_1",
+        name: "Bob Miller",
+        created_at: "2026-04-20T10:00:00.000Z",
+        display_status: "unscheduled",
+        status: "job",
+        service_type: null,
+        has_unassigned_schedule: true,
+        has_invoice: false,
+        is_estimate_visit: false,
+        customer: { name: "Bob Miller" },
+      },
+    ];
+
     render(
       <MemoryRouter>
         <Inbox />
@@ -82,5 +101,31 @@ describe("Inbox job status precedence", () => {
 
     expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
     expect(screen.getByText("Unscheduled")).toBeInTheDocument();
+  });
+
+  it("shows completed when underlying status is completed even if display status is unscheduled", () => {
+    mockedJobs.data = [
+      {
+        id: "job_1",
+        name: "Bob Miller",
+        created_at: "2026-04-20T10:00:00.000Z",
+        display_status: "unscheduled",
+        status: "completed",
+        service_type: null,
+        has_unassigned_schedule: true,
+        has_invoice: true,
+        is_estimate_visit: false,
+        customer: { name: "Bob Miller" },
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <Inbox />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Unscheduled")).not.toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
   });
 });

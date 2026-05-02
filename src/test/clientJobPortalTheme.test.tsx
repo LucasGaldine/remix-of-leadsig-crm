@@ -98,7 +98,7 @@ describe("ClientJobPortal theming", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
-  it("uses portal color and text color on the customer portal welcome header card", async () => {
+  it("uses portal color and text color on the client portal welcome header card", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({

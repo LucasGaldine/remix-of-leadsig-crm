@@ -508,7 +508,7 @@ export default function JobDetail() {
     setLineItemsEstimateDialogOpen(true);
   };
 
-  const resolveCustomerPortalLink = async () => {
+  const resolveClientPortalLink = async () => {
     const customerId = job?.customer?.id;
     if (!customerId) {
       throw new Error("No customer linked to this job");
@@ -546,7 +546,7 @@ export default function JobDetail() {
     if (portalLoading) return;
     setPortalLoading(true);
     try {
-      const portalData = await resolveCustomerPortalLink();
+      const portalData = await resolveClientPortalLink();
       setPortalLink(portalData.link);
       setPortalClientPhone(portalData.phone);
       setPortalClientEmail(portalData.email);
@@ -622,7 +622,7 @@ export default function JobDetail() {
     if (!job?.customer?.id || !currentAccount?.id) return;
 
     const portalFallback = shouldUsePortalFallback(isTwilioConfigured, job.customer.phone);
-    const portalData = await resolveCustomerPortalLink();
+    const portalData = await resolveClientPortalLink();
     const portalLink = portalData.link;
 
     if (portalFallback) {
@@ -763,7 +763,7 @@ export default function JobDetail() {
     try {
       let resolvedPortalLink = portalLink;
       if (!resolvedPortalLink) {
-        const portalData = await resolveCustomerPortalLink();
+        const portalData = await resolveClientPortalLink();
         resolvedPortalLink = portalData.link;
         setPortalLink(portalData.link);
         setPortalClientPhone(portalData.phone);

@@ -23,6 +23,7 @@ import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
 import { normalizeVoiceEstimateParsedData } from "@/lib/voiceIntake";
 import type { VoiceEstimateParsedData } from "@/types/voiceIntake";
 import { createEstimateVersionSnapshot } from "@/lib/estimateVersions";
+import { UnitSelect } from "@/components/shared/UnitSelect";
 
 interface LineItem {
   id: string;
@@ -546,21 +547,11 @@ export default function CreateEstimate() {
 
                         <div className="space-y-2">
                           <Label>Unit</Label>
-                          <Select
+                          <UnitSelect
                             value={item.unit}
+                            options={LINE_ITEM_UNIT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
                             onValueChange={(value) => updateLineItem(item.id, "unit", value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {LINE_ITEM_UNIT_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          />
                         </div>
 
                         <div className="space-y-2">

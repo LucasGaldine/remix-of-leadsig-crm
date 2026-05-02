@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, Package, Presentation, Upload, X } from "lucide-react";
+import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, Package, Pencil, Presentation, Settings, Upload, X } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/useAuth";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useJobChecklist } from "@/hooks/useJobChecklist";
 import { getBrandFontOption, loadGoogleBrandFont } from "@/lib/brandFonts";
+import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { approveEstimateManuallyById } from "@/lib/estimateApproval";
+import { generateAgreementTemplates } from "@/lib/agreementTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -102,6 +105,7 @@ export function EstimateProposalPanel({
   displayLineItems: any[];
   onRefresh: () => Promise<void> | void;
 }) {
+  const { currentAccount } = useAuth();
   const SIGNATURE_CANVAS_WIDTH = 600;
   const SIGNATURE_CANVAS_HEIGHT = 180;
   const isTestMode = import.meta.env.MODE === "test";
@@ -115,11 +119,22 @@ export function EstimateProposalPanel({
   const [openEditorSection, setOpenEditorSection] = useState<string>("");
   const [selectedAgreementKey, setSelectedAgreementKey] = useState<(typeof AGREEMENT_KEYS)[number] | null>(null);
   const [approving, setApproving] = useState(false);
+  const [portalLink, setPortalLink] = useState("");
+  const [portalLinkLoading, setPortalLinkLoading] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
   const [scopeGeneratorOpen, setScopeGeneratorOpen] = useState(false);
   const [rawScopeDescription, setRawScopeDescription] = useState("");
   const [generatingScope, setGeneratingScope] = useState(false);
+  const [advancingFromPricing, setAdvancingFromPricing] = useState(false);
+  const [scopeItemDialogOpen, setScopeItemDialogOpen] = useState(false);
+  const [scopeItemDraft, setScopeItemDraft] = useState("");
+  const [editingScopeItemId, setEditingScopeItemId] = useState<string | null>(null);
   const [agreementDrafts, setAgreementDrafts] = useState<Record<string, string>>({});
+  const [customDepositPercentage, setCustomDepositPercentage] = useState("33");
+  const [customMidpointPercentage, setCustomMidpointPercentage] = useState("33");
+  const [customFinalPercentage, setCustomFinalPercentage] = useState("34");
+  const [customWarrantyLength, setCustomWarrantyLength] = useState("2 years");
+  const [selectedPricingOptionId, setSelectedPricingOptionId] = useState<string | null>(null);
   const [beforePhotos, setBeforePhotos] = useState<Array<{ filePath: string; url: string }>>([]);
   const [activeVisualizationIndex, setActiveVisualizationIndex] = useState(0);
   const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -130,12 +145,14 @@ export function EstimateProposalPanel({
     ? ({
         items: [],
         addItem: { mutateAsync: async () => undefined },
+        updateItem: { mutateAsync: async () => undefined },
         deleteItem: { mutateAsync: async () => undefined },
       } as any)
     : useJobChecklist(estimate?.job_id || undefined);
   const teamMembers = teamMembersQuery.data || [];
   const checklistItems = checklistQuery.items || [];
   const addItem = checklistQuery.addItem;
+  const updateItem = checklistQuery.updateItem;
   const deleteItem = checklistQuery.deleteItem;
 
   const currentSettings = (estimate?.proposal_settings || {}) as any;
@@ -232,6 +249,7 @@ export function EstimateProposalPanel({
   loadGoogleBrandFont(bodyFont);
   const primaryColor = estimate?.account?.settings?.client_portal_color || "#0f172a";
   const textColor = estimate?.account?.settings?.client_portal_text_color || "#ffffff";
+  const accentColor = estimate?.account?.settings?.client_portal_highlight_color || primaryColor;
   const rawCustomerName = estimate?.customer?.name?.trim() || "";
   const rawJobName = estimate?.job?.name?.trim() || "";
   const hasTrailingJobSuffix = /\sjob\s*$/i.test(rawJobName);
@@ -257,6 +275,64 @@ export function EstimateProposalPanel({
   );
   const preparedDate = format(new Date(), "MMMM d, yyyy");
   const todayIso = format(new Date(), "yyyy-MM-dd");
+  const isEstimateAlreadyApproved = estimate?.status === "accepted";
+  const isProposalLocked = isEstimateAlreadyApproved;
+  const isFreePlan = currentAccount?.pricing_plan === "free";
+  const hasGeneratedAgreements = useMemo(
+    () =>
+      AGREEMENT_KEYS.every((key) => {
+        const draftValue = typeof agreementDrafts[key] === "string" ? agreementDrafts[key] : "";
+        return draftValue.trim().length > 0;
+      }),
+    [agreementDrafts],
+  );
+  const selectedTeamMemberCount = useMemo(
+    () => teamMembers.filter((member) => selectedTeamIds.has(member.user_id)).length,
+    [teamMembers, selectedTeamIds],
+  );
+  const sectionAvailability = useMemo(
+    () => ({
+      cover_page: Boolean(String(currentSettings.title || fallbackJobName || "").trim()),
+      scope_of_work: checklistItems.length > 0,
+      meet_your_team: selectedTeamMemberCount > 0,
+      materials: materialOptions.length > 0 && selectedLineItemIds.size > 0,
+      project_visualization: visualizationPhotos.length > 0 || displayedBeforePhotoUrls.length > 0,
+      pricing_options: estimateVersions.length > 0,
+      agreements_and_signatures: hasGeneratedAgreements,
+    }),
+    [
+      checklistItems.length,
+      currentSettings.title,
+      displayedBeforePhotoUrls.length,
+      estimateVersions.length,
+      fallbackJobName,
+      hasGeneratedAgreements,
+      materialOptions.length,
+      selectedLineItemIds.size,
+      selectedTeamMemberCount,
+      visualizationPhotos.length,
+    ],
+  );
+  const effectiveSectionState = useMemo(
+    () =>
+      SECTIONS.reduce((acc, section) => {
+        acc[section.key] = sectionState[section.key] && sectionAvailability[section.key];
+        return acc;
+      }, {} as Record<string, boolean>),
+    [sectionAvailability, sectionState],
+  );
+  const sectionDisabledReason = useMemo(
+    () => ({
+      cover_page: sectionAvailability.cover_page ? "" : "Add a proposal title.",
+      scope_of_work: sectionAvailability.scope_of_work ? "" : "Add at least one scope task.",
+      meet_your_team: sectionAvailability.meet_your_team ? "" : "Select at least one team member.",
+      materials: sectionAvailability.materials ? "" : "Select at least one material item.",
+      project_visualization: sectionAvailability.project_visualization ? "" : "Upload or select at least one image.",
+      pricing_options: sectionAvailability.pricing_options ? "" : "Create at least one estimate version.",
+      agreements_and_signatures: sectionAvailability.agreements_and_signatures ? "" : "Generate all agreement templates.",
+    }),
+    [sectionAvailability],
+  );
 
   const getContractorAddress = () => {
     const accountSettings = estimate?.account?.settings;
@@ -274,6 +350,109 @@ export function EstimateProposalPanel({
     }
     return "Address on file";
   };
+
+  const getDefaultPaymentSchedule = () => {
+    const paymentDefaultsRaw = estimate?.account?.settings?.default_payment_schedule;
+    const paymentDefaults =
+      paymentDefaultsRaw && typeof paymentDefaultsRaw === "object" && !Array.isArray(paymentDefaultsRaw)
+        ? (paymentDefaultsRaw as Record<string, unknown>)
+        : {};
+    const depositPercentage = Number(paymentDefaults.deposit_percentage ?? 33);
+    const midpointPercentage = Number(paymentDefaults.midpoint_percentage ?? 33);
+    const finalPercentage = Number(paymentDefaults.final_percentage ?? 34);
+
+    return {
+      depositPercentage: Number.isFinite(depositPercentage) ? depositPercentage : 33,
+      midpointPercentage: Number.isFinite(midpointPercentage) ? midpointPercentage : 33,
+      finalPercentage: Number.isFinite(finalPercentage) ? finalPercentage : 34,
+    };
+  };
+
+  const getEffectivePaymentSchedule = () => {
+    const defaults = getDefaultPaymentSchedule();
+    const paymentScheduleRaw = currentSettings?.payment_schedule;
+    const paymentSchedule =
+      paymentScheduleRaw && typeof paymentScheduleRaw === "object" && !Array.isArray(paymentScheduleRaw)
+        ? (paymentScheduleRaw as Record<string, unknown>)
+        : {};
+
+    const depositPercentage = Number(paymentSchedule.deposit_percentage ?? defaults.depositPercentage);
+    const midpointPercentage = Number(paymentSchedule.midpoint_percentage ?? defaults.midpointPercentage);
+    const finalPercentage = Number(paymentSchedule.final_percentage ?? defaults.finalPercentage);
+
+    return {
+      depositPercentage: Number.isFinite(depositPercentage) ? depositPercentage : defaults.depositPercentage,
+      midpointPercentage: Number.isFinite(midpointPercentage) ? midpointPercentage : defaults.midpointPercentage,
+      finalPercentage: Number.isFinite(finalPercentage) ? finalPercentage : defaults.finalPercentage,
+    };
+  };
+
+  const getAgreementTotalCost = () => {
+    const activeVersionId = selectedPricingOptionId || currentSettings?.recommended_version_id || null;
+    const activeVersion = activeVersionId
+      ? estimateVersions.find((version) => version?.id === activeVersionId)
+      : null;
+    const activeVersionRawTotal = activeVersion?.total;
+    if (activeVersionRawTotal !== null && activeVersionRawTotal !== undefined && activeVersionRawTotal !== "") {
+      const parsedVersionTotal = Number(activeVersionRawTotal);
+      if (Number.isFinite(parsedVersionTotal)) {
+        return parsedVersionTotal;
+      }
+    }
+    return Number(displayLineItems.reduce((sum, item: any) => sum + (Number(item?.total) || 0), 0)) || 0;
+  };
+
+  const getActivePricingOptionId = () => selectedPricingOptionId || currentSettings?.recommended_version_id || estimateVersions[0]?.id || null;
+
+  const getSelectedWarrantyLength = () => {
+    const activeVersionId = getActivePricingOptionId();
+    const warrantyLengthsRaw = currentSettings?.version_warranty_lengths;
+    const warrantyLengths =
+      warrantyLengthsRaw && typeof warrantyLengthsRaw === "object" && !Array.isArray(warrantyLengthsRaw)
+        ? (warrantyLengthsRaw as Record<string, unknown>)
+        : {};
+    const selectedValue = activeVersionId ? String(warrantyLengths[activeVersionId] || "").trim() : "";
+    return selectedValue || "2 years";
+  };
+
+  const getAgreementScopeItems = () => {
+    const scopeItems = checklistItems
+      .map((item) => String(item?.label || "").trim())
+      .filter((value) => value.length > 0);
+    const fallbackScopeItems = (displayLineItems || [])
+      .map((item: any) => String(item?.name || "").trim())
+      .filter((value: string) => value.length > 0);
+    return scopeItems.length > 0 ? scopeItems : fallbackScopeItems;
+  };
+
+  const buildAgreementTemplatesForCurrentContext = () =>
+    {
+      const paymentSchedule = getEffectivePaymentSchedule();
+
+      return generateAgreementTemplates({
+        todayIso,
+        contractorName: (estimate?.account?.company_name || "Contractor").trim(),
+        contractorAddress: getContractorAddress(),
+        contractorPhone: (estimate?.account?.company_phone || "N/A").trim() || "N/A",
+        contractorEmail: (estimate?.account?.company_email || "N/A").trim() || "N/A",
+        clientName: (estimate?.customer?.name || "Client").trim(),
+        projectName: displayCoverTitle || estimate?.job?.name || "Project",
+        projectAddress:
+          formatAddressWithCity(estimate?.job?.address || estimate?.customer?.address, estimate?.job?.city || estimate?.customer?.city)
+          || "Address to be confirmed",
+        scopeItems: getAgreementScopeItems(),
+        totalCost: getAgreementTotalCost(),
+        paymentMethod: estimate?.account?.settings?.stripe_account_id ? "Stripe" : "Check or ACH",
+        paymentSchedule: {
+          depositPercentage: paymentSchedule.depositPercentage,
+          midpointPercentage: paymentSchedule.midpointPercentage,
+          finalPercentage: paymentSchedule.finalPercentage,
+        },
+        workmanshipWarrantyDuration: getSelectedWarrantyLength(),
+        startDate: estimate?.job?.scheduled_date || todayIso,
+        completionDate: estimate?.job?.last_scheduled_date || estimate?.job?.scheduled_date || todayIso,
+      });
+    };
 
   const buildJobReleaseAgreement = () => {
     const contractorName = (estimate?.account?.company_name || "Contractor").trim();
@@ -299,10 +478,11 @@ export function EstimateProposalPanel({
       .map((item, index) => `${index + 1}. ${item}`)
       .join("\n");
 
-    const totalCost = Number(displayLineItems.reduce((sum, item: any) => sum + (Number(item?.total) || 0), 0)) || 0;
-    const depositPercentage = 33;
-    const midpointPercentage = 33;
-    const finalPercentage = 34;
+    const totalCost = getAgreementTotalCost();
+    const paymentSchedule = getEffectivePaymentSchedule();
+    const depositPercentage = paymentSchedule.depositPercentage;
+    const midpointPercentage = paymentSchedule.midpointPercentage;
+    const finalPercentage = paymentSchedule.finalPercentage;
     const depositAmount = Number((totalCost * (depositPercentage / 100)).toFixed(2));
     const midpointAmount = Number((totalCost * (midpointPercentage / 100)).toFixed(2));
     const finalAmount = Number((totalCost - depositAmount - midpointAmount).toFixed(2));
@@ -406,10 +586,11 @@ Date: _______________`;
       .map((item, index) => `${index + 1}. ${item}`)
       .join("\n");
 
-    const totalCost = Number(displayLineItems.reduce((sum, item: any) => sum + (Number(item?.total) || 0), 0)) || 0;
-    const depositPercentage = 33;
-    const midpointPercentage = 33;
-    const finalPercentage = 34;
+    const totalCost = getAgreementTotalCost();
+    const paymentSchedule = getEffectivePaymentSchedule();
+    const depositPercentage = paymentSchedule.depositPercentage;
+    const midpointPercentage = paymentSchedule.midpointPercentage;
+    const finalPercentage = paymentSchedule.finalPercentage;
     const depositAmount = Number((totalCost * (depositPercentage / 100)).toFixed(2));
     const midpointAmount = Number((totalCost * (midpointPercentage / 100)).toFixed(2));
     const finalAmount = Number((totalCost - depositAmount - midpointAmount).toFixed(2));
@@ -557,8 +738,8 @@ Date: _______________`;
       .map((item, index) => `${index + 1}. ${item}`)
       .join("\n");
 
-    const contractTotal = Number(displayLineItems.reduce((sum, item: any) => sum + (Number(item?.total) || 0), 0)) || 0;
-    const workmanshipWarrantyDuration = "2 years";
+    const contractTotal = getAgreementTotalCost();
+    const workmanshipWarrantyDuration = getSelectedWarrantyLength();
     const materialWarrantyNotes = "Manufacturer warranty details available upon request.";
     const inspectionTimeframe = "14 business days";
 
@@ -583,7 +764,7 @@ This Warranty Agreement (“Agreement”) is provided by ${contractorName} (“C
 
 The Contractor warrants all workmanship for a period of:
 
-${workmanshipWarrantyDuration} (e.g., 2 years)
+${workmanshipWarrantyDuration}
 
 from the date of substantial completion.
 
@@ -676,6 +857,37 @@ Date: _______________`;
     context.lineWidth = 2;
   }, [SIGNATURE_CANVAS_HEIGHT, SIGNATURE_CANVAS_WIDTH]);
 
+  useEffect(() => {
+    if (estimateVersions.length === 0) {
+      setSelectedPricingOptionId(null);
+      return;
+    }
+
+    setSelectedPricingOptionId((previous) => {
+      if (previous && estimateVersions.some((version) => version.id === previous)) {
+        return previous;
+      }
+
+      const recommendedVersionId = currentSettings?.recommended_version_id;
+      if (recommendedVersionId && estimateVersions.some((version) => version.id === recommendedVersionId)) {
+        return recommendedVersionId;
+      }
+
+      return estimateVersions[0].id;
+    });
+  }, [estimateVersions, currentSettings?.recommended_version_id]);
+
+  useEffect(() => {
+    const paymentSchedule = getEffectivePaymentSchedule();
+    setCustomDepositPercentage(String(paymentSchedule.depositPercentage));
+    setCustomMidpointPercentage(String(paymentSchedule.midpointPercentage));
+    setCustomFinalPercentage(String(paymentSchedule.finalPercentage));
+  }, [currentSettings?.payment_schedule, estimate?.account?.settings?.default_payment_schedule]);
+
+  useEffect(() => {
+    setCustomWarrantyLength(getSelectedWarrantyLength());
+  }, [selectedPricingOptionId, currentSettings?.version_warranty_lengths, currentSettings?.recommended_version_id, estimateVersions]);
+
   const clearSignature = () => {
     const canvas = signatureCanvasRef.current;
     const context = getSignatureContext();
@@ -754,6 +966,7 @@ Date: _______________`;
   };
 
   const saveProposal = async (nextSettings: any, extras?: Record<string, any>) => {
+    if (isProposalLocked) return;
     setSaving(true);
     try {
       const { error } = await supabase
@@ -806,6 +1019,7 @@ Date: _______________`;
   };
 
   const handleUploadVisualization = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (isProposalLocked) return;
     const files = Array.from(event.target.files || []);
     if (files.length === 0 || !estimate?.id) return;
     setUploading(true);
@@ -836,6 +1050,7 @@ Date: _______________`;
   };
 
   const handleUploadMaterialImage = async (lineItemId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    if (isProposalLocked) return;
     const file = event.target.files?.[0];
     if (!file || !estimate?.id) return;
     setUploadingMaterialId(lineItemId);
@@ -873,6 +1088,7 @@ Date: _______________`;
   };
 
   const setAndPersistAgreementTemplate = (key: (typeof AGREEMENT_KEYS)[number], value: string) => {
+    if (isProposalLocked) return;
     setAgreementDrafts((previous) => ({ ...previous, [key]: value }));
     updateAgreementTemplate(key, value);
   };
@@ -891,6 +1107,20 @@ Date: _______________`;
     });
   };
 
+  const updateVersionSubtitle = (versionId: string, subtitle: string) => {
+    const currentSubtitles =
+      currentSettings.version_subtitles && typeof currentSettings.version_subtitles === "object"
+        ? currentSettings.version_subtitles
+        : {};
+    void saveProposal({
+      ...currentSettings,
+      version_subtitles: {
+        ...currentSubtitles,
+        [versionId]: subtitle,
+      },
+    });
+  };
+
   const updateRecommendedVersion = (versionId: string) => {
     const nextValue = versionId === "__none__" ? null : versionId;
     void saveProposal({
@@ -899,10 +1129,69 @@ Date: _______________`;
     });
   };
 
+  const handleViewAgreement = (key: (typeof AGREEMENT_KEYS)[number]) => {
+    const templates = buildAgreementTemplatesForCurrentContext();
+    const templateValue = templates[key] || "";
+    setAndPersistAgreementTemplate(key, templateValue);
+    setSelectedAgreementKey(key);
+  };
+
+  const saveCustomPaymentSchedule = () => {
+    if (isProposalLocked) return;
+    const parsedDeposit = parseFloat(customDepositPercentage) || 0;
+    const parsedMidpoint = parseFloat(customMidpointPercentage) || 0;
+    const parsedFinal = parseFloat(customFinalPercentage) || 0;
+    const total = parsedDeposit + parsedMidpoint + parsedFinal;
+
+    if (
+      parsedDeposit < 0
+      || parsedMidpoint < 0
+      || parsedFinal < 0
+      || Math.abs(total - 100) > 0.01
+    ) {
+      toast.error("Payment schedule must be non-negative and total 100%");
+      return;
+    }
+
+    void saveProposal({
+      ...currentSettings,
+      payment_schedule: {
+        deposit_percentage: parsedDeposit,
+        midpoint_percentage: parsedMidpoint,
+        final_percentage: parsedFinal,
+      },
+    });
+  };
+
+  const saveCustomWarrantyLength = () => {
+    if (isProposalLocked) return;
+    const activeVersionId = getActivePricingOptionId();
+    if (!activeVersionId) return;
+
+    const trimmed = customWarrantyLength.trim();
+    if (!trimmed) {
+      toast.error("Warranty length is required");
+      return;
+    }
+
+    const currentWarrantyLengths =
+      currentSettings.version_warranty_lengths && typeof currentSettings.version_warranty_lengths === "object"
+        ? currentSettings.version_warranty_lengths
+        : {};
+
+    void saveProposal({
+      ...currentSettings,
+      version_warranty_lengths: {
+        ...currentWarrantyLengths,
+        [activeVersionId]: trimmed,
+      },
+    });
+  };
+
   const slides = useMemo(() => {
     const list: Array<{ key: string; title: string; content: React.ReactNode }> = [];
 
-    if (sectionState.cover_page) {
+    if (effectiveSectionState.cover_page) {
       list.push({
         key: "cover_page",
         title: "Cover",
@@ -926,7 +1215,7 @@ Date: _______________`;
       });
     }
 
-    if (sectionState.scope_of_work) {
+    if (effectiveSectionState.scope_of_work) {
       list.push({
         key: "scope_of_work",
         title: "Scope of Work",
@@ -946,7 +1235,7 @@ Date: _______________`;
       });
     }
 
-    if (sectionState.meet_your_team) {
+    if (effectiveSectionState.meet_your_team) {
       list.push({
         key: "meet_your_team",
         title: "Meet Your Team",
@@ -992,7 +1281,7 @@ Date: _______________`;
       });
     }
 
-    if (sectionState.materials) {
+    if (effectiveSectionState.materials) {
       const selectedItems = materialOptions.filter((item) => selectedLineItemIds.size === 0 || selectedLineItemIds.has(item.key));
       list.push({
         key: "materials",
@@ -1029,7 +1318,7 @@ Date: _______________`;
       });
     }
 
-    if (sectionState.project_visualization) {
+    if (effectiveSectionState.project_visualization) {
       list.push({
         key: "project_visualization",
         title: "Project Visualization",
@@ -1092,7 +1381,7 @@ Date: _______________`;
       });
     }
 
-    if (sectionState.pricing_options) {
+    if (effectiveSectionState.pricing_options) {
       list.push({
         key: "pricing_options",
         title: "Pricing Options",
@@ -1103,16 +1392,50 @@ Date: _______________`;
               <div className="flex-1 flex items-center">
                 <div className="mx-auto flex w-full max-w-[1040px] flex-wrap justify-center gap-5">
                   {estimateVersions.map((version) => (
-                    <div key={version.id} className="relative w-full max-w-[320px] rounded-2xl border border-border bg-muted/40 px-5 py-7 xl:basis-[320px]">
+                    <button
+                      key={version.id}
+                      type="button"
+                      onClick={() => setSelectedPricingOptionId(version.id)}
+                      className={`relative w-full max-w-[320px] rounded-2xl border px-5 py-7 text-left xl:basis-[320px] ${
+                        selectedPricingOptionId === version.id
+                          ? "bg-slate-100 ring-2"
+                          : "border-border bg-muted/40"
+                      }`}
+                      style={
+                        selectedPricingOptionId === version.id
+                          ? { borderColor: primaryColor, boxShadow: `0 0 0 2px ${primaryColor}33` }
+                          : undefined
+                      }
+                    >
                       {currentSettings?.recommended_version_id === version.id ? (
                         <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2">
-                          <Badge>Recommended</Badge>
+                          <Badge
+                            style={{
+                              backgroundColor: primaryColor,
+                              borderColor: primaryColor,
+                              color: textColor,
+                            }}
+                          >
+                            Recommended
+                          </Badge>
                         </div>
                       ) : null}
-                      <p className="text-2xl font-semibold text-center">{version.name}</p>
-                      <p className="mt-2 text-4xl font-bold text-center">${Number(version.total).toLocaleString()}</p>
+                      {selectedPricingOptionId === version.id ? (
+                        <div className="absolute right-3 top-3">
+                          <Badge variant="secondary">Selected</Badge>
+                        </div>
+                      ) : null}
+                      <div className="space-y-0.5">
+                        <p className="text-2xl font-semibold text-center">{version.name}</p>
+                        {currentSettings?.version_subtitles?.[version.id] ? (
+                          <p className="text-base text-center font-bold italic leading-tight whitespace-pre-wrap" style={{ color: accentColor }}>
+                            {currentSettings.version_subtitles[version.id]}
+                          </p>
+                        ) : null}
+                      </div>
+                      <p className="mt-4 text-4xl font-bold text-center">${Number(version.total).toLocaleString()}</p>
                       {currentSettings?.version_descriptions?.[version.id] ? (
-                        <p className="mt-3 text-base text-center text-muted-foreground whitespace-pre-wrap">
+                        <p className="mt-4 text-base text-center text-muted-foreground whitespace-pre-wrap">
                           {currentSettings.version_descriptions[version.id]}
                         </p>
                       ) : null}
@@ -1123,7 +1446,7 @@ Date: _______________`;
                         );
 
                         return highlightedItems.length > 0 ? (
-                          <ul className="mt-4 list-disc list-inside space-y-2 text-center">
+                          <ul className="mt-5 list-disc list-inside space-y-2 text-center">
                             {highlightedItems.map((item: any, index: number) => (
                               <li key={`${version.id}-${index}-${item?.name || "item"}`} className="text-lg font-semibold">
                                 {item?.name || "Unnamed item"}
@@ -1132,7 +1455,23 @@ Date: _______________`;
                           </ul>
                         ) : null;
                       })()}
-                    </div>
+                      <div className="mt-6">
+                        <span
+                          className={`inline-flex w-full items-center justify-center rounded-lg border px-4 py-3 text-lg font-bold ${
+                            selectedPricingOptionId === version.id
+                              ? "text-white"
+                              : "border-slate-300 bg-white text-slate-900"
+                          }`}
+                          style={
+                            selectedPricingOptionId === version.id
+                              ? { borderColor: primaryColor, backgroundColor: primaryColor }
+                              : undefined
+                          }
+                        >
+                          {selectedPricingOptionId === version.id ? "Selected" : "Select"}
+                        </span>
+                      </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1144,7 +1483,7 @@ Date: _______________`;
       });
     }
 
-    if (sectionState.agreements_and_signatures) {
+    if (effectiveSectionState.agreements_and_signatures) {
       list.push({
         key: "agreements_and_signatures",
         title: "Agreements & Signatures",
@@ -1166,34 +1505,74 @@ Date: _______________`;
                 </div>
               ))}
             </div>
-            <div className="mt-8 space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">E-signature</p>
-                  <p className="text-xs text-slate-500">Sign with your finger on mobile, or click and drag on desktop.</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={clearSignature} disabled={!hasSignature}>
-                  Clear
-                </Button>
+            {isEstimateAlreadyApproved ? (
+              <div className="mt-8 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-semibold text-emerald-900">This estimate has already been approved.</p>
+                <p className="mt-1 text-xs text-emerald-800">
+                  No additional signature is required. Continue to the client portal slide.
+                </p>
               </div>
-              <canvas
-                ref={signatureCanvasRef}
-                width={SIGNATURE_CANVAS_WIDTH}
-                height={SIGNATURE_CANVAS_HEIGHT}
-                onPointerDown={handleSignaturePointerDown}
-                onPointerMove={handleSignaturePointerMove}
-                onPointerUp={handleSignaturePointerUp}
-                onPointerCancel={handleSignaturePointerUp}
-                onPointerLeave={handleSignaturePointerUp}
-                className="h-40 w-full rounded-lg border border-slate-200 bg-white touch-none"
-                aria-label="Signature pad"
-              />
-              <p className="text-xs text-slate-500">Date: {new Date().toLocaleDateString()}</p>
-            </div>
+            ) : (
+              <div className="mt-8 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">E-signature</p>
+                    <p className="text-xs text-slate-500">Sign with your finger on mobile, or click and drag on desktop.</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={clearSignature} disabled={!hasSignature}>
+                    Clear
+                  </Button>
+                </div>
+                <div className="-mx-8 sm:mx-0">
+                  <canvas
+                    ref={signatureCanvasRef}
+                    width={SIGNATURE_CANVAS_WIDTH}
+                    height={SIGNATURE_CANVAS_HEIGHT}
+                    onPointerDown={handleSignaturePointerDown}
+                    onPointerMove={handleSignaturePointerMove}
+                    onPointerUp={handleSignaturePointerUp}
+                    onPointerCancel={handleSignaturePointerUp}
+                    onPointerLeave={handleSignaturePointerUp}
+                    className="h-40 w-full rounded-none border-y border-slate-200 bg-white touch-none sm:rounded-lg sm:border"
+                    aria-label="Signature pad"
+                  />
+                </div>
+                <p className="text-xs text-slate-500">Date: {new Date().toLocaleDateString()}</p>
+              </div>
+            )}
           </div>
         ),
       });
     }
+
+    list.push({
+      key: "client_portal_qr",
+      title: "Client Portal",
+      content: (
+        <div className="rounded-lg bg-white p-8 min-h-[70vh] flex flex-col items-center justify-center text-center">
+          <h3 className="text-3xl font-semibold">Client Portal Access</h3>
+          <p className="mt-3 max-w-2xl text-lg text-muted-foreground">
+            Scan this QR code to open your client portal and track project updates, estimates, and invoices.
+          </p>
+          {portalLink ? (
+            <>
+              <div className="mt-8 rounded-2xl border border-border bg-white p-4">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(portalLink)}`}
+                  alt="Client portal QR code"
+                  className="h-72 w-72"
+                />
+              </div>
+              <p className="mt-6 text-sm text-muted-foreground break-all">{portalLink}</p>
+            </>
+          ) : (
+            <p className="mt-8 text-base text-muted-foreground">
+              {portalLinkLoading ? "Generating client portal link..." : "Client portal link unavailable."}
+            </p>
+          )}
+        </div>
+      ),
+    });
 
     return list;
   }, [
@@ -1216,22 +1595,70 @@ Date: _______________`;
     highlightedLineItemNames,
     materialImageMap,
     primaryColor,
-    sectionState.agreements_and_signatures,
-    sectionState.cover_page,
-    sectionState.materials,
-    sectionState.meet_your_team,
-    sectionState.pricing_options,
-    sectionState.project_visualization,
-    sectionState.scope_of_work,
+    effectiveSectionState.agreements_and_signatures,
+    effectiveSectionState.cover_page,
+    effectiveSectionState.materials,
+    effectiveSectionState.meet_your_team,
+    effectiveSectionState.pricing_options,
+    effectiveSectionState.project_visualization,
+    effectiveSectionState.scope_of_work,
     selectedLineItemIds,
+    selectedPricingOptionId,
     selectedTeamIds,
     teamMembers,
     textColor,
+    portalLink,
+    portalLinkLoading,
+    isEstimateAlreadyApproved,
   ]);
+
+  const resolveClientPortalLink = async () => {
+    const customerId = estimate?.customer?.id;
+    if (!customerId) throw new Error("No customer associated with this estimate");
+
+    const { data: customer, error: fetchError } = await supabase
+      .from("customers")
+      .select("client_portal_token")
+      .eq("id", customerId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    let token = customer?.client_portal_token || null;
+    if (!token) {
+      token = crypto.randomUUID();
+      const { error: updateError } = await supabase
+        .from("customers")
+        .update({ client_portal_token: token })
+        .eq("id", customerId);
+      if (updateError) throw updateError;
+    }
+
+    return buildClientPortalShareUrl(token, {
+      customDomain: estimate?.account?.settings?.website?.custom_domain ?? null,
+    });
+  };
+
+  const ensurePortalLink = async () => {
+    if (portalLink || portalLinkLoading) return;
+    setPortalLinkLoading(true);
+    try {
+      const link = await resolveClientPortalLink();
+      setPortalLink(link);
+    } catch {
+      toast.error("Failed to generate portal link");
+    } finally {
+      setPortalLinkLoading(false);
+    }
+  };
 
   const startPresenting = () => {
     setActiveSlide(0);
+    setHasSignature(false);
+    isDrawingSignatureRef.current = false;
+    lastPointRef.current = null;
     setIsPresenting(true);
+    void ensurePortalLink();
   };
 
   const finishPresentation = () => {
@@ -1243,10 +1670,17 @@ Date: _______________`;
 
     setApproving(true);
     try {
-      await approveEstimateManuallyById(estimate.id);
+      const signatureDataUrl = signatureCanvasRef.current?.toDataURL("image/png");
+      await approveEstimateManuallyById(estimate.id, signatureDataUrl);
       await onRefresh();
       toast.success("Estimate approved");
-      setIsPresenting(false);
+      await ensurePortalLink();
+      const qrSlideIndex = slides.findIndex((slide) => slide.key === "client_portal_qr");
+      if (qrSlideIndex >= 0) {
+        setActiveSlide(qrSlideIndex);
+      } else {
+        setIsPresenting(false);
+      }
     } catch {
       toast.error("Failed to approve estimate");
     } finally {
@@ -1269,6 +1703,37 @@ Date: _______________`;
 
   const handleExportPdf = () => {
     toast.info("Export PDF will be available here next.");
+  };
+
+  const regenerateAgreementsForSelection = async () => {
+    const agreementTemplates = buildAgreementTemplatesForCurrentContext();
+    setAgreementDrafts(agreementTemplates);
+    await saveProposal(currentSettings, { agreement_templates: agreementTemplates });
+  };
+
+  const handlePresentationNext = async () => {
+    const currentSlideKey = slides[activeSlide]?.key;
+    const nextSlideKey = slides[activeSlide + 1]?.key;
+
+    if (currentSlideKey === "pricing_options" && nextSlideKey === "agreements_and_signatures") {
+      if (!selectedPricingOptionId) {
+        toast.error("Select a pricing option before continuing.");
+        return;
+      }
+      if (advancingFromPricing) return;
+      setAdvancingFromPricing(true);
+      try {
+        await regenerateAgreementsForSelection();
+        setActiveSlide((value) => Math.min(value + 1, slides.length - 1));
+      } catch {
+        toast.error("Failed to regenerate agreements");
+      } finally {
+        setAdvancingFromPricing(false);
+      }
+      return;
+    }
+
+    setActiveSlide((value) => Math.min(value + 1, slides.length - 1));
   };
 
   useEffect(() => {
@@ -1324,6 +1789,7 @@ Date: _______________`;
   }, [estimate?.job_id]);
 
   const toggleBeforePhotoDisplay = (filePath: string, checked: boolean) => {
+    if (isProposalLocked) return;
     const next = new Set(selectedBeforePhotoPaths);
     if (checked) next.add(filePath);
     else next.delete(filePath);
@@ -1334,26 +1800,90 @@ Date: _______________`;
   };
 
   const ensureChecklistItem = async (label: string) => {
+    if (isProposalLocked) return false;
     if (!estimate?.job_id) {
       toast.error("Scope sync requires a linked job");
-      return;
+      return false;
     }
     const exists = checklistItems.some((item) => item.label.trim().toLowerCase() === label.trim().toLowerCase());
-    if (exists) return;
+    if (exists) {
+      toast.error("A scope task with that name already exists");
+      return false;
+    }
     await addItem.mutateAsync({
       label,
       sort_order: checklistItems.length,
       metadata: { category: "task" },
     });
     toast.success("Added to job tasks");
+    return true;
   };
 
   const removeChecklistItem = async (id: string) => {
+    if (isProposalLocked) return;
     await deleteItem.mutateAsync(id);
     toast.success("Removed from job tasks");
   };
 
+  const updateChecklistItemLabel = async (id: string, nextLabel: string, previousLabel: string) => {
+    if (isProposalLocked) return;
+    const trimmed = nextLabel.trim();
+    const previousTrimmed = previousLabel.trim();
+    if (!trimmed || trimmed === previousTrimmed) return;
+
+    const duplicate = checklistItems.some(
+      (item) => item.id !== id && item.label.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (duplicate) {
+      toast.error("A scope task with that name already exists");
+      return;
+    }
+
+    await updateItem.mutateAsync({ id, label: trimmed });
+    toast.success("Scope task updated");
+  };
+
+  const openAddScopeItemDialog = () => {
+    if (isProposalLocked) return;
+    setEditingScopeItemId(null);
+    setScopeItemDraft("");
+    setScopeItemDialogOpen(true);
+  };
+
+  const openEditScopeItemDialog = (id: string, label: string) => {
+    if (isProposalLocked) return;
+    setEditingScopeItemId(id);
+    setScopeItemDraft(label);
+    setScopeItemDialogOpen(true);
+  };
+
+  const saveScopeItemFromDialog = async () => {
+    if (isProposalLocked) return;
+    const nextLabel = scopeItemDraft.trim();
+    if (!nextLabel) {
+      toast.error("Enter a scope item name");
+      return;
+    }
+
+    if (editingScopeItemId) {
+      const existingItem = checklistItems.find((item) => item.id === editingScopeItemId);
+      if (!existingItem) {
+        toast.error("Scope task no longer exists");
+        return;
+      }
+      await updateChecklistItemLabel(editingScopeItemId, nextLabel, existingItem.label);
+      setScopeItemDialogOpen(false);
+      return;
+    }
+
+    const added = await ensureChecklistItem(nextLabel);
+    if (added) {
+      setScopeItemDialogOpen(false);
+    }
+  };
+
   const handleGenerateScopeOfWork = async () => {
+    if (isProposalLocked) return;
     const input = rawScopeDescription.trim();
     if (!input) {
       toast.error("Paste a labor description first");
@@ -1416,49 +1946,69 @@ Date: _______________`;
 
   const isLastSlide = activeSlide === slides.length - 1;
   const isCoverSlide = slides[activeSlide]?.key === "cover_page";
+  const isPricingSlide = slides[activeSlide]?.key === "pricing_options";
+  const isApprovalSlide = slides[activeSlide]?.key === "agreements_and_signatures";
+  const isPortalQrSlide = slides[activeSlide]?.key === "client_portal_qr";
 
   return (
     <div className="card-elevated rounded-lg p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Presentation className="h-4 w-4 text-muted-foreground" />
-          <h3 className="font-semibold">Project Proposal</h3>
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Presentation className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold">Project Proposal</h3>
+          </div>
+          {!hasGeneratedAgreements ? (
+            <p className="text-xs text-muted-foreground">Present Now is disabled until all agreement templates are generated.</p>
+          ) : null}
+          {isProposalLocked ? (
+            <p className="text-xs text-muted-foreground">Proposal editing is locked because this estimate is approved.</p>
+          ) : null}
         </div>
-        <Button variant="default" size="sm" onClick={startPresenting} className="gap-2">
+        <Button variant="default" size="sm" onClick={startPresenting} className="gap-2" disabled={!hasGeneratedAgreements}>
           <Presentation className="h-4 w-4" />
           Present Now
         </Button>
       </div>
 
-      <Accordion type="single" collapsible value={openEditorSection} onValueChange={setOpenEditorSection} className="rounded border border-border">
+      <Accordion
+        type="single"
+        collapsible
+        value={openEditorSection}
+        onValueChange={setOpenEditorSection}
+        className={`rounded border border-border ${isProposalLocked ? "pointer-events-none opacity-70" : ""}`}
+      >
         {SECTIONS.map((section) => (
           <AccordionItem key={section.key} value={section.key}>
-            <AccordionTrigger
-              className="px-4 py-3"
-              onClick={(event) => {
-                if (!sectionState[section.key]) {
-                  event.preventDefault();
-                }
-              }}
-            >
+            <AccordionTrigger className="px-4 py-3">
               <div className="flex items-center gap-3 text-left">
                 <Checkbox
-                  checked={sectionState[section.key]}
+                  checked={effectiveSectionState[section.key]}
                   onCheckedChange={(checked) => {
                     const nextChecked = Boolean(checked);
+                    if (nextChecked && !sectionAvailability[section.key]) {
+                      return;
+                    }
                     updateSection(section.key, nextChecked);
                     if (nextChecked) {
                       setOpenEditorSection(section.key);
                     }
                   }}
                   onClick={(event) => event.stopPropagation()}
-                  disabled={saving}
+                  disabled={saving || (!sectionAvailability[section.key] && !effectiveSectionState[section.key])}
                 />
-                <span className={sectionState[section.key] ? "" : "text-muted-foreground"}>{section.label}</span>
+                <div className="min-w-0">
+                  <span className={effectiveSectionState[section.key] ? "" : "text-muted-foreground"}>{section.label}</span>
+                  {!sectionAvailability[section.key] ? (
+                    <span className="mt-0.5 block text-xs text-muted-foreground sm:mt-0 sm:ml-1 sm:inline">
+                      ({sectionDisabledReason[section.key]})
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-4 pt-1">
-              <div className={sectionState[section.key] ? "space-y-3" : "space-y-3 pointer-events-none opacity-50"}>
+              <div className="space-y-3">
                 {section.key === "cover_page" ? (
                   <>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Cover Title</p>
@@ -1466,7 +2016,7 @@ Date: _______________`;
                       defaultValue={currentSettings.title || estimate?.job?.name || ""}
                       onBlur={(event) => updateTitle(event.target.value.trim())}
                       placeholder="Project proposal title"
-                      disabled={!sectionState.cover_page}
+                      disabled={!effectiveSectionState.cover_page}
                     />
                   </>
                 ) : null}
@@ -1478,9 +2028,20 @@ Date: _______________`;
                       {checklistItems.map((item) => (
                         <div key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
                           <span>{item.label}</span>
-                          <Button variant="ghost" size="sm" onClick={() => void removeChecklistItem(item.id)}>
-                            Remove
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => openEditScopeItemDialog(item.id, item.label)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => void removeChecklistItem(item.id)}>
+                              Remove
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       {checklistItems.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">No tasks found.</p>}
@@ -1489,14 +2050,14 @@ Date: _______________`;
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => void ensureChecklistItem("New scope item")}
+                        onClick={openAddScopeItemDialog}
                         className="gap-2"
                       >
                         <CheckSquare className="h-4 w-4" />
                         Add Scope Item
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => setScopeGeneratorOpen(true)}>
-                        Generate Scope Of Work
+                      <Button variant="outline" size="sm" onClick={() => setScopeGeneratorOpen(true)} disabled={isFreePlan}>
+                        {isFreePlan ? "Generate Scope Of Work (Basic+)" : "Generate Scope Of Work"}
                       </Button>
                     </div>
                   </>
@@ -1505,6 +2066,13 @@ Date: _______________`;
                 {section.key === "meet_your_team" ? (
                   <>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Meet Your Team</p>
+                    <a
+                      href="/settings/crew"
+                      className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground hover:text-foreground underline underline-offset-4"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Crew Management Settings
+                    </a>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {teamMembers.map((member) => (
                         <label key={member.user_id} className="flex items-center gap-2 text-sm">
@@ -1561,10 +2129,21 @@ Date: _______________`;
                 {section.key === "project_visualization" ? (
                   <>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Project Visualization</p>
-                    <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm cursor-pointer hover:bg-muted/40">
+                    <label
+                      className={`inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
+                        isFreePlan || uploading ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-muted/40"
+                      }`}
+                    >
                       <Upload className="h-4 w-4" />
-                      {uploading ? "Uploading..." : "Upload images"}
-                      <input type="file" className="hidden" accept="image/*" multiple onChange={handleUploadVisualization} />
+                      {isFreePlan ? "Upload images (Basic+)" : uploading ? "Uploading..." : "Upload images"}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        multiple
+                        onChange={handleUploadVisualization}
+                        disabled={isFreePlan || uploading}
+                      />
                     </label>
                     {estimate?.project_visualization_image_url ? (
                       <img
@@ -1621,6 +2200,11 @@ Date: _______________`;
                       {estimateVersions.map((version) => (
                         <div key={version.id} className="rounded border border-border p-3 space-y-2">
                           <p className="text-sm font-medium">{version.name}</p>
+                          <Input
+                            defaultValue={currentSettings?.version_subtitles?.[version.id] || ""}
+                            onBlur={(event) => updateVersionSubtitle(version.id, event.target.value)}
+                            placeholder="Add subtitle (shown in accent color)"
+                          />
                           <Textarea
                             defaultValue={currentSettings?.version_descriptions?.[version.id] || ""}
                             onBlur={(event) => updateVersionDescription(version.id, event.target.value)}
@@ -1638,46 +2222,104 @@ Date: _______________`;
 
                 {section.key === "agreements_and_signatures" ? (
                   <>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Estimate Payment Schedule</p>
+                    <a
+                      href="/settings/pricing-rules#default-payment-schedule"
+                      className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground hover:text-foreground underline underline-offset-4"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Edit Default Payment Schedule
+                    </a>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Deposit %</p>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={customDepositPercentage}
+                          onChange={(event) => setCustomDepositPercentage(event.target.value)}
+                          onBlur={saveCustomPaymentSchedule}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Midpoint %</p>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={customMidpointPercentage}
+                          onChange={(event) => setCustomMidpointPercentage(event.target.value)}
+                          onBlur={saveCustomPaymentSchedule}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Final %</p>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={customFinalPercentage}
+                          onChange={(event) => setCustomFinalPercentage(event.target.value)}
+                          onBlur={saveCustomPaymentSchedule}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Pricing Option For Preview</p>
+                    <Select
+                      value={selectedPricingOptionId || estimateVersions[0]?.id}
+                      onValueChange={setSelectedPricingOptionId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a pricing option" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {estimateVersions.map((version) => (
+                          <SelectItem key={version.id} value={version.id}>
+                            {version.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Warranty Length For Selected Pricing Option</p>
+                      <Input
+                        value={customWarrantyLength}
+                        onChange={(event) => setCustomWarrantyLength(event.target.value)}
+                        onBlur={saveCustomWarrantyLength}
+                        placeholder="e.g., 2 years"
+                      />
+                    </div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Agreement Templates</p>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setAndPersistAgreementTemplate("job_release_agreement", buildJobReleaseAgreement())}
+                        onClick={() => handleViewAgreement("job_release_agreement")}
                       >
-                        Generate Job Release Agreement
+                        View Job Release Agreement
                       </Button>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setAndPersistAgreementTemplate("job_agreement", buildJobAgreement())}
+                        onClick={() => handleViewAgreement("job_agreement")}
                       >
-                        Generate Job Agreement
+                        View Job Agreement
                       </Button>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setAndPersistAgreementTemplate("warranty_agreement", buildWarrantyAgreement())}
+                        onClick={() => handleViewAgreement("warranty_agreement")}
                       >
-                        Generate Warranty Agreement
+                        View Warranty Agreement
                       </Button>
                     </div>
-                    {AGREEMENT_KEYS.map((key) => (
-                      <div key={key} className="space-y-1">
-                        <p className="text-xs font-medium">{key.replaceAll("_", " ")}</p>
-                        <Textarea
-                          value={agreementDrafts[key] || ""}
-                          onChange={(event) =>
-                            setAgreementDrafts((previous) => ({ ...previous, [key]: event.target.value }))
-                          }
-                          onBlur={() => updateAgreementTemplate(key, agreementDrafts[key] || "")}
-                          rows={3}
-                        />
-                      </div>
-                    ))}
                   </>
                 ) : null}
               </div>
@@ -1694,7 +2336,7 @@ Date: _______________`;
             background: "linear-gradient(160deg, #f8fafc 0%, #eef2ff 100%)",
           }}
         >
-          {sectionState.cover_page && (
+          {effectiveSectionState.cover_page && (
             <div className="rounded-lg p-4" style={{ backgroundColor: primaryColor, color: textColor }}>
               {estimate?.account?.logo_url ? <img src={estimate.account.logo_url} alt="Company logo" className="h-10 mb-3" /> : null}
               <h4 style={{ fontFamily: headingFont?.css || "inherit" }} className="text-2xl font-bold">
@@ -1703,7 +2345,7 @@ Date: _______________`;
               <p className="text-sm opacity-90">{estimate?.account?.company_name || "Company"}</p>
             </div>
           )}
-          {sectionState.scope_of_work && (
+          {effectiveSectionState.scope_of_work && (
             <div>
               <h5 className="font-semibold mb-2">Scope of Work</h5>
               <ul className="list-disc pl-5 text-sm space-y-1">
@@ -1711,13 +2353,18 @@ Date: _______________`;
               </ul>
             </div>
           )}
-          {sectionState.pricing_options && estimateVersions.length > 0 && (
+          {effectiveSectionState.pricing_options && estimateVersions.length > 0 && (
             <div>
               <h5 className="font-semibold mb-2">Pricing Options</h5>
               <div className="grid sm:grid-cols-2 gap-2">
                 {estimateVersions.map((version) => (
                   <div key={version.id} className="rounded border border-border bg-white p-3">
                     <p className="text-sm font-medium">{version.name}</p>
+                    {currentSettings?.version_subtitles?.[version.id] ? (
+                      <p className="text-sm font-bold italic" style={{ color: accentColor }}>
+                        {currentSettings.version_subtitles[version.id]}
+                      </p>
+                    ) : null}
                     <p className="text-xl font-bold">${Number(version.total).toLocaleString()}</p>
                   </div>
                 ))}
@@ -1780,7 +2427,38 @@ Date: _______________`;
                 className="flex items-center justify-between border-t border-white/10 px-6 py-4"
                 style={{ backgroundColor: primaryColor }}
               >
-                {isLastSlide ? (
+                {isApprovalSlide ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setActiveSlide((value) => Math.max(value - 1, 0))}
+                      disabled={activeSlide === 0}
+                      className="gap-2"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    {isEstimateAlreadyApproved ? (
+                      <Button
+                        onClick={() => setActiveSlide((value) => Math.min(value + 1, slides.length - 1))}
+                        disabled={activeSlide === slides.length - 1}
+                        className="gap-2"
+                        style={{ backgroundColor: primaryColor, color: textColor }}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => void handleApproveFromPresentation()}
+                        disabled={!hasSignature || approving}
+                        style={{ backgroundColor: primaryColor, color: textColor }}
+                      >
+                        {approving ? "Approving..." : "Approve"}
+                      </Button>
+                    )}
+                  </>
+                ) : isPortalQrSlide ? (
                   <>
                     <Button
                       variant="outline"
@@ -1792,11 +2470,10 @@ Date: _______________`;
                       Previous
                     </Button>
                     <Button
-                      onClick={() => void handleApproveFromPresentation()}
-                      disabled={!hasSignature || approving}
+                      onClick={finishPresentation}
                       style={{ backgroundColor: primaryColor, color: textColor }}
                     >
-                      {approving ? "Approving..." : "Approve"}
+                      Done
                     </Button>
                   </>
                 ) : (
@@ -1811,12 +2488,12 @@ Date: _______________`;
                       Previous
                     </Button>
                     <Button
-                      onClick={() => setActiveSlide((value) => Math.min(value + 1, slides.length - 1))}
-                      disabled={activeSlide === slides.length - 1}
+                      onClick={() => void handlePresentationNext()}
+                      disabled={isLastSlide || advancingFromPricing || (isPricingSlide && !selectedPricingOptionId)}
                       className="gap-2"
                       style={{ backgroundColor: primaryColor, color: textColor }}
                     >
-                      Next
+                      {advancingFromPricing ? "Saving..." : "Next"}
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </>
@@ -1834,7 +2511,7 @@ Date: _______________`;
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4 text-sm whitespace-pre-wrap">
             {selectedAgreementKey
-              ? estimate?.agreement_templates?.[selectedAgreementKey]?.trim() || "No agreement text added yet."
+              ? agreementDrafts[selectedAgreementKey]?.trim() || estimate?.agreement_templates?.[selectedAgreementKey]?.trim() || "No agreement text added yet."
               : ""}
           </div>
         </DialogContent>
@@ -1858,6 +2535,36 @@ Date: _______________`;
             <div className="flex justify-end">
               <Button onClick={() => void handleGenerateScopeOfWork()} disabled={generatingScope}>
                 {generatingScope ? "Generating..." : "Generate Tasks"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={scopeItemDialogOpen} onOpenChange={setScopeItemDialogOpen}>
+        <DialogContent className="z-[130]">
+          <DialogHeader>
+            <DialogTitle>{editingScopeItemId ? "Edit Scope Item" : "Add Scope Item"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {editingScopeItemId ? "Update the scope task name." : "What do you want to call this scope item?"}
+            </p>
+            <Input
+              value={scopeItemDraft}
+              onChange={(event) => setScopeItemDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void saveScopeItemFromDialog();
+                }
+              }}
+              placeholder="e.g. Demolition and debris removal"
+            />
+            <div className="flex justify-end">
+              <Button onClick={() => void saveScopeItemFromDialog()} className="gap-2">
+                <CheckCircle2 className="h-4 w-4" />
+                {editingScopeItemId ? "Save" : "Add"}
               </Button>
             </div>
           </div>

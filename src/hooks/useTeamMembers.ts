@@ -49,21 +49,33 @@ export function useTeamMembers() {
 
       if (profilesError) throw profilesError;
 
-      let mockProfilesQuery = await supabase
-        .from("mock_crew_profiles")
-        .select("id, full_name, phone, role, description, avatar_url")
-        .eq("account_id", currentAccount.id)
-        .order("full_name", { ascending: true });
+      const mockProfileSelectVariants = [
+        "id, full_name, phone, role, description",
+        "id, full_name, role, description",
+        "id, full_name, role",
+      ];
 
-      if (isMissingColumnError(mockProfilesQuery.error, "avatar_url", "mock_crew_profiles")) {
-        mockProfilesQuery = await supabase
+      let mockProfiles: any[] | null = null;
+      let mockProfilesError: any = null;
+
+      for (const selectColumns of mockProfileSelectVariants) {
+        const query = await supabase
           .from("mock_crew_profiles")
-          .select("id, full_name, phone, role, description")
+          .select(selectColumns)
           .eq("account_id", currentAccount.id)
           .order("full_name", { ascending: true });
-      }
 
-      const { data: mockProfiles, error: mockProfilesError } = mockProfilesQuery;
+        mockProfiles = query.data;
+        mockProfilesError = query.error;
+
+        if (!mockProfilesError) {
+          break;
+        }
+
+        if (!isMissingColumnError(mockProfilesError, undefined, "mock_crew_profiles")) {
+          break;
+        }
+      }
 
       const mockProfilesTableMissing = isMissingRelationError(mockProfilesError, "mock_crew_profiles");
 

@@ -68,10 +68,6 @@ export default function Index() {
   const firstName = profile?.full_name?.split(" ")[0] || "";
 
   useEffect(() => {
-    console.log("Henry is connected");
-  }, []);
-
-  useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("skoolModal") !== "1") {
       return;

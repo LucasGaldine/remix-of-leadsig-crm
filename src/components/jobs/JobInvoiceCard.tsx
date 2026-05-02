@@ -259,8 +259,6 @@ export function JobInvoiceCard({
         return;
       }
 
-      console.log("Calling Stripe function with token length:", session.access_token.length);
-
       const { data: invokeData, error: stripeError } = await supabase.functions.invoke("stripe-connect-invoice", {
         body: {
           invoiceId: newInvoice.id,
@@ -271,8 +269,6 @@ export function JobInvoiceCard({
           Authorization: `Bearer ${session.access_token}`,
         },
       });
-
-      console.log("Stripe function response:", { data: invokeData, error: stripeError });
 
       if (stripeError) {
         console.error("Stripe invoice error:", stripeError);

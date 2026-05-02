@@ -185,7 +185,7 @@ export interface PortalData {
   portal_metadata?: PortalMetadata;
 }
 
-export interface CustomerPortalData {
+export interface ClientPortalData {
   customer: CustomerData;
   company: CompanyData;
   jobs: JobListItem[];
@@ -223,7 +223,7 @@ export default function ClientJobPortal() {
   const [pageState, setPageState] = useState<PageState>("loading");
   const [viewMode, setViewMode] = useState<ViewMode>("job-detail");
   const [data, setData] = useState<PortalData | null>(null);
-  const [customerData, setCustomerData] = useState<CustomerPortalData | null>(null);
+  const [customerData, setCustomerData] = useState<ClientPortalData | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [reviewCardDismissed, setReviewCardDismissed] = useState(false);
   const customerName =
@@ -295,28 +295,6 @@ export default function ClientJobPortal() {
       }
 
       const result = await response.json();
-
-      if (import.meta.env.DEV && result?.estimate) {
-        const templates = result.estimate.agreement_templates ?? {};
-        const snippet = (key: string) => {
-          const value = templates?.[key];
-          if (typeof value === "string") return value.slice(0, 80);
-          if (value && typeof value === "object") {
-            const record = value as Record<string, unknown>;
-            if (typeof record.text === "string") return record.text.slice(0, 80);
-            if (typeof record.content === "string") return record.content.slice(0, 80);
-            if (typeof record.body === "string") return record.body.slice(0, 80);
-          }
-          return "";
-        };
-        console.debug("[ClientPortal] agreement payload", {
-          estimateId: result.estimate.id ?? null,
-          agreementSourceEstimateId: result.estimate.agreement_source_estimate_id ?? null,
-          jobRelease: snippet("job_release_agreement"),
-          jobAgreement: snippet("job_agreement"),
-          warrantyAgreement: snippet("warranty_agreement"),
-        });
-      }
 
       if (result.jobs !== undefined) {
         setCustomerData(result);

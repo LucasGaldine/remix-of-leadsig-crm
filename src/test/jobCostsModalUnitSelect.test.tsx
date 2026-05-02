@@ -57,6 +57,33 @@ vi.mock("@/hooks/useJobLineItems", () => ({
   }),
 }));
 
+vi.mock("@/components/shared/UnitSelect", () => ({
+  UnitSelect: ({
+    id,
+    value,
+    options,
+    onValueChange,
+  }: {
+    id?: string;
+    value: string;
+    options: Array<{ value: string; label: string }>;
+    onValueChange: (value: string) => void;
+  }) => (
+    <div>
+      <button type="button" aria-label={id || "unit-select"}>
+        {value}
+      </button>
+      <div>
+        {options.map((option) => (
+          <button key={option.value} type="button" onClick={() => onValueChange(option.value)}>
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  ),
+}));
+
 describe("JobCostsModal unit select", () => {
   it("uses canonical unit options and saves the selected unit", () => {
     render(<JobCostsModal jobId="job_1" open onOpenChange={() => {}} />);

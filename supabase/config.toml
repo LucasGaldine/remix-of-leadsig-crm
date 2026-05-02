@@ -74,3 +74,6 @@ verify_jwt = true
 
 [functions.send-company-invite-code]
 verify_jwt = false
+
+[functions.send-estimate-approval-notifications]
+verify_jwt = false

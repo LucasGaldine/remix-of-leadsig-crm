@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { normalizeClientPortalColor, normalizeClientPortalTextColor } from "@/lib/clientPortalTheme";
+import { generateAgreementTemplates } from "@/lib/agreementTemplates";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface LineItem {
@@ -56,7 +57,15 @@ interface ClientPortalEstimateProps {
       title?: string | null;
       team_member_ids?: string[];
       highlight_line_item_ids?: string[];
+      recommended_version_id?: string | null;
+      payment_schedule?: {
+        deposit_percentage?: number;
+        midpoint_percentage?: number;
+        final_percentage?: number;
+      } | null;
+      version_warranty_lengths?: Record<string, string> | null;
     } | null;
+    scope_of_work_items?: string[] | null;
     project_visualization_image_url?: string | null;
     agreement_templates?: Record<string, unknown> | null;
     agreement_source_estimate_id?: string | null;
@@ -190,6 +199,7 @@ export function ClientPortalEstimate({
   const [hasSignature, setHasSignature] = useState(false);
   const [activeAgreementKey, setActiveAgreementKey] = useState<string | null>(null);
   const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
+  const [approvalAgreementTemplates, setApprovalAgreementTemplates] = useState<Record<string, string> | null>(null);
   const [agreementChecks, setAgreementChecks] = useState({
     job_release_agreement: true,
     job_agreement: true,
@@ -324,9 +334,13 @@ export function ClientPortalEstimate({
       ...(proposalTemplates || {}),
     };
   }, [estimate.agreement_templates, estimate.proposal_settings]);
+  const effectiveAgreementRecord = useMemo(
+    () => approvalAgreementTemplates || templateRecord,
+    [approvalAgreementTemplates, templateRecord],
+  );
   const agreementEntries = REQUIRED_AGREEMENT_KEYS.map((key) => ({
     key,
-    text: resolveAgreementTextByKey(templateRecord, key),
+    text: resolveAgreementTextByKey(effectiveAgreementRecord, key),
   }));
   const activeAgreement = agreementEntries.find((entry) => entry.key === activeAgreementKey) || null;
 
@@ -502,6 +516,7 @@ export function ClientPortalEstimate({
           updated_at: estimate.updated_at,
           estimate_version_id: action === "approve" ? selectedVersionId : undefined,
           agreement_acceptance: action === "approve" ? agreementChecks : undefined,
+          agreement_templates: action === "approve" ? approvalAgreementTemplates : undefined,
           ...(action === "approve" ? getSignaturePayloadFields() : {}),
         }),
       });
@@ -560,17 +575,20 @@ export function ClientPortalEstimate({
   const openApprovalDialog = (action: "approve" | "approve_changes") => {
     clearSignature();
     setError(null);
+    setActiveAgreementKey(null);
     setAgreementChecks({
       job_release_agreement: true,
       job_agreement: true,
       warranty_agreement: true,
     });
+    setApprovalAgreementTemplates(null);
     setApprovalDialogAction(action);
   };
 
   const closeApprovalDialog = (open: boolean) => {
     if (!open) {
       setApprovalDialogAction(null);
+      setApprovalAgreementTemplates(null);
       clearSignature();
     }
   };
@@ -580,6 +598,7 @@ export function ClientPortalEstimate({
       const didSucceed = await handleAction("approve");
       if (didSucceed) {
         setApprovalDialogAction(null);
+        setApprovalAgreementTemplates(null);
         clearSignature();
       }
       return;
@@ -589,10 +608,91 @@ export function ClientPortalEstimate({
       const didSucceed = await handleChangeOrderAction("approve_changes");
       if (didSucceed) {
         setApprovalDialogAction(null);
+        setApprovalAgreementTemplates(null);
         clearSignature();
       }
     }
   };
+
+  const generateAgreementsForSelection = useCallback(() => {
+    const activeVersionId =
+      selectedVersionId ||
+      estimate?.proposal_settings?.recommended_version_id ||
+      availableVersions[0]?.id ||
+      null;
+    const selectedVersion =
+      availableVersions.find((version) => version.id === activeVersionId) ||
+      availableVersions[0] ||
+      null;
+    const selectedLineItems =
+      selectedVersion && Array.isArray(selectedVersion.line_items)
+        ? selectedVersion.line_items
+        : displayLineItems;
+    const selectedTotal = Number(selectedVersion?.total ?? displayTotal ?? 0);
+    const scopeItemsFromChecklist = Array.isArray(estimate.scope_of_work_items)
+      ? estimate.scope_of_work_items.map((item) => String(item || "").trim()).filter((value) => value.length > 0)
+      : [];
+    const existingJobReleaseTemplate = resolveAgreementTextByKey(templateRecord, "job_release_agreement");
+    const scopeItemsFromExistingTemplate = extractScopeItemsFromAgreementText(existingJobReleaseTemplate);
+    const fallbackScopeItems = selectedLineItems
+      .map((item) => String(item?.name || "").trim())
+      .filter((value) => value.length > 0)
+      .slice(0, 25);
+    const paymentSchedule = estimate?.proposal_settings?.payment_schedule;
+    const warrantyLengths = estimate?.proposal_settings?.version_warranty_lengths;
+    const selectedWarrantyLength = (
+      activeVersionId && warrantyLengths && typeof warrantyLengths === "object"
+        ? String((warrantyLengths as Record<string, unknown>)[activeVersionId] || "").trim()
+        : ""
+    ) || "2 years";
+
+    return generateAgreementTemplates({
+      todayIso: new Date().toISOString().slice(0, 10),
+      contractorName: companyName || "Contractor",
+      contractorAddress: "Address on file",
+      contractorPhone: companyPhone || "N/A",
+      contractorEmail: companyEmail || "N/A",
+      clientName: customerName || "Client",
+      projectName: estimate?.proposal_settings?.title || jobName || "Project",
+      projectAddress: address || "Address to be confirmed",
+      scopeItems:
+        scopeItemsFromChecklist.length > 0
+          ? scopeItemsFromChecklist
+          : scopeItemsFromExistingTemplate.length > 0
+            ? scopeItemsFromExistingTemplate
+            : fallbackScopeItems,
+      totalCost: selectedTotal,
+      paymentMethod: "Card, Check, or ACH",
+      paymentSchedule: {
+        depositPercentage: Number(paymentSchedule?.deposit_percentage ?? 33),
+        midpointPercentage: Number(paymentSchedule?.midpoint_percentage ?? 33),
+        finalPercentage: Number(paymentSchedule?.final_percentage ?? 34),
+      },
+      workmanshipWarrantyDuration: selectedWarrantyLength,
+    });
+  }, [
+    address,
+    availableVersions,
+    companyEmail,
+    companyName,
+    companyPhone,
+    customerName,
+    displayLineItems,
+    displayTotal,
+    estimate?.proposal_settings?.title,
+    estimate?.proposal_settings?.recommended_version_id,
+    estimate?.proposal_settings?.payment_schedule,
+    estimate?.proposal_settings?.version_warranty_lengths,
+    estimate.scope_of_work_items,
+    jobName,
+    selectedVersionId,
+    templateRecord,
+  ]);
+
+  useEffect(() => {
+    if (approvalDialogAction !== "approve") return;
+    setApprovalAgreementTemplates(generateAgreementsForSelection());
+  }, [approvalDialogAction, generateAgreementsForSelection]);
 
   const renderComparisonCard = (
     title: string,
@@ -689,7 +789,7 @@ export function ClientPortalEstimate({
   };
 
   const signaturePad = (
-    <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
+    <div className="mb-1">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-900">E-signature (required)</p>
@@ -809,7 +909,30 @@ export function ClientPortalEstimate({
                       style={isSelectedVersion ? { backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor, borderColor: normalizedPortalColor } : undefined}
                     >
                       <div className={isSelectedVersion ? "px-4 py-3 border-b border-white/25" : "px-4 py-3 border-b border-slate-200"}>
-                        <p className="text-sm font-semibold leading-tight">{version.name}</p>
+                        <div className="mb-1 flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold leading-tight">{version.name}</p>
+                          {isSelectedVersion && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleDownloadPDF();
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void handleDownloadPDF();
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 rounded-md border border-white/30 bg-white/10 px-2 py-1 text-xs font-semibold hover:bg-white/20"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Download
+                            </span>
+                          )}
+                        </div>
                         <p className={isSelectedVersion ? "text-2xl font-bold mt-1 tracking-tight" : "text-2xl font-bold mt-1 tracking-tight text-slate-900"}>
                           ${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </p>
@@ -873,18 +996,19 @@ export function ClientPortalEstimate({
                             <span>${Number(version.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                           </div>
                         </div>
+                        <div className={isSelectedVersion ? "pt-2" : "pt-2"}>
+                          <span
+                            className={`inline-flex w-full items-center justify-center rounded-lg border px-4 py-3 text-base font-bold ${
+                              isSelectedVersion
+                                ? "border-white/50 bg-white/15 text-white"
+                                : "border-slate-300 bg-white text-slate-900"
+                            }`}
+                          >
+                            {isSelectedVersion ? "Selected" : "Select"}
+                          </span>
+                        </div>
                       </div>
                     </button>
-                    {isSelectedVersion && (
-                      <button
-                        type="button"
-                        onClick={handleDownloadPDF}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm hover:bg-slate-50 transition-colors bg-white"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download PDF
-                      </button>
-                    )}
                   </div>
                 );
               })}
@@ -1107,27 +1231,29 @@ export function ClientPortalEstimate({
         </>
       )}
 
-      <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
-        <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-          Agreements
-        </p>
-        <div className="space-y-3">
-          {agreementEntries.map(({ key }) => (
-            <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-900">
-                {formatAgreementLabel(key)}
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveAgreementKey(key)}
-                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-              >
-                View Document
-              </button>
-            </div>
-          ))}
+      {!isPending && (
+        <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
+          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+            Agreements
+          </p>
+          <div className="space-y-3">
+            {agreementEntries.map(({ key }) => (
+              <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">
+                  {formatAgreementLabel(key)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveAgreementKey(key)}
+                  className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  View Document
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {isPending && !hasPendingChanges && (
         <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
@@ -1175,23 +1301,27 @@ export function ClientPortalEstimate({
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-sm font-medium text-slate-900">Required agreements</p>
               {REQUIRED_AGREEMENT_KEYS.map((key) => (
-                <label key={key} className="flex items-start gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={agreementChecks[key]}
-                    onChange={(event) =>
-                      setAgreementChecks((previous) => ({ ...previous, [key]: event.target.checked }))
-                    }
-                  />
-                  <span>
-                    <span className="font-medium">{key.replaceAll("_", " ")}</span>
-                    {resolveAgreementTextByKey(templateRecord, key) ? (
-                      <span className="block text-xs text-slate-500 mt-0.5">
-                        {resolveAgreementTextByKey(templateRecord, key)}
-                      </span>
-                    ) : null}
-                  </span>
-                </label>
+                <div key={key} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="flex items-start gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={agreementChecks[key]}
+                        onChange={(event) =>
+                          setAgreementChecks((previous) => ({ ...previous, [key]: event.target.checked }))
+                        }
+                      />
+                      <span className="font-medium">{formatAgreementLabel(key)}</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setActiveAgreementKey(key)}
+                      className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      View Document
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -1224,11 +1354,11 @@ export function ClientPortalEstimate({
       </Dialog>
 
       <Dialog open={activeAgreementKey !== null} onOpenChange={(open) => !open && setActiveAgreementKey(null)}>
-        <DialogContent>
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{activeAgreement ? formatAgreementLabel(activeAgreement.key) : "Agreement"}</DialogTitle>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm text-slate-700 whitespace-pre-wrap">
               {activeAgreement?.text || "No agreement text available for this document."}
             </p>
@@ -1284,4 +1414,21 @@ function resolveAgreementTextByKey(
   }
 
   return "";
+}
+
+function extractScopeItemsFromAgreementText(text: string): string[] {
+  if (!text) return [];
+  const match = text.match(/PROJECT SCOPE[\s\S]*?following scope of work:\s*([\s\S]*?)(?:\n\n[A-Z][A-Z\s]{4,}|$)/i);
+  if (!match?.[1]) return [];
+
+  const lines = match[1]
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const numbered = lines
+    .map((line) => line.replace(/^\d+\.\s*/, "").trim())
+    .filter((line) => line.length > 0);
+
+  return numbered;
 }

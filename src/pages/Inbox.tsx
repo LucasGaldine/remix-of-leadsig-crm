@@ -138,6 +138,9 @@ function paymentStatus(status?: string | null): { label: string; tone: Tone } {
 function jobStatus(status?: string | null): { label: string; tone: Tone } {
   switch (status) {
     case "completed":
+    case "paid":
+    case "invoiced":
+    case "won":
       return { label: "Completed", tone: "confirmed" };
     case "in_progress":
       return { label: "In Progress", tone: "pending" };
@@ -210,12 +213,15 @@ export default function Inbox() {
     });
 
     const jobItems: InboxItem[] = (jobs as any[]).map((job) => {
-      const displayStatus = job.display_status || job.status;
+      const rawStatus = String(job.status || "");
+      const isCompletedJob =
+        rawStatus === "completed" || rawStatus === "paid" || rawStatus === "invoiced" || rawStatus === "won";
+      const displayStatus = isCompletedJob ? "completed" : job.display_status || job.status;
       const isUnassigned =
         !isSinglePersonCompany &&
         Boolean(job.has_unassigned_schedule) &&
         (displayStatus === "scheduled" || displayStatus === "in_progress");
-      const needsInvoice = job.status === "completed" && !job.has_invoice && !job.is_estimate_visit;
+      const needsInvoice = displayStatus === "completed" && !job.has_invoice && !job.is_estimate_visit;
       const status = isUnassigned
         ? { label: "Unassigned", tone: "attention" as Tone }
         : needsInvoice

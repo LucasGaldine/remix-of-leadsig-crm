@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { UnitSelect } from "@/components/shared/UnitSelect";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
@@ -383,20 +384,14 @@ export const JobCostsModal = ({
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Unit</label>
-          <Select
+          <UnitSelect
+            id="job-costs-mobile-item-unit"
             value={normalizeUnit(data.unit)}
+            options={UNIT_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
             onValueChange={(value) => setData({ ...data, unit: value })}
             disabled={isDisabled}
-          >
-            <SelectTrigger className="h-8 text-sm" id="job-costs-mobile-item-unit">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {UNIT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="h-8 text-sm"
+          />
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Unit Price</label>
@@ -674,20 +669,14 @@ export const JobCostsModal = ({
                                 disabled={editingLocked}
                                 className="h-8 w-16"
                               />
-                              <Select
+                              <UnitSelect
+                                id="job-costs-desktop-edit-unit"
                                 value={normalizeUnit(editingData.unit)}
+                                options={UNIT_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
                                 onValueChange={(value) => setEditingData({ ...editingData, unit: value })}
                                 disabled={editingLocked}
-                              >
-                                <SelectTrigger className="h-8 w-24" id="job-costs-desktop-edit-unit">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {UNIT_OPTIONS.map((opt) => (
-                                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                className="h-8 w-24"
+                              />
                             </div>
                           </TableCell>
                           <TableCell>
@@ -820,20 +809,14 @@ export const JobCostsModal = ({
                               disabled={editingLocked}
                               className="h-8 w-16"
                             />
-                            <Select
+                            <UnitSelect
+                              id="job-costs-desktop-new-unit"
                               value={normalizeUnit(newItem.unit)}
+                              options={UNIT_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
                               onValueChange={(value) => setNewItem({ ...newItem, unit: value })}
                               disabled={editingLocked}
-                            >
-                              <SelectTrigger className="h-8 w-24" id="job-costs-desktop-new-unit">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {UNIT_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              className="h-8 w-24"
+                            />
                           </div>
                         </TableCell>
                         <TableCell>

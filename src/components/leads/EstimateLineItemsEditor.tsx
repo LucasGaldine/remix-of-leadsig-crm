@@ -8,6 +8,7 @@ import { SpeechToTextTextarea } from "@/components/ui/speech-to-text-textarea";
 import { QuickEstimateLineItem } from "./QuickEstimateLineItem";
 import { LineItemCategory } from "@/hooks/useJobLineItems";
 import { LINE_ITEM_UNIT_OPTIONS } from "@/constants/lineItemUnits";
+import { UnitSelect } from "@/components/shared/UnitSelect";
 
 function formatDollar(value: number): string {
   return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -212,21 +213,12 @@ function ExpandedLineItem({
 
         <div className="space-y-2">
           <Label htmlFor={`item-unit-${index}`}>Unit</Label>
-          <Select
+          <UnitSelect
+            id={`item-unit-${index}`}
             value={item.unit}
+            options={LINE_ITEM_UNIT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
             onValueChange={(value) => onUpdate("unit", value)}
-          >
-            <SelectTrigger id={`item-unit-${index}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LINE_ITEM_UNIT_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         </div>
       </div>
 

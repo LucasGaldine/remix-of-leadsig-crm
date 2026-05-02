@@ -18,8 +18,6 @@ export function useLeads(filter?: LeadStatus | "all") {
   useEffect(() => {
     if (!user) return;
 
-    console.log("Setting up real-time subscription for leads");
-
     const channel = supabase
       .channel("leads-realtime")
       .on(
@@ -30,8 +28,6 @@ export function useLeads(filter?: LeadStatus | "all") {
           table: "leads",
         },
         (payload) => {
-          console.log("Real-time lead update:", payload.eventType, payload);
-          
           // Invalidate queries to refresh data
           queryClient.invalidateQueries({ queryKey: ["leads"] });
           queryClient.invalidateQueries({ queryKey: ["lead-counts"] });
@@ -42,12 +38,9 @@ export function useLeads(filter?: LeadStatus | "all") {
           }
         }
       )
-      .subscribe((status) => {
-        console.log("Leads real-time subscription status:", status);
-      });
+      .subscribe();
 
     return () => {
-      console.log("Cleaning up leads real-time subscription");
       supabase.removeChannel(channel);
     };
   }, [user, queryClient]);
@@ -104,7 +97,6 @@ export function useLead(id: string | undefined) {
           filter: `id=eq.${id}`,
         },
         (payload) => {
-          console.log("Real-time single lead update:", payload.eventType);
           queryClient.invalidateQueries({ queryKey: ["lead", id] });
           queryClient.invalidateQueries({ queryKey: ["leads"] });
         }

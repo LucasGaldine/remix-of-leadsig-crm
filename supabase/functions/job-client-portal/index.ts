@@ -127,7 +127,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (customer) {
-      return await handleCustomerPortal(supabase, supabaseUrl, customer, jobId, req);
+      return await handleClientPortal(supabase, supabaseUrl, customer, jobId, req);
     }
 
     const { data: recurringJob } = await supabase
@@ -181,7 +181,7 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function handleCustomerPortal(supabase: any, supabaseUrl: string, customer: any, jobId: string | null, req: Request) {
+async function handleClientPortal(supabase: any, supabaseUrl: string, customer: any, jobId: string | null, req: Request) {
   if (req.method === "POST") {
     if (!jobId) {
       return jsonResponse({ error: "Job ID required for this action" }, 400);
@@ -393,6 +393,10 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
         ? body.agreement_acceptance
         : null;
+    const agreementTemplates =
+      body && typeof body.agreement_templates === "object" && body.agreement_templates
+        ? body.agreement_templates
+        : null;
 
     if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
       return jsonResponse({ error: "Invalid action" }, 400);
@@ -408,7 +412,17 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
       return jsonResponse({ error: "No quote found for this job schedule" }, 404);
     }
 
-    return await handleEstimateAction(supabase, estimate, action, null, clientUpdatedAt, estimateVersionId, signatureDataUrl, agreementAcceptance);
+    return await handleEstimateAction(
+      supabase,
+      estimate,
+      action,
+      null,
+      clientUpdatedAt,
+      estimateVersionId,
+      signatureDataUrl,
+      agreementAcceptance,
+      agreementTemplates,
+    );
   }
 
   if (req.method !== "GET") {
@@ -519,6 +533,36 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
         .order("created_at", { ascending: true })
     : { data: [] };
 
+  const recurringScopeJobIds = [
+    typeof estimate?.job_id === "string" ? estimate.job_id : null,
+  ].filter((value): value is string => Boolean(value));
+  let recurringScopeItems: string[] = [];
+  if (recurringScopeJobIds.length > 0) {
+    const { data: recurringChecklistRows } = await supabase
+      .from("job_checklist_items")
+      .select("job_id, label, sort_order")
+      .in("job_id", recurringScopeJobIds)
+      .order("sort_order", { ascending: true });
+
+    const grouped = new Map<string, string[]>();
+    for (const row of recurringChecklistRows || []) {
+      const label = String((row as any).label || "").trim();
+      const rowJobId = String((row as any).job_id || "");
+      if (!label || !rowJobId) continue;
+      const current = grouped.get(rowJobId) || [];
+      current.push(label);
+      grouped.set(rowJobId, current);
+    }
+
+    for (const candidateJobId of recurringScopeJobIds) {
+      const items = grouped.get(candidateJobId) || [];
+      if (items.length > 0) {
+        recurringScopeItems = items;
+        break;
+      }
+    }
+  }
+
   const instanceMap = new Map((instances || []).map((i: any) => [i.id, i]));
   const schedulesWithVisit = (allSchedules || []).map((s: any) => {
     const inst = instanceMap.get(s.lead_id);
@@ -582,6 +626,7 @@ async function handleRecurringJobPortal(supabase: any, supabaseUrl: string, recu
           original_line_items: originalLineItemsRecurring,
           has_pending_changes: estimate.has_pending_changes,
           proposal_settings: estimate.proposal_settings || null,
+          scope_of_work_items: recurringScopeItems,
           project_visualization_image_url: estimate.project_visualization_image_url || null,
           agreement_templates: recurringResolvedAgreement.templates,
           agreement_source_estimate_id: recurringResolvedAgreement.sourceEstimateId,
@@ -618,6 +663,10 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
     body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
       ? body.agreement_acceptance
       : null;
+  const agreementTemplates =
+    body && typeof body.agreement_templates === "object" && body.agreement_templates
+      ? body.agreement_templates
+      : null;
 
   if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
     return jsonResponse({ error: "Invalid action" }, 400);
@@ -650,10 +699,30 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
       return jsonResponse({ error: "No estimate found for this job" }, 404);
     }
 
-    return await handleEstimateAction(supabase, parentEstimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl, agreementAcceptance);
+    return await handleEstimateAction(
+      supabase,
+      parentEstimate,
+      action,
+      job.id,
+      clientUpdatedAt,
+      estimateVersionId,
+      signatureDataUrl,
+      agreementAcceptance,
+      agreementTemplates,
+    );
   }
 
-  return await handleEstimateAction(supabase, estimate, action, job.id, clientUpdatedAt, estimateVersionId, signatureDataUrl, agreementAcceptance);
+  return await handleEstimateAction(
+    supabase,
+    estimate,
+    action,
+    job.id,
+    clientUpdatedAt,
+    estimateVersionId,
+    signatureDataUrl,
+    agreementAcceptance,
+    agreementTemplates,
+  );
 }
 
 async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) {
@@ -798,6 +867,38 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
         .order("created_at", { ascending: true })
     : { data: [] };
 
+  const scopeWorkJobIds = [
+    typeof parentEstimate?.job_id === "string" ? parentEstimate.job_id : null,
+    typeof job?.id === "string" ? job.id : null,
+    typeof job?.estimate_job_id === "string" ? job.estimate_job_id : null,
+  ].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
+  let scopeItems: string[] = [];
+  if (scopeWorkJobIds.length > 0) {
+    const { data: scopeRows } = await supabase
+      .from("job_checklist_items")
+      .select("job_id, label, sort_order")
+      .in("job_id", scopeWorkJobIds)
+      .order("sort_order", { ascending: true });
+
+    const grouped = new Map<string, string[]>();
+    for (const row of scopeRows || []) {
+      const label = String((row as any).label || "").trim();
+      const rowJobId = String((row as any).job_id || "");
+      if (!label || !rowJobId) continue;
+      const current = grouped.get(rowJobId) || [];
+      current.push(label);
+      grouped.set(rowJobId, current);
+    }
+
+    for (const candidateJobId of scopeWorkJobIds) {
+      const items = grouped.get(candidateJobId) || [];
+      if (items.length > 0) {
+        scopeItems = items;
+        break;
+      }
+    }
+  }
+
   const relatedEstimateJobIds = new Set<string>();
   if (job?.id) relatedEstimateJobIds.add(job.id);
   if (job?.estimate_job_id) relatedEstimateJobIds.add(job.estimate_job_id);
@@ -871,6 +972,7 @@ async function handleSingleJobGet(supabase: any, supabaseUrl: string, job: any) 
           original_line_items: originalLineItems,
           has_pending_changes: parentEstimate.has_pending_changes,
           proposal_settings: parentEstimate.proposal_settings || null,
+          scope_of_work_items: scopeItems,
           project_visualization_image_url: parentEstimate.project_visualization_image_url || null,
           agreement_templates: resolvedAgreement.templates,
           agreement_source_estimate_id: resolvedAgreement.sourceEstimateId,
@@ -1025,6 +1127,7 @@ async function handleEstimateAction(
   estimateVersionId?: string | null,
   signatureDataUrl?: string | null,
   agreementAcceptance?: Record<string, boolean> | null,
+  agreementTemplates?: Record<string, unknown> | null,
 ) {
   if (clientUpdatedAt && estimate.updated_at !== clientUpdatedAt) {
     return jsonResponse({
@@ -1167,6 +1270,9 @@ async function handleEstimateAction(
       },
       updated_at: new Date().toISOString(),
     };
+    if (agreementTemplates && typeof agreementTemplates === "object") {
+      estimateUpdatePayload.agreement_templates = agreementTemplates;
+    }
 
     if (uploadedSignature) {
       estimateUpdatePayload.manual_approval_photo_url = uploadedSignature.publicUrl;

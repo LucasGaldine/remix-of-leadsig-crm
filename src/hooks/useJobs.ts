@@ -34,8 +34,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           schema: "public",
           table: "leads",
         },
-        (payload) => {
-          console.log("Real-time job update:", payload.eventType);
+        () => {
           queryClient.invalidateQueries({ queryKey: ["jobs"] });
           queryClient.invalidateQueries({ queryKey: ["job-counts"] });
           queryClient.invalidateQueries({ queryKey: ["job-revenue"] });

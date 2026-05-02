@@ -5,28 +5,54 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-interface ServiceTypeSelectProps {
+type UnitOption = {
+  value: string;
+  label: string;
+};
+
+interface UnitSelectProps {
   id?: string;
   value: string;
+  options: UnitOption[];
   onValueChange: (value: string) => void;
-  options: string[];
   placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
   className?: string;
+  disabled?: boolean;
 }
 
-export function ServiceTypeSelect({
+export function UnitSelect({
   id,
   value,
-  onValueChange,
   options,
-  placeholder = "Select service type",
+  onValueChange,
+  placeholder = "Select unit",
+  searchPlaceholder = "Search units...",
+  emptyText = "No units found.",
   className,
-}: ServiceTypeSelectProps) {
+  disabled = false,
+}: UnitSelectProps) {
   const [open, setOpen] = useState(false);
 
+  const normalizedOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const withCurrent = options.some((option) => option.value === value)
+      ? options
+      : value
+        ? [...options, { value, label: value }]
+        : options;
+
+    return withCurrent.filter((option) => {
+      if (seen.has(option.value)) return false;
+      seen.add(option.value);
+      return true;
+    });
+  }, [options, value]);
+
   const selectedLabel = useMemo(
-    () => options.find((option) => option === value) || "",
-    [options, value],
+    () => normalizedOptions.find((option) => option.value === value)?.label ?? "",
+    [normalizedOptions, value],
   );
 
   return (
@@ -38,6 +64,7 @@ export function ServiceTypeSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn("w-full justify-between font-normal", className)}
         >
           <span className="truncate text-left">
@@ -48,23 +75,23 @@ export function ServiceTypeSelect({
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search service types..." />
+          <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
-            <CommandEmpty>No service types found.</CommandEmpty>
+            <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {options.map((option) => {
-                const isSelected = value === option;
+              {normalizedOptions.map((option) => {
+                const isSelected = value === option.value;
                 return (
                   <CommandItem
-                    key={option}
-                    value={option}
+                    key={option.value}
+                    value={`${option.label} ${option.value}`}
                     onSelect={() => {
-                      onValueChange(option);
+                      onValueChange(option.value);
                       setOpen(false);
                     }}
                   >
                     <Check className={cn("mr-2 h-4 w-4", isSelected ? "opacity-100" : "opacity-0")} />
-                    {option}
+                    {option.label}
                   </CommandItem>
                 );
               })}

@@ -45,6 +45,7 @@ import {
 import { LineItemTemplateCSVImportModal } from "@/components/settings/LineItemTemplateCSVImportModal";
 import { LineItemTemplateSearch } from "@/components/templates/LineItemTemplateSearch";
 import { LINE_ITEM_UNIT_OPTIONS } from "@/constants/lineItemUnits";
+import { UnitSelect } from "@/components/shared/UnitSelect";
 
 interface PricingRule {
   id?: string;
@@ -162,6 +163,9 @@ export default function SettingsPricingRules() {
   const [taxRate, setTaxRate] = useState<string>("");
   const [profitMargin, setProfitMargin] = useState<string>("");
   const [surcharge, setSurcharge] = useState<string>("");
+  const [depositPercentage, setDepositPercentage] = useState<string>("33");
+  const [midpointPercentage, setMidpointPercentage] = useState<string>("33");
+  const [finalPercentage, setFinalPercentage] = useState<string>("34");
   const [lineItemTemplates, setLineItemTemplates] = useState<LineItemTemplate[]>([]);
   const [showTemplateImportModal, setShowTemplateImportModal] = useState(false);
   const [showTemplateTypeDialog, setShowTemplateTypeDialog] = useState(false);
@@ -194,8 +198,32 @@ export default function SettingsPricingRules() {
       setTaxRate(String(currentAccount.default_tax_rate ?? 8));
       setProfitMargin(String(currentAccount.default_profit_margin ?? 0));
       setSurcharge(String(currentAccount.default_surcharge ?? 0));
+      const settings = (currentAccount.settings as Record<string, unknown> | null) ?? {};
+      const paymentDefaultsRaw = settings.default_payment_schedule;
+      const paymentDefaults =
+        paymentDefaultsRaw && typeof paymentDefaultsRaw === "object" && !Array.isArray(paymentDefaultsRaw)
+          ? (paymentDefaultsRaw as Record<string, unknown>)
+          : {};
+      const nextDeposit = Number(paymentDefaults.deposit_percentage ?? 33);
+      const nextMidpoint = Number(paymentDefaults.midpoint_percentage ?? 33);
+      const nextFinal = Number(paymentDefaults.final_percentage ?? 34);
+      setDepositPercentage(String(Number.isFinite(nextDeposit) ? nextDeposit : 33));
+      setMidpointPercentage(String(Number.isFinite(nextMidpoint) ? nextMidpoint : 33));
+      setFinalPercentage(String(Number.isFinite(nextFinal) ? nextFinal : 34));
     }
-  }, [currentAccount?.id, currentAccount?.default_tax_rate, currentAccount?.default_profit_margin, currentAccount?.default_surcharge]);
+  }, [currentAccount?.id, currentAccount?.default_tax_rate, currentAccount?.default_profit_margin, currentAccount?.default_surcharge, currentAccount?.settings]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (window.location.hash !== "#default-payment-schedule") return;
+
+    const target = document.getElementById("default-payment-schedule");
+    if (!target) return;
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [loading]);
 
   useEffect(() => {
     if (!currentAccount?.id) return;
@@ -886,6 +914,20 @@ export default function SettingsPricingRules() {
       const parsedTax = parseFloat(taxRate) || 0;
       const parsedProfitMargin = parseFloat(profitMargin) || 0;
       const parsedSurcharge = parseFloat(surcharge) || 0;
+      const parsedDepositPercentage = parseFloat(depositPercentage) || 0;
+      const parsedMidpointPercentage = parseFloat(midpointPercentage) || 0;
+      const parsedFinalPercentage = parseFloat(finalPercentage) || 0;
+      const paymentScheduleTotal = parsedDepositPercentage + parsedMidpointPercentage + parsedFinalPercentage;
+
+      if (
+        parsedDepositPercentage < 0
+        || parsedMidpointPercentage < 0
+        || parsedFinalPercentage < 0
+        || Math.abs(paymentScheduleTotal - 100) > 0.01
+      ) {
+        toast.error("Default payment schedule must be non-negative and total 100%");
+        return false;
+      }
 
       const { error: defaultsError } = await supabase
         .from("accounts")
@@ -968,6 +1010,11 @@ export default function SettingsPricingRules() {
         .update({
           settings: {
             ...currentSettings,
+            default_payment_schedule: {
+              deposit_percentage: parsedDepositPercentage,
+              midpoint_percentage: parsedMidpointPercentage,
+              final_percentage: parsedFinalPercentage,
+            },
             website: {
               ...currentWebsite,
               services: websiteServices,
@@ -1086,6 +1133,60 @@ export default function SettingsPricingRules() {
                       }}
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
+                </div>
+
+                <div id="default-payment-schedule" className="space-y-2 rounded-md border border-border/70 p-3">
+                  <h4 className="font-medium">Default Payment Schedule</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Used in proposal agreements. Deposit + midpoint + final must total 100%.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div>
+                      <Label htmlFor="deposit-percentage">Deposit %</Label>
+                      <Input
+                        id="deposit-percentage"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={depositPercentage}
+                        onChange={(event) => {
+                          setDepositPercentage(event.target.value);
+                          setIsDirty(true);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="midpoint-percentage">Midpoint %</Label>
+                      <Input
+                        id="midpoint-percentage"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={midpointPercentage}
+                        onChange={(event) => {
+                          setMidpointPercentage(event.target.value);
+                          setIsDirty(true);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="final-percentage">Final %</Label>
+                      <Input
+                        id="final-percentage"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={finalPercentage}
+                        onChange={(event) => {
+                          setFinalPercentage(event.target.value);
+                          setIsDirty(true);
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1334,23 +1435,14 @@ export default function SettingsPricingRules() {
             </div>
             <div>
               <Label htmlFor="template-unit">Unit</Label>
-              <Select
+              <UnitSelect
+                id="template-unit"
                 value={templateDraft.unit}
+                options={LINE_ITEM_UNIT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
                 onValueChange={(value) =>
                   setTemplateDraft((prev) => ({ ...prev, unit: value }))
                 }
-              >
-                <SelectTrigger id="template-unit">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LINE_ITEM_UNIT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
             <div>
               <Label htmlFor="template-category">Category</Label>
@@ -1428,23 +1520,14 @@ export default function SettingsPricingRules() {
             </div>
             <div>
               <Label htmlFor="bundle-unit">Bundle Unit</Label>
-              <Select
+              <UnitSelect
+                id="bundle-unit"
                 value={bundleDraft.unit}
+                options={UNIT_SELECT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
                 onValueChange={(value) =>
                   setBundleDraft((prev) => ({ ...prev, unit: value }))
                 }
-              >
-                <SelectTrigger id="bundle-unit">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {UNIT_SELECT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
           </div>
 
@@ -1582,23 +1665,14 @@ export default function SettingsPricingRules() {
 
             <div>
               <Label htmlFor="service-type-unit">Unit Type</Label>
-              <Select
+              <UnitSelect
+                id="service-type-unit"
                 value={serviceTypeDraft.unit_type}
+                options={SERVICE_TYPE_UNIT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
                 onValueChange={(value) =>
                   setServiceTypeDraft((prev) => ({ ...prev, unit_type: value }))
                 }
-              >
-                <SelectTrigger id="service-type-unit">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SERVICE_TYPE_UNIT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
 
             <div>

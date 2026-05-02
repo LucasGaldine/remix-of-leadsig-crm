@@ -7,6 +7,88 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const MAX_SIGNATURE_IMAGE_BYTES = 6 * 1024 * 1024;
+
+function isManualApprovalPhotoUrlColumnMissing(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: string }).code;
+  if (code === "42703") return true;
+
+  const message = [
+    (error as { message?: string }).message,
+    (error as { details?: string }).details,
+    (error as { hint?: string }).hint,
+  ]
+    .filter((part): part is string => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+
+  return message.includes("manual_approval_photo_url");
+}
+
+function decodeBase64(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function parseSignatureDataUrl(signatureDataUrl: string): { bytes: Uint8Array; contentType: string; extension: string } | null {
+  const trimmedValue = signatureDataUrl.trim();
+  const match = trimmedValue.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) return null;
+
+  const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const extensionByContentType: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+  };
+  const extension = extensionByContentType[contentType];
+  if (!extension) return null;
+
+  let bytes: Uint8Array;
+  try {
+    bytes = decodeBase64(match[2]);
+  } catch {
+    return null;
+  }
+
+  if (!bytes.length || bytes.length > MAX_SIGNATURE_IMAGE_BYTES) {
+    return null;
+  }
+
+  return { bytes, contentType, extension };
+}
+
+async function uploadSignatureDataUrl(
+  supabase: any,
+  estimateId: string,
+  signatureDataUrl: string,
+): Promise<{ ok: true; filePath: string; publicUrl: string } | { ok: false; error: string; statusCode: number }> {
+  const parsedImage = parseSignatureDataUrl(signatureDataUrl);
+  if (!parsedImage) {
+    return { ok: false, error: "Invalid signature format. Please sign again.", statusCode: 400 };
+  }
+
+  const filePath = `estimate-approvals/${estimateId}/${crypto.randomUUID()}.${parsedImage.extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from("lead-photos")
+    .upload(filePath, parsedImage.bytes, {
+      contentType: parsedImage.contentType,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return { ok: false, error: "Failed to upload signature image", statusCode: 500 };
+  }
+
+  const { data: urlData } = supabase.storage.from("lead-photos").getPublicUrl(filePath);
+  return { ok: true, filePath, publicUrl: urlData.publicUrl };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -138,6 +220,12 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST") {
       const body = await req.json();
       const { action } = body;
+      const signatureDataUrl =
+        typeof body.signature_data_url === "string"
+          ? body.signature_data_url
+          : typeof body.signatureDataUrl === "string"
+            ? body.signatureDataUrl
+            : null;
       const agreementAcceptance =
         body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
           ? body.agreement_acceptance
@@ -285,27 +373,71 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        let uploadedSignature: { filePath: string; publicUrl: string } | null = null;
+        if (action === "approve" && signatureDataUrl) {
+          const uploadedResult = await uploadSignatureDataUrl(supabase, estimate.id, signatureDataUrl);
+          if (!uploadedResult.ok) {
+            return new Response(
+              JSON.stringify({ error: uploadedResult.error }),
+              {
+                status: uploadedResult.statusCode,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+          uploadedSignature = { filePath: uploadedResult.filePath, publicUrl: uploadedResult.publicUrl };
+        }
+
         const newStatus = action === "approve" ? "accepted" : "declined";
+        const estimateUpdatePayload: Record<string, unknown> = {
+          status: newStatus,
+          accepted_at: action === "approve" ? new Date().toISOString() : null,
+          approved_via: action === "approve" ? "customer_link" : null,
+          agreement_acceptance:
+            action === "approve"
+              ? {
+                  job_release_agreement: agreementAcceptance?.job_release_agreement === true,
+                  job_agreement: agreementAcceptance?.job_agreement === true,
+                  warranty_agreement: agreementAcceptance?.warranty_agreement === true,
+                  accepted_at: new Date().toISOString(),
+                }
+              : null,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (uploadedSignature) {
+          estimateUpdatePayload.manual_approval_photo_url = uploadedSignature.publicUrl;
+        }
+
         const { error: updateError } = await supabase
           .from("estimates")
-          .update({
-            status: newStatus,
-            accepted_at: action === "approve" ? new Date().toISOString() : null,
-            approved_via: action === "approve" ? "customer_link" : null,
-            agreement_acceptance:
-              action === "approve"
-                ? {
-                    job_release_agreement: agreementAcceptance?.job_release_agreement === true,
-                    job_agreement: agreementAcceptance?.job_agreement === true,
-                    warranty_agreement: agreementAcceptance?.warranty_agreement === true,
-                    accepted_at: new Date().toISOString(),
-                  }
-                : null,
-            updated_at: new Date().toISOString(),
-          })
+          .update(estimateUpdatePayload)
           .eq("id", estimate.id);
 
-        if (updateError) {
+        if (updateError && uploadedSignature && isManualApprovalPhotoUrlColumnMissing(updateError)) {
+          const { manual_approval_photo_url: _manualApprovalPhotoUrl, ...fallbackPayload } = estimateUpdatePayload;
+          const { error: fallbackError } = await supabase
+            .from("estimates")
+            .update(fallbackPayload)
+            .eq("id", estimate.id);
+
+          if (uploadedSignature.filePath) {
+            await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+          }
+
+          if (fallbackError) {
+            return new Response(
+              JSON.stringify({ error: `Failed to ${action} estimate` }),
+              {
+                status: 500,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+        } else if (updateError) {
+          if (uploadedSignature?.filePath) {
+            await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
+          }
           return new Response(
             JSON.stringify({ error: `Failed to ${action} estimate` }),
             {

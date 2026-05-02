@@ -85,12 +85,15 @@ export function JobCard({
   className,
 }: JobCardProps) {
   const isMobile = useIsMobile();
-  const badgeStatus = (job.display_status || job.status) as string;
+  const rawStatus = String(job.status || "");
+  const isCompletedJob =
+    rawStatus === "completed" || rawStatus === "paid" || rawStatus === "invoiced" || rawStatus === "won";
+  const badgeStatus = (isCompletedJob ? "completed" : job.display_status || job.status) as string;
   const isUnassigned =
     !hideUnassignedStatus &&
     Boolean(job.has_unassigned_schedule) &&
     (badgeStatus === "scheduled" || badgeStatus === "in_progress");
-  const needsInvoice = job.status === "completed" && !job.has_invoice && !job.is_estimate_visit;
+  const needsInvoice = badgeStatus === "completed" && !job.has_invoice && !job.is_estimate_visit;
 
   const status: { label: string; tone: ActivityTone } = isUnassigned
     ? { label: "Unassigned", tone: "attention" }

@@ -55,6 +55,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { UnitSelect } from "@/components/shared/UnitSelect";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -1308,25 +1309,13 @@ export function JobChecklist({
                     <label className="text-base md:text-sm font-medium" htmlFor="checklist-item-unit">
                       Unit
                     </label>
-                    <Select
+                    <UnitSelect
+                      id="checklist-item-unit"
                       value={normalizeMaterialUnit(editor.unit)}
+                      options={MATERIAL_UNIT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
                       onValueChange={(value) => setEditor((current) => ({ ...current, unit: value }))}
-                    >
-                      <SelectTrigger
-                        id="checklist-item-unit"
-                        aria-label="Checklist item unit"
-                        className="w-full h-12 md:h-10 text-base md:text-sm"
-                      >
-                        <SelectValue placeholder="each" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MATERIAL_UNIT_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      className="w-full h-12 md:h-10 text-base md:text-sm"
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-base md:text-sm font-medium" htmlFor="checklist-item-unit-price">

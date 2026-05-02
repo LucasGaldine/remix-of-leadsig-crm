@@ -30,6 +30,7 @@ import { LineItemCategory } from "@/hooks/useJobLineItems";
 import { MapMeasureDialog } from "@/components/maps/MapMeasureDialog";
 import { Link } from "react-router-dom";
 import { LINE_ITEM_UNIT_OPTIONS, LINE_ITEM_UNIT_VALUES } from "@/constants/lineItemUnits";
+import { UnitSelect } from "@/components/shared/UnitSelect";
 
 function formatDollar(value: number): string {
   return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -384,21 +385,12 @@ function ExpandedLineItem({
 
         <div className="space-y-2">
           <Label htmlFor={`edit-item-unit-${index}`}>Unit</Label>
-          <Select
+          <UnitSelect
+            id={`edit-item-unit-${index}`}
             value={item.unit}
+            options={LINE_ITEM_UNIT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
             onValueChange={(value) => onUpdate("unit", value)}
-          >
-            <SelectTrigger id={`edit-item-unit-${index}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LINE_ITEM_UNIT_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         </div>
       </div>
 
@@ -1715,33 +1707,26 @@ export function EditEstimateModal({
                           <Label htmlFor="pending-line-item-unit" className="text-xs text-muted-foreground">
                             Unit
                           </Label>
-                          <Select
-                            value={pendingAddLineItemDraft?.unit || "each"}
-                            onValueChange={(value) =>
-                              setPendingAddLineItemDraft((previous) =>
-                                previous
-                                  ? { ...previous, unit: value }
-                                  : previous
-                              )
-                            }
-                          >
-                            <SelectTrigger id="pending-line-item-unit">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {(() => {
-                                const unitValue = pendingAddLineItemDraft?.unit || "each";
-                                const options = LINE_ITEM_UNIT_VALUES.includes(unitValue)
-                                  ? LINE_ITEM_UNIT_VALUES
-                                  : [...LINE_ITEM_UNIT_VALUES, unitValue];
-                                return options.map((unitOption) => (
-                                  <SelectItem key={unitOption} value={unitOption}>
-                                    {unitOption}
-                                  </SelectItem>
-                                ));
-                              })()}
-                            </SelectContent>
-                          </Select>
+                          {(() => {
+                            const unitValue = pendingAddLineItemDraft?.unit || "each";
+                            const options = LINE_ITEM_UNIT_VALUES.includes(unitValue)
+                              ? LINE_ITEM_UNIT_VALUES
+                              : [...LINE_ITEM_UNIT_VALUES, unitValue];
+                            return (
+                              <UnitSelect
+                                id="pending-line-item-unit"
+                                value={unitValue}
+                                options={options.map((unitOption) => ({ value: unitOption, label: unitOption }))}
+                                onValueChange={(value) =>
+                                  setPendingAddLineItemDraft((previous) =>
+                                    previous
+                                      ? { ...previous, unit: value }
+                                      : previous
+                                  )
+                                }
+                              />
+                            );
+                          })()}
                         </div>
                       </div>
                     ) : null}
@@ -1811,33 +1796,26 @@ export function EditEstimateModal({
                         <Label htmlFor="pending-line-item-unit" className="text-xs text-muted-foreground">
                           Unit
                         </Label>
-                        <Select
-                          value={pendingAddLineItemDraft?.unit || "each"}
-                          onValueChange={(value) =>
-                            setPendingAddLineItemDraft((previous) =>
-                              previous
-                                ? { ...previous, unit: value }
-                                : previous
-                            )
-                          }
-                        >
-                          <SelectTrigger id="pending-line-item-unit">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(() => {
-                              const unitValue = pendingAddLineItemDraft?.unit || "each";
-                              const options = LINE_ITEM_UNIT_VALUES.includes(unitValue)
-                                ? LINE_ITEM_UNIT_VALUES
-                                : [...LINE_ITEM_UNIT_VALUES, unitValue];
-                              return options.map((unitOption) => (
-                                <SelectItem key={unitOption} value={unitOption}>
-                                  {unitOption}
-                                </SelectItem>
-                              ));
-                            })()}
-                          </SelectContent>
-                        </Select>
+                        {(() => {
+                          const unitValue = pendingAddLineItemDraft?.unit || "each";
+                          const options = LINE_ITEM_UNIT_VALUES.includes(unitValue)
+                            ? LINE_ITEM_UNIT_VALUES
+                            : [...LINE_ITEM_UNIT_VALUES, unitValue];
+                          return (
+                            <UnitSelect
+                              id="pending-line-item-unit"
+                              value={unitValue}
+                              options={options.map((unitOption) => ({ value: unitOption, label: unitOption }))}
+                              onValueChange={(nextValue) =>
+                                setPendingAddLineItemDraft((previous) =>
+                                  previous
+                                    ? { ...previous, unit: nextValue }
+                                    : previous
+                                )
+                              }
+                            />
+                          );
+                        })()}
                       </div>
                     </div>
                   </>
