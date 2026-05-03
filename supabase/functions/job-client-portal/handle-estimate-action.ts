@@ -31,6 +31,16 @@ export async function handleEstimateAction(
   agreementTemplates?: Record<string, unknown> | null,
 ) {
   void portalJobId;
+  const isWarrantyEnabledForVersion = (versionId: string | null | undefined) => {
+    if (!versionId) return true;
+    const settingsRaw = estimate?.proposal_settings?.version_warranty_enabled;
+    const settings =
+      settingsRaw && typeof settingsRaw === "object" && !Array.isArray(settingsRaw)
+        ? (settingsRaw as Record<string, unknown>)
+        : {};
+    const value = settings[versionId];
+    return value === undefined ? true : value === true;
+  };
 
   if (clientUpdatedAt && estimate.updated_at !== clientUpdatedAt) {
     return jsonResponse({
@@ -127,7 +137,15 @@ export async function handleEstimateAction(
   }
 
   if (action === "approve") {
-    const requiredAgreementKeys = ["job_release_agreement", "job_agreement", "warranty_agreement"];
+    const activeVersionId =
+      estimateVersionId ||
+      (typeof estimate?.proposal_settings?.recommended_version_id === "string"
+        ? estimate.proposal_settings.recommended_version_id
+        : null);
+    const requiredAgreementKeys = ["job_release_agreement", "job_agreement"];
+    if (isWarrantyEnabledForVersion(activeVersionId)) {
+      requiredAgreementKeys.push("warranty_agreement");
+    }
     const acceptedKeys = requiredAgreementKeys.filter((key) => agreementAcceptance?.[key] === true);
     if (acceptedKeys.length !== requiredAgreementKeys.length) {
       return jsonResponse({ error: "All required agreements must be accepted before approval." }, 400);

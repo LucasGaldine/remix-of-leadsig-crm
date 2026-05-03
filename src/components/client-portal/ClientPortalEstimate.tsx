@@ -73,6 +73,7 @@ interface ClientPortalEstimateProps {
         final_percentage?: number;
       } | null;
       version_warranty_lengths?: Record<string, string> | null;
+      version_warranty_enabled?: Record<string, boolean> | null;
     } | null;
     scope_of_work_items?: string[] | null;
     project_visualization_image_url?: string | null;
@@ -248,6 +249,31 @@ export function ClientPortalEstimate({
     () => availableVersions.find((version) => version.id === selectedVersionId) || null,
     [availableVersions, selectedVersionId],
   );
+  const isWarrantyEnabledForVersion = useCallback((versionId: string | null) => {
+    if (!versionId) return true;
+    const warrantySettings = estimate?.proposal_settings?.version_warranty_enabled;
+    const map =
+      warrantySettings && typeof warrantySettings === "object"
+        ? (warrantySettings as Record<string, unknown>)
+        : {};
+    const value = map[versionId];
+    return value === undefined ? true : value === true;
+  }, [estimate?.proposal_settings?.version_warranty_enabled]);
+  const isWarrantyEnabledForCurrentSelection = useMemo(() => {
+    const versionId =
+      selectedVersionId ||
+      estimate?.proposal_settings?.recommended_version_id ||
+      availableVersions[0]?.id ||
+      null;
+    return isWarrantyEnabledForVersion(versionId);
+  }, [availableVersions, estimate?.proposal_settings?.recommended_version_id, isWarrantyEnabledForVersion, selectedVersionId]);
+  const requiredAgreementKeys = useMemo(
+    () =>
+      REQUIRED_AGREEMENT_KEYS.filter(
+        (key) => key !== "warranty_agreement" || isWarrantyEnabledForCurrentSelection,
+      ),
+    [isWarrantyEnabledForCurrentSelection],
+  );
   const maxVersionWindowStart = Math.max(availableVersions.length - versionWindowSize, 0);
   const visibleVersions = useMemo(
     () => availableVersions.slice(versionWindowStart, versionWindowStart + versionWindowSize),
@@ -396,7 +422,7 @@ export function ClientPortalEstimate({
     () => approvalAgreementTemplates || templateRecord,
     [approvalAgreementTemplates, templateRecord],
   );
-  const agreementEntries = REQUIRED_AGREEMENT_KEYS.map((key) => ({
+  const agreementEntries = requiredAgreementKeys.map((key) => ({
     key,
     text: resolveAgreementTextByKey(effectiveAgreementRecord, key),
   }));
@@ -574,10 +600,7 @@ export function ClientPortalEstimate({
 
   const handleAction = async (action: "approve" | "decline") => {
     if (action === "approve") {
-      const allAccepted =
-        agreementChecks.job_release_agreement &&
-        agreementChecks.job_agreement &&
-        agreementChecks.warranty_agreement;
+      const allAccepted = requiredAgreementKeys.every((key) => agreementChecks[key]);
       if (!allAccepted) {
         setError("Please accept all agreements before approving.");
         return false;
@@ -597,7 +620,9 @@ export function ClientPortalEstimate({
           action,
           updated_at: estimate.updated_at,
           estimate_version_id: action === "approve" ? selectedVersionId : undefined,
-          agreement_acceptance: action === "approve" ? agreementChecks : undefined,
+          agreement_acceptance: action === "approve"
+            ? { ...agreementChecks, warranty_agreement: isWarrantyEnabledForCurrentSelection ? agreementChecks.warranty_agreement : false }
+            : undefined,
           agreement_templates: action === "approve" ? approvalAgreementTemplates : undefined,
           ...(action === "approve" ? getSignaturePayloadFields() : {}),
         }),
@@ -728,7 +753,7 @@ export function ClientPortalEstimate({
         : ""
     ) || "2 years";
 
-    return generateAgreementTemplates({
+    const templates = generateAgreementTemplates({
       todayIso: new Date().toISOString().slice(0, 10),
       contractorName: companyName || "Contractor",
       contractorAddress: "Address on file",
@@ -752,6 +777,10 @@ export function ClientPortalEstimate({
       },
       workmanshipWarrantyDuration: selectedWarrantyLength,
     });
+    if (!isWarrantyEnabledForVersion(activeVersionId)) {
+      templates.warranty_agreement = "";
+    }
+    return templates;
   }, [
     address,
     availableVersions,
@@ -767,6 +796,7 @@ export function ClientPortalEstimate({
     estimate?.proposal_settings?.version_warranty_lengths,
     estimate.scope_of_work_items,
     jobName,
+    isWarrantyEnabledForVersion,
     selectedVersionId,
     templateRecord,
   ]);
@@ -1453,7 +1483,7 @@ export function ClientPortalEstimate({
           {approvalDialogAction === "approve" && (
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-sm font-medium text-slate-900">Required agreements</p>
-              {REQUIRED_AGREEMENT_KEYS.map((key) => (
+              {requiredAgreementKeys.map((key) => (
                 <div key={key} className="rounded-md border border-slate-200 bg-white px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <label className="flex items-start gap-2 text-sm text-slate-700">

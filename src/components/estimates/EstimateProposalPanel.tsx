@@ -281,13 +281,26 @@ export function EstimateProposalPanel({
   const isEstimateAlreadyApproved = estimate?.status === "accepted";
   const isProposalLocked = isEstimateAlreadyApproved;
   const isFreePlan = currentAccount?.pricing_plan === "free";
+  const getActivePricingOptionId = () => selectedPricingOptionId || currentSettings?.recommended_version_id || estimateVersions[0]?.id || null;
+  const isWarrantyEnabledForVersion = (versionId: string | null) => {
+    if (!versionId) return true;
+    const settings =
+      currentSettings?.version_warranty_enabled && typeof currentSettings.version_warranty_enabled === "object"
+        ? (currentSettings.version_warranty_enabled as Record<string, unknown>)
+        : {};
+    const value = settings[versionId];
+    return value === undefined ? true : value === true;
+  };
+  const isWarrantyEnabledForActiveVersion = isWarrantyEnabledForVersion(getActivePricingOptionId());
   const hasGeneratedAgreements = useMemo(
     () =>
-      AGREEMENT_KEYS.every((key) => {
+      AGREEMENT_KEYS
+        .filter((key) => key !== "warranty_agreement" || isWarrantyEnabledForActiveVersion)
+        .every((key) => {
         const draftValue = typeof agreementDrafts[key] === "string" ? agreementDrafts[key] : "";
         return draftValue.trim().length > 0;
       }),
-    [agreementDrafts],
+    [agreementDrafts, isWarrantyEnabledForActiveVersion],
   );
   const selectedTeamMemberCount = useMemo(
     () => teamMembers.filter((member) => selectedTeamIds.has(member.user_id)).length,
@@ -301,7 +314,7 @@ export function EstimateProposalPanel({
       materials: materialOptions.length > 0 && selectedLineItemIds.size > 0,
       project_visualization: visualizationPhotos.length > 0 || displayedBeforePhotoUrls.length > 0,
       pricing_options: estimateVersions.length > 0,
-      agreements_and_signatures: hasGeneratedAgreements,
+      agreements_and_signatures: true,
     }),
     [
       checklistItems.length,
@@ -405,8 +418,6 @@ export function EstimateProposalPanel({
     return Number(displayLineItems.reduce((sum, item: any) => sum + (Number(item?.total) || 0), 0)) || 0;
   };
 
-  const getActivePricingOptionId = () => selectedPricingOptionId || currentSettings?.recommended_version_id || estimateVersions[0]?.id || null;
-
   const getSelectedWarrantyLength = () => {
     const activeVersionId = getActivePricingOptionId();
     const warrantyLengthsRaw = currentSettings?.version_warranty_lengths;
@@ -431,8 +442,8 @@ export function EstimateProposalPanel({
   const buildAgreementTemplatesForCurrentContext = () =>
     {
       const paymentSchedule = getEffectivePaymentSchedule();
-
-      return generateAgreementTemplates({
+      const includeWarranty = isWarrantyEnabledForActiveVersion;
+      const templates = generateAgreementTemplates({
         todayIso,
         contractorName: (estimate?.account?.company_name || "Contractor").trim(),
         contractorAddress: getContractorAddress(),
@@ -455,6 +466,11 @@ export function EstimateProposalPanel({
         startDate: estimate?.job?.scheduled_date || todayIso,
         completionDate: estimate?.job?.last_scheduled_date || estimate?.job?.scheduled_date || todayIso,
       });
+
+      if (!includeWarranty) {
+        templates.warranty_agreement = "";
+      }
+      return templates;
     };
 
   const buildJobReleaseAgreement = () => {
@@ -1116,6 +1132,10 @@ $${formatCurrency(contractTotal)}
   };
 
   const handleViewAgreement = (key: (typeof AGREEMENT_KEYS)[number]) => {
+    if (key === "warranty_agreement" && !isWarrantyEnabledForActiveVersion) {
+      toast.info("Warranty is off for the selected pricing option.");
+      return;
+    }
     const templates = buildAgreementTemplatesForCurrentContext();
     const templateValue = templates[key] || "";
     setAndPersistAgreementTemplate(key, templateValue);
@@ -1170,6 +1190,23 @@ $${formatCurrency(contractTotal)}
       version_warranty_lengths: {
         ...currentWarrantyLengths,
         [activeVersionId]: trimmed,
+      },
+    });
+  };
+
+  const saveWarrantyEnabledForActiveVersion = (enabled: boolean) => {
+    if (isProposalLocked) return;
+    const activeVersionId = getActivePricingOptionId();
+    if (!activeVersionId) return;
+    const currentSettingsMap =
+      currentSettings.version_warranty_enabled && typeof currentSettings.version_warranty_enabled === "object"
+        ? currentSettings.version_warranty_enabled
+        : {};
+    void saveProposal({
+      ...currentSettings,
+      version_warranty_enabled: {
+        ...currentSettingsMap,
+        [activeVersionId]: enabled,
       },
     });
   };
@@ -1496,7 +1533,7 @@ $${formatCurrency(contractTotal)}
           <div className="rounded-lg bg-white p-8">
             <h3 className="text-3xl font-semibold mb-4">Agreements & Signatures</h3>
             <div className="space-y-4">
-              {AGREEMENT_KEYS.map((key) => (
+              {AGREEMENT_KEYS.filter((key) => key !== "warranty_agreement" || isWarrantyEnabledForActiveVersion).map((key) => (
                 <div key={key} className="rounded border border-border p-4">
                   <p className="text-sm uppercase tracking-wide text-muted-foreground">{AGREEMENT_LABELS[key]}</p>
                   <Button
@@ -1615,6 +1652,7 @@ $${formatCurrency(contractTotal)}
     portalLink,
     portalLinkLoading,
     isEstimateAlreadyApproved,
+    currentSettings?.version_warranty_enabled,
   ]);
 
   const resolveClientPortalLink = async () => {
@@ -2371,15 +2409,24 @@ $${formatCurrency(contractTotal)}
                         ))}
                       </SelectContent>
                     </Select>
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground">Warranty Length For Selected Pricing Option</p>
-                      <Input
-                        value={customWarrantyLength}
-                        onChange={(event) => setCustomWarrantyLength(event.target.value)}
-                        onBlur={saveCustomWarrantyLength}
-                        placeholder="e.g., 2 years"
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={isWarrantyEnabledForActiveVersion}
+                        onCheckedChange={(checked) => saveWarrantyEnabledForActiveVersion(Boolean(checked))}
                       />
-                    </div>
+                      Include warranty for selected pricing option
+                    </label>
+                    {isWarrantyEnabledForActiveVersion ? (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Warranty Length For Selected Pricing Option</p>
+                        <Input
+                          value={customWarrantyLength}
+                          onChange={(event) => setCustomWarrantyLength(event.target.value)}
+                          onBlur={saveCustomWarrantyLength}
+                          placeholder="e.g., 2 years"
+                        />
+                      </div>
+                    ) : null}
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Agreement Templates</p>
                     <div className="flex flex-wrap gap-2">
                       <Button
@@ -2398,14 +2445,16 @@ $${formatCurrency(contractTotal)}
                       >
                         View Job Agreement
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewAgreement("warranty_agreement")}
-                      >
-                        View Warranty Agreement
-                      </Button>
+                      {isWarrantyEnabledForActiveVersion ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewAgreement("warranty_agreement")}
+                        >
+                          View Warranty Agreement
+                        </Button>
+                      ) : null}
                     </div>
                   </>
                 ) : null}

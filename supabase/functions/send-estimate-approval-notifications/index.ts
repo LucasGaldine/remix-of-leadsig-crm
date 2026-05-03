@@ -789,6 +789,8 @@ Deno.serve(async (req: Request) => {
         status,
         accepted_at,
         manual_approval_photo_url,
+        proposal_settings,
+        agreement_acceptance,
         agreement_templates,
         customer:customers(name, email),
         job:leads!estimates_job_id_fkey(name, address),
@@ -876,8 +878,10 @@ Deno.serve(async (req: Request) => {
       ? ((estimate as any).agreement_templates as Record<string, unknown>)
       : {};
 
+    const warrantyAccepted = (estimate as any)?.agreement_acceptance?.warranty_agreement === true;
     if (eventType !== "change_order_approved") {
       for (const key of Object.keys(AGREEMENT_LABELS) as AgreementKey[]) {
+        if (key === "warranty_agreement" && !warrantyAccepted) continue;
         const agreementText = normalizeAgreementText(agreementTemplates[key]);
         if (!agreementText) continue;
         attachments.push(

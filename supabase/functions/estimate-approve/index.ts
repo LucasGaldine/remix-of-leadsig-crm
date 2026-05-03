@@ -63,6 +63,20 @@ function parseSignatureDataUrl(signatureDataUrl: string): { bytes: Uint8Array; c
   return { bytes, contentType, extension };
 }
 
+function isWarrantyEnabledForVersion(
+  proposalSettings: Record<string, unknown> | null | undefined,
+  versionId: string | null | undefined,
+) {
+  if (!versionId) return true;
+  const settingsRaw = proposalSettings?.version_warranty_enabled;
+  const settings =
+    settingsRaw && typeof settingsRaw === "object" && !Array.isArray(settingsRaw)
+      ? (settingsRaw as Record<string, unknown>)
+      : {};
+  const value = settings[versionId];
+  return value === undefined ? true : value === true;
+}
+
 async function restoreEstimateFromLatestApprovedSnapshot(
   supabase: any,
   estimate: {
@@ -452,11 +466,15 @@ Deno.serve(async (req: Request) => {
         }
 
         if (action === "approve") {
-          const requiredAgreementKeys = [
-            "job_release_agreement",
-            "job_agreement",
-            "warranty_agreement",
-          ];
+          const activeVersionId =
+            estimateVersionId ||
+            (typeof estimate?.proposal_settings?.recommended_version_id === "string"
+              ? estimate.proposal_settings.recommended_version_id
+              : null);
+          const requiredAgreementKeys = ["job_release_agreement", "job_agreement"];
+          if (isWarrantyEnabledForVersion(estimate?.proposal_settings as Record<string, unknown> | null, activeVersionId)) {
+            requiredAgreementKeys.push("warranty_agreement");
+          }
           const acceptedKeys = requiredAgreementKeys.filter((key) => agreementAcceptance?.[key] === true);
           if (acceptedKeys.length !== requiredAgreementKeys.length) {
             return new Response(

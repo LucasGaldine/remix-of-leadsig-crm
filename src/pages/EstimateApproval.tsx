@@ -45,6 +45,10 @@ interface EstimateData {
     line_items: LineItem[];
   }>;
   agreement_templates?: Record<string, string> | null;
+  proposal_settings?: {
+    recommended_version_id?: string | null;
+    version_warranty_enabled?: Record<string, boolean> | null;
+  } | null;
 }
 
 interface CompanyData {
@@ -124,7 +128,20 @@ export default function EstimateApproval() {
 
   const handleApprove = async () => {
     if (!token) return;
-    if (!agreementChecks.job_release_agreement || !agreementChecks.job_agreement || !agreementChecks.warranty_agreement) {
+    const activeVersionId =
+      selectedVersionId ||
+      estimate?.proposal_settings?.recommended_version_id ||
+      estimate?.estimate_versions?.[0]?.id ||
+      null;
+    const warrantyMap = estimate?.proposal_settings?.version_warranty_enabled || {};
+    const warrantyRequired =
+      activeVersionId && warrantyMap[activeVersionId] !== undefined
+        ? warrantyMap[activeVersionId] === true
+        : true;
+    const requiredAgreementKeys = (["job_release_agreement", "job_agreement", "warranty_agreement"] as const)
+      .filter((key) => key !== "warranty_agreement" || warrantyRequired);
+
+    if (!requiredAgreementKeys.every((key) => agreementChecks[key])) {
       setErrorMessage("Please accept all required agreements before approval.");
       return;
     }
@@ -137,7 +154,10 @@ export default function EstimateApproval() {
         body: JSON.stringify({
           action: "approve",
           estimate_version_id: selectedVersionId,
-          agreement_acceptance: agreementChecks,
+          agreement_acceptance: {
+            ...agreementChecks,
+            warranty_agreement: warrantyRequired ? agreementChecks.warranty_agreement : false,
+          },
         }),
       });
 
@@ -270,6 +290,18 @@ export default function EstimateApproval() {
 
   const selectedVersion =
     estimate.estimate_versions?.find((version) => version.id === selectedVersionId) || null;
+  const activeVersionId =
+    selectedVersionId ||
+    estimate?.proposal_settings?.recommended_version_id ||
+    estimate?.estimate_versions?.[0]?.id ||
+    null;
+  const warrantyMap = estimate?.proposal_settings?.version_warranty_enabled || {};
+  const warrantyRequired =
+    activeVersionId && warrantyMap[activeVersionId] !== undefined
+      ? warrantyMap[activeVersionId] === true
+      : true;
+  const requiredAgreementKeys = (["job_release_agreement", "job_agreement", "warranty_agreement"] as const)
+    .filter((key) => key !== "warranty_agreement" || warrantyRequired);
   const displayLineItems = selectedVersion?.line_items || estimate.line_items;
   const displaySubtotal = selectedVersion?.subtotal ?? estimate.subtotal;
   const displayTaxRate = selectedVersion?.tax_rate ?? estimate.tax_rate;
@@ -455,7 +487,7 @@ export default function EstimateApproval() {
           <div className="px-6 sm:px-8 py-6 border-t border-slate-100">
             <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-semibold text-slate-900 mb-2">Required agreements</p>
-              {(["job_release_agreement", "job_agreement", "warranty_agreement"] as const).map((key) => (
+              {requiredAgreementKeys.map((key) => (
                 <label key={key} className="flex items-start gap-2 text-sm text-slate-700 mb-2 last:mb-0">
                   <input
                     type="checkbox"

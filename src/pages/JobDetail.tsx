@@ -461,16 +461,41 @@ export default function JobDetail() {
 
   const jobAny = job as any;
   const clientPhone = job.customer?.phone || "";
+  const getPhoneUriValue = (phone: string | null | undefined): string => {
+    if (!phone) return "";
+    const trimmed = phone.trim();
+    if (!trimmed) return "";
+    return trimmed.startsWith("+")
+      ? `+${trimmed.slice(1).replace(/\D/g, "")}`
+      : trimmed.replace(/\D/g, "");
+  };
+  const normalizedClientPhone = getPhoneUriValue(clientPhone);
+  const callHref = normalizedClientPhone ? `tel:${normalizedClientPhone}` : "";
+  const textHref = normalizedClientPhone ? `sms:${normalizedClientPhone}` : "";
+  const isWindowsDesktop = typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
   const clientAddress = [job.address, job.city].filter(Boolean).join(", ");
   const jobDescription = (job.description || job.notes || "").trim();
   const hasSchedules = schedules && schedules.length > 0;
 
   const handleCall = () => {
-    if (clientPhone) window.open(`tel:${clientPhone}`);
+    if (!callHref) {
+      toast.error("Add a customer phone number before calling.");
+      return;
+    }
+    window.open(callHref);
   };
 
   const handleText = () => {
-    if (clientPhone) window.open(`sms:${clientPhone}`);
+    if (!textHref) {
+      toast.error("Add a customer phone number before sending a text.");
+      return;
+    }
+    if (isWindowsDesktop) {
+      navigator.clipboard.writeText(normalizedClientPhone).catch(() => undefined);
+      toast.error("SMS app handoff is not supported in this browser on Windows. Phone number copied.");
+      return;
+    }
+    window.open(textHref);
   };
   const handleNavigate = () => {
     if (clientAddress) {
@@ -746,10 +771,15 @@ export default function JobDetail() {
   };
 
   const handleTextPortalLink = async () => {
-    const fallbackPhone = (portalClientPhone || job?.customer?.phone || "").trim();
+    const fallbackPhone = getPhoneUriValue(portalClientPhone || job?.customer?.phone || "");
     const fallbackToSmsApp = () => {
       if (!fallbackPhone) {
         toast.error("Add a customer phone number before sending a text.");
+        return;
+      }
+      if (isWindowsDesktop) {
+        navigator.clipboard.writeText(fallbackPhone).catch(() => undefined);
+        toast.error("SMS app handoff is not supported in this browser on Windows. Phone number copied.");
         return;
       }
       window.open(`sms:${fallbackPhone}`, "_blank");
