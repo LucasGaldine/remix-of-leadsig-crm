@@ -18,6 +18,20 @@ import { VoiceIntakePanel } from "@/components/voice/VoiceIntakePanel";
 import { matchServiceType, normalizeVoiceLeadParsedData } from "@/lib/voiceIntake";
 import type { VoiceLeadParsedData } from "@/types/voiceIntake";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  findExistingCustomerMatch,
+  type ExistingCustomerMatch,
+} from "@/lib/findExistingCustomerMatch";
 
 interface AddLeadDialogProps {
   open: boolean;
@@ -44,6 +58,8 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
   const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [newClientData, setNewClientData] = useState<CreateCustomerInput>({ ...INITIAL_CLIENT_DATA });
+  const [existingCustomerMatch, setExistingCustomerMatch] = useState<ExistingCustomerMatch | null>(null);
+  const [confirmedExistingCustomerId, setConfirmedExistingCustomerId] = useState<string | null>(null);
 
   const [leadData, setLeadData] = useState({
     serviceType: "",
@@ -92,11 +108,17 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
     setNewClientData({ ...INITIAL_CLIENT_DATA });
     setLeadData({ serviceType: "", estimatedBudget: "", source: "Manual", notes: "" });
     setShowVoiceLeadIntake(false);
+    setExistingCustomerMatch(null);
+    setConfirmedExistingCustomerId(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const getMatchReasonLabel = (match: ExistingCustomerMatch): string => {
+    if (match.reason === "address_and_name") return "same name and address";
+    if (match.reason === "phone") return "matching phone number";
+    return "matching email address";
+  };
 
+  const submitLead = async () => {
     if (clientMode === "new" && !newClientData.name.trim()) {
       toast.error("Contact name is required");
       return;
@@ -117,8 +139,6 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
       return;
     }
 
-    setSaving(true);
-
     try {
       let customerId: string;
       let customerName: string;
@@ -126,21 +146,52 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
       let customerEmail: string | null = null;
       let customerAddress: string | null = null;
       let customerCity: string | null = null;
+      let matchedExistingCustomer: Customer | null = null;
 
       if (clientMode === "new") {
-        const customer = await createCustomer.mutateAsync({
-          name: newClientData.name.trim(),
-          phone: newClientData.phone?.trim() || null,
-          email: newClientData.email?.trim() || null,
-          address: newClientData.address?.trim() || null,
-          city: newClientData.city?.trim() || null,
+        const match = await findExistingCustomerMatch({
+          accountId: currentAccount.id,
+          name: newClientData.name,
+          phone: newClientData.phone,
+          email: newClientData.email,
+          address: newClientData.address,
         });
-        customerId = customer.id;
-        customerName = customer.name;
-        customerPhone = customer.phone;
-        customerEmail = customer.email;
-        customerAddress = customer.address;
-        customerCity = customer.city;
+
+        if (match && confirmedExistingCustomerId !== match.customer.id) {
+          setExistingCustomerMatch(match);
+          return;
+        }
+
+        if (match) {
+          matchedExistingCustomer = match.customer;
+        }
+      }
+
+      setSaving(true);
+
+      if (clientMode === "new") {
+        if (matchedExistingCustomer) {
+          customerId = matchedExistingCustomer.id;
+          customerName = matchedExistingCustomer.name;
+          customerPhone = matchedExistingCustomer.phone;
+          customerEmail = matchedExistingCustomer.email;
+          customerAddress = matchedExistingCustomer.address;
+          customerCity = matchedExistingCustomer.city;
+        } else {
+          const customer = await createCustomer.mutateAsync({
+            name: newClientData.name.trim(),
+            phone: newClientData.phone?.trim() || null,
+            email: newClientData.email?.trim() || null,
+            address: newClientData.address?.trim() || null,
+            city: newClientData.city?.trim() || null,
+          });
+          customerId = customer.id;
+          customerName = customer.name;
+          customerPhone = customer.phone;
+          customerEmail = customer.email;
+          customerAddress = customer.address;
+          customerCity = customer.city;
+        }
       } else if (clientMode === "existing" && selectedCustomer) {
         customerId = selectedCustomer.id;
         customerName = selectedCustomer.name;
@@ -211,6 +262,11 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitLead();
   };
 
   return (
@@ -346,6 +402,46 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
           </form>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={!!existingCustomerMatch}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setExistingCustomerMatch(null);
+            setConfirmedExistingCustomerId(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use existing contact?</AlertDialogTitle>
+            <AlertDialogDescription>
+              We found an existing contact, <strong>{existingCustomerMatch?.customer.name}</strong>, because of{" "}
+              {existingCustomerMatch ? getMatchReasonLabel(existingCustomerMatch) : "a duplicate match"}.
+              Creating this lead will connect to that existing contact instead of creating a new one.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setExistingCustomerMatch(null);
+                setConfirmedExistingCustomerId(null);
+              }}
+            >
+              Go back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!existingCustomerMatch) return;
+                setConfirmedExistingCustomerId(existingCustomerMatch.customer.id);
+                setExistingCustomerMatch(null);
+                void submitLead();
+              }}
+            >
+              Yes, connect to existing contact
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

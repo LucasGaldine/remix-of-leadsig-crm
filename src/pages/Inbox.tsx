@@ -221,7 +221,8 @@ export default function Inbox() {
         !isSinglePersonCompany &&
         Boolean(job.has_unassigned_schedule) &&
         (displayStatus === "scheduled" || displayStatus === "in_progress");
-      const needsInvoice = displayStatus === "completed" && !job.has_invoice && !job.is_estimate_visit;
+      const needsInvoice =
+        displayStatus === "completed" && !job.has_invoice && !job.is_estimate_visit && job.has_estimate;
       const status = isUnassigned
         ? { label: "Unassigned", tone: "attention" as Tone }
         : needsInvoice

@@ -137,6 +137,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
             : sortedSchedules.some((schedule: any) => !Boolean(schedule.suppress_unassigned)) && crewCount === 0;
         const hasInvoice = (job as any).invoices?.length > 0;
         const estimate = (job as any).estimates?.[0] || null;
+        const hasEstimate = Boolean(estimate?.id);
         const estimateTotal = estimate?.total ? Number(estimate.total) : null;
 
         const displayStatus = toDisplayStatus(job.status, sortedSchedules);
@@ -151,6 +152,7 @@ export function useJobs(filter?: { status?: JobStatus; date?: string; limit?: nu
           crew_count: crewCount,
           has_unassigned_schedule: hasUnassignedSchedule,
           has_invoice: hasInvoice,
+          has_estimate: hasEstimate,
           estimate_total: estimateTotal,
           job_schedules: undefined,
           job_assignments: undefined,

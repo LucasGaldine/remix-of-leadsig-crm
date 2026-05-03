@@ -67,7 +67,7 @@ export default function Jobs() {
     }
     if (selectedStatus === "needs_invoice") {
       filteredJobs = allJobs.filter((job: any) =>
-        job.status === "completed" && !job.has_invoice && !job.is_estimate_visit
+        job.status === "completed" && !job.has_invoice && !job.is_estimate_visit && job.has_estimate
       );
       return sortJobItems(filteredJobs, sortBy);
     }
@@ -110,7 +110,7 @@ export default function Jobs() {
       ) {
         counts.unassigned++;
       }
-      if (job.status === "completed" && !job.has_invoice && !job.is_estimate_visit) {
+      if (job.status === "completed" && !job.has_invoice && !job.is_estimate_visit && job.has_estimate) {
         counts.needs_invoice++;
       }
       const lastDate = job.last_scheduled_date || job.scheduled_date;

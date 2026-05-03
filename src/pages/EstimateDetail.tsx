@@ -488,6 +488,7 @@ export default function EstimateDetail() {
   }
 
   const hasChangeOrders = estimate.line_items.some((item: any) => item.is_change_order);
+  const isEstimateApproved = estimate.status === "accepted";
   const isRecurringQuote = !!estimate.recurring_job_id && !estimate.job_id;
   const jobStatusLabelMap: Record<string, string> = {
     new: "New",
@@ -1978,7 +1979,7 @@ export default function EstimateDetail() {
               </button>
             )}
 
-            {estimate.job_id ? (
+            {estimate.job_id && isEstimateApproved ? (
               <div className="hidden md:block">
                 <JobInvoiceCard
                   jobId={estimate.job_id}
@@ -1988,14 +1989,14 @@ export default function EstimateDetail() {
                   openLogPaymentSignal={openLogPaymentSignal}
                 />
               </div>
-            ) : (
+            ) : !estimate.job_id ? (
               <div className="hidden card-elevated rounded-lg p-4 md:block">
                 <h3 className="font-semibold text-foreground">Invoices</h3>
                 <p className="text-sm text-muted-foreground mt-3">
                   Invoices are available on job-based estimates.
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trophy } from "lucide-react";
 
@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { type BasicTier, type PlanKey } from "@/lib/billingPlans";
 import { getBasicTierDisplayName, planOrder, pricingPlans, PricingPlanCard } from "@/components/pricing/PricingPlanCard";
 import { completeOnboardingPlan, markPostOnboardingSkoolModalPending } from "@/lib/onboarding";
+import { getFunctionErrorMessage } from "@/lib/supabaseFunctionErrors";
 
 export default function OnboardingPlan() {
   const navigate = useNavigate();
@@ -36,6 +37,7 @@ export default function OnboardingPlan() {
   const [pendingPlan, setPendingPlan] = useState<PlanKey | null>(null);
   const [selectedBasicTier, setSelectedBasicTier] = useState<BasicTier>(currentTier ?? "solo");
   const [isUpdating, setIsUpdating] = useState(false);
+  const [activeMemberCount, setActiveMemberCount] = useState<number>(1);
 
   const isDowngrade = pendingPlan ? planOrder[pendingPlan] < planOrder[currentPlan] : false;
   const isBasicTierChange = pendingPlan === "basic"
@@ -47,6 +49,37 @@ export default function OnboardingPlan() {
     ? pricingPlans.find((plan) => plan.key === pendingPlan)?.name
     : "";
   const pendingTier: BasicTier | null = pendingPlan === "basic" ? selectedBasicTier : null;
+  const currentPlanIndex = Math.max(
+    pricingPlans.findIndex((plan) => plan.key === currentPlan),
+    0,
+  );
+
+  useEffect(() => {
+    if (!currentAccount?.id) return;
+
+    const loadActiveMemberCount = async () => {
+      const { count } = await supabase
+        .from("account_members")
+        .select("id", { count: "exact", head: true })
+        .eq("account_id", currentAccount.id)
+        .eq("is_active", true);
+
+      setActiveMemberCount(Math.max(1, count ?? 1));
+    };
+
+    void loadActiveMemberCount();
+  }, [currentAccount?.id, pendingPlan]);
+
+  const targetMemberCap = useMemo(() => {
+    if (!pendingPlan) return null;
+    if (pendingPlan === "free") return 1;
+    if (pendingPlan === "basic" && pendingTier === "solo") return 1;
+    if (pendingPlan === "basic" && pendingTier === "team") return 5;
+    return null;
+  }, [pendingPlan, pendingTier]);
+
+  const willDeactivateMembers = targetMemberCap !== null && activeMemberCount > targetMemberCap;
+  const deactivationCount = willDeactivateMembers ? activeMemberCount - (targetMemberCap ?? 0) : 0;
 
   const handleContinue = () => {
     completeOnboardingPlan();
@@ -70,7 +103,9 @@ export default function OnboardingPlan() {
     });
 
     if (error || data?.error) {
-      toast.error(data?.error || error?.message || "Failed to update plan. Please try again.");
+      const message = data?.error
+        || await getFunctionErrorMessage(error, "Failed to update plan. Please try again.");
+      toast.error(message);
       setIsUpdating(false);
       return;
     }
@@ -110,7 +145,12 @@ export default function OnboardingPlan() {
 
         <div className="sm:hidden px-2">
           <Carousel
-            opts={{ align: "start", containScroll: "trimSnaps", dragFree: false }}
+            opts={{
+              align: "start",
+              containScroll: "trimSnaps",
+              dragFree: false,
+              startIndex: currentPlanIndex,
+            }}
             className="w-full touch-pan-y select-none"
           >
             <CarouselContent className="-ml-2">
@@ -166,13 +206,23 @@ export default function OnboardingPlan() {
               {pendingTier ? ` (${getBasicTierDisplayName(pendingTier)})` : ""}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {isBasicTierChange
-                ? `Your company will stay on the Essentials plan and switch to the ${getBasicTierDisplayName(selectedBasicTier)} tier through Stripe billing.`
-                : pendingPlan === "premium"
-                ? "ELO Accelerator service options are Done With You ($3,000/month) or Done For You ($5,000/month). Billing is managed through Stripe."
-                : isDowngrade
-                ? `Your company will move to the ${pendingPlanName} plan and Stripe billing will update to the lower price.`
-                : `Your company will move to the ${pendingPlanName} plan through Stripe billing.`}
+              <div className="space-y-2">
+                <p>
+                  {isBasicTierChange
+                    ? `Your company will stay on the Essentials plan and switch to the ${getBasicTierDisplayName(selectedBasicTier)} tier through Stripe billing.`
+                    : pendingPlan === "premium"
+                    ? "ELO Accelerator service options are Done With You ($3,000/month) or Done For You ($5,000/month). Billing is managed through Stripe."
+                    : isDowngrade
+                    ? `Your company will move to the ${pendingPlanName} plan and Stripe billing will update to the lower price.`
+                    : `Your company will move to the ${pendingPlanName} plan through Stripe billing.`}
+                </p>
+                {willDeactivateMembers && (
+                  <p className="font-medium text-destructive">
+                    Warning: this downgrade allows only {targetMemberCap} active user{targetMemberCap === 1 ? "" : "s"}.
+                    {` ${deactivationCount} team member account${deactivationCount === 1 ? "" : "s"} will be deactivated (not deleted).`}
+                  </p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

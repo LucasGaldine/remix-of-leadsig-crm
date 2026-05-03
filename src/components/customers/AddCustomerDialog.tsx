@@ -7,6 +7,21 @@ import { Label } from "@/components/ui/label";
 import { useCreateCustomer } from "@/hooks/useCustomers";
 import { getCustomerWriteErrorMessage } from "@/lib/customerErrors";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  findExistingCustomerMatch,
+  type ExistingCustomerMatch,
+} from "@/lib/findExistingCustomerMatch";
 
 interface AddCustomerDialogProps {
   open: boolean;
@@ -24,24 +39,49 @@ const INITIAL_FORM = {
 };
 
 export function AddCustomerDialog({ open, onOpenChange, onCustomerCreated, onImportFromCSV }: AddCustomerDialogProps) {
+  const { currentAccount } = useAuth();
   const createCustomer = useCreateCustomer();
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM);
+  const [existingCustomerMatch, setExistingCustomerMatch] = useState<ExistingCustomerMatch | null>(null);
+  const [confirmedExistingCustomerId, setConfirmedExistingCustomerId] = useState<string | null>(null);
 
   const resetForm = () => {
     setFormData(INITIAL_FORM);
+    setExistingCustomerMatch(null);
+    setConfirmedExistingCustomerId(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const getMatchReasonLabel = (match: ExistingCustomerMatch): string => {
+    if (match.reason === "address_and_name") return "same name and address";
+    if (match.reason === "phone") return "matching phone number";
+    return "matching email address";
+  };
 
+  const submitContact = async () => {
     if (!formData.name.trim()) {
-      toast.error("Customer name is required");
+      toast.error("Contact name is required");
       return;
     }
 
-    setSaving(true);
     try {
+      if (currentAccount?.id) {
+        const match = await findExistingCustomerMatch({
+          accountId: currentAccount.id,
+          name: formData.name,
+          phone: formData.phone,
+          email: formData.email,
+          address: formData.address,
+        });
+
+        if (match && confirmedExistingCustomerId !== match.customer.id) {
+          setExistingCustomerMatch(match);
+          return;
+        }
+      }
+
+      setSaving(true);
+
       await createCustomer.mutateAsync({
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
@@ -50,31 +90,37 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerCreated, onImp
         city: formData.city.trim() || null,
       });
 
-      toast.success("Customer created successfully");
+      toast.success("Contact created successfully");
       resetForm();
       onOpenChange(false);
       onCustomerCreated?.();
     } catch (error: unknown) {
-      const errorMessage = getCustomerWriteErrorMessage(error, "Failed to create customer");
-      console.error("Error creating customer:", error);
+      const errorMessage = getCustomerWriteErrorMessage(error, "Failed to create contact");
+      console.error("Error creating contact:", error);
       toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitContact();
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) resetForm();
-        onOpenChange(nextOpen);
-      }}
-    >
-      <DialogContent className="sm:max-w-[500px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Add Customer</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) resetForm();
+          onOpenChange(nextOpen);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Add Contact</DialogTitle>
+          </DialogHeader>
 
         <Button
           type="button"
@@ -104,7 +150,7 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerCreated, onImp
               id="new-customer-name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Customer name"
+              placeholder="Contact name"
               required
             />
           </div>
@@ -157,11 +203,52 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerCreated, onImp
             </Button>
             <Button type="submit" disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Add Customer
+              Add Contact
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={!!existingCustomerMatch}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setExistingCustomerMatch(null);
+            setConfirmedExistingCustomerId(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use existing contact?</AlertDialogTitle>
+            <AlertDialogDescription>
+              We found an existing contact, <strong>{existingCustomerMatch?.customer.name}</strong>, because of{" "}
+              {existingCustomerMatch ? getMatchReasonLabel(existingCustomerMatch) : "a duplicate match"}.
+              Saving will use that existing contact instead of creating a new one.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setExistingCustomerMatch(null);
+                setConfirmedExistingCustomerId(null);
+              }}
+            >
+              Go back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!existingCustomerMatch) return;
+                setConfirmedExistingCustomerId(existingCustomerMatch.customer.id);
+                setExistingCustomerMatch(null);
+                void submitContact();
+              }}
+            >
+              Yes, use existing contact
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

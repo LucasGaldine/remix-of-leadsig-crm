@@ -27,6 +27,7 @@ export interface Job extends DbJob {
   recurring_job_id?: string | null;
   recurring_instance_number?: number | null;
   has_invoice?: boolean;
+  has_estimate?: boolean;
   estimate_total?: number | null;
 }
 
@@ -93,7 +94,7 @@ export function JobCard({
     !hideUnassignedStatus &&
     Boolean(job.has_unassigned_schedule) &&
     (badgeStatus === "scheduled" || badgeStatus === "in_progress");
-  const needsInvoice = badgeStatus === "completed" && !job.has_invoice && !job.is_estimate_visit;
+  const needsInvoice = badgeStatus === "completed" && !job.has_invoice && !job.is_estimate_visit && job.has_estimate;
 
   const status: { label: string; tone: ActivityTone } = isUnassigned
     ? { label: "Unassigned", tone: "attention" }

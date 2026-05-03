@@ -31,6 +31,7 @@ import {
   pricingPlans,
   PricingPlanCard,
 } from "@/components/pricing/PricingPlanCard";
+import { getFunctionErrorMessage } from "@/lib/supabaseFunctionErrors";
 
 export default function SettingsPricing() {
   const { currentAccount, refreshProfile } = useAuth();
@@ -41,12 +42,35 @@ export default function SettingsPricing() {
   const [pendingPlan, setPendingPlan] = useState<PlanKey | null>(null);
   const [selectedBasicTier, setSelectedBasicTier] = useState<BasicTier>(currentTier ?? "solo");
   const [onboardingTrialDays, setOnboardingTrialDays] = useState<number>(0);
+  const [hasAttemptedTierSync, setHasAttemptedTierSync] = useState(false);
+  const [activeMemberCount, setActiveMemberCount] = useState<number>(1);
 
   useEffect(() => {
     if (currentTier) {
       setSelectedBasicTier(currentTier);
     }
   }, [currentTier]);
+
+  useEffect(() => {
+    if (!currentAccount || hasAttemptedTierSync) {
+      return;
+    }
+
+    setHasAttemptedTierSync(true);
+
+    const syncTier = async () => {
+      const { data, error } = await supabase.functions.invoke("stripe-sync-subscription-tier");
+      if (error || data?.error) {
+        return;
+      }
+
+      if (data?.updated) {
+        await refreshProfile();
+      }
+    };
+
+    void syncTier();
+  }, [currentAccount, hasAttemptedTierSync, refreshProfile]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -85,6 +109,10 @@ export default function SettingsPricing() {
     ? pricingPlans.find((p) => p.key === pendingPlan)?.name
     : "";
   const currentPlanName = pricingPlans.find((plan) => plan.key === currentPlan)?.name ?? "Free";
+  const currentPlanIndex = Math.max(
+    pricingPlans.findIndex((plan) => plan.key === currentPlan),
+    0,
+  );
 
   const pendingTier: BasicTier | null = useMemo(() => {
     if (pendingPlan !== "basic") {
@@ -92,6 +120,33 @@ export default function SettingsPricing() {
     }
     return selectedBasicTier;
   }, [pendingPlan, selectedBasicTier]);
+
+  useEffect(() => {
+    if (!currentAccount?.id) return;
+
+    const loadActiveMemberCount = async () => {
+      const { count } = await supabase
+        .from("account_members")
+        .select("id", { count: "exact", head: true })
+        .eq("account_id", currentAccount.id)
+        .eq("is_active", true);
+
+      setActiveMemberCount(Math.max(1, count ?? 1));
+    };
+
+    void loadActiveMemberCount();
+  }, [currentAccount?.id, pendingPlan]);
+
+  const targetMemberCap = useMemo(() => {
+    if (!pendingPlan) return null;
+    if (pendingPlan === "free") return 1;
+    if (pendingPlan === "basic" && pendingTier === "solo") return 1;
+    if (pendingPlan === "basic" && pendingTier === "team") return 5;
+    return null;
+  }, [pendingPlan, pendingTier]);
+
+  const willDeactivateMembers = targetMemberCap !== null && activeMemberCount > targetMemberCap;
+  const deactivationCount = willDeactivateMembers ? activeMemberCount - (targetMemberCap ?? 0) : 0;
 
   const handleChangePlan = async () => {
     if (!pendingPlan || !currentAccount) return;
@@ -109,7 +164,9 @@ export default function SettingsPricing() {
     });
 
     if (error || data?.error) {
-      toast.error(data?.error || error?.message || "Failed to update plan. Please try again.");
+      const message = data?.error
+        || await getFunctionErrorMessage(error, "Failed to update plan. Please try again.");
+      toast.error(message);
       setIsUpdating(false);
       return;
     }
@@ -156,7 +213,12 @@ export default function SettingsPricing() {
 
           <div className="sm:hidden px-2">
             <Carousel
-              opts={{ align: "start", containScroll: "trimSnaps", dragFree: false }}
+              opts={{
+                align: "start",
+                containScroll: "trimSnaps",
+                dragFree: false,
+                startIndex: currentPlanIndex,
+              }}
               className="w-full touch-pan-y select-none"
             >
               <CarouselContent className="-ml-2">
@@ -218,13 +280,23 @@ export default function SettingsPricing() {
               {pendingTier ? ` (${getBasicTierDisplayName(pendingTier)})` : ""}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {isBasicTierChange
-                ? `Your company will stay on the Essentials plan and switch to the ${getBasicTierDisplayName(selectedBasicTier)} tier through Stripe billing.`
-                : pendingPlan === "premium"
-                ? "Pro is $497/month plus a one-time $3,000 setup fee. Billing is managed through Stripe."
-                : isDowngrade
-                  ? `Your company will move to the ${pendingPlanName} plan and Stripe billing will update to the lower price.`
-                  : `Your company will move to the ${pendingPlanName} plan through Stripe billing.`}
+              <div className="space-y-2">
+                <p>
+                  {isBasicTierChange
+                    ? `Your company will stay on the Essentials plan and switch to the ${getBasicTierDisplayName(selectedBasicTier)} tier through Stripe billing.`
+                    : pendingPlan === "premium"
+                    ? "Pro is $497/month plus a one-time $3,000 setup fee. Billing is managed through Stripe."
+                    : isDowngrade
+                      ? `Your company will move to the ${pendingPlanName} plan and Stripe billing will update to the lower price.`
+                      : `Your company will move to the ${pendingPlanName} plan through Stripe billing.`}
+                </p>
+                {willDeactivateMembers && (
+                  <p className="font-medium text-destructive">
+                    Warning: this downgrade allows only {targetMemberCap} active user{targetMemberCap === 1 ? "" : "s"}.
+                    {` ${deactivationCount} team member account${deactivationCount === 1 ? "" : "s"} will be deactivated (not deleted).`}
+                  </p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

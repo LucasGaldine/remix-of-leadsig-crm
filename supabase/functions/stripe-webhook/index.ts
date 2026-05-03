@@ -1,6 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
+import {
+  BASIC_TIER_MONTHLY_PRICE_CENTS,
+  PREMIUM_MONTHLY_PRICE_CENTS,
+  isBasicTier,
+  isPlanKey,
+  type BasicTier,
+  type PlanKey,
+} from "../_shared/billing-plans.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +16,49 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
+
+function inferTierFromSubscription(subscription: Stripe.Subscription): BasicTier | null {
+  for (const item of subscription.items.data) {
+    const metadataTier = item.price?.metadata?.leadsig_tier ?? "";
+    if (isBasicTier(metadataTier)) {
+      return metadataTier;
+    }
+  }
+
+  for (const item of subscription.items.data) {
+    const unitAmount = item.price?.unit_amount ?? null;
+    if (unitAmount === BASIC_TIER_MONTHLY_PRICE_CENTS.solo) return "solo";
+    if (unitAmount === BASIC_TIER_MONTHLY_PRICE_CENTS.team) return "team";
+    if (unitAmount === BASIC_TIER_MONTHLY_PRICE_CENTS.growth) return "growth";
+  }
+
+  return null;
+}
+
+function inferPlanFromSubscription(subscription: Stripe.Subscription): PlanKey | null {
+  for (const item of subscription.items.data) {
+    const metadataPlan = item.price?.metadata?.leadsig_plan ?? "";
+    if (isPlanKey(metadataPlan)) {
+      return metadataPlan;
+    }
+  }
+
+  for (const item of subscription.items.data) {
+    const unitAmount = item.price?.unit_amount ?? null;
+    if (
+      unitAmount === BASIC_TIER_MONTHLY_PRICE_CENTS.solo
+      || unitAmount === BASIC_TIER_MONTHLY_PRICE_CENTS.team
+      || unitAmount === BASIC_TIER_MONTHLY_PRICE_CENTS.growth
+    ) {
+      return "basic";
+    }
+    if (unitAmount === PREMIUM_MONTHLY_PRICE_CENTS) {
+      return "premium";
+    }
+  }
+
+  return null;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -392,14 +443,18 @@ async function handleCheckoutSessionCompleted(
 
   const accountId = session.metadata?.account_id;
   const targetPlan = session.metadata?.target_plan;
-  if (!accountId || !targetPlan) {
+  const targetTier = session.metadata?.target_tier ?? "";
+  if (!accountId || !targetPlan || !isPlanKey(targetPlan)) {
     return;
   }
+
+  const normalizedTier = targetPlan === "basic" && isBasicTier(targetTier) ? targetTier : null;
 
   const { error } = await supabase
     .from("accounts")
     .update({
       pricing_plan: targetPlan,
+      pricing_tier: normalizedTier,
       updated_at: new Date().toISOString(),
     })
     .eq("id", accountId);
@@ -419,12 +474,12 @@ async function handleSubscriptionChanged(
   const accountLookup = accountIdFromMetadata
     ? supabase
         .from("accounts")
-        .select("id, pricing_plan")
+        .select("id, pricing_plan, pricing_tier")
         .eq("id", accountIdFromMetadata)
         .maybeSingle()
     : supabase
         .from("accounts")
-        .select("id, pricing_plan")
+        .select("id, pricing_plan, pricing_tier")
         .eq("stripe_subscription_id", subscription.id)
         .maybeSingle();
 
@@ -435,11 +490,32 @@ async function handleSubscriptionChanged(
   }
 
   const isDeleted = eventType === "customer.subscription.deleted";
+  const targetPlanFromMetadata = subscription.metadata?.target_plan;
+  const targetTierFromMetadata = subscription.metadata?.target_tier ?? "";
+  const inferredPlan = inferPlanFromSubscription(subscription);
+  const inferredTier = inferTierFromSubscription(subscription);
+  const resolvedPlan =
+    !isDeleted && targetPlanFromMetadata && isPlanKey(targetPlanFromMetadata)
+      ? targetPlanFromMetadata
+      : !isDeleted && inferredPlan
+      ? inferredPlan
+      : account.pricing_plan;
+  const resolvedTier =
+    !isDeleted && resolvedPlan === "basic"
+      ? isBasicTier(targetTierFromMetadata)
+        ? targetTierFromMetadata
+        : inferredTier
+        ? inferredTier
+        : isBasicTier(account.pricing_tier)
+        ? account.pricing_tier
+        : null
+      : null;
 
   const { error } = await supabase
     .from("accounts")
     .update({
-      pricing_plan: isDeleted ? "free" : account.pricing_plan,
+      pricing_plan: isDeleted ? "free" : resolvedPlan,
+      pricing_tier: isDeleted ? null : resolvedTier,
       updated_at: new Date().toISOString(),
     })
     .eq("id", account.id);

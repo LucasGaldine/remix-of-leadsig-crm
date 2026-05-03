@@ -35,14 +35,15 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 
 describe("Customers import flow", () => {
-  it("keeps the CSV modal open when selecting Import from CSV inside Add Customer", async () => {
+  it("keeps the CSV modal open when selecting Import from CSV inside Add Contact", async () => {
     render(
       <MemoryRouter>
         <Customers />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /add customer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add contact/i }));
     fireEvent.click(screen.getByRole("button", { name: /import from csv/i }));
 
     expect(await screen.findByText("Import Customers from CSV")).toBeInTheDocument();

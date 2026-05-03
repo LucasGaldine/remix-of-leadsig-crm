@@ -1,4 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  isBasicTier,
+  isPlanKey,
+  type BasicTier,
+  type PlanKey,
+} from "../_shared/billing-plans.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,13 +49,14 @@ Deno.serve(async (req: Request) => {
   const targetAccountId = (body.target_account_id || "").trim();
   if (!targetAccountId) return json({ error: "target_account_id is required" }, 400);
 
-  const normalizedPlan = (body.target_plan || "basic").trim().toLowerCase();
-  let normalizedTier: string | null = (body.target_tier || "solo").trim().toLowerCase();
-
-  if (!["basic", "premium"].includes(normalizedPlan)) {
+  const normalizedPlanRaw = (body.target_plan || "basic").trim().toLowerCase();
+  if (!isPlanKey(normalizedPlanRaw) || normalizedPlanRaw === "free") {
     return json({ error: "Manual upgrades only support basic or premium plans" }, 400);
   }
-  if (normalizedPlan === "basic" && !["solo", "team", "growth"].includes(normalizedTier || "")) {
+  const normalizedPlan: Exclude<PlanKey, "free"> = normalizedPlanRaw;
+
+  let normalizedTier: BasicTier | null = ((body.target_tier || "solo").trim().toLowerCase() || null) as BasicTier | null;
+  if (normalizedPlan === "basic" && !isBasicTier(normalizedTier)) {
     return json({ error: "Invalid basic tier" }, 400);
   }
   if (normalizedPlan === "premium") normalizedTier = null;

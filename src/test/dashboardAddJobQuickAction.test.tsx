@@ -94,7 +94,7 @@ describe("Dashboard Add Job quick action", () => {
     expect(screen.getByText("new-create-job-dialog")).toBeInTheDocument();
   });
 
-  it("opens both lead and job actions from the dashboard floating menu", () => {
+  it("shows lead, contact, and job actions from the dashboard floating menu", () => {
     render(
       <MemoryRouter>
         <Index />
@@ -104,6 +104,7 @@ describe("Dashboard Add Job quick action", () => {
     fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
 
     expect(screen.getByRole("button", { name: /add lead/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add contact/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add job/i })).toBeInTheDocument();
   });
 });

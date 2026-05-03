@@ -240,39 +240,60 @@ export default function SettingsProfile() {
 
     setUploadingAvatar(true);
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const { data: refreshedSessionData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) throw refreshError;
+
+      const session = refreshedSessionData.session;
+      if (!session?.access_token) {
+        throw new Error("Your session expired. Please sign out and sign back in, then try again.");
+      }
+
+      const rawExt = file.name.split(".").pop()?.toLowerCase();
+      const safeExt = rawExt && rawExt !== file.name.toLowerCase()
+        ? rawExt
+        : (file.type.split("/")[1] || "jpg").toLowerCase();
+      const filePath = `avatars/${user.id}-${Date.now()}.${safeExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from("profiles")
         .upload(filePath, file, {
           cacheControl: "3600",
-          upsert: true,
+          contentType: file.type || "image/jpeg",
+          upsert: false,
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
+      }
 
       const { data: urlData } = supabase.storage
         .from("profiles")
         .getPublicUrl(filePath);
 
+      const publicUrl = urlData.publicUrl;
+
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
-          avatar_url: urlData.publicUrl,
+          avatar_url: publicUrl,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        throw new Error(`Profile update failed: ${updateError.message}`);
+      }
 
-      setAvatarUrl(urlData.publicUrl);
+      setAvatarUrl(publicUrl);
       await refreshProfile();
       toast.success("Profile photo updated");
     } catch (error) {
       console.error("Error uploading avatar:", error);
-      toast.error("Failed to upload photo");
+      const message =
+        error && typeof error === "object" && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Failed to upload photo";
+      toast.error(message);
     } finally {
       setUploadingAvatar(false);
     }

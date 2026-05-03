@@ -117,6 +117,74 @@ function isAssistantLikeRole(role: unknown): boolean {
   return normalized === "assistant" || normalized === "agent" || normalized === "ai";
 }
 
+async function findOrCreateCustomerForWebsiteLead(params: {
+  supabase: ReturnType<typeof createClient>;
+  accountId: string;
+  createdBy: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+}): Promise<{ id: string }> {
+  const normalizedName = params.name.trim();
+  const normalizedEmail = params.email?.trim().toLowerCase() || null;
+  const normalizedPhone = params.phone?.trim() || null;
+
+  if (normalizedPhone) {
+    const { data: byPhone, error: byPhoneError } = await params.supabase
+      .from("customers")
+      .select("id")
+      .eq("account_id", params.accountId)
+      .eq("phone", normalizedPhone)
+      .limit(1)
+      .maybeSingle();
+
+    if (byPhoneError) throw byPhoneError;
+    if (byPhone?.id) return { id: byPhone.id };
+  }
+
+  if (normalizedEmail) {
+    const { data: byEmail, error: byEmailError } = await params.supabase
+      .from("customers")
+      .select("id")
+      .eq("account_id", params.accountId)
+      .ilike("email", normalizedEmail)
+      .limit(1)
+      .maybeSingle();
+
+    if (byEmailError) throw byEmailError;
+    if (byEmail?.id) return { id: byEmail.id };
+  }
+
+  const { data: byName, error: byNameError } = await params.supabase
+    .from("customers")
+    .select("id")
+    .eq("account_id", params.accountId)
+    .ilike("name", normalizedName)
+    .limit(1)
+    .maybeSingle();
+
+  if (byNameError) throw byNameError;
+  if (byName?.id) return { id: byName.id };
+
+  const { data: createdCustomer, error: createCustomerError } = await params.supabase
+    .from("customers")
+    .insert({
+      account_id: params.accountId,
+      created_by: params.createdBy,
+      name: normalizedName,
+      email: normalizedEmail,
+      phone: normalizedPhone,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (createCustomerError || !createdCustomer?.id) {
+    throw createCustomerError ?? new Error("No customer row returned from insert");
+  }
+
+  return { id: createdCustomer.id };
+}
+
 async function createRetellChat(params: {
   supabase: ReturnType<typeof createClient>;
   apiKey: string;
@@ -332,10 +400,33 @@ Deno.serve(async (req) => {
       return json({ error: "Account not found" }, 404);
     }
 
+    let customerId: string;
+    try {
+      const customer = await findOrCreateCustomerForWebsiteLead({
+        supabase,
+        accountId: account_id,
+        createdBy: member.user_id,
+        name: name.trim(),
+        email: email?.trim() || null,
+        phone: phone?.trim() || null,
+      });
+      customerId = customer.id;
+    } catch (customerError) {
+      return json({
+        success: false,
+        error: "Failed to resolve contact for website lead",
+        debug: {
+          stage: "find_or_create_customer",
+          message: customerError instanceof Error ? customerError.message : String(customerError),
+        },
+      }, 200);
+    }
+
     const { data: createdLead, error: leadError } = await supabase
       .from("leads")
       .insert({
         account_id,
+        customer_id: customerId,
         name: name.trim(),
         email: email?.trim() || null,
         phone: phone?.trim() || null,

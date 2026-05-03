@@ -8,8 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { type BasicTier, type PlanKey } from "@/lib/billingPlans";
 
 const ADMIN_EMAIL = "lucas.galdine@gmail.com";
 
@@ -49,6 +61,35 @@ interface ReleaseUpdateRecord {
   created_at: string;
 }
 
+const PLAN_LABELS: Record<string, string> = {
+  free: "Free",
+  basic: "Essentials",
+  premium: "ELO Accelerator",
+};
+
+const BASIC_TIER_LABELS: Record<string, string> = {
+  solo: "Solo",
+  team: "Team",
+  growth: "Growth",
+};
+
+const UPGRADE_PLAN_LABELS: Record<Exclude<PlanKey, "free">, string> = {
+  basic: "Essentials",
+  premium: "ELO Accelerator",
+};
+
+function formatCompanyPlanLabel(company: CompanyAccount): string {
+  const planKey = (company.pricing_plan ?? "").trim().toLowerCase();
+  const tierKey = (company.pricing_tier ?? "").trim().toLowerCase();
+  const planLabel = PLAN_LABELS[planKey];
+  const tierLabel = BASIC_TIER_LABELS[tierKey];
+
+  if (!planLabel && !tierLabel) return "No plan";
+  if (planKey === "basic" && tierLabel) return `${planLabel} (${tierLabel})`;
+  if (planLabel) return planLabel;
+  return tierLabel;
+}
+
 const slugify = (value: string) =>
   value
     .toLowerCase()
@@ -79,6 +120,9 @@ export default function Admin() {
   const [companies, setCompanies] = useState<CompanyAccount[]>([]);
   const [companySearch, setCompanySearch] = useState("");
   const [upgradingCompanyId, setUpgradingCompanyId] = useState<string | null>(null);
+  const [upgradeModalCompany, setUpgradeModalCompany] = useState<CompanyAccount | null>(null);
+  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<Exclude<PlanKey, "free">>("basic");
+  const [selectedUpgradeTier, setSelectedUpgradeTier] = useState<BasicTier>("solo");
 
   const [releaseTitle, setReleaseTitle] = useState("");
   const [releaseDescription, setReleaseDescription] = useState("");
@@ -161,23 +205,42 @@ export default function Admin() {
     fetchCompanies();
   }, [isAllowedAdmin]);
 
-  const handleManualUpgrade = async (company: CompanyAccount) => {
+  const openManualUpgradeModal = (company: CompanyAccount) => {
+    setUpgradeModalCompany(company);
+    const currentPlan = (company.pricing_plan ?? "").toLowerCase();
+    const currentTier = (company.pricing_tier ?? "").toLowerCase();
+
+    if (currentPlan === "basic") {
+      setSelectedUpgradePlan("basic");
+      if (currentTier === "solo") {
+        setSelectedUpgradeTier("team");
+      } else if (currentTier === "team") {
+        setSelectedUpgradeTier("growth");
+      } else {
+        setSelectedUpgradePlan("premium");
+        setSelectedUpgradeTier("solo");
+      }
+      return;
+    }
+
+    setSelectedUpgradePlan("basic");
+    setSelectedUpgradeTier("solo");
+  };
+
+  const handleManualUpgrade = async () => {
+    if (!upgradeModalCompany) return;
     if (!isAllowedAdmin) {
       toast.error("Only the admin account can upgrade companies.");
       return;
     }
 
-    const confirmed = window.confirm(
-      `Mark ${company.company_name || "this company"} as upgraded? This sets plan to Basic (Solo).`,
-    );
-    if (!confirmed) return;
-
-    setUpgradingCompanyId(company.id);
+    const targetTier = selectedUpgradePlan === "basic" ? selectedUpgradeTier : null;
+    setUpgradingCompanyId(upgradeModalCompany.id);
     const { error } = await supabase.functions.invoke("secure-admin-mark-account-upgraded", {
       body: {
-        target_account_id: company.id,
-        target_plan: "basic",
-        target_tier: "solo",
+        target_account_id: upgradeModalCompany.id,
+        target_plan: selectedUpgradePlan,
+        target_tier: targetTier,
       },
     });
 
@@ -188,8 +251,11 @@ export default function Admin() {
       return;
     }
 
-    toast.success(`${company.company_name || "Company"} marked as upgraded.`);
+    toast.success(
+      `${upgradeModalCompany.company_name || "Company"} upgraded to ${UPGRADE_PLAN_LABELS[selectedUpgradePlan]}${targetTier ? ` (${BASIC_TIER_LABELS[targetTier]})` : ""}.`,
+    );
     await fetchCompanies();
+    setUpgradeModalCompany(null);
     setUpgradingCompanyId(null);
   };
 
@@ -451,12 +517,14 @@ export default function Admin() {
     if (!query) return companies;
 
     return companies.filter((company) => {
+      const planLabel = formatCompanyPlanLabel(company);
       const haystack = [
         company.company_name,
         company.company_email,
         company.company_phone,
         company.pricing_plan,
         company.pricing_tier,
+        planLabel,
       ]
         .filter(Boolean)
         .join(" ")
@@ -572,16 +640,16 @@ export default function Admin() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
-                            {company.pricing_plan || company.pricing_tier || "No plan"}
+                            {formatCompanyPlanLabel(company)}
                           </span>
-                          {company.pricing_plan === "free" ? (
+                          {company.pricing_plan !== "premium" ? (
                             <Button
                               size="sm"
                               variant="outline"
                               disabled={upgradingCompanyId === company.id}
-                              onClick={() => handleManualUpgrade(company)}
+                              onClick={() => openManualUpgradeModal(company)}
                             >
-                              {upgradingCompanyId === company.id ? "Upgrading..." : "Mark upgraded"}
+                              {upgradingCompanyId === company.id ? "Upgrading..." : "Upgrade"}
                             </Button>
                           ) : null}
                         </div>
@@ -861,6 +929,58 @@ export default function Admin() {
       </main>
 
       <MobileNav />
+
+      <AlertDialog open={!!upgradeModalCompany} onOpenChange={(open) => !open && setUpgradeModalCompany(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Upgrade account</AlertDialogTitle>
+            <AlertDialogDescription>
+              Choose the level for {upgradeModalCompany?.company_name || "this company"}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="upgrade-plan">Plan</Label>
+              <Select
+                value={selectedUpgradePlan}
+                onValueChange={(value) => setSelectedUpgradePlan(value as Exclude<PlanKey, "free">)}
+              >
+                <SelectTrigger id="upgrade-plan">
+                  <SelectValue placeholder="Select plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="basic">Essentials</SelectItem>
+                  <SelectItem value="premium">ELO Accelerator</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedUpgradePlan === "basic" ? (
+              <div className="space-y-1">
+                <Label htmlFor="upgrade-tier">Essentials tier</Label>
+                <Select value={selectedUpgradeTier} onValueChange={(value) => setSelectedUpgradeTier(value as BasicTier)}>
+                  <SelectTrigger id="upgrade-tier">
+                    <SelectValue placeholder="Select tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="solo">Solo</SelectItem>
+                    <SelectItem value="team">Team</SelectItem>
+                    <SelectItem value="growth">Growth</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!upgradingCompanyId}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleManualUpgrade} disabled={!!upgradingCompanyId}>
+              {upgradingCompanyId ? "Upgrading..." : "Confirm upgrade"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

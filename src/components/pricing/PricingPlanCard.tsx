@@ -22,7 +22,7 @@ interface PlanFeature {
 type PremiumServiceOption = "done-with-you" | "done-for-you";
 
 function getPremiumServiceMonthlyPrice(option: PremiumServiceOption): number {
-  return option === "done-for-you" ? 5000 : 3000;
+  return option === "done-for-you" ? 1997 : 1997;
 }
 
 const ELO_ACCELERATOR_LEARN_MORE_URL = "https://www.elitelandscapingoperator.com/join";
@@ -69,6 +69,7 @@ export const pricingPlans: PricingPlanDefinition[] = [
     period: "/month",
     description: "Tiered pricing for growing teams with automation-ready workflows.",
     icon: <Zap className="h-6 w-6" />,
+    badge: "Most Popular",
   },
   {
     key: "premium",
@@ -77,7 +78,6 @@ export const pricingPlans: PricingPlanDefinition[] = [
     description: "Partner with our professionals at LeadSig to level up your service business.",
     icon: <Crown className="h-6 w-6" />,
     highlighted: true,
-    badge: "Most Popular",
   },
 ];
 
@@ -228,7 +228,7 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
     <div
       className={cn(
         "relative flex h-full flex-col rounded-xl border bg-card p-6 transition-shadow",
-        hasTopBadge && "pt-10",
+        hasTopBadge && "pt-8",
         isPrimaryPlan && "border-primary bg-primary text-primary-foreground shadow-lg",
         isSelected ? "border-primary shadow-lg ring-1 ring-primary/20" : "border-border shadow-sm",
       )}
@@ -237,7 +237,7 @@ export function PricingPlanCard(props: PricingPlanCardProps) {
         <Badge
           variant="outline"
           className={cn(
-            "absolute left-1/2 top-2 -translate-x-1/2 px-3 py-0.5 text-xs",
+            "absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2 px-3 py-0.5 text-xs",
             isPrimaryPlan
               ? "border-primary-foreground/40 bg-primary text-primary-foreground"
               : "bg-card",

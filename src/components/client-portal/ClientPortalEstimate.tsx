@@ -212,6 +212,7 @@ export function ClientPortalEstimate({
   const [activeDocument, setActiveDocument] = useState<{ title: string; content: string } | null>(null);
   const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
   const [approvalAgreementTemplates, setApprovalAgreementTemplates] = useState<Record<string, string> | null>(null);
+  const [isVisualizationPortrait, setIsVisualizationPortrait] = useState(false);
   const [agreementChecks, setAgreementChecks] = useState({
     job_release_agreement: true,
     job_agreement: true,
@@ -1213,7 +1214,11 @@ export function ClientPortalEstimate({
               <img
                 src={estimate.project_visualization_image_url}
                 alt="Project visualization"
-                className="w-full rounded-xl border border-slate-200 object-cover"
+                className={`w-full rounded-xl border border-slate-200 ${isVisualizationPortrait ? "max-h-[70vh] bg-slate-50 p-2 object-contain" : "object-cover"}`}
+                onLoad={(event) => {
+                  const { naturalWidth, naturalHeight } = event.currentTarget;
+                  setIsVisualizationPortrait(naturalHeight > naturalWidth);
+                }}
               />
             </div>
           )}

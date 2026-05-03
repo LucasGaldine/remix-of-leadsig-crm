@@ -6,7 +6,9 @@ export interface AccountMemberRow {
   role: string;
   joined_at?: string;
   invited_at?: string | null;
+  is_active?: boolean;
   description: string | null;
+  inactive_reason?: string | null;
 }
 
 interface FetchResult {
@@ -24,7 +26,13 @@ type UpdateMemberFn = (updates: { role?: string; description?: string | null }) 
 export async function fetchAccountMembersWithDescriptionFallback(fetchMembers: FetchMembersFn): Promise<AccountMemberRow[]> {
   let response = await fetchMembers(true);
 
-  if (response.error && isMissingColumnError(response.error as { code?: string; message?: string }, "description")) {
+  if (
+    response.error &&
+    (
+      isMissingColumnError(response.error as { code?: string; message?: string }, "description")
+      || isMissingColumnError(response.error as { code?: string; message?: string }, "inactive_reason")
+    )
+  ) {
     response = await fetchMembers(false);
   }
 
@@ -38,7 +46,9 @@ export async function fetchAccountMembersWithDescriptionFallback(fetchMembers: F
     role: String(member.role || ""),
     joined_at: typeof member.joined_at === "string" ? member.joined_at : undefined,
     invited_at: typeof member.invited_at === "string" ? member.invited_at : null,
+    is_active: typeof member.is_active === "boolean" ? member.is_active : true,
     description: typeof member.description === "string" ? member.description : null,
+    inactive_reason: typeof member.inactive_reason === "string" ? member.inactive_reason : null,
   }));
 }
 

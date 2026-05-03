@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,7 +6,7 @@ import { useAuth, AppRole } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, Mail, Phone, UserPlus, Trash2, Copy, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, CreditCard as Edit, Pencil } from "lucide-react";
+import { Users, Mail, Phone, UserPlus, Trash2, Copy, CircleCheck as CheckCircle2, CircleAlert as AlertCircle, TriangleAlert, Pencil } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -49,16 +49,24 @@ import {
 import { CrewRoleSelect } from "@/components/crew/CrewRoleSelect";
 import { roleBadgeColors, roleLabels } from "@/lib/crewRoles";
 import { MockCrewProfileDialog } from "@/components/crew/MockCrewProfileDialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface AccountMember {
   id: string;
   user_id: string;
   role: AppRole;
   joined_at: string;
+  is_active: boolean;
+  inactive_reason: string | null;
   description: string | null;
   full_name: string | null;
   email: string | null;
   phone: string | null;
+}
+
+interface AccountMemberWithWarning extends AccountMember {
+  showDeactivationWarning: boolean;
+  warningReason: string | null;
 }
 
 interface MockCrewProfile {
@@ -99,14 +107,13 @@ export default function SettingsCrewManagement() {
 
       const membersData = await fetchAccountMembersWithDescriptionFallback(async (includeDescription) => {
         const columns = includeDescription
-          ? "id, user_id, role, joined_at, description"
-          : "id, user_id, role, joined_at";
+          ? "id, user_id, role, joined_at, is_active, description, inactive_reason"
+          : "id, user_id, role, joined_at, is_active";
 
         return supabase
           .from('account_members')
           .select(columns)
           .eq('account_id', currentAccount.id)
-          .eq('is_active', true)
           .order('joined_at', { ascending: false });
       });
 
@@ -129,6 +136,8 @@ export default function SettingsCrewManagement() {
         user_id: member.user_id,
         role: member.role,
         joined_at: member.joined_at,
+        is_active: member.is_active ?? true,
+        inactive_reason: member.inactive_reason || null,
         description: member.description || null,
         full_name: profilesMap.get(member.user_id)?.full_name || null,
         email: profilesMap.get(member.user_id)?.email || null,
@@ -375,6 +384,11 @@ export default function SettingsCrewManagement() {
       return;
     }
 
+    if (!memberToEdit.is_active) {
+      toast.error("Inactive members cannot be edited.");
+      return;
+    }
+
     updateMemberMutation.mutate({
       memberId: memberToEdit.id,
       updates,
@@ -468,6 +482,60 @@ export default function SettingsCrewManagement() {
     Boolean(memberToEdit) &&
     normalizeCrewDescription(memberDescription) !== normalizeCrewDescription(memberToEdit?.description);
 
+  const membersWithWarnings = useMemo<AccountMemberWithWarning[]>(() => {
+    if (!members || members.length === 0) return [];
+
+    const plan = currentAccount?.pricing_plan ?? "free";
+    const tier = (currentAccount as { pricing_tier?: string | null } | null)?.pricing_tier ?? null;
+
+    const memberCap =
+      plan === "free" ? 1
+      : plan === "basic" && tier === "solo" ? 1
+      : plan === "basic" && tier === "team" ? 5
+      : null;
+
+    if (memberCap === null) {
+      return members.map((member) => ({
+        ...member,
+        showDeactivationWarning: !member.is_active,
+        warningReason: member.inactive_reason || "This member is inactive.",
+      }));
+    }
+
+    const activeMembers = members.filter((member) => member.is_active);
+    const sortedActiveForCap = [...activeMembers].sort((a, b) => {
+      const rolePriority = (role: AppRole) =>
+        role === "owner" ? 0 : role === "admin" ? 1 : role === "sales" ? 2 : 3;
+      const byRole = rolePriority(a.role) - rolePriority(b.role);
+      if (byRole !== 0) return byRole;
+      const aTime = new Date(a.joined_at).getTime();
+      const bTime = new Date(b.joined_at).getTime();
+      if (aTime !== bTime) return aTime - bTime;
+      return a.id.localeCompare(b.id);
+    });
+
+    const keptIds = new Set(sortedActiveForCap.slice(0, memberCap).map((member) => member.id));
+
+    return members.map((member) => {
+      const overCapButStillActive = member.is_active && !keptIds.has(member.id);
+      const showDeactivationWarning = !member.is_active || overCapButStillActive;
+      const warningReason =
+        member.inactive_reason
+        || (
+          overCapButStillActive
+            ? `This account is on ${tier ? `${tier} ` : ""}${plan} and exceeds the active member limit. This member should be deactivated.`
+            : null
+        )
+        || (!member.is_active ? "This member is inactive." : null);
+
+      return {
+        ...member,
+        showDeactivationWarning,
+        warningReason,
+      };
+    });
+  }, [members, currentAccount]);
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader
@@ -477,6 +545,7 @@ export default function SettingsCrewManagement() {
         backTo="/settings"
       />
       <main className="max-w-[var(--content-max-width)] m-auto p-4 md:p-8 space-y-6">
+        <TooltipProvider>
 
         <Card>
           <CardHeader>
@@ -573,10 +642,28 @@ export default function SettingsCrewManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {members.map((member) => (
+                    {membersWithWarnings.map((member) => (
                       <TableRow key={member.id}>
                         <TableCell className="font-medium whitespace-nowrap">
-                          {member.full_name || 'Unknown'}
+                          <div className="flex items-center gap-2">
+                            <span>{member.full_name || 'Unknown'}</span>
+                            {member.showDeactivationWarning && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="inline-flex"
+                                    aria-label={member.warningReason || "Member warning"}
+                                  >
+                                    <TriangleAlert className="h-4 w-4 text-destructive" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-sm whitespace-normal break-words text-left leading-snug">
+                                  {member.warningReason || "This member is inactive."}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="min-w-0">
                           <div className="flex items-center gap-2 min-w-0">
@@ -599,9 +686,9 @@ export default function SettingsCrewManagement() {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            className={`${roleBadgeColors[member.role]} whitespace-nowrap text-white`}
+                            className={`${member.is_active ? roleBadgeColors[member.role] : "bg-muted text-muted-foreground"} whitespace-nowrap`}
                           >
-                            {roleLabels[member.role]}
+                            {roleLabels[member.role]}{member.is_active ? "" : " (Inactive)"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -615,6 +702,7 @@ export default function SettingsCrewManagement() {
                                 size="sm"
                                 onClick={() => handleEditRole(member)}
                                 title="Edit role"
+                                disabled={!member.is_active}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -729,6 +817,7 @@ export default function SettingsCrewManagement() {
             )}
           </CardContent>
         </Card>
+        </TooltipProvider>
       </main>
 
       <Dialog open={!!memberToEdit} onOpenChange={(open) => {

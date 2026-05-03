@@ -24,7 +24,7 @@ vi.mock("@/hooks/useCustomers", () => ({
 }));
 
 describe("Customers page FAB", () => {
-  it("shows the main actions menu with add lead and add job", async () => {
+  it("shows the main actions menu with add lead, add contact, and add job", async () => {
     render(
       <MemoryRouter>
         <Customers />
@@ -34,6 +34,7 @@ describe("Customers page FAB", () => {
     fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
 
     expect(screen.getByRole("button", { name: /add lead/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add contact/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add job/i })).toBeInTheDocument();
   });
 });

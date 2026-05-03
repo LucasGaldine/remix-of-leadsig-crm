@@ -42,6 +42,20 @@ import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/t
 import { useServiceTypeOptions } from "@/hooks/useServiceTypeOptions";
 import { ServiceTypeSelect } from "@/components/shared/ServiceTypeSelect";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  findExistingCustomerMatch,
+  type ExistingCustomerMatch,
+} from "@/lib/findExistingCustomerMatch";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -125,6 +139,8 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
   const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [newClientData, setNewClientData] = useState<CreateCustomerInput>({ ...INITIAL_CLIENT_DATA });
+  const [existingCustomerMatch, setExistingCustomerMatch] = useState<ExistingCustomerMatch | null>(null);
+  const [confirmedExistingCustomerId, setConfirmedExistingCustomerId] = useState<string | null>(null);
 
   const [jobName, setJobName] = useState("");
   const [serviceType, setServiceType] = useState("");
@@ -356,7 +372,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     };
   }, [open, manualStep, currentAccount?.id, crewMemberIdsKey, scheduleConflictKey, schedulesForAssignment]);
 
-  const resolveCustomer = async (): Promise<{
+  const resolveCustomer = async (matchedExistingCustomer?: Customer | null): Promise<{
     id: string;
     name: string;
     phone: string | null;
@@ -364,6 +380,16 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     address: string | null;
   }> => {
     if (clientMode === "new") {
+      if (matchedExistingCustomer) {
+        return {
+          id: matchedExistingCustomer.id,
+          name: matchedExistingCustomer.name,
+          phone: matchedExistingCustomer.phone,
+          email: matchedExistingCustomer.email,
+          address: matchedExistingCustomer.address,
+        };
+      }
+
       const customer = await createCustomerMutation.mutateAsync({
         name: newClientData.name.trim(),
         phone: newClientData.phone?.trim() || null,
@@ -424,6 +450,14 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     setProfitMargin(String(currentAccount?.default_profit_margin ?? 0));
     setSurcharge(String(currentAccount?.default_surcharge ?? 0));
     resetAddressVerification();
+    setExistingCustomerMatch(null);
+    setConfirmedExistingCustomerId(null);
+  };
+
+  const getMatchReasonLabel = (match: ExistingCustomerMatch): string => {
+    if (match.reason === "address_and_name") return "same name and address";
+    if (match.reason === "phone") return "matching phone number";
+    return "matching email address";
   };
 
   const createManualJob = async () => {
@@ -466,12 +500,33 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
       return;
     }
 
-    setIsLoading(true);
-
     let createdJobId: string | null = null;
 
     try {
-      const customer = await resolveCustomer();
+      let matchedExistingCustomer: Customer | null = null;
+
+      if (clientMode === "new" && currentAccount?.id) {
+        const match = await findExistingCustomerMatch({
+          accountId: currentAccount.id,
+          name: newClientData.name,
+          phone: newClientData.phone,
+          email: newClientData.email,
+          address: newClientData.address,
+        });
+
+        if (match && confirmedExistingCustomerId !== match.customer.id) {
+          setExistingCustomerMatch(match);
+          return;
+        }
+
+        if (match) {
+          matchedExistingCustomer = match.customer;
+        }
+      }
+
+      setIsLoading(true);
+
+      const customer = await resolveCustomer(matchedExistingCustomer);
       const resolvedAddress = resolveCreateJobAddress({
         jobAddress,
         customerAddress: customer.address,
@@ -1440,6 +1495,46 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
 
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={!!existingCustomerMatch}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setExistingCustomerMatch(null);
+            setConfirmedExistingCustomerId(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use existing contact?</AlertDialogTitle>
+            <AlertDialogDescription>
+              We found an existing contact, <strong>{existingCustomerMatch?.customer.name}</strong>, because of{" "}
+              {existingCustomerMatch ? getMatchReasonLabel(existingCustomerMatch) : "a duplicate match"}.
+              Creating this job will connect to that existing contact instead of creating a new one.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setExistingCustomerMatch(null);
+                setConfirmedExistingCustomerId(null);
+              }}
+            >
+              Go back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!existingCustomerMatch) return;
+                setConfirmedExistingCustomerId(existingCustomerMatch.customer.id);
+                setExistingCustomerMatch(null);
+                void createManualJob();
+              }}
+            >
+              Yes, connect to existing contact
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

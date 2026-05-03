@@ -260,6 +260,35 @@ describe("ClientPortalEstimate", () => {
     });
   });
 
+  it("uses contain mode for portrait project visualization images", () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          total: 1250,
+          subtotal: 1250,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [],
+          project_visualization_image_url: "https://example.com/portrait.jpg",
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const image = screen.getByAltText("Project visualization");
+    Object.defineProperty(image, "naturalWidth", { value: 800, configurable: true });
+    Object.defineProperty(image, "naturalHeight", { value: 1200, configurable: true });
+    fireEvent.load(image);
+
+    expect(image.className).toContain("object-contain");
+  });
+
   it("shows estimate version cards in a finite carousel when there are more than three versions", () => {
     render(
       <ClientPortalEstimate

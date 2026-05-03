@@ -1463,7 +1463,7 @@ export default function JobDetail() {
                   Unassigned
                 </Badge>
               )}
-              {job.status === "completed" && !hasInvoice && (
+              {job.status === "completed" && !hasInvoice && !!displayEstimate?.id && (
                 <Badge
                   variant="outline"
                   className="text-xs border-[hsl(var(--status-attention))]/40 bg-[hsl(var(--status-attention-bg))] text-[hsl(var(--status-attention))]"
@@ -2091,7 +2091,7 @@ export default function JobDetail() {
                   />
                 </div>
               )}
-              {isManager() && id && (
+              {isManager() && id && isAcceptedEstimate && (
                 <div className="hidden">
                   <JobInvoiceCard
                     jobId={id}
@@ -2142,7 +2142,7 @@ export default function JobDetail() {
               )}
 
               {/* Invoices Section */}
-              {isManager() && id && (
+              {isManager() && id && isAcceptedEstimate && (
                 <JobInvoiceCard
                   jobId={id}
                   customerEmail={job.customer?.email}

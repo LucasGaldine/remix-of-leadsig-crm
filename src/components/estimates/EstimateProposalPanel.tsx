@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, Package, Pencil, Presentation, Settings, Upload, X } from "lucide-react";
 import { format } from "date-fns";
@@ -105,12 +105,13 @@ export function EstimateProposalPanel({
   displayLineItems: any[];
   onRefresh: () => Promise<void> | void;
 }) {
-  const { currentAccount } = useAuth();
+  const { currentAccount, user } = useAuth();
   const SIGNATURE_CANVAS_WIDTH = 600;
   const SIGNATURE_CANVAS_HEIGHT = 180;
   const isTestMode = import.meta.env.MODE === "test";
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingBeforePhotos, setUploadingBeforePhotos] = useState(false);
   const [uploadingMaterialId, setUploadingMaterialId] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [isPresenting, setIsPresenting] = useState(false);
@@ -242,6 +243,8 @@ export function EstimateProposalPanel({
     () => beforePhotos.filter((photo) => selectedBeforePhotoPaths.has(photo.filePath)).map((photo) => photo.url),
     [beforePhotos, selectedBeforePhotoPaths],
   );
+  const activeVisualizationUrl =
+    visualizationPhotos[Math.min(activeVisualizationIndex, Math.max(visualizationPhotos.length - 1, 0))] || "";
   const websiteSettings = estimate?.account?.settings?.website || {};
   const headingFont = getBrandFontOption(websiteSettings?.font);
   const bodyFont = getBrandFontOption(websiteSettings?.body_font);
@@ -1022,6 +1025,16 @@ $${formatCurrency(contractTotal)}
     }
   };
 
+  const handleRemoveVisualizationPhoto = async (photoUrl: string) => {
+    if (isProposalLocked) return;
+    const nextPhotos = visualizationPhotos.filter((url) => url !== photoUrl);
+    if (nextPhotos.length === visualizationPhotos.length) return;
+    const nextSettings = { ...currentSettings, project_visualization_image_urls: nextPhotos };
+    await saveProposal(nextSettings, { project_visualization_image_url: nextPhotos[0] || null });
+    setActiveVisualizationIndex((value) => Math.min(value, Math.max(nextPhotos.length - 1, 0)));
+    toast.success("Visualization photo removed");
+  };
+
   const handleUploadMaterialImage = async (lineItemId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     if (isProposalLocked) return;
     const file = event.target.files?.[0];
@@ -1225,14 +1238,14 @@ $${formatCurrency(contractTotal)}
                         key={member.user_id}
                         className="w-full rounded-xl border border-border bg-slate-50 p-5 text-center"
                       >
-                        <Avatar className="h-14 w-14 border border-border bg-background mb-3 mx-auto">
+                        <Avatar className="h-[7.5rem] w-[7.5rem] border border-border bg-background mb-3 mx-auto">
                           {member.avatar_url ? <AvatarImage src={member.avatar_url} alt={member.full_name} /> : null}
                           <AvatarFallback>{getInitials(member.full_name)}</AvatarFallback>
                         </Avatar>
-                        <p className="text-xl font-semibold">{member.full_name}</p>
+                        <p className="text-3xl font-semibold">{member.full_name}</p>
                         {member.role ? (
                           <div className="mt-2 flex justify-center">
-                            <Badge variant="secondary" className="text-xs font-medium">
+                            <Badge variant="secondary" className="px-4 py-1.5 text-lg font-medium">
                               {formatRoleLabel(member.role)}
                             </Badge>
                           </div>
@@ -1296,16 +1309,50 @@ $${formatCurrency(contractTotal)}
         key: "project_visualization",
         title: "Project Visualization",
         content: (
-          <div className="rounded-lg bg-white p-8 min-h-[70vh] flex flex-col">
+          <div className="rounded-lg bg-white p-4 sm:p-6 lg:p-8 min-h-0 flex flex-col">
             <h3 className="text-3xl font-semibold mb-4">Project Visualization</h3>
             <div className="flex-1 flex flex-col justify-center">
-              {visualizationPhotos.length > 0 ? (
-                <div className="mx-auto w-full max-w-4xl max-h-[36vh] rounded-xl overflow-hidden border border-border bg-white">
-                  <img
-                    src={visualizationPhotos[Math.min(activeVisualizationIndex, visualizationPhotos.length - 1)]}
-                    alt="Project visualization"
-                    className="h-full w-full object-cover"
-                  />
+              {activeVisualizationUrl ? (
+                <div
+                  className={`mx-auto w-full ${displayedBeforePhotoUrls.length > 0 ? "max-w-6xl" : "max-w-4xl"}`}
+                >
+                  <div
+                    className={`${
+                      displayedBeforePhotoUrls.length > 0
+                        ? "grid gap-6 lg:grid-cols-[16rem_36rem] lg:justify-center lg:items-start"
+                        : "space-y-6"
+                    }`}
+                  >
+                    {displayedBeforePhotoUrls.length > 0 ? (
+                      <div>
+                        <h4 className="text-2xl font-semibold mb-4 text-center lg:text-left">Before</h4>
+                        <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory lg:grid lg:grid-cols-1 lg:overflow-visible">
+                          {displayedBeforePhotoUrls.map((url, index) => (
+                            <img
+                              key={`before-${url}-${index}`}
+                              src={url}
+                              alt={`Before photo ${index + 1}`}
+                              className="w-full min-w-[16rem] rounded-lg border border-border object-contain snap-start lg:min-w-0"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div>
+                      <h4 className="text-2xl font-semibold mb-4 text-center lg:text-left">After</h4>
+                      <div
+                        className={`rounded-xl bg-white ${
+                          displayedBeforePhotoUrls.length > 0 ? "p-2" : "mx-auto p-2"
+                        }`}
+                      >
+                        <img
+                          src={activeVisualizationUrl}
+                          alt="Project visualization"
+                          className="block w-full rounded-lg h-auto max-h-[calc(100dvh-24rem)] object-contain"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <p className="text-lg text-muted-foreground">No project visualization uploaded yet.</p>
@@ -1331,21 +1378,6 @@ $${formatCurrency(contractTotal)}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
-                </div>
-              ) : null}
-              {displayedBeforePhotoUrls.length > 0 ? (
-                <div className="mt-8 mx-auto w-full max-w-5xl">
-                  <h4 className="text-2xl font-semibold mb-4 text-center">Before Photos</h4>
-                  <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory">
-                    {displayedBeforePhotoUrls.map((url, index) => (
-                      <img
-                        key={`before-${url}-${index}`}
-                        src={url}
-                        alt={`Before photo ${index + 1}`}
-                        className="h-40 min-w-[16rem] rounded-lg border border-border object-cover snap-start"
-                      />
-                    ))}
-                  </div>
                 </div>
               ) : null}
             </div>
@@ -1723,43 +1755,86 @@ $${formatCurrency(contractTotal)}
     };
   }, [isPresenting]);
 
-  useEffect(() => {
+  const loadBeforePhotos = useCallback(async () => {
     const leadId = estimate?.job_id;
     if (!leadId) {
       setBeforePhotos([]);
       return;
     }
 
+    const { data, error } = await supabase
+      .from("lead_photos")
+      .select("file_path")
+      .eq("lead_id", leadId)
+      .eq("photo_type", "before")
+      .order("created_at", { ascending: true })
+      .limit(12);
+
+    if (error) {
+      setBeforePhotos([]);
+      return;
+    }
+
+    const nextPhotos = (data || [])
+      .map((photo: any) => ({
+        filePath: String(photo.file_path || ""),
+        url: supabase.storage.from("lead-photos").getPublicUrl(photo.file_path).data.publicUrl,
+      }))
+      .filter((photo) => photo.filePath && photo.url);
+    setBeforePhotos(nextPhotos);
+  }, [estimate?.job_id]);
+
+  useEffect(() => {
     let cancelled = false;
-    const loadBeforePhotos = async () => {
-      const { data, error } = await supabase
-        .from("lead_photos")
-        .select("file_path")
-        .eq("lead_id", leadId)
-        .eq("photo_type", "before")
-        .order("created_at", { ascending: true })
-        .limit(12);
-
+    const load = async () => {
+      await loadBeforePhotos();
       if (cancelled) return;
-      if (error) {
-        setBeforePhotos([]);
-        return;
-      }
-
-      const nextPhotos = (data || [])
-        .map((photo: any) => ({
-          filePath: String(photo.file_path || ""),
-          url: supabase.storage.from("lead-photos").getPublicUrl(photo.file_path).data.publicUrl,
-        }))
-        .filter((photo) => photo.filePath && photo.url);
-      setBeforePhotos(nextPhotos);
     };
-
-    void loadBeforePhotos();
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [estimate?.job_id]);
+  }, [loadBeforePhotos]);
+
+  const handleUploadBeforePhotos = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (isProposalLocked) return;
+    const files = Array.from(event.target.files || []);
+    const leadId = estimate?.job_id;
+    if (files.length === 0 || !leadId || !currentAccount?.id || !user?.id) return;
+
+    setUploadingBeforePhotos(true);
+    try {
+      for (const file of files) {
+        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const filePath = `${currentAccount.id}/${leadId}/before/${crypto.randomUUID()}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("lead-photos")
+          .upload(filePath, file, { contentType: file.type || "image/jpeg", upsert: false });
+        if (uploadError) throw uploadError;
+
+        const { error: insertError } = await supabase.from("lead_photos").insert({
+          lead_id: leadId,
+          account_id: currentAccount.id,
+          file_path: filePath,
+          uploaded_by: user.id,
+          photo_type: "before",
+        });
+        if (insertError) {
+          await supabase.storage.from("lead-photos").remove([filePath]);
+          throw insertError;
+        }
+      }
+
+      await loadBeforePhotos();
+      toast.success("Before photos uploaded");
+    } catch {
+      toast.error("Failed to upload before photos");
+    } finally {
+      setUploadingBeforePhotos(false);
+      event.target.value = "";
+    }
+  };
 
   const toggleBeforePhotoDisplay = (filePath: string, checked: boolean) => {
     if (isProposalLocked) return;
@@ -2118,12 +2193,31 @@ $${formatCurrency(contractTotal)}
                         disabled={isFreePlan || uploading}
                       />
                     </label>
-                    {estimate?.project_visualization_image_url ? (
-                      <img
-                        src={estimate.project_visualization_image_url}
-                        alt="Project visualization"
-                        className="max-h-56 rounded border border-border object-cover"
-                      />
+                    {visualizationPhotos.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {visualizationPhotos.map((url, index) => (
+                            <div key={`${url}-${index}`} className="flex items-center gap-2 rounded border border-border p-2">
+                              <img
+                                src={url}
+                                alt={`Visualization ${index + 1}`}
+                                className="h-10 w-10 rounded border border-border object-cover"
+                              />
+                              <span className="flex-1 text-sm">Image {index + 1}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-destructive hover:text-destructive"
+                                onClick={() => void handleRemoveVisualizationPhoto(url)}
+                                disabled={saving}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ) : null}
                     {beforePhotos.length > 0 ? (
                       <div className="space-y-2 pt-2">
@@ -2146,6 +2240,26 @@ $${formatCurrency(contractTotal)}
                         </div>
                       </div>
                     ) : null}
+                    <div className="pt-2">
+                      <label
+                        className={`inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
+                          isProposalLocked || uploadingBeforePhotos || !estimate?.job_id
+                            ? "cursor-not-allowed opacity-60"
+                            : "cursor-pointer hover:bg-muted/40"
+                        }`}
+                      >
+                        <Upload className="h-4 w-4" />
+                        {uploadingBeforePhotos ? "Uploading..." : "Upload before photos"}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          multiple
+                          onChange={handleUploadBeforePhotos}
+                          disabled={isProposalLocked || uploadingBeforePhotos || !estimate?.job_id}
+                        />
+                      </label>
+                    </div>
                   </>
                 ) : null}
 
