@@ -1530,7 +1530,7 @@ export function EditEstimateModal({
   }, [activeLineItems, onDraftChange, profitMarginPercent, surcharge, profitMode, calculatedProfitAmount, embedded, isEmbeddedDefaultsHydrated]);
 
   const editorBody = (
-    <div className={embedded ? "space-y-4 pt-0 pb-4" : "min-h-0 flex flex-col gap-4 py-4 overflow-hidden"}>
+    <div className={embedded ? "space-y-4 pt-0 pb-4" : "min-h-0 flex flex-col gap-4 pt-2 pb-4 overflow-hidden"}>
       <MapMeasureDialog
         open={showMeasureMapDialog}
         onOpenChange={(nextOpen) => {
@@ -1578,7 +1578,7 @@ export function EditEstimateModal({
 
         {!embedded ? <Label className="text-base font-semibold">Line Items *</Label> : null}
 
-        <div className={embedded ? "space-y-3" : "space-y-3 max-h-[40dvh] overflow-y-auto pr-1"}>
+        <div className={embedded ? "space-y-3" : "space-y-3 max-h-[28dvh] sm:max-h-[40dvh] overflow-y-auto pr-1"}>
           <div className="space-y-2">
             {lineItems.map((item, index) =>
               expandedIndex === index && !pendingDeleteIndices.has(index) ? (
@@ -1961,7 +1961,7 @@ export function EditEstimateModal({
           </Popover>
         </div>
 
-        <div className="bg-secondary p-4 rounded-lg space-y-2 min-w-0">
+        <div className="bg-secondary p-4 rounded-lg space-y-2 min-w-0 shrink-0">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center text-sm gap-2 min-w-0">
             <span className="text-muted-foreground">Subtotal:</span>
             <span className="font-medium shrink-0 text-right tabular-nums">
@@ -2083,7 +2083,7 @@ export function EditEstimateModal({
         <DialogHeader>
           <DialogTitle>Edit Estimate</DialogTitle>
           <DialogDescription>
-            Update line items for this estimate. The total will be calculated automatically.
+            Update line items for this estimate.
           </DialogDescription>
         </DialogHeader>
 
