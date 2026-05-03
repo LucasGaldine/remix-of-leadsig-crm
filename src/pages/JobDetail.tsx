@@ -24,6 +24,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { checkAssignmentOverlapSecure } from "@/lib/secureRpc";
 import { useBusinessHours } from "@/hooks/useBusinessHours";
 import { isOutsideBusinessHours } from "@/lib/businessHours";
 import { Badge } from "@/components/ui/badge";
@@ -986,22 +987,12 @@ export default function JobDetail() {
 
       for (const userId of usersToAdd) {
         const parsed = parseCrewAssigneeId(userId);
-        const overlapFn = parsed.type === "user" ? "check_assignment_overlap" : "check_mock_assignment_overlap";
-        const overlapArgs = parsed.type === "user"
-          ? {
-              p_user_id: parsed.userId,
-              p_schedule_id: editingCrewScheduleId,
-              p_account_id: currentAccount.id,
-            }
-          : {
-              p_mock_profile_id: parsed.mockProfileId,
-              p_schedule_id: editingCrewScheduleId,
-              p_account_id: currentAccount.id,
-            };
-
-        const { data: hasOverlap, error: overlapError } = await supabase.rpc(overlapFn, overlapArgs as any);
-
-        if (overlapError) throw overlapError;
+        const hasOverlap = await checkAssignmentOverlapSecure({
+          accountId: currentAccount.id,
+          scheduleId: editingCrewScheduleId,
+          userId: parsed.type === "user" ? parsed.userId : null,
+          mockProfileId: parsed.type === "mock" ? parsed.mockProfileId : null,
+        });
         if (hasOverlap) {
           const crewName = teamMembers.find((member) => member.user_id === userId)?.full_name || "This crew member";
           toast.error(`${crewName} is already assigned to another job at this time.`);

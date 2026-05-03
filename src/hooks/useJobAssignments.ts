@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getTeamMemberDisplayName } from '@/lib/teamMembers';
+import { checkAssignmentOverlapSecure } from '@/lib/secureRpc';
 import {
   buildMockCrewAssigneeId,
   parseCrewAssigneeId,
@@ -239,21 +240,12 @@ export function useJobAssignments(leadId: string | undefined) {
       }
 
       for (const scheduleId of schedules) {
-        const overlapFn = parsedAssignee.type === "user"
-          ? "check_assignment_overlap"
-          : "check_mock_assignment_overlap";
-        const overlapArgs = parsedAssignee.type === "user"
-          ? {
-              p_user_id: parsedAssignee.userId,
-              p_schedule_id: scheduleId,
-              p_account_id: lead.account_id,
-            }
-          : {
-              p_mock_profile_id: parsedAssignee.mockProfileId,
-              p_schedule_id: scheduleId,
-              p_account_id: lead.account_id,
-            };
-        const { data: hasOverlap } = await supabase.rpc(overlapFn, overlapArgs as any);
+        const hasOverlap = await checkAssignmentOverlapSecure({
+          accountId: lead.account_id,
+          scheduleId,
+          userId: parsedAssignee.type === "user" ? parsedAssignee.userId : null,
+          mockProfileId: parsedAssignee.type === "mock" ? parsedAssignee.mockProfileId : null,
+        });
 
         if (hasOverlap) {
           const { data: scheduleData } = await supabase

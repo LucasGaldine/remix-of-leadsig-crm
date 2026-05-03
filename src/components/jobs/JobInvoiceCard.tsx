@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { getNextInvoiceNumberSecure } from "@/lib/secureRpc";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -210,9 +211,7 @@ export function JobInvoiceCard({
         return;
       }
 
-      const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
-        p_account_id: currentAccount.id,
-      });
+      const invoiceNumber = await getNextInvoiceNumberSecure(currentAccount.id);
 
       const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
@@ -222,7 +221,7 @@ export function JobInvoiceCard({
           customer_id: job?.customer_id || null,
           lead_id: jobId,
           estimate_id: estimate.id,
-          invoice_number: invoiceNumber.data || 1,
+          invoice_number: invoiceNumber || 1,
           subtotal: invoiceAmount,
           tax_rate: 0,
           tax: 0,
@@ -449,9 +448,7 @@ export function JobInvoiceCard({
         .eq("job_id", jobId)
         .maybeSingle();
 
-      const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
-        p_account_id: currentAccount.id,
-      });
+      const invoiceNumber = await getNextInvoiceNumberSecure(currentAccount.id);
 
       const dueDate = new Date().toISOString().split("T")[0];
       const { data: newInvoice, error: newInvoiceError } = await supabase
@@ -460,7 +457,7 @@ export function JobInvoiceCard({
           customer_id: jobRecord.customer_id,
           lead_id: jobId,
           estimate_id: estimate?.id || null,
-          invoice_number: invoiceNumber.data || 1,
+          invoice_number: invoiceNumber || 1,
           subtotal: amountToInvoice,
           tax_rate: 0,
           tax: 0,

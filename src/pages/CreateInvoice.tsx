@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CircleAlert as AlertCircle, CreditCard, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { getNextInvoiceNumberSecure } from "@/lib/secureRpc";
 import { useEstimate } from "@/hooks/useEstimates";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -148,9 +149,7 @@ export default function CreateInvoice() {
       const tax = subtotal * parseFloat(estimate.tax_rate.toString());
       const discount = parseFloat(estimate.discount.toString()) * ratio;
 
-      const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
-        p_account_id: currentAccount.id,
-      });
+      const invoiceNumber = await getNextInvoiceNumberSecure(currentAccount.id);
 
       const { data: newInvoice, error: invoiceError } = await supabase
         .from("invoices")
@@ -158,7 +157,7 @@ export default function CreateInvoice() {
           customer_id: estimate.customer?.id,
           lead_id: estimate.job?.id,
           estimate_id: estimate.id,
-          invoice_number: invoiceNumber.data || 1,
+          invoice_number: invoiceNumber || 1,
           subtotal,
           tax_rate: estimate.tax_rate,
           tax,

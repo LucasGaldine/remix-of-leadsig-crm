@@ -140,11 +140,9 @@ function CompactLineItem({
   onRemove: () => void;
   onUndoRemove: () => void;
 }) {
-  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(item.unit_price) || 0;
   const lineTotal = qty * price;
-  const hasLongDescription = item.description.trim().length > 180;
 
   if (pendingDelete) {
     return (
@@ -168,8 +166,8 @@ function CompactLineItem({
   }
 
   return (
-    <div className="p-3 border border-border rounded-lg space-y-2 bg-card">
-      <div className="flex items-center justify-between gap-3">
+    <div className="p-3 border border-border rounded-lg space-y-2 bg-card min-w-0">
+      <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div
             className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
@@ -177,17 +175,19 @@ function CompactLineItem({
           >
             <GripVertical className="h-4 w-4" />
           </div>
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="min-w-0">
             <span className="text-sm font-medium truncate">
               {item.name || `Item ${index + 1}`}
             </span>
-            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right min-w-0">
+            <span className="block text-sm font-semibold tabular-nums">${formatDollar(lineTotal)}</span>
+            <span className="block text-xs text-muted-foreground tabular-nums whitespace-nowrap">
               {item.quantity} x ${formatDollar(price)}
             </span>
           </div>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <span className="text-sm font-semibold">${formatDollar(lineTotal)}</span>
           <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onExpand}>
             <Pencil className="h-3.5 w-3.5" />
           </Button>
@@ -196,24 +196,7 @@ function CompactLineItem({
           </Button>
         </div>
       </div>
-      {item.description && (
-        <div className="mt-0.5">
-          <p
-            className={`text-xs text-muted-foreground break-words ${isDescriptionExpanded ? "" : "line-clamp-3"}`}
-          >
-            {item.description}
-          </p>
-          {hasLongDescription && (
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
-              onClick={() => setIsDescriptionExpanded((current) => !current)}
-            >
-              {isDescriptionExpanded ? "View less" : "View more"}
-            </button>
-          )}
-        </div>
-      )}
+      {/* Description intentionally hidden in compact row view. */}
     </div>
   );
 }
@@ -1547,7 +1530,7 @@ export function EditEstimateModal({
   }, [activeLineItems, onDraftChange, profitMarginPercent, surcharge, profitMode, calculatedProfitAmount, embedded, isEmbeddedDefaultsHydrated]);
 
   const editorBody = (
-    <div className={`space-y-4 ${embedded ? "pt-0 pb-4" : "py-4"}`}>
+    <div className={embedded ? "space-y-4 pt-0 pb-4" : "min-h-0 flex flex-col gap-4 py-4 overflow-hidden"}>
       <MapMeasureDialog
         open={showMeasureMapDialog}
         onOpenChange={(nextOpen) => {
@@ -1564,9 +1547,9 @@ export function EditEstimateModal({
           setShowAddLineItemPicker(true);
         }}
       />
-      <div className="space-y-3">
+      <div className={embedded ? "space-y-3 min-w-0" : "space-y-3 min-w-0"}>
         {shouldShowVersionNameField ? (
-          <div className="space-y-2">
+          <div className="space-y-2 mb-2">
             <Label htmlFor="estimate-version-name">Estimate Version *</Label>
             <Input
               id="estimate-version-name"
@@ -1595,48 +1578,51 @@ export function EditEstimateModal({
 
         {!embedded ? <Label className="text-base font-semibold">Line Items *</Label> : null}
 
-        {lineItems.map((item, index) =>
-          expandedIndex === index && !pendingDeleteIndices.has(index) ? (
-            <div
-              key={index}
-              draggable
-              onDragStart={() => handleDragStart(index)}
-              onDragOver={(event) => handleDragOver(event, index)}
-              onDragEnd={handleDragEnd}
-              className={dragIndex === index ? "opacity-50" : undefined}
-            >
-            <ExpandedLineItem
-              item={item}
-              index={index}
-              templates={templateOptions}
-              onUpdate={(field, value) => updateLineItem(index, field, value)}
-              onCollapse={() => setExpandedIndex(null)}
-              onRevert={() => revertLineItem(index)}
-              onRemove={() => markForDelete(index)}
-              onSaveTemplate={() => saveLineItemAsTemplate(index)}
-            />
-            </div>
-          ) : (
-            <div
-              key={index}
-              draggable
-              onDragStart={() => handleDragStart(index)}
-              onDragOver={(event) => handleDragOver(event, index)}
-              onDragEnd={handleDragEnd}
-              className={dragIndex === index ? "opacity-50" : undefined}
-            >
-            <CompactLineItem
-              item={item}
-              index={index}
-              pendingDelete={pendingDeleteIndices.has(index)}
-              onExpand={() => expandLineItem(index)}
-              onRemove={() => markForDelete(index)}
-              onUndoRemove={() => undoDelete(index)}
-            />
-            </div>
-          )
-        )}
-        <Popover
+        <div className={embedded ? "space-y-3" : "space-y-3 max-h-[40dvh] overflow-y-auto pr-1"}>
+          <div className="space-y-2">
+            {lineItems.map((item, index) =>
+              expandedIndex === index && !pendingDeleteIndices.has(index) ? (
+                <div
+                  key={index}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(event) => handleDragOver(event, index)}
+                  onDragEnd={handleDragEnd}
+                  className={dragIndex === index ? "opacity-50" : undefined}
+                >
+                <ExpandedLineItem
+                  item={item}
+                  index={index}
+                  templates={templateOptions}
+                  onUpdate={(field, value) => updateLineItem(index, field, value)}
+                  onCollapse={() => setExpandedIndex(null)}
+                  onRevert={() => revertLineItem(index)}
+                  onRemove={() => markForDelete(index)}
+                  onSaveTemplate={() => saveLineItemAsTemplate(index)}
+                />
+                </div>
+              ) : (
+                <div
+                  key={index}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(event) => handleDragOver(event, index)}
+                  onDragEnd={handleDragEnd}
+                  className={dragIndex === index ? "opacity-50" : undefined}
+                >
+                <CompactLineItem
+                  item={item}
+                  index={index}
+                  pendingDelete={pendingDeleteIndices.has(index)}
+                  onExpand={() => expandLineItem(index)}
+                  onRemove={() => markForDelete(index)}
+                  onUndoRemove={() => undoDelete(index)}
+                />
+                </div>
+              )
+            )}
+          </div>
+          <Popover
           open={showAddLineItemPicker}
           onOpenChange={(nextOpen) => {
             if (!nextOpen && (showMeasureMapDialog || preserveAddPickerDuringMeasure)) {
@@ -1972,21 +1958,22 @@ export function EditEstimateModal({
               />
             )}
           </PopoverContent>
-        </Popover>
+          </Popover>
+        </div>
 
-        <div className="bg-secondary p-4 rounded-lg space-y-2">
-          <div className="flex justify-between items-center text-sm">
+        <div className="bg-secondary p-4 rounded-lg space-y-2 min-w-0">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center text-sm gap-2 min-w-0">
             <span className="text-muted-foreground">Subtotal:</span>
-            <span className="font-medium">
+            <span className="font-medium shrink-0 text-right tabular-nums">
               ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
-          <div className="flex justify-between items-center text-sm gap-2">
-            <div className="flex items-center gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center text-sm gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <span className="text-muted-foreground">Profit:</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 {profitMode === "percentage" ? (
-                  <div className="w-24">
+                  <div className="w-20 sm:w-24">
                     <Input
                       type="number"
                       min="0"
@@ -1998,7 +1985,7 @@ export function EditEstimateModal({
                     />
                   </div>
                 ) : (
-                  <div className="w-24">
+                  <div className="w-20 sm:w-24">
                     <Input
                       type="number"
                       min="0"
@@ -2025,7 +2012,7 @@ export function EditEstimateModal({
                     setProfitMode(nextMode);
                   }}
                 >
-                  <SelectTrigger className="h-7 w-[64px] text-xs">
+                  <SelectTrigger className="h-7 w-[56px] sm:w-[64px] text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -2035,14 +2022,14 @@ export function EditEstimateModal({
                 </Select>
               </div>
             </div>
-            <span className="font-medium">
+            <span className="font-medium shrink-0 text-right tabular-nums">
               ${calculatedProfitAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
-          <div className="flex justify-between items-center text-sm gap-2">
-            <div className="flex items-center gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center text-sm gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <span className="text-muted-foreground">Surcharge:</span>
-              <div className="relative w-20">
+              <div className="relative w-[72px] sm:w-20">
                 <Input
                   type="number"
                   min="0"
@@ -2055,29 +2042,29 @@ export function EditEstimateModal({
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
               </div>
             </div>
-            <span className="font-medium">
+            <span className="font-medium shrink-0 text-right tabular-nums">
               ${surchargeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
-          <div className="flex justify-between items-center text-sm">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center text-sm gap-2 min-w-0">
             <span className="text-muted-foreground">
               Tax ({(parseFloat(estimate.tax_rate.toString()) * 100).toFixed(0)}%):
             </span>
-            <span className="font-medium">
+            <span className="font-medium shrink-0 text-right tabular-nums">
               ${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
           {discountAmount > 0 && (
-            <div className="flex justify-between items-center text-sm">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center text-sm gap-2 min-w-0">
               <span className="text-muted-foreground">Discount:</span>
-              <span className="font-medium">
+              <span className="font-medium shrink-0 text-right tabular-nums">
                 -${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           )}
-          <div className="flex justify-between items-center pt-2 border-t border-border">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center pt-2 border-t border-border gap-2 min-w-0">
             <span className="font-semibold">Total:</span>
-            <span className="text-xl font-bold">
+            <span className="text-xl font-bold shrink-0 text-right tabular-nums">
               ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -2092,7 +2079,7 @@ export function EditEstimateModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100dvw-1rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-screen max-w-screen p-4 sm:w-full sm:max-w-2xl sm:p-6 max-h-[92dvh] overflow-hidden overflow-x-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Edit Estimate</DialogTitle>
           <DialogDescription>
@@ -2102,7 +2089,7 @@ export function EditEstimateModal({
 
         {editorBody}
 
-        <DialogFooter className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:justify-end">
+        <DialogFooter className="grid grid-cols-2 gap-2 shrink-0">
           <Button
             type="button"
             variant="outline"

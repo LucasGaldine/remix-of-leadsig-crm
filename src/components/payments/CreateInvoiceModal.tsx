@@ -15,6 +15,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { getNextInvoiceNumberSecure } from "@/lib/secureRpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -102,9 +103,7 @@ export function CreateInvoiceModal({ open, onOpenChange, estimate }: CreateInvoi
     try {
       const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-      const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
-        p_account_id: currentAccount.id,
-      });
+      const invoiceNumber = await getNextInvoiceNumberSecure(currentAccount.id);
 
       const { data: newInvoice, error: invoiceError } = await supabase
         .from("invoices")
@@ -112,7 +111,7 @@ export function CreateInvoiceModal({ open, onOpenChange, estimate }: CreateInvoi
           customer_id: estimate.customer?.id,
           lead_id: estimate.job?.id,
           estimate_id: estimate.id,
-          invoice_number: invoiceNumber.data || 1,
+          invoice_number: invoiceNumber || 1,
           subtotal: invoiceAmount,
           tax_rate: 0,
           tax: 0,
@@ -192,9 +191,7 @@ export function CreateInvoiceModal({ open, onOpenChange, estimate }: CreateInvoi
 
       const dueDate = new Date().toISOString().split("T")[0];
 
-      const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
-        p_account_id: currentAccount.id,
-      });
+      const invoiceNumber = await getNextInvoiceNumberSecure(currentAccount.id);
 
       const { data: newInvoice, error: invoiceError } = await supabase
         .from("invoices")
@@ -202,7 +199,7 @@ export function CreateInvoiceModal({ open, onOpenChange, estimate }: CreateInvoi
           customer_id: customerId,
           lead_id: estimate.job?.id,
           estimate_id: estimate.id,
-          invoice_number: invoiceNumber.data || 1,
+          invoice_number: invoiceNumber || 1,
           subtotal: paymentAmount,
           tax_rate: 0,
           tax: 0,

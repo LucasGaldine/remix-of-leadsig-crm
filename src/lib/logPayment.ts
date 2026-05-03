@@ -1,12 +1,32 @@
 interface SupabaseLike {
   from: (table: string) => any;
-  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown }>;
   functions?: {
     invoke: (
       fn: string,
       options: { body: Record<string, unknown> },
     ) => Promise<{ data?: Record<string, any> | null; error?: { message?: string } | null }>;
   };
+}
+
+async function getNextInvoiceNumber(
+  supabase: SupabaseLike,
+  accountId: string,
+): Promise<number> {
+  if (!supabase.functions?.invoke) {
+    throw new Error("Invoice numbering endpoint is not available");
+  }
+
+  const { data, error } = await supabase.functions.invoke("secure-invoice-number", {
+    body: { account_id: accountId },
+  });
+
+  if (error) {
+    throw new Error(error.message || "Failed to get next invoice number");
+  }
+
+  const invoiceNumber = Number(data?.invoice_number ?? 1);
+  if (!Number.isFinite(invoiceNumber) || invoiceNumber < 1) return 1;
+  return Math.floor(invoiceNumber);
 }
 
 interface EnsureInvoiceForLoggedPaymentInput {
@@ -101,9 +121,7 @@ export async function ensureInvoiceForLoggedPayment(
     .eq("job_id", jobId)
     .maybeSingle();
 
-  const invoiceNumber = await supabase.rpc("get_next_invoice_number", {
-    p_account_id: accountId,
-  });
+  const invoiceNumber = await getNextInvoiceNumber(supabase, accountId);
 
   const dueDate = new Date().toISOString().split("T")[0];
 
@@ -113,7 +131,7 @@ export async function ensureInvoiceForLoggedPayment(
       customer_id: customerId,
       lead_id: jobId,
       estimate_id: estimate?.id || null,
-      invoice_number: invoiceNumber.data || 1,
+      invoice_number: invoiceNumber,
       subtotal: amount,
       tax_rate: 0,
       tax: 0,

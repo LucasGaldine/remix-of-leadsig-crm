@@ -140,7 +140,7 @@ export default function Admin() {
 
     setIsLoadingCompanies(true);
 
-    const { data, error } = await supabase.rpc("list_all_accounts_for_admin");
+    const { data: fnData, error } = await supabase.functions.invoke("secure-admin-list-accounts", { body: {} });
 
     if (error) {
       console.error("Failed to load companies", error);
@@ -149,7 +149,7 @@ export default function Admin() {
       return;
     }
 
-    setCompanies((data ?? []) as CompanyAccount[]);
+    setCompanies((((fnData as { data?: CompanyAccount[] } | null)?.data) ?? []) as CompanyAccount[]);
     setIsLoadingCompanies(false);
   };
 
@@ -173,10 +173,12 @@ export default function Admin() {
     if (!confirmed) return;
 
     setUpgradingCompanyId(company.id);
-    const { error } = await supabase.rpc("admin_mark_account_upgraded", {
-      target_account_id: company.id,
-      target_plan: "basic",
-      target_tier: "solo",
+    const { error } = await supabase.functions.invoke("secure-admin-mark-account-upgraded", {
+      body: {
+        target_account_id: company.id,
+        target_plan: "basic",
+        target_tier: "solo",
+      },
     });
 
     if (error) {

@@ -101,7 +101,10 @@ describe("EditEstimateModal responsive width", () => {
     );
 
     const content = screen.getByTestId("edit-estimate-dialog-content");
-    expect(content).toHaveClass("max-w-[calc(100dvw-1rem)]");
+    expect(content).toHaveClass("w-screen");
+    expect(content).toHaveClass("max-w-screen");
+    expect(content).toHaveClass("p-4");
+    expect(content).toHaveClass("sm:w-full");
     expect(content).toHaveClass("sm:max-w-2xl");
   });
 

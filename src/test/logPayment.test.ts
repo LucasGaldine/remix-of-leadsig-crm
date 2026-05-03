@@ -9,7 +9,7 @@ import {
 
 describe("ensureInvoiceForLoggedPayment", () => {
   it("creates a paid invoice when a logged payment starts without one", async () => {
-    const rpc = vi.fn().mockResolvedValue({ data: 42 });
+    const invoke = vi.fn().mockResolvedValue({ data: { invoice_number: 42 }, error: null });
     const invoiceInsert = vi.fn();
     const invoiceInsertSingle = vi.fn().mockResolvedValue({
       data: { id: "inv_new" },
@@ -49,7 +49,7 @@ describe("ensureInvoiceForLoggedPayment", () => {
 
     const supabase = {
       from,
-      rpc,
+      functions: { invoke },
     };
 
     const invoiceId = await ensureInvoiceForLoggedPayment({
@@ -64,8 +64,10 @@ describe("ensureInvoiceForLoggedPayment", () => {
     });
 
     expect(invoiceId).toBe("inv_new");
-    expect(rpc).toHaveBeenCalledWith("get_next_invoice_number", {
-      p_account_id: "acct_1",
+    expect(invoke).toHaveBeenCalledWith("secure-invoice-number", {
+      body: {
+        account_id: "acct_1",
+      },
     });
     expect(invoiceInsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -105,7 +107,7 @@ describe("reconcileInvoiceForLoggedPayment", () => {
     });
 
     await reconcileInvoiceForLoggedPayment({
-      supabase: { from, rpc: vi.fn() },
+      supabase: { from },
       invoiceId: "inv_existing",
       balanceDue: 200,
       paymentAmount: 50,
@@ -134,7 +136,7 @@ describe("reconcileInvoiceForLoggedPayment", () => {
     });
 
     await reconcileInvoiceForLoggedPayment({
-      supabase: { from, rpc: vi.fn() },
+      supabase: { from },
       invoiceId: "inv_existing",
       balanceDue: 200,
       paymentAmount: 200,
@@ -175,7 +177,7 @@ describe("recordLoggedPaymentAgainstInvoice", () => {
     });
 
     await recordLoggedPaymentAgainstInvoice({
-      supabase: { from, rpc: vi.fn(), functions: { invoke } },
+      supabase: { from, functions: { invoke } },
       invoice: {
         id: "inv_stripe",
         customer_id: "cust_1",
@@ -207,7 +209,7 @@ describe("recordLoggedPaymentAgainstInvoice", () => {
 
     await expect(
       recordLoggedPaymentAgainstInvoice({
-        supabase: { from, rpc: vi.fn(), functions: { invoke } },
+      supabase: { from, functions: { invoke } },
         invoice: {
           id: "inv_stripe",
           customer_id: "cust_1",
