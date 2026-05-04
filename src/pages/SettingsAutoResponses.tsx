@@ -36,13 +36,20 @@ const TEMPLATE_VARIABLES = [
 ] as const;
 type OffsetUnit = "seconds" | "hours" | "days" | "months";
 type DeliveryChannel = "text" | "email" | "both";
-type PaymentEmailKey = "estimate_approved" | "invoice_sent" | "payment_logged";
+type PaymentEmailKey =
+  | "estimate_approved"
+  | "invoice_sent"
+  | "payment_logged"
+  | "job_release_request_email"
+  | "job_release_signed_copy_email";
 
 const OFFSET_UNITS: OffsetUnit[] = ["seconds", "hours", "days", "months"];
 const DEFAULT_PAYMENT_EMAILS: Record<PaymentEmailKey, boolean> = {
   estimate_approved: true,
   invoice_sent: true,
   payment_logged: true,
+  job_release_request_email: true,
+  job_release_signed_copy_email: true,
 };
 const COMMON_AUTO_MESSAGE_TEMPLATES: Array<{
   key: string;
@@ -285,7 +292,13 @@ export default function SettingsAutoResponses() {
     );
     setPaymentEmails(
       isFreePlan
-        ? { estimate_approved: false, invoice_sent: false, payment_logged: false }
+        ? {
+            estimate_approved: false,
+            invoice_sent: false,
+            payment_logged: false,
+            job_release_request_email: false,
+            job_release_signed_copy_email: false,
+          }
         : {
             ...DEFAULT_PAYMENT_EMAILS,
             ...(automation?.payment_emails ?? {}),
@@ -311,7 +324,13 @@ export default function SettingsAutoResponses() {
     );
 
     const paymentEmailsToSave = isFreePlan
-      ? { estimate_approved: false, invoice_sent: false, payment_logged: false }
+      ? {
+          estimate_approved: false,
+          invoice_sent: false,
+          payment_logged: false,
+          job_release_request_email: false,
+          job_release_signed_copy_email: false,
+        }
       : paymentEmails;
 
     try {
@@ -1263,6 +1282,28 @@ export default function SettingsAutoResponses() {
                       aria-label="Send payment email when payment is logged"
                       checked={paymentEmails.payment_logged}
                       onCheckedChange={(checked) => togglePaymentEmail("payment_logged", checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Job release request</p>
+                      <p className="text-xs text-muted-foreground">Email customer to sign the Job Release after full payment.</p>
+                    </div>
+                    <Switch
+                      aria-label="Send job release request email when job is fully paid"
+                      checked={paymentEmails.job_release_request_email}
+                      onCheckedChange={(checked) => togglePaymentEmail("job_release_request_email", checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Signed job release copy</p>
+                      <p className="text-xs text-muted-foreground">Email signed Job Release copies after client signature.</p>
+                    </div>
+                    <Switch
+                      aria-label="Send signed job release copy email after signature"
+                      checked={paymentEmails.job_release_signed_copy_email}
+                      onCheckedChange={(checked) => togglePaymentEmail("job_release_signed_copy_email", checked)}
                     />
                   </div>
                 </div>

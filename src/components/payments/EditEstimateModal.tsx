@@ -1502,7 +1502,6 @@ export function EditEstimateModal({
 
   useEffect(() => {
     if (!onDraftChange) return;
-    if (embedded && !isEmbeddedDefaultsHydrated) return;
     const parsedProfitMargin = parseFloat(profitMargin || "0");
     const draftProfitMargin =
       profitMode === "percentage"

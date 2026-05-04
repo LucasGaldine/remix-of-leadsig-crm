@@ -58,6 +58,8 @@ export type AccountSettings = {
       estimate_approved?: boolean;
       invoice_sent?: boolean;
       payment_logged?: boolean;
+      job_release_request_email?: boolean;
+      job_release_signed_copy_email?: boolean;
     };
   } | null;
   lead_message_automation?: {

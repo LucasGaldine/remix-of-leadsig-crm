@@ -56,6 +56,7 @@ import {
   findExistingCustomerMatch,
   type ExistingCustomerMatch,
 } from "@/lib/findExistingCustomerMatch";
+import { useNavigate } from "react-router-dom";
 
 interface CreateJobDialogProps {
   open: boolean;
@@ -122,6 +123,7 @@ const DAYS_OF_WEEK = [
 ];
 
 export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobDialogProps) {
+  const navigate = useNavigate();
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
   const createCustomerMutation = useCreateCustomer();
@@ -892,7 +894,12 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
       toast.success("Job created successfully!");
       resetForm();
       onOpenChange(false);
-      onJobCreated?.(createdJob.id);
+      navigate(`/jobs/${createdJob.id}`);
+      try {
+        onJobCreated?.(createdJob.id);
+      } catch (callbackError) {
+        console.error("onJobCreated callback failed after successful job creation:", callbackError);
+      }
     } catch (error) {
       console.error("Error creating job:", error);
       if (createdJobId) {

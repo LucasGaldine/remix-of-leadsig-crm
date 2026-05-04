@@ -14,6 +14,7 @@ import { useAddressVerification } from "@/hooks/useAddressVerification";
 import { AddressVerificationBadge } from "@/components/address/AddressVerificationBadge";
 import { useServiceTypeOptions } from "@/hooks/useServiceTypeOptions";
 import { ServiceTypeSelect } from "@/components/shared/ServiceTypeSelect";
+import { useNavigate } from "react-router-dom";
 
 
 interface AddJobDialogProps {
@@ -23,6 +24,7 @@ interface AddJobDialogProps {
 }
 
 export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogProps) {
+  const navigate = useNavigate();
   const { user, currentAccount } = useAuth();
   const [saving, setSaving] = useState(false);
   const serviceTypeOptions = useServiceTypeOptions(open);
@@ -115,6 +117,7 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
       
       onOpenChange(false);
       onJobCreated?.(job.id);
+      navigate(`/jobs/${job.id}`);
     } catch (error) {
       console.error("Error creating job:", error);
       toast.error("Failed to create job");

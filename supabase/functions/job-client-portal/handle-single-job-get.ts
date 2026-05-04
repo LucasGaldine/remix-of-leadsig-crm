@@ -1,4 +1,5 @@
 import { resolveAgreementTemplatesForEstimates } from "./agreement-templates.ts";
+import { getJobReleaseForLead, isLeadFullyPaid } from "./job-release.ts";
 
 export async function handleSingleJobGet(
   supabase: any,
@@ -100,6 +101,8 @@ export async function handleSingleJobGet(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  const fullyPaid = await isLeadFullyPaid(supabase, job.id);
+  const jobRelease = await getJobReleaseForLead(supabase, job.id);
 
   let estimateVisitSchedules: any[] = [];
   if (job.estimate_job_id) {
@@ -273,6 +276,17 @@ export async function handleSingleJobGet(
       stripe_invoice_url: invoice.stripe_invoice_url,
       status: invoice.status,
     } : null,
+    job_release: jobRelease
+      ? {
+          id: jobRelease.id,
+          status: jobRelease.status,
+          release_text: jobRelease.release_text,
+          signed_at: jobRelease.signed_at,
+          signature_image_url: jobRelease.signature_image_url,
+          requested_at: jobRelease.requested_at,
+        }
+      : null,
+    is_fully_paid: fullyPaid,
     estimate_visit_schedules: estimateVisitSchedules.map((s: any) => ({
       scheduled_date: s.scheduled_date,
       scheduled_time_start: s.scheduled_time_start,

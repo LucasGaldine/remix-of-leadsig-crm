@@ -121,6 +121,7 @@ describe("ClientPortalEstimate", () => {
   });
 
   it("sends selected estimate version id when approving", async () => {
+    setupSignatureCanvasMocks();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: true }),
@@ -178,6 +179,7 @@ describe("ClientPortalEstimate", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /^Approve$/i }));
+    drawSignature();
     fireEvent.click(screen.getByRole("button", { name: /Submit Approval/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

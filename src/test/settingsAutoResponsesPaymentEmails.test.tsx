@@ -121,6 +121,8 @@ describe("SettingsAutoResponses payment emails", () => {
     expect(screen.getByRole("switch", { name: /send payment email when estimate is approved/i })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("switch", { name: /send payment email when invoice is sent/i })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("switch", { name: /send payment email when payment is logged/i })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: /send job release request email when job is fully paid/i })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: /send signed job release copy email after signature/i })).toHaveAttribute("aria-checked", "true");
   });
 
   it("hydrates payment email toggles from account settings", () => {
@@ -130,6 +132,8 @@ describe("SettingsAutoResponses payment emails", () => {
           estimate_approved: false,
           invoice_sent: true,
           payment_logged: false,
+          job_release_request_email: false,
+          job_release_signed_copy_email: true,
         },
       },
     };
@@ -143,6 +147,8 @@ describe("SettingsAutoResponses payment emails", () => {
     expect(screen.getByRole("switch", { name: /send payment email when estimate is approved/i })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("switch", { name: /send payment email when invoice is sent/i })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("switch", { name: /send payment email when payment is logged/i })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: /send job release request email when job is fully paid/i })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: /send signed job release copy email after signature/i })).toHaveAttribute("aria-checked", "true");
   });
 
   it("hydrates lead message automation toggle from account settings", () => {
@@ -186,6 +192,8 @@ describe("SettingsAutoResponses payment emails", () => {
       estimate_approved: false,
       invoice_sent: true,
       payment_logged: false,
+      job_release_request_email: true,
+      job_release_signed_copy_email: true,
     });
   });
 
@@ -220,6 +228,8 @@ describe("SettingsAutoResponses payment emails", () => {
           estimate_approved: true,
           invoice_sent: true,
           payment_logged: true,
+          job_release_request_email: true,
+          job_release_signed_copy_email: true,
         },
       },
     };
@@ -248,6 +258,8 @@ describe("SettingsAutoResponses payment emails", () => {
       estimate_approved: false,
       invoice_sent: false,
       payment_logged: false,
+      job_release_request_email: false,
+      job_release_signed_copy_email: false,
     });
   });
 

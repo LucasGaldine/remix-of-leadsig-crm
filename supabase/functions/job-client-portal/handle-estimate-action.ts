@@ -142,7 +142,7 @@ export async function handleEstimateAction(
       (typeof estimate?.proposal_settings?.recommended_version_id === "string"
         ? estimate.proposal_settings.recommended_version_id
         : null);
-    const requiredAgreementKeys = ["job_release_agreement", "job_agreement"];
+    const requiredAgreementKeys = ["job_agreement"];
     if (isWarrantyEnabledForVersion(activeVersionId)) {
       requiredAgreementKeys.push("warranty_agreement");
     }
@@ -175,7 +175,6 @@ export async function handleEstimateAction(
       accepted_at: new Date().toISOString(),
       approved_via: "customer_link",
       agreement_acceptance: {
-        job_release_agreement: agreementAcceptance?.job_release_agreement === true,
         job_agreement: agreementAcceptance?.job_agreement === true,
         warranty_agreement: agreementAcceptance?.warranty_agreement === true,
         accepted_at: new Date().toISOString(),
@@ -183,7 +182,11 @@ export async function handleEstimateAction(
       updated_at: new Date().toISOString(),
     };
     if (agreementTemplates && typeof agreementTemplates === "object") {
-      estimateUpdatePayload.agreement_templates = agreementTemplates;
+      const templates = agreementTemplates as Record<string, unknown>;
+      estimateUpdatePayload.agreement_templates = {
+        job_agreement: templates.job_agreement,
+        warranty_agreement: templates.warranty_agreement,
+      };
     }
 
     if (uploadedSignature) {

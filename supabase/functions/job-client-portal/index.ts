@@ -4,6 +4,7 @@ import {
 } from "./agreement-templates.ts";
 import { handleEstimateAction } from "./handle-estimate-action.ts";
 import { handleSingleJobGet } from "./handle-single-job-get.ts";
+import { signJobRelease } from "./job-release.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -596,6 +597,15 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
       ? body.agreement_templates
       : null;
 
+  if (action === "sign_job_release") {
+    return await signJobRelease(
+      supabase,
+      { id: job.id, account_id: job.account_id, customer_id: job.customer_id },
+      signatureDataUrl,
+      jsonResponse,
+    );
+  }
+
   if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
     return jsonResponse({ error: "Invalid action" }, 400);
   }
@@ -654,4 +664,3 @@ async function handleSingleJobPost(supabase: any, job: any, req: Request) {
     agreementTemplates,
   );
 }
-

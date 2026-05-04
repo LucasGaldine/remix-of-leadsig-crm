@@ -32,6 +32,7 @@ import {
   findExistingCustomerMatch,
   type ExistingCustomerMatch,
 } from "@/lib/findExistingCustomerMatch";
+import { useNavigate } from "react-router-dom";
 
 interface AddLeadDialogProps {
   open: boolean;
@@ -48,6 +49,7 @@ const INITIAL_CLIENT_DATA: CreateCustomerInput = {
 };
 
 export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDialogProps) {
+  const navigate = useNavigate();
   const { user, currentAccount } = useAuth();
   const queryClient = useQueryClient();
   const createCustomer = useCreateCustomer();
@@ -256,6 +258,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadCreated }: AddLeadDial
       resetForm();
       onOpenChange(false);
       onLeadCreated?.(data.id);
+      navigate(`/leads/${data.id}`);
     } catch (error) {
       console.error("Error creating lead:", error);
       toast.error("Failed to create lead");

@@ -16,17 +16,17 @@ type RequestBody = {
 };
 
 type RecipientType = "customer" | "user";
-type AgreementKey = "job_release_agreement" | "job_agreement" | "warranty_agreement";
+type AgreementKey = "job_agreement" | "warranty_agreement";
 type PdfAttachment = {
   filename: string;
   content: Uint8Array;
   contentType: string;
 };
 const AGREEMENT_LABELS: Record<AgreementKey, string> = {
-  job_release_agreement: "Job Release Agreement",
   job_agreement: "Job Agreement",
   warranty_agreement: "Warranty Agreement",
 };
+const AGREEMENT_ATTACHMENT_KEYS: AgreementKey[] = ["job_agreement", "warranty_agreement"];
 
 function escapeHtml(value: string): string {
   return value
@@ -579,85 +579,8 @@ function addAgreementBody(
   return yPosition;
 }
 
-async function addAgreementApprovalDetails(
-  doc: JsPdfDoc,
-  params: {
-    customerName: string;
-    companyName: string;
-    acceptedAt?: string | null;
-    signatureImageUrl?: string | null;
-  },
-  margin: number,
-  pageWidth: number,
-  startY: number,
-) {
-  let yPosition = startY + 6;
-  if (yPosition > 255) {
-    doc.addPage();
-    yPosition = margin;
-  }
-
-  doc.setDrawColor(220, 220, 220);
-  doc.line(margin, yPosition, pageWidth - margin, yPosition);
-  yPosition += 8;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Approval Details", margin, yPosition);
-  yPosition += 7;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const approvedDate = params.acceptedAt ? format(new Date(params.acceptedAt), "MMMM d, yyyy") : "N/A";
-  doc.text(`Client Printed Name: ${params.customerName}`, margin, yPosition);
-  yPosition += 6;
-  doc.text(`Client Approval Date: ${approvedDate}`, margin, yPosition);
-  yPosition += 8;
-
-  if (params.signatureImageUrl) {
-    try {
-      const signatureDataUrl = await getImageDataUrl(params.signatureImageUrl);
-      const signatureProps = doc.getImageProperties(signatureDataUrl);
-      const imageFormat = resolveImageFormat(signatureDataUrl);
-      const maxImageWidth = Math.min(95, pageWidth - margin * 2);
-      const maxImageHeight = 36;
-      const widthScale = maxImageWidth / signatureProps.width;
-      const heightScale = maxImageHeight / signatureProps.height;
-      const imageScale = Math.min(widthScale, heightScale);
-      const imageWidth = signatureProps.width * imageScale;
-      const imageHeight = signatureProps.height * imageScale;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(100, 100, 100);
-      doc.text("Client Signature:", margin, yPosition);
-      doc.setTextColor(0, 0, 0);
-      yPosition += 2;
-
-      doc.addImage(signatureDataUrl, imageFormat, margin, yPosition, imageWidth, imageHeight);
-      yPosition += imageHeight + 6;
-    } catch {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(100, 100, 100);
-      doc.text("Client Signature: captured on file", margin, yPosition);
-      doc.setTextColor(0, 0, 0);
-      yPosition += 6;
-    }
-  }
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(`Contractor Printed Name: ${params.companyName}`, margin, yPosition);
-  yPosition += 6;
-  doc.text(`Contractor Acknowledgement Date: ${approvedDate}`, margin, yPosition);
-}
-
 async function buildAgreementPdfAttachment(params: {
   customerName: string;
-  companyName: string;
-  acceptedAt?: string | null;
-  signatureImageUrl?: string | null;
   agreementKey: AgreementKey;
   agreementText: string;
 }): Promise<PdfAttachment> {
@@ -677,8 +600,7 @@ async function buildAgreementPdfAttachment(params: {
   doc.setTextColor(0, 0, 0);
 
   const bodyText = normalizeAgreementBodyText(stripAgreementSignaturePlaceholders(params.agreementText));
-  const bodyEndY = addAgreementBody(doc, bodyText, margin, pageWidth, 40);
-  await addAgreementApprovalDetails(doc, params, margin, pageWidth, bodyEndY);
+  addAgreementBody(doc, bodyText, margin, pageWidth, 40);
 
   const filenameSafeCustomer = params.customerName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "customer";
   const filePrefix = params.agreementKey.replaceAll("_agreement", "").replaceAll("_", "-");
@@ -880,22 +802,27 @@ Deno.serve(async (req: Request) => {
 
     const warrantyAccepted = (estimate as any)?.agreement_acceptance?.warranty_agreement === true;
     if (eventType !== "change_order_approved") {
-      for (const key of Object.keys(AGREEMENT_LABELS) as AgreementKey[]) {
+      for (const key of AGREEMENT_ATTACHMENT_KEYS) {
         if (key === "warranty_agreement" && !warrantyAccepted) continue;
         const agreementText = normalizeAgreementText(agreementTemplates[key]);
         if (!agreementText) continue;
         attachments.push(
           await buildAgreementPdfAttachment({
             customerName,
-            companyName,
-            acceptedAt: estimate.accepted_at || null,
-            signatureImageUrl: (estimate as any).manual_approval_photo_url || null,
             agreementKey: key,
             agreementText,
           }),
         );
       }
     }
+
+    // Absolute guard: never send Job Release as part of estimate approval emails.
+    const filteredAttachments = attachments.filter((attachment) => !attachment.filename.startsWith("job-release-"));
+    console.log("estimate-approval attachments", {
+      estimateId: estimate.id,
+      eventType,
+      attachmentFilenames: filteredAttachments.map((attachment) => attachment.filename),
+    });
 
     const { data: members } = await supabase
       .from("account_members")
@@ -987,7 +914,7 @@ Deno.serve(async (req: Request) => {
           : `Hi ${recipient.name},\n\n${customerName} approved the estimate for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}`);
 
       try {
-        await sendEmail({
+          await sendEmail({
           smtpHost,
           smtpPort,
           smtpSecure,
@@ -999,8 +926,8 @@ Deno.serve(async (req: Request) => {
           html,
           text,
           replyTo: companyReplyTo,
-          attachments,
-        });
+            attachments: filteredAttachments,
+          });
 
         sent += 1;
 

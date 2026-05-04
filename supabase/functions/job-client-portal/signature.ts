@@ -79,3 +79,29 @@ export async function uploadSignatureDataUrl(
   const { data: urlData } = supabase.storage.from("lead-photos").getPublicUrl(filePath);
   return { ok: true, filePath, publicUrl: urlData.publicUrl };
 }
+
+export async function uploadJobReleaseSignatureDataUrl(
+  supabase: any,
+  jobReleaseId: string,
+  signatureDataUrl: string,
+): Promise<{ ok: true; filePath: string; publicUrl: string } | { ok: false; error: string; statusCode: number }> {
+  const parsedImage = parseSignatureDataUrl(signatureDataUrl);
+  if (!parsedImage) {
+    return { ok: false, error: "Invalid signature format. Please sign again.", statusCode: 400 };
+  }
+
+  const filePath = `job-releases/${jobReleaseId}/${crypto.randomUUID()}.${parsedImage.extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from("lead-photos")
+    .upload(filePath, parsedImage.bytes, {
+      contentType: parsedImage.contentType,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return { ok: false, error: "Failed to upload signature image", statusCode: 500 };
+  }
+
+  const { data: urlData } = supabase.storage.from("lead-photos").getPublicUrl(filePath);
+  return { ok: true, filePath, publicUrl: urlData.publicUrl };
+}

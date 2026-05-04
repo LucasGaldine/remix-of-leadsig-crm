@@ -22,11 +22,12 @@ import {
   findExistingCustomerMatch,
   type ExistingCustomerMatch,
 } from "@/lib/findExistingCustomerMatch";
+import { useNavigate } from "react-router-dom";
 
 interface AddCustomerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCustomerCreated?: () => void;
+  onCustomerCreated?: (customerId: string) => void;
   onImportFromCSV?: () => void;
 }
 
@@ -39,6 +40,7 @@ const INITIAL_FORM = {
 };
 
 export function AddCustomerDialog({ open, onOpenChange, onCustomerCreated, onImportFromCSV }: AddCustomerDialogProps) {
+  const navigate = useNavigate();
   const { currentAccount } = useAuth();
   const createCustomer = useCreateCustomer();
   const [saving, setSaving] = useState(false);
@@ -82,7 +84,7 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerCreated, onImp
 
       setSaving(true);
 
-      await createCustomer.mutateAsync({
+      const customer = await createCustomer.mutateAsync({
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
         email: formData.email.trim() || null,
@@ -93,7 +95,8 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerCreated, onImp
       toast.success("Contact created successfully");
       resetForm();
       onOpenChange(false);
-      onCustomerCreated?.();
+      onCustomerCreated?.(customer.id);
+      navigate(`/customers/${customer.id}`);
     } catch (error: unknown) {
       const errorMessage = getCustomerWriteErrorMessage(error, "Failed to create contact");
       console.error("Error creating contact:", error);

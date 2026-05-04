@@ -201,7 +201,7 @@ export function ClientPortalEstimate({
   portalColor = "",
   portalTextColor = "",
 }: ClientPortalEstimateProps) {
-  const REQUIRED_AGREEMENT_KEYS = ["job_release_agreement", "job_agreement", "warranty_agreement"] as const;
+  const REQUIRED_AGREEMENT_KEYS = ["job_agreement", "warranty_agreement"] as const;
   const SIGNATURE_CANVAS_WIDTH = 600;
   const SIGNATURE_CANVAS_HEIGHT = 180;
   const versionWindowSize = 3;
@@ -215,7 +215,6 @@ export function ClientPortalEstimate({
   const [approvalAgreementTemplates, setApprovalAgreementTemplates] = useState<Record<string, string> | null>(null);
   const [isVisualizationPortrait, setIsVisualizationPortrait] = useState(false);
   const [agreementChecks, setAgreementChecks] = useState({
-    job_release_agreement: true,
     job_agreement: true,
     warranty_agreement: true,
   });
@@ -621,7 +620,12 @@ export function ClientPortalEstimate({
           updated_at: estimate.updated_at,
           estimate_version_id: action === "approve" ? selectedVersionId : undefined,
           agreement_acceptance: action === "approve"
-            ? { ...agreementChecks, warranty_agreement: isWarrantyEnabledForCurrentSelection ? agreementChecks.warranty_agreement : false }
+            ? {
+                ...agreementChecks,
+                // Backward compatibility with deployed edge functions that may still require this key.
+                job_release_agreement: true,
+                warranty_agreement: isWarrantyEnabledForCurrentSelection ? agreementChecks.warranty_agreement : false,
+              }
             : undefined,
           agreement_templates: action === "approve" ? approvalAgreementTemplates : undefined,
           ...(action === "approve" ? getSignaturePayloadFields() : {}),
@@ -684,7 +688,6 @@ export function ClientPortalEstimate({
     setError(null);
     setActiveDocument(null);
     setAgreementChecks({
-      job_release_agreement: true,
       job_agreement: true,
       warranty_agreement: true,
     });
@@ -739,8 +742,8 @@ export function ClientPortalEstimate({
     const scopeItemsFromChecklist = Array.isArray(estimate.scope_of_work_items)
       ? estimate.scope_of_work_items.map((item) => String(item || "").trim()).filter((value) => value.length > 0)
       : [];
-    const existingJobReleaseTemplate = resolveAgreementTextByKey(templateRecord, "job_release_agreement");
-    const scopeItemsFromExistingTemplate = extractScopeItemsFromAgreementText(existingJobReleaseTemplate);
+    const existingJobAgreementTemplate = resolveAgreementTextByKey(templateRecord, "job_agreement");
+    const scopeItemsFromExistingTemplate = extractScopeItemsFromAgreementText(existingJobAgreementTemplate);
     const fallbackScopeItems = selectedLineItems
       .map((item) => String(item?.name || "").trim())
       .filter((value) => value.length > 0)

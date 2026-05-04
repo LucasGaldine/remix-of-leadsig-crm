@@ -70,6 +70,8 @@ interface RecordLoggedPaymentAgainstInvoiceInput {
   userId: string;
 }
 
+const CLOSED_INVOICE_STATUSES = new Set(["paid", "completed"]);
+
 function roundCurrencyAmount(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
@@ -124,6 +126,7 @@ export async function ensureInvoiceForLoggedPayment(
   const invoiceNumber = await getNextInvoiceNumber(supabase, accountId);
 
   const dueDate = new Date().toISOString().split("T")[0];
+  const paidAt = new Date().toISOString();
 
   const { data: newInvoice, error: invoiceError } = await supabase
     .from("invoices")
@@ -140,6 +143,7 @@ export async function ensureInvoiceForLoggedPayment(
       balance_due: 0,
       notes: `Payment received via ${methodLabel}`,
       status: "paid",
+      paid_at: paidAt,
       due_date: dueDate,
       created_by: userId,
       account_id: accountId,
@@ -148,7 +152,7 @@ export async function ensureInvoiceForLoggedPayment(
     .single();
 
   if (invoiceError || !newInvoice?.id) {
-    throw new Error("Failed to create invoice");
+    throw new Error(invoiceError?.message || "Failed to create invoice");
   }
 
   const { error: lineItemError } = await supabase.from("invoice_line_items").insert({
@@ -249,7 +253,7 @@ export function selectInvoiceForLoggedPayment(
 ): LoggedPaymentInvoiceCandidate | null {
   const openInvoice = invoices.find((invoice) => {
     const balanceDue = Number(invoice.balance_due || 0);
-    return invoice.status !== "paid" && balanceDue > 0;
+    return !CLOSED_INVOICE_STATUSES.has(invoice.status ?? "") && balanceDue > 0;
   });
 
   return openInvoice ?? null;

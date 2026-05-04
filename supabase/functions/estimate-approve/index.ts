@@ -471,7 +471,7 @@ Deno.serve(async (req: Request) => {
             (typeof estimate?.proposal_settings?.recommended_version_id === "string"
               ? estimate.proposal_settings.recommended_version_id
               : null);
-          const requiredAgreementKeys = ["job_release_agreement", "job_agreement"];
+          const requiredAgreementKeys = ["job_agreement"];
           if (isWarrantyEnabledForVersion(estimate?.proposal_settings as Record<string, unknown> | null, activeVersionId)) {
             requiredAgreementKeys.push("warranty_agreement");
           }
@@ -509,8 +509,7 @@ Deno.serve(async (req: Request) => {
           approved_via: action === "approve" ? "customer_link" : null,
           agreement_acceptance:
             action === "approve"
-              ? {
-                  job_release_agreement: agreementAcceptance?.job_release_agreement === true,
+                ? {
                   job_agreement: agreementAcceptance?.job_agreement === true,
                   warranty_agreement: agreementAcceptance?.warranty_agreement === true,
                   accepted_at: new Date().toISOString(),

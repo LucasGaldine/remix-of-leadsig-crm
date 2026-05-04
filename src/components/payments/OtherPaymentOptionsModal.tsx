@@ -59,13 +59,14 @@ export function OtherPaymentOptionsModal({
   const [selectedMethod, setSelectedMethod] = useState<PaymentOption | null>(null);
   const [amount, setAmount] = useState("");
   const busy = markingAsSent || recordingPayment || sendingInvoice;
+  const remainingAmount = Math.max(Number(totalAmount || 0) - Number(invoicedAmount || 0), 0);
   const formattedInvoicedAmount = Number(invoicedAmount || 0).toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const formattedTotalAmount = Number(totalAmount || 0).toLocaleString("en-US", {
+  const formattedRemainingAmount = remainingAmount.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
@@ -81,7 +82,7 @@ export function OtherPaymentOptionsModal({
 
   const handleSelectMethod = (method: PaymentOption) => {
     setSelectedMethod(method);
-    setAmount(totalAmount.toFixed(2));
+    setAmount(remainingAmount.toFixed(2));
   };
 
   const handleBack = () => {
@@ -163,8 +164,8 @@ export function OtherPaymentOptionsModal({
                 <p className="text-2xl font-semibold leading-tight text-foreground">+{formattedInvoicedAmount}</p>
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Total</p>
-                <p className="text-2xl font-semibold leading-tight text-foreground">{formattedTotalAmount}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Remaining</p>
+                <p className="text-2xl font-semibold leading-tight text-foreground">{formattedRemainingAmount}</p>
               </div>
             </div>
           </div>

@@ -71,7 +71,6 @@ export default function EstimateApproval() {
   const [approving, setApproving] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [agreementChecks, setAgreementChecks] = useState({
-    job_release_agreement: true,
     job_agreement: true,
     warranty_agreement: true,
   });
@@ -138,7 +137,7 @@ export default function EstimateApproval() {
       activeVersionId && warrantyMap[activeVersionId] !== undefined
         ? warrantyMap[activeVersionId] === true
         : true;
-    const requiredAgreementKeys = (["job_release_agreement", "job_agreement", "warranty_agreement"] as const)
+    const requiredAgreementKeys = (["job_agreement", "warranty_agreement"] as const)
       .filter((key) => key !== "warranty_agreement" || warrantyRequired);
 
     if (!requiredAgreementKeys.every((key) => agreementChecks[key])) {
@@ -155,7 +154,9 @@ export default function EstimateApproval() {
           action: "approve",
           estimate_version_id: selectedVersionId,
           agreement_acceptance: {
-            ...agreementChecks,
+            // Backward compatibility with deployed edge functions that may still require this key.
+            job_release_agreement: true,
+            job_agreement: agreementChecks.job_agreement,
             warranty_agreement: warrantyRequired ? agreementChecks.warranty_agreement : false,
           },
         }),
@@ -300,7 +301,7 @@ export default function EstimateApproval() {
     activeVersionId && warrantyMap[activeVersionId] !== undefined
       ? warrantyMap[activeVersionId] === true
       : true;
-  const requiredAgreementKeys = (["job_release_agreement", "job_agreement", "warranty_agreement"] as const)
+  const requiredAgreementKeys = (["job_agreement", "warranty_agreement"] as const)
     .filter((key) => key !== "warranty_agreement" || warrantyRequired);
   const displayLineItems = selectedVersion?.line_items || estimate.line_items;
   const displaySubtotal = selectedVersion?.subtotal ?? estimate.subtotal;

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ClientPortalHeader } from "@/components/client-portal/ClientPortalHeader";
 import { ClientPortalEstimate } from "@/components/client-portal/ClientPortalEstimate";
+import { ClientPortalJobRelease } from "@/components/client-portal/ClientPortalJobRelease";
 import { ClientPortalPhotos } from "@/components/client-portal/ClientPortalPhotos";
 import { ClientPortalSchedule } from "@/components/client-portal/ClientPortalSchedule";
 import { ClientPortalActivity } from "@/components/client-portal/ClientPortalActivity";
@@ -180,6 +181,15 @@ export interface PortalData {
   estimate_visit_schedules: ScheduleItem[];
   estimate: EstimateData | null;
   invoice: InvoiceData | null;
+  job_release?: {
+    id: string;
+    status: string;
+    release_text: string;
+    signed_at?: string | null;
+    signature_image_url?: string | null;
+    requested_at?: string | null;
+  } | null;
+  is_fully_paid?: boolean;
   photos: { before: PhotoItem[]; after: PhotoItem[] };
   activity: ActivityItem[];
   portal_metadata?: PortalMetadata;
@@ -733,6 +743,16 @@ export default function ClientJobPortal() {
             </div>
           </div>
         )}
+
+        <ClientPortalJobRelease
+          token={token!}
+          jobId={jobId}
+          apiUrl={apiUrl}
+          apiHeaders={apiHeaders}
+          isFullyPaid={data?.is_fully_paid === true}
+          jobRelease={data?.job_release || null}
+          onSigned={fetchData}
+        />
 
         {(photos.before.length > 0 || photos.after.length > 0) && (
           <ClientPortalPhotos photos={photos} />

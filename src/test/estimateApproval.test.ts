@@ -54,7 +54,7 @@ describe("approveEstimateManuallyById", () => {
     expect(estimateUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "accepted",
-        approved_via: "manual",
+        approved_via: "manual_signature",
         manual_approval_photo_url: "https://example.com/signature.jpg",
       }),
     );

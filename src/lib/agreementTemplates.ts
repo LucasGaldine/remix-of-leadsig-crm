@@ -71,54 +71,48 @@ Client: ${params.clientName}
 Project Name: ${params.projectName}
 Project Address: ${params.projectAddress}
 
-AUTHORIZATION TO PROCEED
+FINAL JOB RELEASE
 
-The Client hereby authorizes ${params.contractorName} (“Contractor”) to begin work on the project described below. By signing this Job Release Agreement, the Client agrees to the following terms and conditions.
+This Job Release Agreement is being issued after completion of the project listed above.
 
-PROJECT SCOPE
+By signing this agreement, the Client confirms that ${params.contractorName} has completed the agreed-upon work, that the completed work has been reviewed, and that the Client accepts the project as complete.
 
-We are pleased to provide the following scope of work:
+The purpose of this agreement is to confirm that the Contractor has fulfilled the agreed scope of work and that no further work, corrections, changes, or claims are being requested by the Client at this time, except for any written warranty obligations separately provided by the Contractor.
+
+COMPLETED PROJECT SCOPE
+
+The following scope of work was completed:
 
 ${numberedScope}
 
-The Contractor agrees to complete the work in a professional and workmanlike manner, maintaining a clean and safe job site throughout the duration of the project.
+The Contractor confirms that the work was completed in a professional and workmanlike manner.
 
-FINANCIAL TERMS
+The Client confirms that they have had the opportunity to inspect the completed work and that the work has been completed to their satisfaction.
+
+PAYMENT CONFIRMATION
 
 Total Project Cost: $${formatCurrency(params.totalCost)}
 
-Payment Schedule:
+The Client confirms that all payments due for the project have been received by the Contractor.
 
-Deposit (${depositPercentage}%): $${formatCurrency(depositAmount)} — due upon signing
-Midpoint Payment (${midpointPercentage}%): $${formatCurrency(midpointAmount)} — due at project midpoint
-Final Payment (${finalPercentage}%): $${formatCurrency(finalAmount)} — due upon completion
+No remaining balance is due unless otherwise agreed to in writing by both parties.
 
-Payment Method: ${params.paymentMethod} (e.g., Stripe, check, ACH)
+CLIENT ACCEPTANCE
 
-Work will commence only after the initial deposit has been received.
+By signing this agreement, the Client acknowledges and agrees that:
 
-SITE ACCESS
+The agreed scope of work has been completed.
+The Client has reviewed the completed work.
+The completed work is accepted as satisfactory.
+All project payments have been made.
+No additional work, corrections, or changes are being requested at this time.
+This agreement does not waive any written warranty provided by the Contractor.
 
-The Client agrees to provide the Contractor with full and unobstructed access to the project site during regular business hours:
+RELEASE OF PROJECT
 
-Hours: ${workHours} (e.g., Monday–Friday, 7:00 AM – 6:00 PM)
+The Client releases ${params.contractorName} from any further obligation related to the completed project, except for obligations specifically covered under a written warranty or separate written agreement.
 
-INSURANCE
-
-The Contractor shall maintain appropriate insurance coverage, including:
-
-General Liability Insurance
-Workers’ Compensation Insurance
-
-Coverage will remain active for the duration of the project and apply to all employees and subcontractors.
-
-ACKNOWLEDGMENT
-
-The Client confirms that:
-
-The scope of work is accurate and understood
-The pricing and payment schedule are agreed upon
-Authorization is granted to begin work upon deposit receipt`,
+This release confirms that the project is considered complete and closed as of the date signed below.`,
     job_agreement: `CONSTRUCTION CONTRACT / JOB AGREEMENT
 
 Date: ${params.todayIso}
