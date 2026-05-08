@@ -1,232 +1,27 @@
-/*
-  # Add Crew Member Role and Job Assignments
-  
-  ## Summary
-  This migration adds support for crew members who have limited access to the system.
-  Crew members can only see jobs they're assigned to, their schedule, and basic settings.
-  
-  ## Changes
-  
-  ### Enums
-  - Add 'crew_member' to app_role enum
-  
-  ### New Tables
-  - `job_assignments` - Tracks which crew members are assigned to which jobs
-    - `id` (uuid, primary key)
-    - `lead_id` (uuid, foreign key to leads) - The job
-    - `user_id` (uuid, foreign key to auth.users) - The assigned crew member
-    - `account_id` (uuid, foreign key to accounts)
-    - `assigned_by` (uuid, foreign key to auth.users) - Who made the assignment
-    - `assigned_at` (timestamptz) - When they were assigned
-    - `notes` (text) - Optional notes about the assignment
-    - `created_at` (timestamptz)
-    - `updated_at` (timestamptz)
-  
-  ### Modified Tables
-  - account_members: Change default role from 'admin' to handle crew member invites
-  
-  ## Security
-  - Enable RLS on job_assignments table
-  - Add policies for crew leads and admins to manage assignments
-  - Add policies for crew members to view their own assignments
-  - Update leads RLS policies to allow crew members to see assigned jobs
-  
-  ## Notes
-  - Only crew leads, admins, and owners can assign crew members to jobs
-  - Crew members can only see jobs they're assigned to
-  - Each crew member can be assigned to multiple jobs
-  - Each job can have multiple crew members assigned
-*/
-
--- Add crew_member to app_role enum if it doesn't exist
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_enum 
-    WHERE enumlabel = 'crew_member' 
-    AND enumtypid = 'app_role'::regtype
-  ) THEN
-    ALTER TYPE app_role ADD VALUE 'crew_member';
-  END IF;
-END $$;
-
--- Create job_assignments table
-CREATE TABLE IF NOT EXISTS job_assignments (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  assigned_by uuid NOT NULL REFERENCES auth.users(id),
-  assigned_at timestamptz DEFAULT now() NOT NULL,
-  notes text,
-  created_at timestamptz DEFAULT now() NOT NULL,
-  updated_at timestamptz DEFAULT now() NOT NULL,
-  UNIQUE(lead_id, user_id)
-);
-
--- Add indexes for performance
-CREATE INDEX IF NOT EXISTS idx_job_assignments_lead_id ON job_assignments(lead_id);
-CREATE INDEX IF NOT EXISTS idx_job_assignments_user_id ON job_assignments(user_id);
-CREATE INDEX IF NOT EXISTS idx_job_assignments_account_id ON job_assignments(account_id);
-
--- Add updated_at trigger
-DROP TRIGGER IF EXISTS update_job_assignments_updated_at ON job_assignments;
-CREATE TRIGGER update_job_assignments_updated_at
-  BEFORE UPDATE ON job_assignments
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
--- Enable RLS
-ALTER TABLE job_assignments ENABLE ROW LEVEL SECURITY;
-
--- RLS Policies for job_assignments
-
--- Account members can view assignments in their account
-CREATE POLICY "Account members can view job assignments"
-  ON job_assignments FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
--- Crew leads, admins, and owners can create assignments
-CREATE POLICY "Managers can create job assignments"
-  ON job_assignments FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM account_members 
-      WHERE user_id = auth.uid() 
-      AND is_active = true
-      AND role IN ('owner', 'admin', 'crew_lead')
-    )
-    AND lead_id IN (
-      SELECT id FROM leads WHERE account_id = job_assignments.account_id
-    )
-    AND user_id IN (
-      SELECT user_id FROM account_members 
-      WHERE account_id = job_assignments.account_id 
-      AND is_active = true
-    )
-  );
-
--- Crew leads, admins, and owners can update assignments
-CREATE POLICY "Managers can update job assignments"
-  ON job_assignments FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM account_members 
-      WHERE user_id = auth.uid() 
-      AND is_active = true
-      AND role IN ('owner', 'admin', 'crew_lead')
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM account_members 
-      WHERE user_id = auth.uid() 
-      AND is_active = true
-      AND role IN ('owner', 'admin', 'crew_lead')
-    )
-  );
-
--- Crew leads, admins, and owners can delete assignments
-CREATE POLICY "Managers can delete job assignments"
-  ON job_assignments FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM account_members 
-      WHERE user_id = auth.uid() 
-      AND is_active = true
-      AND role IN ('owner', 'admin', 'crew_lead')
-    )
-  );
-
--- Update leads RLS policies to allow crew members to see their assigned jobs
-
--- Drop and recreate the SELECT policy for leads to include crew member access
-DROP POLICY IF EXISTS "Account members can view leads" ON leads;
-
-CREATE POLICY "Account members can view leads"
-  ON leads FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT am.account_id FROM account_members am
-      WHERE am.user_id = auth.uid() 
-      AND am.is_active = true
-      AND am.role IN ('owner', 'admin', 'sales', 'crew_lead')
-    )
-    OR
-    id IN (
-      SELECT ja.lead_id FROM job_assignments ja
-      WHERE ja.user_id = auth.uid()
-    )
-  );
-
--- Update job_schedules RLS policies to allow crew members to see schedules for their assigned jobs
-
-DROP POLICY IF EXISTS "Account members can view their job schedules" ON job_schedules;
-
-CREATE POLICY "Account members can view their job schedules"
-  ON job_schedules FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT am.account_id FROM account_members am
-      WHERE am.user_id = auth.uid() 
-      AND am.is_active = true
-      AND am.role IN ('owner', 'admin', 'sales', 'crew_lead')
-    )
-    OR
-    lead_id IN (
-      SELECT ja.lead_id FROM job_assignments ja
-      WHERE ja.user_id = auth.uid()
-    )
-  );
-
--- Helper function to check if user has management role
-CREATE OR REPLACE FUNCTION is_manager(
-  account_id_param uuid,
-  user_id_param uuid DEFAULT auth.uid()
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM account_members
-    WHERE account_id = account_id_param
-    AND user_id = user_id_param
-    AND is_active = true
-    AND role IN ('owner', 'admin', 'crew_lead')
-  );
-$$;
-
--- Helper function to get user's assigned job IDs
-CREATE OR REPLACE FUNCTION get_user_assigned_jobs(
-  user_id_param uuid DEFAULT auth.uid()
-)
-RETURNS TABLE (lead_id uuid)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-  SELECT ja.lead_id
-  FROM job_assignments ja
-  WHERE ja.user_id = user_id_param;
-$$;
-
--- Add helpful comments
-COMMENT ON TABLE job_assignments IS 'Tracks which crew members are assigned to which jobs';
-COMMENT ON COLUMN job_assignments.lead_id IS 'The job (lead) being assigned';
-COMMENT ON COLUMN job_assignments.user_id IS 'The crew member being assigned to the job';
-COMMENT ON COLUMN job_assignments.assigned_by IS 'The manager who made the assignment';
+/*\n  # Add Crew Member Role and Job Assignments\n  \n  ## Summary\n  This migration adds support for crew members who have limited access to the system.\n  Crew members can only see jobs they're assigned to, their schedule, and basic settings.\n  \n  ## Changes\n  \n  ### Enums\n  - Add 'crew_member' to app_role enum\n  \n  ### New Tables\n  - `job_assignments` - Tracks which crew members are assigned to which jobs\n    - `id` (uuid, primary key)\n    - `lead_id` (uuid, foreign key to leads) - The job\n    - `user_id` (uuid, foreign key to auth.users) - The assigned crew member\n    - `account_id` (uuid, foreign key to accounts)\n    - `assigned_by` (uuid, foreign key to auth.users) - Who made the assignment\n    - `assigned_at` (timestamptz) - When they were assigned\n    - `notes` (text) - Optional notes about the assignment\n    - `created_at` (timestamptz)\n    - `updated_at` (timestamptz)\n  \n  ### Modified Tables\n  - account_members: Change default role from 'admin' to handle crew member invites\n  \n  ## Security\n  - Enable RLS on job_assignments table\n  - Add policies for crew leads and admins to manage assignments\n  - Add policies for crew members to view their own assignments\n  - Update leads RLS policies to allow crew members to see assigned jobs\n  \n  ## Notes\n  - Only crew leads, admins, and owners can assign crew members to jobs\n  - Crew members can only see jobs they're assigned to\n  - Each crew member can be assigned to multiple jobs\n  - Each job can have multiple crew members assigned\n*/\n\n-- Add crew_member to app_role enum if it doesn't exist\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_enum \n    WHERE enumlabel = 'crew_member' \n    AND enumtypid = 'app_role'::regtype\n  ) THEN\n    ALTER TYPE app_role ADD VALUE 'crew_member';
+\n  END IF;
+\nEND $$;
+\n\n-- Create job_assignments table\nCREATE TABLE IF NOT EXISTS job_assignments (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,\n  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,\n  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,\n  assigned_by uuid NOT NULL REFERENCES auth.users(id),\n  assigned_at timestamptz DEFAULT now() NOT NULL,\n  notes text,\n  created_at timestamptz DEFAULT now() NOT NULL,\n  updated_at timestamptz DEFAULT now() NOT NULL,\n  UNIQUE(lead_id, user_id)\n);
+\n\n-- Add indexes for performance\nCREATE INDEX IF NOT EXISTS idx_job_assignments_lead_id ON job_assignments(lead_id);
+\nCREATE INDEX IF NOT EXISTS idx_job_assignments_user_id ON job_assignments(user_id);
+\nCREATE INDEX IF NOT EXISTS idx_job_assignments_account_id ON job_assignments(account_id);
+\n\n-- Add updated_at trigger\nDROP TRIGGER IF EXISTS update_job_assignments_updated_at ON job_assignments;
+\nCREATE TRIGGER update_job_assignments_updated_at\n  BEFORE UPDATE ON job_assignments\n  FOR EACH ROW\n  EXECUTE FUNCTION update_updated_at_column();
+\n\n-- Enable RLS\nALTER TABLE job_assignments ENABLE ROW LEVEL SECURITY;
+\n\n-- RLS Policies for job_assignments\n\n-- Account members can view assignments in their account\nCREATE POLICY "Account members can view job assignments"\n  ON job_assignments FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\n-- Crew leads, admins, and owners can create assignments\nCREATE POLICY "Managers can create job assignments"\n  ON job_assignments FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM account_members \n      WHERE user_id = auth.uid() \n      AND is_active = true\n      AND role IN ('owner', 'admin', 'crew_lead')\n    )\n    AND lead_id IN (\n      SELECT id FROM leads WHERE account_id = job_assignments.account_id\n    )\n    AND user_id IN (\n      SELECT user_id FROM account_members \n      WHERE account_id = job_assignments.account_id \n      AND is_active = true\n    )\n  );
+\n\n-- Crew leads, admins, and owners can update assignments\nCREATE POLICY "Managers can update job assignments"\n  ON job_assignments FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM account_members \n      WHERE user_id = auth.uid() \n      AND is_active = true\n      AND role IN ('owner', 'admin', 'crew_lead')\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM account_members \n      WHERE user_id = auth.uid() \n      AND is_active = true\n      AND role IN ('owner', 'admin', 'crew_lead')\n    )\n  );
+\n\n-- Crew leads, admins, and owners can delete assignments\nCREATE POLICY "Managers can delete job assignments"\n  ON job_assignments FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM account_members \n      WHERE user_id = auth.uid() \n      AND is_active = true\n      AND role IN ('owner', 'admin', 'crew_lead')\n    )\n  );
+\n\n-- Update leads RLS policies to allow crew members to see their assigned jobs\n\n-- Drop and recreate the SELECT policy for leads to include crew member access\nDROP POLICY IF EXISTS "Account members can view leads" ON leads;
+\n\nCREATE POLICY "Account members can view leads"\n  ON leads FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT am.account_id FROM account_members am\n      WHERE am.user_id = auth.uid() \n      AND am.is_active = true\n      AND am.role IN ('owner', 'admin', 'sales', 'crew_lead')\n    )\n    OR\n    id IN (\n      SELECT ja.lead_id FROM job_assignments ja\n      WHERE ja.user_id = auth.uid()\n    )\n  );
+\n\n-- Update job_schedules RLS policies to allow crew members to see schedules for their assigned jobs\n\nDROP POLICY IF EXISTS "Account members can view their job schedules" ON job_schedules;
+\n\nCREATE POLICY "Account members can view their job schedules"\n  ON job_schedules FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT am.account_id FROM account_members am\n      WHERE am.user_id = auth.uid() \n      AND am.is_active = true\n      AND am.role IN ('owner', 'admin', 'sales', 'crew_lead')\n    )\n    OR\n    lead_id IN (\n      SELECT ja.lead_id FROM job_assignments ja\n      WHERE ja.user_id = auth.uid()\n    )\n  );
+\n\n-- Helper function to check if user has management role\nCREATE OR REPLACE FUNCTION is_manager(\n  account_id_param uuid,\n  user_id_param uuid DEFAULT auth.uid()\n)\nRETURNS boolean\nLANGUAGE sql\nSTABLE\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\n  SELECT EXISTS (\n    SELECT 1\n    FROM account_members\n    WHERE account_id = account_id_param\n    AND user_id = user_id_param\n    AND is_active = true\n    AND role IN ('owner', 'admin', 'crew_lead')\n  );
+\n$$;
+\n\n-- Helper function to get user's assigned job IDs\nCREATE OR REPLACE FUNCTION get_user_assigned_jobs(\n  user_id_param uuid DEFAULT auth.uid()\n)\nRETURNS TABLE (lead_id uuid)\nLANGUAGE sql\nSTABLE\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\n  SELECT ja.lead_id\n  FROM job_assignments ja\n  WHERE ja.user_id = user_id_param;
+\n$$;
+\n\n-- Add helpful comments\nCOMMENT ON TABLE job_assignments IS 'Tracks which crew members are assigned to which jobs';
+\nCOMMENT ON COLUMN job_assignments.lead_id IS 'The job (lead) being assigned';
+\nCOMMENT ON COLUMN job_assignments.user_id IS 'The crew member being assigned to the job';
+\nCOMMENT ON COLUMN job_assignments.assigned_by IS 'The manager who made the assignment';
+\n;

@@ -1,129 +1,28 @@
-/*
-  # Fix Duplicate Estimates from Estimate Job Conversion
-
-  ## Problem
-  When an estimate job converts to a regular job via `try_convert_lead_to_job()`:
-  1. A new regular job is created with status='job' and estimate_job_id set
-  2. The auto_create_estimate trigger fires and creates a NEW estimate
-  3. Then the function updates the ORIGINAL estimate's job_id to point to the new job
-  4. Result: TWO estimates exist - one created by the trigger, one moved from the estimate job
-
-  ## Solution
-  1. Update auto_create_estimate_for_job to skip jobs that have estimate_job_id set
-     (these jobs came from estimate visit conversions and already have an estimate being moved)
-  2. Clean up existing duplicate estimates by deleting the auto-created ones
-     (keeping the original estimates that have line items or were created by users)
-
-  ## Changes
-  - Modified `auto_create_estimate_for_job()` function to check for estimate_job_id
-  - Delete duplicate auto-generated estimates for jobs with estimate_job_id
-*/
-
--- Update the trigger function to skip jobs from estimate visit conversions
-CREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-BEGIN
-  -- Skip if this is not a job status
-  IF NEW.status NOT IN ('job', 'paid') THEN
-    RETURN NEW;
-  END IF;
-  
-  -- Skip if not approved
-  IF NEW.approval_status != 'approved' THEN
-    RETURN NEW;
-  END IF;
-  
-  -- Skip estimate visit jobs (they should not have their own estimate)
-  IF NEW.name LIKE '%, Estimate' THEN
-    RETURN NEW;
-  END IF;
-  
-  -- Skip jobs created from estimate visit conversions
-  -- These jobs have estimate_job_id set and the estimate is moved by try_convert_lead_to_job
-  IF NEW.estimate_job_id IS NOT NULL THEN
-    RETURN NEW;
-  END IF;
-  
-  -- Check if estimate already exists for this job
-  IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN
-    -- Create a draft estimate linked to the job
-    INSERT INTO public.estimates (
-      customer_id,
-      job_id,
-      account_id,
-      subtotal,
-      tax_rate,
-      tax,
-      discount,
-      total,
-      status,
-      created_by,
-      notes
-    ) VALUES (
-      NEW.customer_id,
-      NEW.id,
-      NEW.account_id,
-      0,
-      0.08,
-      0,
-      0,
-      0,
-      'draft',
-      NEW.created_by,
-      'Auto-generated estimate for ' || NEW.name
-    );
-  END IF;
-  
-  RETURN NEW;
-END;
-$function$;
-
--- Clean up duplicate estimates
--- For jobs with estimate_job_id, delete the auto-created estimate and keep the original
-DO $$
-DECLARE
-  _job_record RECORD;
-  _estimate_to_delete uuid;
-  _estimate_to_keep uuid;
-BEGIN
-  FOR _job_record IN 
-    SELECT 
-      l.id as job_id,
-      l.estimate_job_id,
-      array_agg(e.id ORDER BY e.created_at) as estimate_ids,
-      array_agg(
-        COALESCE(
-          (SELECT COUNT(*) FROM estimate_line_items WHERE estimate_id = e.id),
-          0
-        ) ORDER BY e.created_at
-      ) as line_item_counts
-    FROM leads l
-    INNER JOIN estimates e ON e.job_id = l.id
-    WHERE l.estimate_job_id IS NOT NULL
-    GROUP BY l.id, l.estimate_job_id
-    HAVING COUNT(e.id) > 1
-  LOOP
-    -- Keep the estimate with line items, or the older one if both have line items or neither do
-    IF _job_record.line_item_counts[1] > 0 THEN
-      _estimate_to_keep := _job_record.estimate_ids[1];
-      _estimate_to_delete := _job_record.estimate_ids[2];
-    ELSIF _job_record.line_item_counts[2] > 0 THEN
-      _estimate_to_keep := _job_record.estimate_ids[2];
-      _estimate_to_delete := _job_record.estimate_ids[1];
-    ELSE
-      -- Both have no line items, keep the first (older) one
-      _estimate_to_keep := _job_record.estimate_ids[1];
-      _estimate_to_delete := _job_record.estimate_ids[2];
-    END IF;
-    
-    -- Delete the duplicate estimate
-    DELETE FROM estimates WHERE id = _estimate_to_delete;
-    
-    RAISE NOTICE 'Deleted duplicate estimate % for job %, kept estimate %', 
-      _estimate_to_delete, _job_record.job_id, _estimate_to_keep;
-  END LOOP;
-END $$;
+/*\n  # Fix Duplicate Estimates from Estimate Job Conversion\n\n  ## Problem\n  When an estimate job converts to a regular job via `try_convert_lead_to_job()`:\n  1. A new regular job is created with status='job' and estimate_job_id set\n  2. The auto_create_estimate trigger fires and creates a NEW estimate\n  3. Then the function updates the ORIGINAL estimate's job_id to point to the new job\n  4. Result: TWO estimates exist - one created by the trigger, one moved from the estimate job\n\n  ## Solution\n  1. Update auto_create_estimate_for_job to skip jobs that have estimate_job_id set\n     (these jobs came from estimate visit conversions and already have an estimate being moved)\n  2. Clean up existing duplicate estimates by deleting the auto-created ones\n     (keeping the original estimates that have line items or were created by users)\n\n  ## Changes\n  - Modified `auto_create_estimate_for_job()` function to check for estimate_job_id\n  - Delete duplicate auto-generated estimates for jobs with estimate_job_id\n*/\n\n-- Update the trigger function to skip jobs from estimate visit conversions\nCREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $function$\nBEGIN\n  -- Skip if this is not a job status\n  IF NEW.status NOT IN ('job', 'paid') THEN\n    RETURN NEW;
+\n  END IF;
+\n  \n  -- Skip if not approved\n  IF NEW.approval_status != 'approved' THEN\n    RETURN NEW;
+\n  END IF;
+\n  \n  -- Skip estimate visit jobs (they should not have their own estimate)\n  IF NEW.name LIKE '%, Estimate' THEN\n    RETURN NEW;
+\n  END IF;
+\n  \n  -- Skip jobs created from estimate visit conversions\n  -- These jobs have estimate_job_id set and the estimate is moved by try_convert_lead_to_job\n  IF NEW.estimate_job_id IS NOT NULL THEN\n    RETURN NEW;
+\n  END IF;
+\n  \n  -- Check if estimate already exists for this job\n  IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN\n    -- Create a draft estimate linked to the job\n    INSERT INTO public.estimates (\n      customer_id,\n      job_id,\n      account_id,\n      subtotal,\n      tax_rate,\n      tax,\n      discount,\n      total,\n      status,\n      created_by,\n      notes\n    ) VALUES (\n      NEW.customer_id,\n      NEW.id,\n      NEW.account_id,\n      0,\n      0.08,\n      0,\n      0,\n      0,\n      'draft',\n      NEW.created_by,\n      'Auto-generated estimate for ' || NEW.name\n    );
+\n  END IF;
+\n  \n  RETURN NEW;
+\nEND;
+\n$function$;
+\n\n-- Clean up duplicate estimates\n-- For jobs with estimate_job_id, delete the auto-created estimate and keep the original\nDO $$\nDECLARE\n  _job_record RECORD;
+\n  _estimate_to_delete uuid;
+\n  _estimate_to_keep uuid;
+\nBEGIN\n  FOR _job_record IN \n    SELECT \n      l.id as job_id,\n      l.estimate_job_id,\n      array_agg(e.id ORDER BY e.created_at) as estimate_ids,\n      array_agg(\n        COALESCE(\n          (SELECT COUNT(*) FROM estimate_line_items WHERE estimate_id = e.id),\n          0\n        ) ORDER BY e.created_at\n      ) as line_item_counts\n    FROM leads l\n    INNER JOIN estimates e ON e.job_id = l.id\n    WHERE l.estimate_job_id IS NOT NULL\n    GROUP BY l.id, l.estimate_job_id\n    HAVING COUNT(e.id) > 1\n  LOOP\n    -- Keep the estimate with line items, or the older one if both have line items or neither do\n    IF _job_record.line_item_counts[1] > 0 THEN\n      _estimate_to_keep := _job_record.estimate_ids[1];
+\n      _estimate_to_delete := _job_record.estimate_ids[2];
+\n    ELSIF _job_record.line_item_counts[2] > 0 THEN\n      _estimate_to_keep := _job_record.estimate_ids[2];
+\n      _estimate_to_delete := _job_record.estimate_ids[1];
+\n    ELSE\n      -- Both have no line items, keep the first (older) one\n      _estimate_to_keep := _job_record.estimate_ids[1];
+\n      _estimate_to_delete := _job_record.estimate_ids[2];
+\n    END IF;
+\n    \n    -- Delete the duplicate estimate\n    DELETE FROM estimates WHERE id = _estimate_to_delete;
+\n    \n    RAISE NOTICE 'Deleted duplicate estimate % for job %, kept estimate %', \n      _estimate_to_delete, _job_record.job_id, _estimate_to_keep;
+\n  END LOOP;
+\nEND $$;
+\n;

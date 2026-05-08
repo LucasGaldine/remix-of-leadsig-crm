@@ -1,73 +1,19 @@
-/*
-  # Update handle_new_user to Save Phone and Company Fields
-  
-  ## Overview
-  Updates the handle_new_user trigger function to save:
-  - User phone number to profiles table
-  - Company phone and address to accounts table during account creation
-  
-  ## Changes
-  - Add phone field when creating profile
-  - Add company_phone and company_address when creating new account
-  
-  ## Security
-  - Function remains SECURITY DEFINER
-  - Maintains existing logic for account creation vs joining
-*/
-
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  v_account_id uuid;
-  v_target_account_id text;
-  v_company_name text;
-  v_company_phone text;
-  v_company_address text;
-  v_phone text;
-BEGIN
-  -- Get phone from metadata
-  v_phone := NEW.raw_user_meta_data ->> 'phone';
-  
-  -- Create profile with phone
-  INSERT INTO public.profiles (user_id, full_name, email, phone)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data ->> 'full_name', NEW.raw_user_meta_data ->> 'name'),
-    NEW.email,
-    v_phone
-  );
-  
-  -- Check if user is joining an existing account
-  v_target_account_id := NEW.raw_user_meta_data ->> 'target_account_id';
-  
-  -- Only create a new account if user is not joining an existing one
-  IF v_target_account_id IS NULL THEN
-    -- Get company information from metadata
-    v_company_name := COALESCE(
-      NEW.raw_user_meta_data ->> 'company_name',
-      NEW.raw_user_meta_data ->> 'full_name',
-      NEW.raw_user_meta_data ->> 'name',
-      NEW.email,
-      'My Company'
-    );
-    
-    v_company_phone := NEW.raw_user_meta_data ->> 'company_phone';
-    v_company_address := NEW.raw_user_meta_data ->> 'company_address';
-    
-    -- Create default account for new user with company details
-    INSERT INTO public.accounts (company_name, company_email, company_phone, company_address)
-    VALUES (v_company_name, NEW.email, v_company_phone, v_company_address)
-    RETURNING id INTO v_account_id;
-    
-    -- Add user as owner of their new account
-    INSERT INTO public.account_members (account_id, user_id, role, is_active)
-    VALUES (v_account_id, NEW.id, 'owner', true);
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
+/*\n  # Update handle_new_user to Save Phone and Company Fields\n  \n  ## Overview\n  Updates the handle_new_user trigger function to save:\n  - User phone number to profiles table\n  - Company phone and address to accounts table during account creation\n  \n  ## Changes\n  - Add phone field when creating profile\n  - Add company_phone and company_address when creating new account\n  \n  ## Security\n  - Function remains SECURITY DEFINER\n  - Maintains existing logic for account creation vs joining\n*/\n\nCREATE OR REPLACE FUNCTION public.handle_new_user()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\nDECLARE\n  v_account_id uuid;
+\n  v_target_account_id text;
+\n  v_company_name text;
+\n  v_company_phone text;
+\n  v_company_address text;
+\n  v_phone text;
+\nBEGIN\n  -- Get phone from metadata\n  v_phone := NEW.raw_user_meta_data ->> 'phone';
+\n  \n  -- Create profile with phone\n  INSERT INTO public.profiles (user_id, full_name, email, phone)\n  VALUES (\n    NEW.id,\n    COALESCE(NEW.raw_user_meta_data ->> 'full_name', NEW.raw_user_meta_data ->> 'name'),\n    NEW.email,\n    v_phone\n  );
+\n  \n  -- Check if user is joining an existing account\n  v_target_account_id := NEW.raw_user_meta_data ->> 'target_account_id';
+\n  \n  -- Only create a new account if user is not joining an existing one\n  IF v_target_account_id IS NULL THEN\n    -- Get company information from metadata\n    v_company_name := COALESCE(\n      NEW.raw_user_meta_data ->> 'company_name',\n      NEW.raw_user_meta_data ->> 'full_name',\n      NEW.raw_user_meta_data ->> 'name',\n      NEW.email,\n      'My Company'\n    );
+\n    \n    v_company_phone := NEW.raw_user_meta_data ->> 'company_phone';
+\n    v_company_address := NEW.raw_user_meta_data ->> 'company_address';
+\n    \n    -- Create default account for new user with company details\n    INSERT INTO public.accounts (company_name, company_email, company_phone, company_address)\n    VALUES (v_company_name, NEW.email, v_company_phone, v_company_address)\n    RETURNING id INTO v_account_id;
+\n    \n    -- Add user as owner of their new account\n    INSERT INTO public.account_members (account_id, user_id, role, is_active)\n    VALUES (v_account_id, NEW.id, 'owner', true);
+\n  END IF;
+\n  \n  RETURN NEW;
+\nEND;
+\n$$;
+;

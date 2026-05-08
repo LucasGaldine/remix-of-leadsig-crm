@@ -1,125 +1,37 @@
-/*
-  # Add Account Invite Codes
-  
-  ## Overview
-  Adds invite code functionality to allow users to join existing accounts.
-  Each account gets a unique, shareable invite code.
-  
-  ## Changes
-  
-  1. Add invite_code column to accounts table
-  2. Create function to generate unique invite codes
-  3. Generate codes for existing accounts
-  4. Add index for fast lookups
-  
-  ## Security
-  
-  - Invite codes are random 8-character alphanumeric strings
-  - Codes are case-insensitive for user convenience
-  - Users can look up accounts by invite code to join
-*/
-
--- Function to generate random invite code
-CREATE OR REPLACE FUNCTION generate_invite_code()
-RETURNS text
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; -- Removed ambiguous chars
-  result text := '';
-  i integer;
-BEGIN
-  FOR i IN 1..8 LOOP
-    result := result || substr(chars, floor(random() * length(chars) + 1)::integer, 1);
-  END LOOP;
-  RETURN result;
-END;
-$$;
-
--- Add invite_code column to accounts
-ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS invite_code text UNIQUE;
-
--- Generate invite codes for existing accounts
-DO $$
-DECLARE
-  account_record RECORD;
-  new_code text;
-  code_exists boolean;
-BEGIN
-  FOR account_record IN SELECT id FROM public.accounts WHERE invite_code IS NULL
-  LOOP
-    LOOP
-      new_code := generate_invite_code();
-      
-      -- Check if code already exists
-      SELECT EXISTS(
-        SELECT 1 FROM public.accounts WHERE invite_code = new_code
-      ) INTO code_exists;
-      
-      EXIT WHEN NOT code_exists;
-    END LOOP;
-    
-    UPDATE public.accounts 
-    SET invite_code = new_code 
-    WHERE id = account_record.id;
-  END LOOP;
-END $$;
-
--- Make invite_code NOT NULL after populating existing records
-ALTER TABLE public.accounts ALTER COLUMN invite_code SET NOT NULL;
-
--- Add index for invite code lookups
-CREATE INDEX IF NOT EXISTS idx_accounts_invite_code ON public.accounts(invite_code);
-
--- Function to auto-generate invite code on account creation
-CREATE OR REPLACE FUNCTION auto_generate_invite_code()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  new_code text;
-  code_exists boolean;
-BEGIN
-  IF NEW.invite_code IS NULL THEN
-    LOOP
-      new_code := generate_invite_code();
-      
-      SELECT EXISTS(
-        SELECT 1 FROM public.accounts WHERE invite_code = new_code
-      ) INTO code_exists;
-      
-      EXIT WHEN NOT code_exists;
-    END LOOP;
-    
-    NEW.invite_code := new_code;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
-
--- Add trigger to auto-generate invite codes
-DROP TRIGGER IF EXISTS trigger_auto_generate_invite_code ON public.accounts;
-CREATE TRIGGER trigger_auto_generate_invite_code
-  BEFORE INSERT ON public.accounts
-  FOR EACH ROW
-  EXECUTE FUNCTION auto_generate_invite_code();
-
--- Helper function to find account by invite code
-CREATE OR REPLACE FUNCTION public.get_account_by_invite_code(code text)
-RETURNS TABLE (
-  id uuid,
-  company_name text,
-  invite_code text
-)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-  SELECT id, company_name, invite_code
-  FROM public.accounts
-  WHERE UPPER(invite_code) = UPPER(code);
-$$;
+/*\n  # Add Account Invite Codes\n  \n  ## Overview\n  Adds invite code functionality to allow users to join existing accounts.\n  Each account gets a unique, shareable invite code.\n  \n  ## Changes\n  \n  1. Add invite_code column to accounts table\n  2. Create function to generate unique invite codes\n  3. Generate codes for existing accounts\n  4. Add index for fast lookups\n  \n  ## Security\n  \n  - Invite codes are random 8-character alphanumeric strings\n  - Codes are case-insensitive for user convenience\n  - Users can look up accounts by invite code to join\n*/\n\n-- Function to generate random invite code\nCREATE OR REPLACE FUNCTION generate_invite_code()\nRETURNS text\nLANGUAGE plpgsql\nAS $$\nDECLARE\n  chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+ -- Removed ambiguous chars\n  result text := '';
+\n  i integer;
+\nBEGIN\n  FOR i IN 1..8 LOOP\n    result := result || substr(chars, floor(random() * length(chars) + 1)::integer, 1);
+\n  END LOOP;
+\n  RETURN result;
+\nEND;
+\n$$;
+\n\n-- Add invite_code column to accounts\nALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS invite_code text UNIQUE;
+\n\n-- Generate invite codes for existing accounts\nDO $$\nDECLARE\n  account_record RECORD;
+\n  new_code text;
+\n  code_exists boolean;
+\nBEGIN\n  FOR account_record IN SELECT id FROM public.accounts WHERE invite_code IS NULL\n  LOOP\n    LOOP\n      new_code := generate_invite_code();
+\n      \n      -- Check if code already exists\n      SELECT EXISTS(\n        SELECT 1 FROM public.accounts WHERE invite_code = new_code\n      ) INTO code_exists;
+\n      \n      EXIT WHEN NOT code_exists;
+\n    END LOOP;
+\n    \n    UPDATE public.accounts \n    SET invite_code = new_code \n    WHERE id = account_record.id;
+\n  END LOOP;
+\nEND $$;
+\n\n-- Make invite_code NOT NULL after populating existing records\nALTER TABLE public.accounts ALTER COLUMN invite_code SET NOT NULL;
+\n\n-- Add index for invite code lookups\nCREATE INDEX IF NOT EXISTS idx_accounts_invite_code ON public.accounts(invite_code);
+\n\n-- Function to auto-generate invite code on account creation\nCREATE OR REPLACE FUNCTION auto_generate_invite_code()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\nDECLARE\n  new_code text;
+\n  code_exists boolean;
+\nBEGIN\n  IF NEW.invite_code IS NULL THEN\n    LOOP\n      new_code := generate_invite_code();
+\n      \n      SELECT EXISTS(\n        SELECT 1 FROM public.accounts WHERE invite_code = new_code\n      ) INTO code_exists;
+\n      \n      EXIT WHEN NOT code_exists;
+\n    END LOOP;
+\n    \n    NEW.invite_code := new_code;
+\n  END IF;
+\n  \n  RETURN NEW;
+\nEND;
+\n$$;
+\n\n-- Add trigger to auto-generate invite codes\nDROP TRIGGER IF EXISTS trigger_auto_generate_invite_code ON public.accounts;
+\nCREATE TRIGGER trigger_auto_generate_invite_code\n  BEFORE INSERT ON public.accounts\n  FOR EACH ROW\n  EXECUTE FUNCTION auto_generate_invite_code();
+\n\n-- Helper function to find account by invite code\nCREATE OR REPLACE FUNCTION public.get_account_by_invite_code(code text)\nRETURNS TABLE (\n  id uuid,\n  company_name text,\n  invite_code text\n)\nLANGUAGE sql\nSTABLE\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\n  SELECT id, company_name, invite_code\n  FROM public.accounts\n  WHERE UPPER(invite_code) = UPPER(code);
+\n$$;
+;

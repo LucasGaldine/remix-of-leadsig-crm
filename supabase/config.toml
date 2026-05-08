@@ -18,6 +18,9 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+[functions.ghl-sync]
+verify_jwt = true
+
 [functions.stripe-resync-invoice-payments]
 verify_jwt = false
 
@@ -39,7 +42,7 @@ verify_jwt = false
 [functions.send-client-portal-email]
 verify_jwt = false
 
-[functions.gohighlevel-membership-status]
+[functions.elo-membership-status]
 verify_jwt = false
 
 [functions.send-job-automation-message]

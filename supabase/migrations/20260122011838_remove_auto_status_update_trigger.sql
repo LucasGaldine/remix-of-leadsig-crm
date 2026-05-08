@@ -1,19 +1,3 @@
-/*
-  # Remove automatic status update trigger
-  
-  ## Overview
-  Remove the trigger and function that automatically updated job status based on schedules.
-  This is no longer needed with the simplified status system where:
-  - Status remains "job" throughout the job lifecycle
-  - Display status is computed from job_schedules table on the fly
-  
-  ## Changes
-  - Drop trigger_update_job_completion trigger
-  - Drop update_job_completion_status function
-*/
-
--- Drop the trigger
-DROP TRIGGER IF EXISTS trigger_update_job_completion ON public.job_schedules;
-
--- Drop the function
-DROP FUNCTION IF EXISTS public.update_job_completion_status();
+/*\n  # Remove automatic status update trigger\n  \n  ## Overview\n  Remove the trigger and function that automatically updated job status based on schedules.\n  This is no longer needed with the simplified status system where:\n  - Status remains "job" throughout the job lifecycle\n  - Display status is computed from job_schedules table on the fly\n  \n  ## Changes\n  - Drop trigger_update_job_completion trigger\n  - Drop update_job_completion_status function\n*/\n\n-- Drop the trigger\nDROP TRIGGER IF EXISTS trigger_update_job_completion ON public.job_schedules;
+\n\n-- Drop the function\nDROP FUNCTION IF EXISTS public.update_job_completion_status();
+\n;

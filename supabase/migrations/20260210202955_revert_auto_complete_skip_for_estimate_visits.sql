@@ -1,45 +1,13 @@
-/*
-  # Revert auto-complete skip for estimate visits
-
-  ## Problem
-  The previous migration incorrectly made auto_complete_job_on_checklist
-  skip estimate visit jobs. Estimate visit jobs SHOULD be auto-completed
-  when all checklist items are done - this is the signal that the crew
-  has finished the visit and the estimate needs review.
-
-  ## Changes
-  - Restore auto_complete_job_on_checklist to work for ALL job types
-    including estimate visits
-  - The try_convert_lead_to_job fix (status IN 'job','completed')
-    from the previous migration remains correct
-*/
-
-CREATE OR REPLACE FUNCTION auto_complete_job_on_checklist()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  total_count integer;
-  completed_count integer;
-  current_status unified_status;
-BEGIN
-  IF NEW.is_completed = true AND (OLD.is_completed = false OR OLD.is_completed IS NULL) THEN
-    SELECT count(*), count(*) FILTER (WHERE is_completed = true)
-    INTO total_count, completed_count
-    FROM job_checklist_items
-    WHERE job_id = NEW.job_id;
-
-    IF total_count > 0 AND total_count = completed_count THEN
-      SELECT status INTO current_status FROM leads WHERE id = NEW.job_id;
-
-      IF current_status = 'job' THEN
-        UPDATE leads SET status = 'completed' WHERE id = NEW.job_id;
-      END IF;
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
+/*\n  # Revert auto-complete skip for estimate visits\n\n  ## Problem\n  The previous migration incorrectly made auto_complete_job_on_checklist\n  skip estimate visit jobs. Estimate visit jobs SHOULD be auto-completed\n  when all checklist items are done - this is the signal that the crew\n  has finished the visit and the estimate needs review.\n\n  ## Changes\n  - Restore auto_complete_job_on_checklist to work for ALL job types\n    including estimate visits\n  - The try_convert_lead_to_job fix (status IN 'job','completed')\n    from the previous migration remains correct\n*/\n\nCREATE OR REPLACE FUNCTION auto_complete_job_on_checklist()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  total_count integer;
+\n  completed_count integer;
+\n  current_status unified_status;
+\nBEGIN\n  IF NEW.is_completed = true AND (OLD.is_completed = false OR OLD.is_completed IS NULL) THEN\n    SELECT count(*), count(*) FILTER (WHERE is_completed = true)\n    INTO total_count, completed_count\n    FROM job_checklist_items\n    WHERE job_id = NEW.job_id;
+\n\n    IF total_count > 0 AND total_count = completed_count THEN\n      SELECT status INTO current_status FROM leads WHERE id = NEW.job_id;
+\n\n      IF current_status = 'job' THEN\n        UPDATE leads SET status = 'completed' WHERE id = NEW.job_id;
+\n      END IF;
+\n    END IF;
+\n  END IF;
+\n\n  RETURN NEW;
+\nEND;
+\n$$;
+\n;

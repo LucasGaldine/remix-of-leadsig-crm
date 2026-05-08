@@ -1,85 +1,11 @@
-/*
-  # Fix Cascade Delete for Leads
-
-  ## Problem
-  When deleting a lead, related records in other tables are not being automatically
-  deleted, causing foreign key constraint violations and orphaned data.
-
-  ## Changes
-  
-  1. **customers table**
-     - Change `lead_id` foreign key to SET NULL on delete
-     - Customers should persist even if the lead is deleted
-  
-  2. **invoices table**
-     - Change `lead_id` foreign key to CASCADE on delete
-     - Invoices should be deleted when the lead is deleted
-  
-  3. **material_lists table**
-     - Change `lead_id` foreign key to CASCADE on delete
-     - Material lists should be deleted when the lead is deleted
-  
-  4. **payments table**
-     - Change `lead_id` foreign key to CASCADE on delete
-     - Payments should be deleted when the lead is deleted
-  
-  5. **supply_orders table**
-     - Change `lead_id` foreign key to CASCADE on delete
-     - Supply orders should be deleted when the lead is deleted
-
-  ## Notes
-  - The estimates table uses `job_id` (not `lead_id`) which already has CASCADE delete
-  - We're keeping customers but removing the lead reference to preserve customer history
-  - interactions and lead_qualifications already have CASCADE delete
-  - quick_estimates already has CASCADE delete
-*/
-
--- Fix customers.lead_id: SET NULL instead of CASCADE to preserve customer records
-ALTER TABLE public.customers
-  DROP CONSTRAINT IF EXISTS customers_lead_id_fkey;
-
-ALTER TABLE public.customers
-  ADD CONSTRAINT customers_lead_id_fkey 
-  FOREIGN KEY (lead_id) 
-  REFERENCES public.leads(id) 
-  ON DELETE SET NULL;
-
--- Fix invoices.lead_id: CASCADE delete
-ALTER TABLE public.invoices
-  DROP CONSTRAINT IF EXISTS invoices_lead_id_fkey;
-
-ALTER TABLE public.invoices
-  ADD CONSTRAINT invoices_lead_id_fkey 
-  FOREIGN KEY (lead_id) 
-  REFERENCES public.leads(id) 
-  ON DELETE CASCADE;
-
--- Fix material_lists.lead_id: CASCADE delete
-ALTER TABLE public.material_lists
-  DROP CONSTRAINT IF EXISTS material_lists_lead_id_fkey;
-
-ALTER TABLE public.material_lists
-  ADD CONSTRAINT material_lists_lead_id_fkey 
-  FOREIGN KEY (lead_id) 
-  REFERENCES public.leads(id) 
-  ON DELETE CASCADE;
-
--- Fix payments.lead_id: CASCADE delete
-ALTER TABLE public.payments
-  DROP CONSTRAINT IF EXISTS payments_lead_id_fkey;
-
-ALTER TABLE public.payments
-  ADD CONSTRAINT payments_lead_id_fkey 
-  FOREIGN KEY (lead_id) 
-  REFERENCES public.leads(id) 
-  ON DELETE CASCADE;
-
--- Fix supply_orders.lead_id: CASCADE delete
-ALTER TABLE public.supply_orders
-  DROP CONSTRAINT IF EXISTS supply_orders_lead_id_fkey;
-
-ALTER TABLE public.supply_orders
-  ADD CONSTRAINT supply_orders_lead_id_fkey 
-  FOREIGN KEY (lead_id) 
-  REFERENCES public.leads(id) 
-  ON DELETE CASCADE;
+/*\n  # Fix Cascade Delete for Leads\n\n  ## Problem\n  When deleting a lead, related records in other tables are not being automatically\n  deleted, causing foreign key constraint violations and orphaned data.\n\n  ## Changes\n  \n  1. **customers table**\n     - Change `lead_id` foreign key to SET NULL on delete\n     - Customers should persist even if the lead is deleted\n  \n  2. **invoices table**\n     - Change `lead_id` foreign key to CASCADE on delete\n     - Invoices should be deleted when the lead is deleted\n  \n  3. **material_lists table**\n     - Change `lead_id` foreign key to CASCADE on delete\n     - Material lists should be deleted when the lead is deleted\n  \n  4. **payments table**\n     - Change `lead_id` foreign key to CASCADE on delete\n     - Payments should be deleted when the lead is deleted\n  \n  5. **supply_orders table**\n     - Change `lead_id` foreign key to CASCADE on delete\n     - Supply orders should be deleted when the lead is deleted\n\n  ## Notes\n  - The estimates table uses `job_id` (not `lead_id`) which already has CASCADE delete\n  - We're keeping customers but removing the lead reference to preserve customer history\n  - interactions and lead_qualifications already have CASCADE delete\n  - quick_estimates already has CASCADE delete\n*/\n\n-- Fix customers.lead_id: SET NULL instead of CASCADE to preserve customer records\nALTER TABLE public.customers\n  DROP CONSTRAINT IF EXISTS customers_lead_id_fkey;
+\n\nALTER TABLE public.customers\n  ADD CONSTRAINT customers_lead_id_fkey \n  FOREIGN KEY (lead_id) \n  REFERENCES public.leads(id) \n  ON DELETE SET NULL;
+\n\n-- Fix invoices.lead_id: CASCADE delete\nALTER TABLE public.invoices\n  DROP CONSTRAINT IF EXISTS invoices_lead_id_fkey;
+\n\nALTER TABLE public.invoices\n  ADD CONSTRAINT invoices_lead_id_fkey \n  FOREIGN KEY (lead_id) \n  REFERENCES public.leads(id) \n  ON DELETE CASCADE;
+\n\n-- Fix material_lists.lead_id: CASCADE delete\nALTER TABLE public.material_lists\n  DROP CONSTRAINT IF EXISTS material_lists_lead_id_fkey;
+\n\nALTER TABLE public.material_lists\n  ADD CONSTRAINT material_lists_lead_id_fkey \n  FOREIGN KEY (lead_id) \n  REFERENCES public.leads(id) \n  ON DELETE CASCADE;
+\n\n-- Fix payments.lead_id: CASCADE delete\nALTER TABLE public.payments\n  DROP CONSTRAINT IF EXISTS payments_lead_id_fkey;
+\n\nALTER TABLE public.payments\n  ADD CONSTRAINT payments_lead_id_fkey \n  FOREIGN KEY (lead_id) \n  REFERENCES public.leads(id) \n  ON DELETE CASCADE;
+\n\n-- Fix supply_orders.lead_id: CASCADE delete\nALTER TABLE public.supply_orders\n  DROP CONSTRAINT IF EXISTS supply_orders_lead_id_fkey;
+\n\nALTER TABLE public.supply_orders\n  ADD CONSTRAINT supply_orders_lead_id_fkey \n  FOREIGN KEY (lead_id) \n  REFERENCES public.leads(id) \n  ON DELETE CASCADE;
+;

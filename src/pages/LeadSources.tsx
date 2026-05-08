@@ -1,22 +1,16 @@
 import { useState, useEffect } from "react";
-import { Check, CheckCircle2, Copy, ChevronDown, ChevronUp, FlaskConical, Loader2, RefreshCw, Mail, Settings2, Webhook, ExternalLink, Key, XCircle } from "lucide-react";
+import { Check, Copy, ChevronDown, ChevronUp, Loader2, RefreshCw, Mail, Webhook, ExternalLink, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useAccountSettings } from "@/hooks/useAccountSettings";
 import { PlanGate } from "@/components/features/PlanGate";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { loadFacebookSdk, fbLogin, fbGetPages } from "@/lib/facebookSdk";
 import type { FbPage } from "@/lib/facebookSdk";
-import { formatCurrency } from "@/lib/formatter";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +34,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { SERVICE_TYPES } from "@/constants/serviceTypes";
 import { toast } from "sonner";
 
 type Platform = "facebook" | "google" | "angi" | "yelp" | "thumbtack";
@@ -148,7 +141,6 @@ const generateInboundEmail = (userId: string): string => {
 export default function LeadSources() {
   const navigate = useNavigate();
   const { user, currentAccount } = useAuth();
-  const { settings, updateSettingsAsync, isSaving: isSavingSettings } = useAccountSettings();
 
   const [connections, setConnections] = useState<LeadSourceConnection[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -191,51 +183,10 @@ export default function LeadSources() {
   });
 
   const [successOpen, setSuccessOpen] = useState(false);
-  const [autoQualifyRejectOutOfRange, setAutoQualifyRejectOutOfRange] = useState(false);
-  const [autoQualifyRejectOutOfBudget, setAutoQualifyRejectOutOfBudget] = useState(false);
-  const [enableCustomQualification, setEnableCustomQualification] = useState(false);
-  const [autoQualifyEndpointUrl, setAutoQualifyEndpointUrl] = useState("");
-  const [autoQualifyAuthHeaderName, setAutoQualifyAuthHeaderName] = useState("");
-  const [autoQualifyAuthHeaderValue, setAutoQualifyAuthHeaderValue] = useState("");
-  const [testQualificationOpen, setTestQualificationOpen] = useState(false);
-  const [isTestingQualification, setIsTestingQualification] = useState(false);
-  const [autoQualifyDirty, setAutoQualifyDirty] = useState(false);
-  const [testLead, setTestLead] = useState({
-    full_name: "",
-    email: "",
-    phone_number: "",
-    service_type: "",
-    budget: "",
-    address: "",
-    city: "",
-    state: "",
-    notes: "",
-  });
-  const [testQualificationResult, setTestQualificationResult] = useState<{
-    status: "rejected" | "qualified";
-    reason: string;
-  } | null>(null);
 
   useEffect(() => {
     fetchData();
   }, [user, currentAccount]);
-
-  useEffect(() => {
-    const autoQualifyWebhook = settings?.auto_qualify_webhook ?? null;
-    const hasCustomQualificationConfig = Boolean(
-      typeof autoQualifyWebhook?.endpoint_url === "string" && autoQualifyWebhook.endpoint_url.trim().length > 0
-      || typeof autoQualifyWebhook?.auth_header_name === "string" && autoQualifyWebhook.auth_header_name.trim().length > 0
-      || typeof autoQualifyWebhook?.auth_header_value === "string" && autoQualifyWebhook.auth_header_value.length > 0,
-    );
-
-    setAutoQualifyRejectOutOfRange(settings?.auto_qualify_reject_out_of_range === true);
-    setAutoQualifyRejectOutOfBudget(settings?.auto_qualify_reject_out_of_budget === true);
-    setEnableCustomQualification(hasCustomQualificationConfig);
-    setAutoQualifyEndpointUrl(typeof autoQualifyWebhook?.endpoint_url === "string" ? autoQualifyWebhook.endpoint_url : "");
-    setAutoQualifyAuthHeaderName(typeof autoQualifyWebhook?.auth_header_name === "string" ? autoQualifyWebhook.auth_header_name : "");
-    setAutoQualifyAuthHeaderValue(typeof autoQualifyWebhook?.auth_header_value === "string" ? autoQualifyWebhook.auth_header_value : "");
-    setAutoQualifyDirty(false);
-  }, [settings]);
 
   const fetchData = async () => {
     if (!user || !currentAccount) return;
@@ -777,93 +728,6 @@ export default function LeadSources() {
     }
   };
 
-  const handleSaveAutoQualify = async () => {
-    if (!currentAccount?.id) {
-      toast.error("No account selected");
-      return;
-    }
-
-    try {
-      await updateSettingsAsync({
-        auto_qualify_integration_leads: true,
-        auto_qualify_reject_out_of_range: autoQualifyRejectOutOfRange,
-        auto_qualify_reject_out_of_budget: autoQualifyRejectOutOfBudget,
-        auto_qualify_webhook: {
-          endpoint_url: enableCustomQualification ? autoQualifyEndpointUrl.trim() : "",
-          auth_header_name: enableCustomQualification ? autoQualifyAuthHeaderName.trim() : "",
-          auth_header_value: enableCustomQualification ? autoQualifyAuthHeaderValue : "",
-        },
-      });
-      setAutoQualifyDirty(false);
-      toast.success("Intent signal filtering settings saved");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save intent signal filtering settings");
-    }
-  };
-
-  const handleRunQualificationTest = async () => {
-    if (!currentAccount?.id) {
-      toast.error("No account selected");
-      return;
-    }
-
-    setIsTestingQualification(true);
-    setTestQualificationResult(null);
-
-    try {
-      const { data, error } = await supabase.functions.invoke("leads-test-qualification", {
-        body: {
-          accountId: currentAccount.id,
-          source: "settings_auto_qualify_test",
-          lead: {
-            ...testLead,
-            service_type: testLead.service_type.trim().length > 0 ? testLead.service_type : "Other",
-          },
-        },
-      });
-
-      if (error) {
-        throw new Error(error.message || "Failed to test qualification");
-      }
-
-      const responseStatus = typeof data?.status === "string" ? data.status : "";
-      const status: "rejected" | "qualified" =
-        responseStatus === "qualified"
-            ? "qualified"
-            : responseStatus === "rejected"
-              ? "rejected"
-                : data?.rejected
-                  ? "rejected"
-                  : "qualified";
-      const cleanedReason = typeof data?.reason === "string" && data.reason.length > 0
-        ? data.reason.replace(/^(Rejected|Qualified):\s*/i, "")
-        : "";
-      const normalizedReason = cleanedReason
-        ? `${cleanedReason.charAt(0).toUpperCase()}${cleanedReason.slice(1)}`
-        : "";
-
-      setTestQualificationResult({
-        status,
-        reason: normalizedReason
-          ? normalizedReason
-          : status === "rejected"
-            ? "Rejected by qualification rules"
-            : status === "qualified"
-              ? "Qualified by automation rules"
-              : "Rejected by qualification rules",
-      });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to run test");
-    } finally {
-      setIsTestingQualification(false);
-    }
-  };
-
-  const handleTestBudgetChange = (value: string) => {
-    const numericValue = value.replace(/\D/g, "");
-    setTestLead((current) => ({ ...current, budget: numericValue }));
-  };
-
   return (
     <PlanGate
       requiredPlan="basic"
@@ -880,121 +744,6 @@ export default function LeadSources() {
       />
 
       <main className="max-w-[var(--content-max-width)] m-auto px-4 py-4 space-y-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-2">
-                <Settings2 className="h-5 w-5" />
-                Intent Signal Filtering
-              </span>
-            </CardTitle>
-            <CardDescription>
-              All incoming integration leads are evaluated by intent signal filtering before qualification.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-              <div className="space-y-0">
-                <div>
-                  <Button type="button" variant="outline" className="w-full justify-center gap-2 rounded-full" onClick={() => setTestQualificationOpen(true)}>
-                    <FlaskConical className="h-4 w-4" />
-                    Test Qualification
-                  </Button>
-                </div>
-                <div className="pt-6 space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <Label htmlFor="auto-qualify-reject-out-of-range">Reject for out of range</Label>
-                      <Switch
-                        id="auto-qualify-reject-out-of-range"
-                        checked={autoQualifyRejectOutOfRange}
-                        disabled={enableCustomQualification}
-                        onCheckedChange={(checked) => {
-                          setAutoQualifyRejectOutOfRange(checked);
-                          setAutoQualifyDirty(true);
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <Label htmlFor="auto-qualify-reject-out-of-budget">Reject for out of budget</Label>
-                      <Switch
-                        id="auto-qualify-reject-out-of-budget"
-                        checked={autoQualifyRejectOutOfBudget}
-                        disabled={enableCustomQualification}
-                        onCheckedChange={(checked) => {
-                          setAutoQualifyRejectOutOfBudget(checked);
-                          setAutoQualifyDirty(true);
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="pt-4 flex items-center gap-3">
-                    <Checkbox
-                      id="enable-custom-qualification"
-                      checked={enableCustomQualification}
-                      onCheckedChange={(checked) => {
-                        setEnableCustomQualification(checked === true);
-                        setAutoQualifyDirty(true);
-                      }}
-                    />
-                    <Label htmlFor="enable-custom-qualification">Enable custom qualification</Label>
-                  </div>
-                  {enableCustomQualification && (
-                    <div className="mt-4 space-y-4 border-t pt-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="auto-qualify-endpoint-url">Intent filter endpoint URL</Label>
-                        <Input
-                          id="auto-qualify-endpoint-url"
-                          type="url"
-                          value={autoQualifyEndpointUrl}
-                          onChange={(event) => {
-                            setAutoQualifyEndpointUrl(event.target.value);
-                            setAutoQualifyDirty(true);
-                          }}
-                          placeholder="https://example.com/hooks/auto-qualify"
-                        />
-                        <p className="text-sm text-muted-foreground">
-                          When configured, each integration lead is sent to this endpoint and the response determines qualified or not qualified.
-                        </p>
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label htmlFor="auto-qualify-auth-header-name">Intent filter auth header name</Label>
-                          <Input
-                            id="auto-qualify-auth-header-name"
-                            value={autoQualifyAuthHeaderName}
-                            onChange={(event) => {
-                              setAutoQualifyAuthHeaderName(event.target.value);
-                              setAutoQualifyDirty(true);
-                            }}
-                            placeholder="Authorization"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="auto-qualify-auth-header-value">Intent filter auth header value</Label>
-                          <Input
-                            id="auto-qualify-auth-header-value"
-                            value={autoQualifyAuthHeaderValue}
-                            onChange={(event) => {
-                              setAutoQualifyAuthHeaderValue(event.target.value);
-                              setAutoQualifyDirty(true);
-                            }}
-                            placeholder="Bearer <token>"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            <div className="pt-4">
-              <Button type="button" className="w-full" onClick={handleSaveAutoQualify} disabled={!autoQualifyDirty || isSavingSettings}>
-                {isSavingSettings ? "Saving..." : "Save Filtering Settings"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -1147,146 +896,6 @@ export default function LeadSources() {
           </CollapsibleContent>
         </Collapsible>
       </main>
-
-      <Dialog open={testQualificationOpen} onOpenChange={setTestQualificationOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Test Lead Qualification</DialogTitle>
-            <DialogDescription>
-              Send a test lead through intent signal filtering rules. This does not create a lead in your database.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="test-lead-name">Full name</Label>
-                <Input
-                  id="test-lead-name"
-                  value={testLead.full_name}
-                  onChange={(event) => setTestLead((current) => ({ ...current, full_name: event.target.value }))}
-                  placeholder="Jane Smith"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="test-lead-service-type">Service type</Label>
-                <select
-                  id="test-lead-service-type"
-                  value={testLead.service_type}
-                  onChange={(event) => setTestLead((current) => ({ ...current, service_type: event.target.value }))}
-                  className="h-10 w-full rounded-full border border-input bg-background px-3 text-sm"
-                >
-                  <option value="">Select service type</option>
-                  {SERVICE_TYPES.map((serviceType) => (
-                    <option key={serviceType} value={serviceType}>
-                      {serviceType}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="test-lead-budget">Budget</Label>
-              <Input
-                id="test-lead-budget"
-                value={formatCurrency(testLead.budget)}
-                onChange={(event) => handleTestBudgetChange(event.target.value)}
-                placeholder="5000"
-              />
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="test-lead-address">Address</Label>
-                <Input
-                  id="test-lead-address"
-                  value={testLead.address}
-                  onChange={(event) => setTestLead((current) => ({ ...current, address: event.target.value }))}
-                  placeholder="123 Main St"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="test-lead-city">City</Label>
-                <Input
-                  id="test-lead-city"
-                  value={testLead.city}
-                  onChange={(event) => setTestLead((current) => ({ ...current, city: event.target.value }))}
-                  placeholder="Austin"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="test-lead-notes">Notes</Label>
-              <Textarea
-                id="test-lead-notes"
-                value={testLead.notes}
-                onChange={(event) => setTestLead((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="Optional details for your test lead"
-              />
-            </div>
-
-            {testQualificationResult && (
-              (() => {
-                const showReason = !(
-                  testQualificationResult.status === "qualified"
-                  && testQualificationResult.reason.trim().toLowerCase() === "qualified by intent signal filtering"
-                );
-                return (
-                  <div
-                    className={`rounded-md border px-3 py-2 text-sm ${
-                      testQualificationResult.status === "rejected"
-                        ? "border-red-200 bg-red-50 text-red-700"
-                        : testQualificationResult.status === "qualified"
-                          ? "border-green-200 bg-green-50 text-green-700"
-                          : "border-slate-200 bg-slate-50 text-slate-700"
-                    }`}
-                  >
-                    <p className="font-medium flex items-center gap-2">
-                      {testQualificationResult.status === "rejected" ? (
-                        <XCircle className="h-4 w-4" />
-                      ) : testQualificationResult.status === "qualified" ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : null}
-                      {testQualificationResult.status === "rejected"
-                        ? "Rejected"
-                        : "Qualified"}
-                    </p>
-                    {showReason && (
-                      <p
-                        className={
-                          testQualificationResult.status === "rejected"
-                            ? "text-red-600/90"
-                            : "text-green-600/90"
-                        }
-                      >
-                        {testQualificationResult.reason}
-                      </p>
-                    )}
-                  </div>
-                );
-              })()
-            )}
-          </div>
-
-          <DialogFooter className="flex-row gap-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setTestQualificationOpen(false)}>
-              Close
-            </Button>
-            <Button type="button" className="flex-1" onClick={handleRunQualificationTest} disabled={isTestingQualification}>
-              {isTestingQualification ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Testing...
-                </>
-              ) : (
-                "Submit Test Lead"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={connectionMethodDialog.open}

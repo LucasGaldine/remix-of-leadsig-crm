@@ -1,31 +1,3 @@
-/*
-  # Fix API Keys Insert Policy
-  
-  ## Overview
-  Fixes the INSERT policy for api_keys table to allow account members to create API keys.
-  The previous policy was too restrictive and may have been blocking legitimate requests.
-  
-  ## Changes
-  1. Drop existing INSERT policy for api_keys
-  2. Create new INSERT policy that allows authenticated account members to create keys
-  
-  ## Security
-  - Policy still validates that user is a member of the account
-  - Uses security definer function to check membership safely
-*/
-
--- Drop existing INSERT policy
-DROP POLICY IF EXISTS "Account owners and admins can create API keys" ON public.api_keys;
-
--- Create new INSERT policy that allows any account member to create API keys
-CREATE POLICY "Account members can create API keys"
-  ON public.api_keys FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id 
-      FROM public.account_members 
-      WHERE user_id = auth.uid() 
-      AND is_active = true
-    )
-  );
+/*\n  # Fix API Keys Insert Policy\n  \n  ## Overview\n  Fixes the INSERT policy for api_keys table to allow account members to create API keys.\n  The previous policy was too restrictive and may have been blocking legitimate requests.\n  \n  ## Changes\n  1. Drop existing INSERT policy for api_keys\n  2. Create new INSERT policy that allows authenticated account members to create keys\n  \n  ## Security\n  - Policy still validates that user is a member of the account\n  - Uses security definer function to check membership safely\n*/\n\n-- Drop existing INSERT policy\nDROP POLICY IF EXISTS "Account owners and admins can create API keys" ON public.api_keys;
+\n\n-- Create new INSERT policy that allows any account member to create API keys\nCREATE POLICY "Account members can create API keys"\n  ON public.api_keys FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id \n      FROM public.account_members \n      WHERE user_id = auth.uid() \n      AND is_active = true\n    )\n  );
+\n;

@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { createBrowserRouter, RouterProvider, Outlet, useLocation } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Outlet, useLocation, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppKeyboardShortcuts } from "@/components/layout/AppKeyboardShortcuts";
@@ -71,6 +71,7 @@ import SiteCareersPage from "./pages/SiteCareersPage";
 import SiteCareerPositionPage from "./pages/SiteCareerPositionPage";
 import Hiring from "./pages/Hiring";
 import ComingSoon from "./pages/ComingSoon";
+import MembershipRequired from "./pages/MembershipRequired";
 
 const queryClient = new QueryClient();
 
@@ -107,9 +108,18 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
-  const { user, currentAccount } = useAuth();
+  const { user, currentAccount, hasActiveEloEntitlement, requiresEloEntitlementGate } = useAuth();
+  const location = useLocation();
   const [activeReleaseUpdate, setActiveReleaseUpdate] = useState<ReleaseUpdate | null>(null);
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
+
+  const isMembershipAllowedPath =
+    location.pathname === "/membership-required" ||
+    location.pathname === "/settings/pricing";
+
+  if (requiresEloEntitlementGate() && !hasActiveEloEntitlement() && !isMembershipAllowedPath) {
+    return <Navigate to="/membership-required" replace />;
+  }
 
   useEffect(() => {
     if (!user?.id || !currentAccount?.id) return;
@@ -226,6 +236,7 @@ const router = createBrowserRouter([
     children: [
       { path: "/auth", element: <Auth /> },
       { path: "/signup/elo", element: <Auth signupVariant="elo" /> },
+      { path: "/signup/elo-growth", element: <Auth signupVariant="elo" /> },
       { path: "/reset-password", element: <ResetPassword /> },
       { path: "/approve-estimate", element: <EstimateApproval /> },
       { path: "/client/job", element: <ClientJobPortal /> },
@@ -284,6 +295,7 @@ const router = createBrowserRouter([
       { path: "/website", element: <Protected><Website /></Protected> },
       { path: "/hiring", element: <Protected><Hiring /></Protected> },
       { path: "/coming-soon", element: <Protected><ComingSoon /></Protected> },
+      { path: "/membership-required", element: <Protected><MembershipRequired /></Protected> },
       { path: "*", element: <NotFound /> },
     ],
   },

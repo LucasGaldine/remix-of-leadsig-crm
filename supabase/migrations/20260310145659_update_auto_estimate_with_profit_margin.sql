@@ -1,81 +1,11 @@
-/*
-  # Update auto_create_estimate_for_job to include default profit margin
-
-  ## Overview
-  Updates the auto_create_estimate_for_job function to fetch and apply the account's
-  default_profit_margin in addition to the default_tax_rate.
-
-  ## Changes
-  - Fetch the account's default_profit_margin from the accounts table
-  - Set the profit_margin field when creating the estimate
-  - Profit margin is stored as a percentage (e.g., 20 for 20%)
-  
-  ## Important Notes
-  - Line items copied to job costs will NOT include profit margin
-  - Line items represent actual costs
-  - Profit margin is applied at the estimate level for pricing
-  - Tax is considered part of the cost structure
-*/
-
-CREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_tax_rate numeric(5,4);
-  v_profit_margin numeric;
-BEGIN
-  -- Only create estimate for actual jobs (not leads)
-  IF NEW.status IN ('job', 'paid')
-  AND NEW.approval_status = 'approved' THEN
-
-    -- Check if estimate already exists for this job
-    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN
-
-      -- Fetch the account's default tax rate (stored as percentage, e.g., 8.00)
-      -- and default profit margin (stored as percentage, e.g., 20.00)
-      SELECT 
-        COALESCE(default_tax_rate / 100, 0),
-        COALESCE(default_profit_margin, 0)
-      INTO v_tax_rate, v_profit_margin
-      FROM public.accounts
-      WHERE id = NEW.account_id;
-
-      -- Create a draft estimate linked to the job
-      INSERT INTO public.estimates (
-        customer_id,
-        job_id,
-        account_id,
-        subtotal,
-        tax_rate,
-        tax,
-        discount,
-        total,
-        profit_margin,
-        status,
-        created_by,
-        notes
-      ) VALUES (
-        NEW.customer_id,
-        NEW.id,
-        NEW.account_id,
-        0,
-        v_tax_rate,
-        0,
-        0,
-        0,
-        v_profit_margin,
-        'draft',
-        NEW.created_by,
-        'Auto-generated estimate for ' || NEW.name
-      );
-
-      RAISE NOTICE 'Auto-created estimate for job % with tax rate % and profit margin %', NEW.id, v_tax_rate, v_profit_margin;
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$function$;
+/*\n  # Update auto_create_estimate_for_job to include default profit margin\n\n  ## Overview\n  Updates the auto_create_estimate_for_job function to fetch and apply the account's\n  default_profit_margin in addition to the default_tax_rate.\n\n  ## Changes\n  - Fetch the account's default_profit_margin from the accounts table\n  - Set the profit_margin field when creating the estimate\n  - Profit margin is stored as a percentage (e.g., 20 for 20%)\n  \n  ## Important Notes\n  - Line items copied to job costs will NOT include profit margin\n  - Line items represent actual costs\n  - Profit margin is applied at the estimate level for pricing\n  - Tax is considered part of the cost structure\n*/\n\nCREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $function$\nDECLARE\n  v_tax_rate numeric(5,4);
+\n  v_profit_margin numeric;
+\nBEGIN\n  -- Only create estimate for actual jobs (not leads)\n  IF NEW.status IN ('job', 'paid')\n  AND NEW.approval_status = 'approved' THEN\n\n    -- Check if estimate already exists for this job\n    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN\n\n      -- Fetch the account's default tax rate (stored as percentage, e.g., 8.00)\n      -- and default profit margin (stored as percentage, e.g., 20.00)\n      SELECT \n        COALESCE(default_tax_rate / 100, 0),\n        COALESCE(default_profit_margin, 0)\n      INTO v_tax_rate, v_profit_margin\n      FROM public.accounts\n      WHERE id = NEW.account_id;
+\n\n      -- Create a draft estimate linked to the job\n      INSERT INTO public.estimates (\n        customer_id,\n        job_id,\n        account_id,\n        subtotal,\n        tax_rate,\n        tax,\n        discount,\n        total,\n        profit_margin,\n        status,\n        created_by,\n        notes\n      ) VALUES (\n        NEW.customer_id,\n        NEW.id,\n        NEW.account_id,\n        0,\n        v_tax_rate,\n        0,\n        0,\n        0,\n        v_profit_margin,\n        'draft',\n        NEW.created_by,\n        'Auto-generated estimate for ' || NEW.name\n      );
+\n\n      RAISE NOTICE 'Auto-created estimate for job % with tax rate % and profit margin %', NEW.id, v_tax_rate, v_profit_margin;
+\n    END IF;
+\n  END IF;
+\n\n  RETURN NEW;
+\nEND;
+\n$function$;
+;

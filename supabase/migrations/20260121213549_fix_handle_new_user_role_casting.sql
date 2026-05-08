@@ -1,81 +1,22 @@
-/*
-  # Fix handle_new_user Role Type Casting
-  
-  ## Overview
-  Fixes the handle_new_user trigger function to properly cast the role
-  to the app_role enum type when inserting into account_members.
-  
-  ## Problem
-  The previous version was trying to cast the role as text, but the
-  account_members.role column is of type app_role (enum), causing
-  a type mismatch error.
-  
-  ## Changes
-  - Cast v_role to app_role enum type instead of text
-  
-  ## Security
-  - Function remains SECURITY DEFINER
-  - Maintains existing logic for account creation
-*/
-
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  v_account_id uuid;
-  v_target_account_id text;
-  v_company_name text;
-  v_company_phone text;
-  v_company_address text;
-  v_phone text;
-  v_role text;
-BEGIN
-  -- Get phone from metadata
-  v_phone := NEW.raw_user_meta_data ->> 'phone';
-  
-  -- Create profile with phone
-  INSERT INTO public.profiles (user_id, full_name, email, phone)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data ->> 'full_name', NEW.raw_user_meta_data ->> 'name'),
-    NEW.email,
-    v_phone
-  );
-  
-  -- Check if user is joining an existing account
-  v_target_account_id := NEW.raw_user_meta_data ->> 'target_account_id';
-  v_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'sales');
-  
-  IF v_target_account_id IS NOT NULL THEN
-    -- User is joining an existing account
-    INSERT INTO public.account_members (account_id, user_id, role, is_active)
-    VALUES (v_target_account_id::uuid, NEW.id, v_role::app_role, true);
-  ELSE
-    -- Create new account for user
-    v_company_name := COALESCE(
-      NEW.raw_user_meta_data ->> 'company_name',
-      NEW.raw_user_meta_data ->> 'full_name',
-      NEW.raw_user_meta_data ->> 'name',
-      NEW.email,
-      'My Company'
-    );
-    
-    v_company_phone := NEW.raw_user_meta_data ->> 'company_phone';
-    v_company_address := NEW.raw_user_meta_data ->> 'company_address';
-    
-    -- Create default account for new user with company details
-    INSERT INTO public.accounts (company_name, company_email, company_phone, company_address)
-    VALUES (v_company_name, NEW.email, v_company_phone, v_company_address)
-    RETURNING id INTO v_account_id;
-    
-    -- Add user as owner of their new account
-    INSERT INTO public.account_members (account_id, user_id, role, is_active)
-    VALUES (v_account_id, NEW.id, 'owner', true);
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
+/*\n  # Fix handle_new_user Role Type Casting\n  \n  ## Overview\n  Fixes the handle_new_user trigger function to properly cast the role\n  to the app_role enum type when inserting into account_members.\n  \n  ## Problem\n  The previous version was trying to cast the role as text, but the\n  account_members.role column is of type app_role (enum), causing\n  a type mismatch error.\n  \n  ## Changes\n  - Cast v_role to app_role enum type instead of text\n  \n  ## Security\n  - Function remains SECURITY DEFINER\n  - Maintains existing logic for account creation\n*/\n\nCREATE OR REPLACE FUNCTION public.handle_new_user()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\nDECLARE\n  v_account_id uuid;
+\n  v_target_account_id text;
+\n  v_company_name text;
+\n  v_company_phone text;
+\n  v_company_address text;
+\n  v_phone text;
+\n  v_role text;
+\nBEGIN\n  -- Get phone from metadata\n  v_phone := NEW.raw_user_meta_data ->> 'phone';
+\n  \n  -- Create profile with phone\n  INSERT INTO public.profiles (user_id, full_name, email, phone)\n  VALUES (\n    NEW.id,\n    COALESCE(NEW.raw_user_meta_data ->> 'full_name', NEW.raw_user_meta_data ->> 'name'),\n    NEW.email,\n    v_phone\n  );
+\n  \n  -- Check if user is joining an existing account\n  v_target_account_id := NEW.raw_user_meta_data ->> 'target_account_id';
+\n  v_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'sales');
+\n  \n  IF v_target_account_id IS NOT NULL THEN\n    -- User is joining an existing account\n    INSERT INTO public.account_members (account_id, user_id, role, is_active)\n    VALUES (v_target_account_id::uuid, NEW.id, v_role::app_role, true);
+\n  ELSE\n    -- Create new account for user\n    v_company_name := COALESCE(\n      NEW.raw_user_meta_data ->> 'company_name',\n      NEW.raw_user_meta_data ->> 'full_name',\n      NEW.raw_user_meta_data ->> 'name',\n      NEW.email,\n      'My Company'\n    );
+\n    \n    v_company_phone := NEW.raw_user_meta_data ->> 'company_phone';
+\n    v_company_address := NEW.raw_user_meta_data ->> 'company_address';
+\n    \n    -- Create default account for new user with company details\n    INSERT INTO public.accounts (company_name, company_email, company_phone, company_address)\n    VALUES (v_company_name, NEW.email, v_company_phone, v_company_address)\n    RETURNING id INTO v_account_id;
+\n    \n    -- Add user as owner of their new account\n    INSERT INTO public.account_members (account_id, user_id, role, is_active)\n    VALUES (v_account_id, NEW.id, 'owner', true);
+\n  END IF;
+\n  \n  RETURN NEW;
+\nEND;
+\n$$;
+;

@@ -11,6 +11,7 @@ import type { ScheduleEntry } from "@/components/scheduling/ScheduleDateBuilder"
 
 interface CreateJobCrewAssignmentStepProps {
   addedSchedules: ScheduleEntry[];
+  isRecurringSchedule?: boolean;
   crewMembers: TeamMember[];
   assignedCrewByScheduleIndex: Record<number, string[]>;
   filteredCrewMembers: TeamMember[];
@@ -40,6 +41,7 @@ interface CreateJobCrewAssignmentStepProps {
 
 export function CreateJobCrewAssignmentStep({
   addedSchedules,
+  isRecurringSchedule = false,
   crewMembers,
   assignedCrewByScheduleIndex,
   filteredCrewMembers,
@@ -78,7 +80,9 @@ export function CreateJobCrewAssignmentStep({
       <div className="space-y-2">
         {addedSchedules.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No schedule dates added yet. Go back and add at least one date.
+            {isRecurringSchedule
+              ? "No recurring start date added yet. Go back and add a recurring start date."
+              : "No schedule dates added yet. Go back and add at least one date."}
           </p>
         ) : crewMembers.length > 0 ? (
           <div className="space-y-3">
@@ -126,7 +130,9 @@ export function CreateJobCrewAssignmentStep({
                     onBlur={() => {
                       setTimeout(() => setIsSearchDropdownOpen(false), 100);
                     }}
-                    placeholder={effectiveSelectedCrewIds.length > 0 ? "Add to selection" : "Assign crew member"}
+                    placeholder={effectiveSelectedCrewIds.length > 0
+                      ? (isRecurringSchedule ? "Add to default selection" : "Add to selection")
+                      : (isRecurringSchedule ? "Assign default crew member" : "Assign crew member")}
                     className="h-8 min-w-[10rem] flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none md:text-sm"
                   />
                 </div>
@@ -183,7 +189,9 @@ export function CreateJobCrewAssignmentStep({
 
             {isLoadingCrewConflicts && (
               <p className="text-xs text-muted-foreground">
-                Checking crew availability for selected dates...
+                {isRecurringSchedule
+                  ? "Checking crew availability for recurring default assignments..."
+                  : "Checking crew availability for selected dates..."}
               </p>
             )}
 
@@ -201,7 +209,7 @@ export function CreateJobCrewAssignmentStep({
                 const assignedCrewNames = (assignedCrewByScheduleIndex[scheduleIndex] || []).map(getCrewDisplayName);
                 const assignedCrewLabel = assignedCrewNames.length > 0
                   ? assignedCrewNames.join(", ")
-                  : "No crew assigned";
+                  : (isRecurringSchedule ? "No default crew assigned" : "No crew assigned");
                 const badgeDate = conflictDetail
                   ? (() => {
                       const [badgeYear, badgeMonth, badgeDay] = conflictDetail.scheduledDate.split("-").map(Number);
@@ -226,6 +234,9 @@ export function CreateJobCrewAssignmentStep({
                       )}
                       <MonthDayDateBadge date={localDate} size="sm" className={cn(isConflicted && "opacity-60")} />
                       <div className="pt-2">
+                        {isRecurringSchedule && (
+                          <span className="block text-xs text-muted-foreground">Default crew for recurring schedule</span>
+                        )}
                         <span className="block text-sm text-muted-foreground">{assignedCrewLabel}</span>
                       </div>
                     </div>

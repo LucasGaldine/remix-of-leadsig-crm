@@ -1,204 +1,37 @@
-/*
-  # Add Multi-Day Job Scheduling
-
-  ## Summary
-  This migration enables jobs to be scheduled across multiple days/times and automatically
-  marks them as complete when the last scheduled date/time has passed.
-
-  ## Changes
-  
-  ### New Tables
-  - `job_schedules` - Stores multiple scheduled dates/times for each job
-    - `id` (uuid, primary key)
-    - `lead_id` (uuid, foreign key to leads) - The job this schedule belongs to
-    - `scheduled_date` (date) - The date of this scheduled work session
-    - `scheduled_time_start` (time) - Start time (optional)
-    - `scheduled_time_end` (time) - End time (optional)
-    - `notes` (text) - Optional notes for this specific day's work
-    - `is_completed` (boolean) - Whether this specific day's work is done
-    - `completed_at` (timestamptz) - When this day was marked complete
-    - `created_by` (uuid, foreign key to users)
-    - `account_id` (uuid, foreign key to accounts)
-    - `created_at` (timestamptz)
-    - `updated_at` (timestamptz)
-
-  ### Functions
-  - `update_job_completion_status()` - Trigger function that automatically marks a job as
-    complete when current date/time is after the last scheduled date/time
-
-  ### Triggers
-  - Auto-update job status when schedules are added/modified/deleted
-
-  ## Security
-  - Enable RLS on job_schedules table
-  - Add policies for account members to manage their schedules
-  - Validate schedule dates are associated with existing jobs
-
-  ## Migration of Existing Data
-  - Migrate existing single-date schedules from leads table to job_schedules table
-*/
-
--- Create job_schedules table
-CREATE TABLE IF NOT EXISTS job_schedules (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-  scheduled_date date NOT NULL,
-  scheduled_time_start time,
-  scheduled_time_end time,
-  notes text,
-  is_completed boolean DEFAULT false,
-  completed_at timestamptz,
-  created_by uuid NOT NULL REFERENCES auth.users(id),
-  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
--- Add index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_job_schedules_lead_id ON job_schedules(lead_id);
-CREATE INDEX IF NOT EXISTS idx_job_schedules_scheduled_date ON job_schedules(scheduled_date);
-CREATE INDEX IF NOT EXISTS idx_job_schedules_account_id ON job_schedules(account_id);
-
--- Enable RLS
-ALTER TABLE job_schedules ENABLE ROW LEVEL SECURITY;
-
--- RLS Policies for job_schedules
-CREATE POLICY "Account members can view their job schedules"
-  ON job_schedules FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create job schedules"
-  ON job_schedules FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true
-    )
-    AND lead_id IN (
-      SELECT id FROM leads WHERE account_id = job_schedules.account_id
-    )
-  );
-
-CREATE POLICY "Account members can update their job schedules"
-  ON job_schedules FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can delete their job schedules"
-  ON job_schedules FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
--- Function to automatically update job completion status
-CREATE OR REPLACE FUNCTION update_job_completion_status()
-RETURNS trigger AS $$
-DECLARE
-  last_schedule_datetime timestamptz;
-  job_status text;
-BEGIN
-  -- Get the latest scheduled datetime for this job
-  SELECT 
-    CASE 
-      WHEN scheduled_time_end IS NOT NULL THEN
-        (scheduled_date || ' ' || scheduled_time_end)::timestamptz
-      ELSE
-        (scheduled_date || ' 23:59:59')::timestamptz
-    END INTO last_schedule_datetime
-  FROM job_schedules
-  WHERE lead_id = COALESCE(NEW.lead_id, OLD.lead_id)
-  ORDER BY scheduled_date DESC, scheduled_time_end DESC NULLS LAST
-  LIMIT 1;
-
-  -- If no schedules exist, do nothing
-  IF last_schedule_datetime IS NULL THEN
-    RETURN COALESCE(NEW, OLD);
-  END IF;
-
-  -- Get current job status
-  SELECT status INTO job_status
-  FROM leads
-  WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
-
-  -- If current time is after the last scheduled datetime and job is not already completed
-  IF now() > last_schedule_datetime AND job_status != 'completed' THEN
-    UPDATE leads
-    SET status = 'completed', updated_at = now()
-    WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
-  END IF;
-
-  RETURN COALESCE(NEW, OLD);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Trigger to update job status after schedule changes
-DROP TRIGGER IF EXISTS trigger_update_job_completion ON job_schedules;
-CREATE TRIGGER trigger_update_job_completion
-  AFTER INSERT OR UPDATE OR DELETE ON job_schedules
-  FOR EACH ROW
-  EXECUTE FUNCTION update_job_completion_status();
-
--- Add constraint to prevent invoice creation for non-completed jobs
-CREATE OR REPLACE FUNCTION validate_invoice_job_completion()
-RETURNS trigger AS $$
-DECLARE
-  job_status text;
-BEGIN
-  -- If there's a lead_id, check if the job is completed
-  IF NEW.lead_id IS NOT NULL THEN
-    SELECT status INTO job_status
-    FROM leads
-    WHERE id = NEW.lead_id;
-
-    IF job_status != 'completed' AND job_status != 'invoiced' AND job_status != 'paid' THEN
-      RAISE EXCEPTION 'Cannot create invoice for job that is not completed. Current status: %', job_status;
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Add trigger to validate invoice creation
-DROP TRIGGER IF EXISTS trigger_validate_invoice_completion ON invoices;
-CREATE TRIGGER trigger_validate_invoice_completion
-  BEFORE INSERT ON invoices
-  FOR EACH ROW
-  EXECUTE FUNCTION validate_invoice_job_completion();
-
--- Migrate existing single-date schedules to job_schedules table
-INSERT INTO job_schedules (lead_id, scheduled_date, scheduled_time_start, scheduled_time_end, created_by, account_id)
-SELECT 
-  id,
-  scheduled_date,
-  scheduled_time_start,
-  scheduled_time_end,
-  created_by,
-  account_id
-FROM leads
-WHERE scheduled_date IS NOT NULL
-  AND account_id IS NOT NULL
-  AND created_by IS NOT NULL
-ON CONFLICT DO NOTHING;
-
--- Add helpful comment
-COMMENT ON TABLE job_schedules IS 'Stores multiple scheduled work dates/times for jobs, enabling multi-day project scheduling';
-COMMENT ON COLUMN job_schedules.lead_id IS 'The job (lead) this schedule entry belongs to';
-COMMENT ON COLUMN job_schedules.is_completed IS 'Whether work for this specific day has been completed';
+/*\n  # Add Multi-Day Job Scheduling\n\n  ## Summary\n  This migration enables jobs to be scheduled across multiple days/times and automatically\n  marks them as complete when the last scheduled date/time has passed.\n\n  ## Changes\n  \n  ### New Tables\n  - `job_schedules` - Stores multiple scheduled dates/times for each job\n    - `id` (uuid, primary key)\n    - `lead_id` (uuid, foreign key to leads) - The job this schedule belongs to\n    - `scheduled_date` (date) - The date of this scheduled work session\n    - `scheduled_time_start` (time) - Start time (optional)\n    - `scheduled_time_end` (time) - End time (optional)\n    - `notes` (text) - Optional notes for this specific day's work\n    - `is_completed` (boolean) - Whether this specific day's work is done\n    - `completed_at` (timestamptz) - When this day was marked complete\n    - `created_by` (uuid, foreign key to users)\n    - `account_id` (uuid, foreign key to accounts)\n    - `created_at` (timestamptz)\n    - `updated_at` (timestamptz)\n\n  ### Functions\n  - `update_job_completion_status()` - Trigger function that automatically marks a job as\n    complete when current date/time is after the last scheduled date/time\n\n  ### Triggers\n  - Auto-update job status when schedules are added/modified/deleted\n\n  ## Security\n  - Enable RLS on job_schedules table\n  - Add policies for account members to manage their schedules\n  - Validate schedule dates are associated with existing jobs\n\n  ## Migration of Existing Data\n  - Migrate existing single-date schedules from leads table to job_schedules table\n*/\n\n-- Create job_schedules table\nCREATE TABLE IF NOT EXISTS job_schedules (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,\n  scheduled_date date NOT NULL,\n  scheduled_time_start time,\n  scheduled_time_end time,\n  notes text,\n  is_completed boolean DEFAULT false,\n  completed_at timestamptz,\n  created_by uuid NOT NULL REFERENCES auth.users(id),\n  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,\n  created_at timestamptz DEFAULT now(),\n  updated_at timestamptz DEFAULT now()\n);
+\n\n-- Add index for faster lookups\nCREATE INDEX IF NOT EXISTS idx_job_schedules_lead_id ON job_schedules(lead_id);
+\nCREATE INDEX IF NOT EXISTS idx_job_schedules_scheduled_date ON job_schedules(scheduled_date);
+\nCREATE INDEX IF NOT EXISTS idx_job_schedules_account_id ON job_schedules(account_id);
+\n\n-- Enable RLS\nALTER TABLE job_schedules ENABLE ROW LEVEL SECURITY;
+\n\n-- RLS Policies for job_schedules\nCREATE POLICY "Account members can view their job schedules"\n  ON job_schedules FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create job schedules"\n  ON job_schedules FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true\n    )\n    AND lead_id IN (\n      SELECT id FROM leads WHERE account_id = job_schedules.account_id\n    )\n  );
+\n\nCREATE POLICY "Account members can update their job schedules"\n  ON job_schedules FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can delete their job schedules"\n  ON job_schedules FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM account_members WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\n-- Function to automatically update job completion status\nCREATE OR REPLACE FUNCTION update_job_completion_status()\nRETURNS trigger AS $$\nDECLARE\n  last_schedule_datetime timestamptz;
+\n  job_status text;
+\nBEGIN\n  -- Get the latest scheduled datetime for this job\n  SELECT \n    CASE \n      WHEN scheduled_time_end IS NOT NULL THEN\n        (scheduled_date || ' ' || scheduled_time_end)::timestamptz\n      ELSE\n        (scheduled_date || ' 23:59:59')::timestamptz\n    END INTO last_schedule_datetime\n  FROM job_schedules\n  WHERE lead_id = COALESCE(NEW.lead_id, OLD.lead_id)\n  ORDER BY scheduled_date DESC, scheduled_time_end DESC NULLS LAST\n  LIMIT 1;
+\n\n  -- If no schedules exist, do nothing\n  IF last_schedule_datetime IS NULL THEN\n    RETURN COALESCE(NEW, OLD);
+\n  END IF;
+\n\n  -- Get current job status\n  SELECT status INTO job_status\n  FROM leads\n  WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
+\n\n  -- If current time is after the last scheduled datetime and job is not already completed\n  IF now() > last_schedule_datetime AND job_status != 'completed' THEN\n    UPDATE leads\n    SET status = 'completed', updated_at = now()\n    WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
+\n  END IF;
+\n\n  RETURN COALESCE(NEW, OLD);
+\nEND;
+\n$$ LANGUAGE plpgsql SECURITY DEFINER;
+\n\n-- Trigger to update job status after schedule changes\nDROP TRIGGER IF EXISTS trigger_update_job_completion ON job_schedules;
+\nCREATE TRIGGER trigger_update_job_completion\n  AFTER INSERT OR UPDATE OR DELETE ON job_schedules\n  FOR EACH ROW\n  EXECUTE FUNCTION update_job_completion_status();
+\n\n-- Add constraint to prevent invoice creation for non-completed jobs\nCREATE OR REPLACE FUNCTION validate_invoice_job_completion()\nRETURNS trigger AS $$\nDECLARE\n  job_status text;
+\nBEGIN\n  -- If there's a lead_id, check if the job is completed\n  IF NEW.lead_id IS NOT NULL THEN\n    SELECT status INTO job_status\n    FROM leads\n    WHERE id = NEW.lead_id;
+\n\n    IF job_status != 'completed' AND job_status != 'invoiced' AND job_status != 'paid' THEN\n      RAISE EXCEPTION 'Cannot create invoice for job that is not completed. Current status: %', job_status;
+\n    END IF;
+\n  END IF;
+\n\n  RETURN NEW;
+\nEND;
+\n$$ LANGUAGE plpgsql;
+\n\n-- Add trigger to validate invoice creation\nDROP TRIGGER IF EXISTS trigger_validate_invoice_completion ON invoices;
+\nCREATE TRIGGER trigger_validate_invoice_completion\n  BEFORE INSERT ON invoices\n  FOR EACH ROW\n  EXECUTE FUNCTION validate_invoice_job_completion();
+\n\n-- Migrate existing single-date schedules to job_schedules table\nINSERT INTO job_schedules (lead_id, scheduled_date, scheduled_time_start, scheduled_time_end, created_by, account_id)\nSELECT \n  id,\n  scheduled_date,\n  scheduled_time_start,\n  scheduled_time_end,\n  created_by,\n  account_id\nFROM leads\nWHERE scheduled_date IS NOT NULL\n  AND account_id IS NOT NULL\n  AND created_by IS NOT NULL\nON CONFLICT DO NOTHING;
+\n\n-- Add helpful comment\nCOMMENT ON TABLE job_schedules IS 'Stores multiple scheduled work dates/times for jobs, enabling multi-day project scheduling';
+\nCOMMENT ON COLUMN job_schedules.lead_id IS 'The job (lead) this schedule entry belongs to';
+\nCOMMENT ON COLUMN job_schedules.is_completed IS 'Whether work for this specific day has been completed';
+\n;

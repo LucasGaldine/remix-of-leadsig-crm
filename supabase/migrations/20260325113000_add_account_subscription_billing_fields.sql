@@ -4,7 +4,6 @@ ALTER TABLE public.accounts
   ADD COLUMN IF NOT EXISTS stripe_subscription_id text,
   ADD COLUMN IF NOT EXISTS stripe_subscription_status text,
   ADD COLUMN IF NOT EXISTS premium_setup_fee_paid boolean NOT NULL DEFAULT false;
-
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -17,15 +16,12 @@ BEGIN
       CHECK (pricing_tier IS NULL OR pricing_tier IN ('solo', 'team', 'growth'));
   END IF;
 END $$;
-
 CREATE INDEX IF NOT EXISTS idx_accounts_stripe_customer_id
   ON public.accounts (stripe_customer_id)
   WHERE stripe_customer_id IS NOT NULL;
-
 CREATE INDEX IF NOT EXISTS idx_accounts_stripe_subscription_id
   ON public.accounts (stripe_subscription_id)
   WHERE stripe_subscription_id IS NOT NULL;
-
 CREATE OR REPLACE FUNCTION public.prevent_direct_billing_field_updates()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -48,7 +44,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS prevent_direct_billing_field_updates_trigger ON public.accounts;
 CREATE TRIGGER prevent_direct_billing_field_updates_trigger
 BEFORE UPDATE ON public.accounts

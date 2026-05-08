@@ -1,65 +1,17 @@
-/*
-  # Add photo_type column to lead_photos
-
-  1. Modified Tables
-    - `lead_photos`
-      - Added `photo_type` (text, default 'before') - distinguishes before vs after photos
-
-  2. Important Notes
-    - All existing photos default to 'before'
-    - Valid values: 'before', 'after'
-    - Updated auto-convert trigger to only check for 'before' photos
-*/
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'lead_photos' AND column_name = 'photo_type'
-  ) THEN
-    ALTER TABLE lead_photos ADD COLUMN photo_type text NOT NULL DEFAULT 'before';
-  END IF;
-END $$;
-
-CREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _lead_status text;
-  _has_accepted_estimate boolean;
-  _has_photos boolean;
-BEGIN
-  SELECT status INTO _lead_status
-  FROM leads
-  WHERE id = p_lead_id;
-
-  IF _lead_status IS NULL OR _lead_status IN ('job', 'paid') THEN
-    RETURN;
-  END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM estimates
-    WHERE job_id = p_lead_id AND status = 'accepted'
-  ) INTO _has_accepted_estimate;
-
-  SELECT EXISTS (
-    SELECT 1 FROM lead_photos
-    WHERE lead_id = p_lead_id AND photo_type = 'before'
-  ) INTO _has_photos;
-
-  IF _has_accepted_estimate AND _has_photos THEN
-    UPDATE leads SET status = 'job' WHERE id = p_lead_id;
-
-    INSERT INTO interactions (lead_id, type, direction, summary)
-    VALUES (
-      p_lead_id,
-      'status_change',
-      'na',
-      'Converted to job (estimate approved + photos uploaded)'
-    );
-  END IF;
-END;
-$$;
+/*\n  # Add photo_type column to lead_photos\n\n  1. Modified Tables\n    - `lead_photos`\n      - Added `photo_type` (text, default 'before') - distinguishes before vs after photos\n\n  2. Important Notes\n    - All existing photos default to 'before'\n    - Valid values: 'before', 'after'\n    - Updated auto-convert trigger to only check for 'before' photos\n*/\n\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'lead_photos' AND column_name = 'photo_type'\n  ) THEN\n    ALTER TABLE lead_photos ADD COLUMN photo_type text NOT NULL DEFAULT 'before';
+\n  END IF;
+\nEND $$;
+\n\nCREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)\nRETURNS void\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  _lead_status text;
+\n  _has_accepted_estimate boolean;
+\n  _has_photos boolean;
+\nBEGIN\n  SELECT status INTO _lead_status\n  FROM leads\n  WHERE id = p_lead_id;
+\n\n  IF _lead_status IS NULL OR _lead_status IN ('job', 'paid') THEN\n    RETURN;
+\n  END IF;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM estimates\n    WHERE job_id = p_lead_id AND status = 'accepted'\n  ) INTO _has_accepted_estimate;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM lead_photos\n    WHERE lead_id = p_lead_id AND photo_type = 'before'\n  ) INTO _has_photos;
+\n\n  IF _has_accepted_estimate AND _has_photos THEN\n    UPDATE leads SET status = 'job' WHERE id = p_lead_id;
+\n\n    INSERT INTO interactions (lead_id, type, direction, summary)\n    VALUES (\n      p_lead_id,\n      'status_change',\n      'na',\n      'Converted to job (estimate approved + photos uploaded)'\n    );
+\n  END IF;
+\nEND;
+\n$$;
+\n;

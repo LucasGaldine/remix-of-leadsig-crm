@@ -350,42 +350,42 @@ describe("Auth signup flow", () => {
     });
   });
 
-  it("starts Elo signups by asking for the Skool account email", () => {
+  it("starts Elo signups by asking for the ELO membership email", () => {
     render(
       <MemoryRouter>
         <Auth signupVariant="elo" />
       </MemoryRouter>,
     );
 
-    expect(screen.getByLabelText(/what email did you use for your skool account/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/what email did you use for your elo membership/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Full Name/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Check account status first/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Check eligibility first/i })).toBeInTheDocument();
   });
 
-  it("checks Skool account status before allowing Elo signup continuation", async () => {
+  it("checks ELO membership status before allowing Elo signup continuation", async () => {
     render(
       <MemoryRouter>
         <Auth signupVariant="elo" />
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText(/what email did you use for your skool account/i), {
-      target: { value: "member@skool.com" },
+    fireEvent.change(screen.getByLabelText(/what email did you use for your elo membership/i), {
+      target: { value: "member@elo.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Check account status first/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Check eligibility first/i }));
 
     await waitFor(() => {
-      expect(invokeFunctionMock).toHaveBeenCalledWith("gohighlevel-membership-status", {
-        body: { email: "member@skool.com" },
+      expect(invokeFunctionMock).toHaveBeenCalledWith("elo-membership-status", {
+        body: { email: "member@elo.com" },
       });
     });
 
-    expect(screen.getByText(/Account status: Premium/i)).toBeInTheDocument();
+    expect(screen.getByText(/Elo membership status: Yes/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Continue to Sign Up/i }));
 
     expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Email/i)).toHaveValue("member@skool.com");
+    expect(screen.getByLabelText(/Email/i)).toHaveValue("member@elo.com");
   });
 
   it("applies Essentials Growth override for Elo paid-community signups", async () => {
@@ -398,13 +398,13 @@ describe("Auth signup flow", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText(/what email did you use for your skool account/i), {
-      target: { value: "member@skool.com" },
+    fireEvent.change(screen.getByLabelText(/what email did you use for your elo membership/i), {
+      target: { value: "member@elo.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Check account status first/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Check eligibility first/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Account status: Premium/i)).toBeInTheDocument();
+      expect(screen.getByText(/Elo membership status: Yes/i)).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /Continue to Sign Up/i }));
@@ -419,7 +419,7 @@ describe("Auth signup flow", () => {
 
     await waitFor(() => {
       expect(signUpMock).toHaveBeenCalledWith(
-        "member@skool.com",
+        "member@elo.com",
         "StrongPassword123!",
         "Taylor Smith",
         "owner",
@@ -435,5 +435,27 @@ describe("Auth signup flow", () => {
         { plan: "basic", tier: "growth" },
       );
     });
+  });
+
+  it("blocks Elo signup continuation when membership is not eligible", async () => {
+    invokeFunctionMock.mockResolvedValue({ data: { status: "free" }, error: null });
+
+    render(
+      <MemoryRouter>
+        <Auth signupVariant="elo" />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what email did you use for your elo membership/i), {
+      target: { value: "free@elo.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Check eligibility first/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Elo membership status: No/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Not Eligible/i }));
+    expect(screen.queryByText(/Step 1 of 3/i)).not.toBeInTheDocument();
   });
 });

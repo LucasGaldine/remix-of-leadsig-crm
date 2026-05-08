@@ -1,112 +1,27 @@
-/*
-  # Update Stripe Connect for OAuth Integration
-
-  ## Changes Made
-  
-  1. Schema Updates
-    - Rename `stripe_account_id` to `stripe_user_id` (stores the connected Stripe account ID)
-    - Add `access_token` (encrypted OAuth access token)
-    - Add `refresh_token` (encrypted OAuth refresh token)
-    - Add `token_expires_at` (timestamp for token expiration)
-    - Add `scope` (OAuth scopes granted)
-    - Add `stripe_publishable_key` (account's publishable key for client-side use)
-    - Remove `onboarding_completed` (not relevant for OAuth)
-    
-  2. Security
-    - Tokens stored as text for now (encryption should be handled at application layer)
-    - RLS policies remain unchanged (already account-scoped)
-
-  ## Important Notes
-  - Existing data will need to be cleared as the integration model has changed
-  - Users will need to reconnect via OAuth
-  - This migration is safe to run on existing databases
-*/
-
--- Add new columns for OAuth
-DO $$
-BEGIN
-  -- Rename stripe_account_id to stripe_user_id
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'stripe_account_id'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    RENAME COLUMN stripe_account_id TO stripe_user_id;
-  END IF;
-
-  -- Add access_token if not exists
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'access_token'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    ADD COLUMN access_token TEXT;
-  END IF;
-
-  -- Add refresh_token if not exists
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'refresh_token'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    ADD COLUMN refresh_token TEXT;
-  END IF;
-
-  -- Add token_expires_at if not exists
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'token_expires_at'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    ADD COLUMN token_expires_at TIMESTAMPTZ;
-  END IF;
-
-  -- Add scope if not exists
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'scope'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    ADD COLUMN scope TEXT;
-  END IF;
-
-  -- Add stripe_publishable_key if not exists
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'stripe_publishable_key'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    ADD COLUMN stripe_publishable_key TEXT;
-  END IF;
-
-  -- Drop onboarding_completed if exists (not relevant for OAuth)
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'onboarding_completed'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    DROP COLUMN onboarding_completed;
-  END IF;
-
-  -- Add stripe_account_email for displaying which account is connected
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'stripe_account_email'
-  ) THEN
-    ALTER TABLE stripe_connect_accounts 
-    ADD COLUMN stripe_account_email TEXT;
-  END IF;
-END $$;
-
--- Clear existing data as we're switching from Express to OAuth model
-TRUNCATE stripe_connect_accounts CASCADE;
-
--- Update comment on table
-COMMENT ON TABLE stripe_connect_accounts IS 'Stores OAuth connection data for user Stripe accounts';
-COMMENT ON COLUMN stripe_connect_accounts.stripe_user_id IS 'The connected Stripe account ID (acct_xxx)';
-COMMENT ON COLUMN stripe_connect_accounts.access_token IS 'OAuth access token for API calls (should be encrypted)';
-COMMENT ON COLUMN stripe_connect_accounts.refresh_token IS 'OAuth refresh token (should be encrypted)';
-COMMENT ON COLUMN stripe_connect_accounts.token_expires_at IS 'When the access token expires';
-COMMENT ON COLUMN stripe_connect_accounts.scope IS 'OAuth scopes granted by the user';
-COMMENT ON COLUMN stripe_connect_accounts.stripe_publishable_key IS 'Stripe publishable key for client-side operations';
-COMMENT ON COLUMN stripe_connect_accounts.stripe_account_email IS 'Email of the connected Stripe account';
+/*\n  # Update Stripe Connect for OAuth Integration\n\n  ## Changes Made\n  \n  1. Schema Updates\n    - Rename `stripe_account_id` to `stripe_user_id` (stores the connected Stripe account ID)\n    - Add `access_token` (encrypted OAuth access token)\n    - Add `refresh_token` (encrypted OAuth refresh token)\n    - Add `token_expires_at` (timestamp for token expiration)\n    - Add `scope` (OAuth scopes granted)\n    - Add `stripe_publishable_key` (account's publishable key for client-side use)\n    - Remove `onboarding_completed` (not relevant for OAuth)\n    \n  2. Security\n    - Tokens stored as text for now (encryption should be handled at application layer)\n    - RLS policies remain unchanged (already account-scoped)\n\n  ## Important Notes\n  - Existing data will need to be cleared as the integration model has changed\n  - Users will need to reconnect via OAuth\n  - This migration is safe to run on existing databases\n*/\n\n-- Add new columns for OAuth\nDO $$\nBEGIN\n  -- Rename stripe_account_id to stripe_user_id\n  IF EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'stripe_account_id'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    RENAME COLUMN stripe_account_id TO stripe_user_id;
+\n  END IF;
+\n\n  -- Add access_token if not exists\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'access_token'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    ADD COLUMN access_token TEXT;
+\n  END IF;
+\n\n  -- Add refresh_token if not exists\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'refresh_token'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    ADD COLUMN refresh_token TEXT;
+\n  END IF;
+\n\n  -- Add token_expires_at if not exists\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'token_expires_at'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    ADD COLUMN token_expires_at TIMESTAMPTZ;
+\n  END IF;
+\n\n  -- Add scope if not exists\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'scope'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    ADD COLUMN scope TEXT;
+\n  END IF;
+\n\n  -- Add stripe_publishable_key if not exists\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'stripe_publishable_key'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    ADD COLUMN stripe_publishable_key TEXT;
+\n  END IF;
+\n\n  -- Drop onboarding_completed if exists (not relevant for OAuth)\n  IF EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'onboarding_completed'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    DROP COLUMN onboarding_completed;
+\n  END IF;
+\n\n  -- Add stripe_account_email for displaying which account is connected\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'stripe_connect_accounts' AND column_name = 'stripe_account_email'\n  ) THEN\n    ALTER TABLE stripe_connect_accounts \n    ADD COLUMN stripe_account_email TEXT;
+\n  END IF;
+\nEND $$;
+\n\n-- Clear existing data as we're switching from Express to OAuth model\nTRUNCATE stripe_connect_accounts CASCADE;
+\n\n-- Update comment on table\nCOMMENT ON TABLE stripe_connect_accounts IS 'Stores OAuth connection data for user Stripe accounts';
+\nCOMMENT ON COLUMN stripe_connect_accounts.stripe_user_id IS 'The connected Stripe account ID (acct_xxx)';
+\nCOMMENT ON COLUMN stripe_connect_accounts.access_token IS 'OAuth access token for API calls (should be encrypted)';
+\nCOMMENT ON COLUMN stripe_connect_accounts.refresh_token IS 'OAuth refresh token (should be encrypted)';
+\nCOMMENT ON COLUMN stripe_connect_accounts.token_expires_at IS 'When the access token expires';
+\nCOMMENT ON COLUMN stripe_connect_accounts.scope IS 'OAuth scopes granted by the user';
+\nCOMMENT ON COLUMN stripe_connect_accounts.stripe_publishable_key IS 'Stripe publishable key for client-side operations';
+\nCOMMENT ON COLUMN stripe_connect_accounts.stripe_account_email IS 'Email of the connected Stripe account';
+;

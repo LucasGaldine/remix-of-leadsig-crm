@@ -1,49 +1,6 @@
-/*
-  # Clean Up Orphaned Estimates Pointing to Estimate Jobs
-
-  ## Problem
-  After conversion, some estimates are still pointing to the estimate job
-  instead of being moved to the regular job. This creates a situation where:
-  - Estimate A points to the estimate job (completed)
-  - Estimate B points to the regular job (the real one with line items)
-  
-  ## Solution
-  Delete estimates that:
-  1. Point to an estimate job (is_estimate_visit = true)
-  2. Where a regular job exists that references this estimate job (via estimate_job_id)
-  3. And the regular job already has its own estimate
-  
-  This cleans up the orphaned estimates that should have been moved but weren't.
-*/
-
-DO $$
-DECLARE
-  _estimate_record RECORD;
-BEGIN
-  FOR _estimate_record IN 
-    SELECT 
-      e.id as orphaned_estimate_id,
-      e.job_id as estimate_job_id,
-      l_est.name as estimate_job_name,
-      l_reg.id as regular_job_id,
-      l_reg.name as regular_job_name,
-      (SELECT id FROM estimates WHERE job_id = l_reg.id LIMIT 1) as regular_job_estimate_id
-    FROM estimates e
-    INNER JOIN leads l_est ON l_est.id = e.job_id AND l_est.is_estimate_visit = true
-    INNER JOIN leads l_reg ON l_reg.estimate_job_id = l_est.id
-    WHERE EXISTS (
-      SELECT 1 FROM estimates WHERE job_id = l_reg.id
-    )
-  LOOP
-    -- Delete the orphaned estimate pointing to the estimate job
-    DELETE FROM estimates WHERE id = _estimate_record.orphaned_estimate_id;
-    
-    RAISE NOTICE 'Deleted orphaned estimate % pointing to estimate job % (%), regular job % (%) has estimate %', 
-      _estimate_record.orphaned_estimate_id,
-      _estimate_record.estimate_job_id,
-      _estimate_record.estimate_job_name,
-      _estimate_record.regular_job_id,
-      _estimate_record.regular_job_name,
-      _estimate_record.regular_job_estimate_id;
-  END LOOP;
-END $$;
+/*\n  # Clean Up Orphaned Estimates Pointing to Estimate Jobs\n\n  ## Problem\n  After conversion, some estimates are still pointing to the estimate job\n  instead of being moved to the regular job. This creates a situation where:\n  - Estimate A points to the estimate job (completed)\n  - Estimate B points to the regular job (the real one with line items)\n  \n  ## Solution\n  Delete estimates that:\n  1. Point to an estimate job (is_estimate_visit = true)\n  2. Where a regular job exists that references this estimate job (via estimate_job_id)\n  3. And the regular job already has its own estimate\n  \n  This cleans up the orphaned estimates that should have been moved but weren't.\n*/\n\nDO $$\nDECLARE\n  _estimate_record RECORD;
+\nBEGIN\n  FOR _estimate_record IN \n    SELECT \n      e.id as orphaned_estimate_id,\n      e.job_id as estimate_job_id,\n      l_est.name as estimate_job_name,\n      l_reg.id as regular_job_id,\n      l_reg.name as regular_job_name,\n      (SELECT id FROM estimates WHERE job_id = l_reg.id LIMIT 1) as regular_job_estimate_id\n    FROM estimates e\n    INNER JOIN leads l_est ON l_est.id = e.job_id AND l_est.is_estimate_visit = true\n    INNER JOIN leads l_reg ON l_reg.estimate_job_id = l_est.id\n    WHERE EXISTS (\n      SELECT 1 FROM estimates WHERE job_id = l_reg.id\n    )\n  LOOP\n    -- Delete the orphaned estimate pointing to the estimate job\n    DELETE FROM estimates WHERE id = _estimate_record.orphaned_estimate_id;
+\n    \n    RAISE NOTICE 'Deleted orphaned estimate % pointing to estimate job % (%), regular job % (%) has estimate %', \n      _estimate_record.orphaned_estimate_id,\n      _estimate_record.estimate_job_id,\n      _estimate_record.estimate_job_name,\n      _estimate_record.regular_job_id,\n      _estimate_record.regular_job_name,\n      _estimate_record.regular_job_estimate_id;
+\n  END LOOP;
+\nEND $$;
+\n;

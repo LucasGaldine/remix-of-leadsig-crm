@@ -17,6 +17,268 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+function normalizeEmail(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function isMembershipActiveStatus(status: string | null | undefined): boolean {
+  return status === "trialing" || status === "active";
+}
+
+type MembershipLifecycleStatus = "active" | "inactive" | "canceled" | "past_due" | "grace";
+
+type GrowthSignupRow = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+function toMembershipStatus(status: string | null | undefined): MembershipLifecycleStatus {
+  switch (status) {
+    case "trialing":
+    case "active":
+      return "active";
+    case "past_due":
+      return "past_due";
+    case "canceled":
+      return "canceled";
+    default:
+      return "inactive";
+  }
+}
+
+async function syncGhlMembershipContact(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    email: string | null;
+    fullName?: string | null;
+    phone?: string | null;
+    companyName?: string | null;
+    membershipStatus?: string | null;
+    source: string;
+  },
+) {
+  const normalizedEmail = normalizeEmail(params.email);
+  if (!normalizedEmail) return;
+
+  const { data: signupRow, error: signupError } = await supabase
+    .from("elo_growth_signups")
+    .select("id, full_name, phone, metadata")
+    .eq("normalized_email", normalizedEmail)
+    .maybeSingle<GrowthSignupRow>();
+
+  if (signupError || !signupRow) {
+    if (signupError) {
+      console.error("Failed loading signup row before GHL sync:", signupError.message);
+    }
+    return;
+  }
+
+  const metadata = (signupRow.metadata || {}) as Record<string, unknown>;
+  const resolvedMembershipStatus = toMembershipStatus(params.membershipStatus);
+  const previousMembershipStatus = String(metadata.ghl_membership_status || "");
+  if (
+    metadata.ghl_membership_status_synced_at
+    && previousMembershipStatus === resolvedMembershipStatus
+  ) {
+    return;
+  }
+
+  const fullName = (params.fullName || signupRow.full_name || "ELO Member").trim();
+  const phone = (params.phone || signupRow.phone || "").trim();
+  const companyName = (params.companyName || String(metadata.company_name || "") || "ELO Membership").trim();
+  if (!phone) {
+    console.warn("Skipping GHL sync: missing phone for", normalizedEmail);
+    return;
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("Skipping GHL sync: missing Supabase service credentials");
+    return;
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/ghl-sync`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        name: fullName,
+        email: normalizedEmail,
+        business: companyName,
+        phone,
+        membership_status: resolvedMembershipStatus,
+        membership_source: params.source,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.error("GHL sync failed:", response.status, body.slice(0, 500));
+      return;
+    }
+
+    const updatedMetadata = {
+      ...metadata,
+      ghl_contact_synced_at: new Date().toISOString(),
+      ghl_contact_sync_source: params.source,
+      ghl_contact_sync_email: normalizedEmail,
+      ghl_membership_status: resolvedMembershipStatus,
+      ghl_membership_status_synced_at: new Date().toISOString(),
+      ghl_membership_status_sync_source: params.source,
+    };
+
+    const { error: metadataUpdateError } = await supabase
+      .from("elo_growth_signups")
+      .update({ metadata: updatedMetadata, updated_at: new Date().toISOString() })
+      .eq("id", signupRow.id);
+
+    if (metadataUpdateError) {
+      console.error("Failed to persist GHL sync metadata:", metadataUpdateError.message);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("GHL sync exception:", message);
+  }
+}
+
+async function upsertEloMembership(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    email: string | null;
+    membershipStatus: string | null;
+    plan: string | null;
+    source: string;
+    eloMemberId?: string | null;
+    currentPeriodEndUnix?: number | null;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  const normalizedEmail = normalizeEmail(params.email);
+  if (!normalizedEmail) return;
+
+  const payload = {
+    normalized_email: normalizedEmail,
+    elo_member_id: params.eloMemberId ?? null,
+    status: toMembershipStatus(params.membershipStatus),
+    plan: params.plan || "growth",
+    source: params.source,
+    current_period_end: params.currentPeriodEndUnix
+      ? new Date(params.currentPeriodEndUnix * 1000).toISOString()
+      : null,
+    last_checked_at: new Date().toISOString(),
+    last_synced_at: new Date().toISOString(),
+    metadata: params.metadata ?? {},
+  };
+
+  const { error } = await supabase
+    .from("elo_memberships")
+    .upsert(payload, { onConflict: "normalized_email" });
+
+  if (error) {
+    console.error("Failed to upsert elo_memberships:", error.message);
+  }
+}
+
+async function syncEloGrowthSignupByEmail(
+  supabase: ReturnType<typeof createClient>,
+  email: string | null,
+  values: {
+    stripe_customer_id?: string | null;
+    stripe_subscription_id?: string | null;
+    stripe_subscription_status?: string | null;
+    updated_at: string;
+  },
+  options: {
+    full_name?: string | null;
+    phone?: string | null;
+    elo_user_id?: string | null;
+    metadata?: Record<string, unknown> | null;
+    expected_plan?: string | null;
+    expected_tier?: string | null;
+  } = {},
+) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return;
+
+  const payload = {
+    email: normalizedEmail,
+    normalized_email: normalizedEmail,
+    full_name: options.full_name || "ELO Member",
+    elo_user_id: options.elo_user_id || `elo_${crypto.randomUUID()}`,
+    phone: options.phone || null,
+    metadata: options.metadata || {},
+    signup_source: "elo_landing_page",
+    expected_plan: options.expected_plan || "basic",
+    expected_tier: options.expected_tier || "growth",
+    membership_active: isMembershipActiveStatus(values.stripe_subscription_status),
+    ...values,
+  };
+
+  const { error } = await supabase
+    .from("elo_growth_signups")
+    .upsert(payload, { onConflict: "normalized_email" });
+
+  if (error) {
+    console.error("Failed to sync elo_growth_signups by email:", error.message);
+  }
+}
+
+async function syncEloGrowthSignupByStripeIds(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    stripeSubscriptionStatus: string | null;
+  },
+) {
+  const { stripeCustomerId, stripeSubscriptionId, stripeSubscriptionStatus } = params;
+  if (!stripeCustomerId && !stripeSubscriptionId) return;
+
+  const nowIso = new Date().toISOString();
+  const baseUpdate = {
+    stripe_customer_id: stripeCustomerId,
+    stripe_subscription_id: stripeSubscriptionId,
+    stripe_subscription_status: stripeSubscriptionStatus,
+    membership_active: isMembershipActiveStatus(stripeSubscriptionStatus),
+    updated_at: nowIso,
+  };
+
+  if (stripeSubscriptionId) {
+    const { data, error } = await supabase
+      .from("elo_growth_signups")
+      .update(baseUpdate)
+      .eq("stripe_subscription_id", stripeSubscriptionId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Failed to sync elo_growth_signups by subscription:", error.message);
+      return;
+    }
+
+    if (data) return;
+  }
+
+  if (stripeCustomerId) {
+    const { error } = await supabase
+      .from("elo_growth_signups")
+      .update(baseUpdate)
+      .eq("stripe_customer_id", stripeCustomerId);
+
+    if (error) {
+      console.error("Failed to sync elo_growth_signups by customer:", error.message);
+    }
+  }
+}
+
 function inferTierFromSubscription(subscription: Stripe.Subscription): BasicTier | null {
   for (const item of subscription.items.data) {
     const metadataTier = item.price?.metadata?.leadsig_tier ?? "";
@@ -437,6 +699,62 @@ async function handleCheckoutSessionCompleted(
   supabase: ReturnType<typeof createClient>,
   session: Stripe.Checkout.Session
 ) {
+  const nowIso = new Date().toISOString();
+  const customerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : session.customer?.id ?? null;
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription?.id ?? null;
+  const checkoutEmail =
+    session.customer_details?.email ??
+    session.customer_email ??
+    session.metadata?.email ??
+    session.metadata?.normalized_email ??
+    null;
+  const isPaid = session.payment_status === "paid";
+
+  await syncEloGrowthSignupByEmail(supabase, checkoutEmail, {
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscriptionId,
+    stripe_subscription_status: isPaid ? "active" : null,
+    updated_at: nowIso,
+  }, {
+    full_name: session.metadata?.full_name ?? null,
+    phone: session.metadata?.phone ?? null,
+    elo_user_id: session.metadata?.elo_user_id ?? null,
+    metadata: session.metadata ?? {},
+    expected_plan: session.metadata?.target_plan ?? "basic",
+    expected_tier: session.metadata?.target_tier ?? "growth",
+  });
+
+  await upsertEloMembership(supabase, {
+    email: checkoutEmail,
+    membershipStatus: isPaid ? "active" : null,
+    plan: session.metadata?.target_tier ?? "growth",
+    source: "stripe_checkout_session_completed",
+    eloMemberId: session.metadata?.elo_user_id ?? null,
+    metadata: {
+      stripe_checkout_session_id: session.id,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscriptionId,
+      raw_metadata: session.metadata ?? {},
+    },
+  });
+
+  if (isPaid) {
+    await syncGhlMembershipContact(supabase, {
+      email: checkoutEmail,
+      fullName: session.metadata?.full_name ?? null,
+      phone: session.metadata?.phone ?? null,
+      companyName: session.metadata?.company_name ?? null,
+      membershipStatus: "active",
+      source: "stripe_checkout_session_completed",
+    });
+  }
+
   if (session.mode !== "subscription") {
     return;
   }
@@ -469,6 +787,89 @@ async function handleSubscriptionChanged(
   subscription: Stripe.Subscription,
   eventType: string
 ) {
+  const nowIso = new Date().toISOString();
+  const stripeCustomerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer?.id ?? null;
+
+  const metadataEmail = normalizeEmail(
+    subscription.metadata?.normalized_email
+      ?? subscription.metadata?.email
+      ?? null,
+  );
+  if (metadataEmail) {
+    await syncEloGrowthSignupByEmail(supabase, metadataEmail, {
+      stripe_customer_id: stripeCustomerId,
+      stripe_subscription_id: subscription.id,
+      stripe_subscription_status: subscription.status,
+      updated_at: nowIso,
+    }, {
+      full_name: subscription.metadata?.full_name ?? null,
+      phone: subscription.metadata?.phone ?? null,
+      elo_user_id: subscription.metadata?.elo_user_id ?? null,
+      metadata: subscription.metadata ?? {},
+      expected_plan: subscription.metadata?.target_plan ?? "basic",
+      expected_tier: subscription.metadata?.target_tier ?? "growth",
+    });
+  }
+
+  await syncEloGrowthSignupByStripeIds(supabase, {
+    stripeCustomerId,
+    stripeSubscriptionId: subscription.id,
+    stripeSubscriptionStatus: subscription.status,
+  });
+
+  // We may only have Stripe IDs on subscription events; recover email from the signup row.
+  let resolvedEmail = metadataEmail;
+  if (!resolvedEmail) {
+    let signupLookup = supabase
+      .from("elo_growth_signups")
+      .select("email, normalized_email")
+      .eq("stripe_subscription_id", subscription.id)
+      .maybeSingle();
+
+    let { data: signupRow } = await signupLookup;
+    if (!signupRow && stripeCustomerId) {
+      const byCustomer = await supabase
+        .from("elo_growth_signups")
+        .select("email, normalized_email")
+        .eq("stripe_customer_id", stripeCustomerId)
+        .maybeSingle();
+      signupRow = byCustomer.data ?? null;
+    }
+
+    resolvedEmail = normalizeEmail(signupRow?.normalized_email ?? signupRow?.email ?? null);
+  }
+
+  await upsertEloMembership(supabase, {
+    email: resolvedEmail,
+    membershipStatus: subscription.status,
+    plan: subscription.metadata?.target_tier ?? "growth",
+    source: `stripe_${eventType.replaceAll(".", "_")}`,
+    eloMemberId: subscription.metadata?.elo_user_id ?? null,
+    currentPeriodEndUnix: subscription.current_period_end ?? null,
+    metadata: {
+      stripe_subscription_id: subscription.id,
+      stripe_customer_id: stripeCustomerId,
+      cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
+      cancel_at: subscription.cancel_at,
+      canceled_at: subscription.canceled_at,
+      target_plan: subscription.metadata?.target_plan ?? null,
+      target_tier: subscription.metadata?.target_tier ?? null,
+      raw_metadata: subscription.metadata ?? {},
+    },
+  });
+
+  await syncGhlMembershipContact(supabase, {
+    email: resolvedEmail,
+    fullName: subscription.metadata?.full_name ?? null,
+    phone: subscription.metadata?.phone ?? null,
+    companyName: subscription.metadata?.company_name ?? null,
+    membershipStatus: subscription.status,
+    source: `stripe_${eventType.replaceAll(".", "_")}`,
+  });
+
   const accountIdFromMetadata = subscription.metadata?.account_id || null;
 
   const accountLookup = accountIdFromMetadata

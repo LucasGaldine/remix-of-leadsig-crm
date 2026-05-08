@@ -1,99 +1,20 @@
-/*
-  # Create Job Time Entries Table for Time Tracking
-
-  1. New Tables
-    - `job_time_entries`
-      - `id` (uuid, primary key)
-      - `lead_id` (uuid, foreign key to leads)
-      - `user_id` (uuid, foreign key to auth.users)
-      - `account_id` (uuid, foreign key to accounts)
-      - `clock_in` (timestamptz)
-      - `clock_out` (timestamptz, nullable)
-      - `is_auto` (boolean) - Whether this was auto-clocked via GPS
-      - `clock_in_lat` (double precision, nullable) - GPS coordinates
-      - `clock_in_lng` (double precision, nullable)
-      - `clock_out_lat` (double precision, nullable)
-      - `clock_out_lng` (double precision, nullable)
-      - `notes` (text, nullable)
-      - `created_at` (timestamptz)
-      - `updated_at` (timestamptz)
-
-  2. Security
-    - Enable RLS on `job_time_entries` table
-    - Add policies for authenticated users to manage their own time entries
-    
-  3. Indexes
-    - Index on lead_id for faster lookups
-    - Index on user_id for faster user-specific queries
-    - Index on account_id for account-level queries
-*/
-
--- Create the table
-CREATE TABLE IF NOT EXISTS public.job_time_entries (
-  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  account_id UUID NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
-  clock_in TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  clock_out TIMESTAMP WITH TIME ZONE,
-  is_auto BOOLEAN NOT NULL DEFAULT true,
-  clock_in_lat DOUBLE PRECISION,
-  clock_in_lng DOUBLE PRECISION,
-  clock_out_lat DOUBLE PRECISION,
-  clock_out_lng DOUBLE PRECISION,
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-);
-
--- Create indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_job_time_entries_lead_id ON public.job_time_entries(lead_id);
-CREATE INDEX IF NOT EXISTS idx_job_time_entries_user_id ON public.job_time_entries(user_id);
-CREATE INDEX IF NOT EXISTS idx_job_time_entries_account_id ON public.job_time_entries(account_id);
-
--- Enable RLS
-ALTER TABLE public.job_time_entries ENABLE ROW LEVEL SECURITY;
-
--- Drop existing policies if they exist
-DROP POLICY IF EXISTS "Users can view own time entries" ON public.job_time_entries;
-DROP POLICY IF EXISTS "Users can create own time entries" ON public.job_time_entries;
-DROP POLICY IF EXISTS "Users can update own time entries" ON public.job_time_entries;
-DROP POLICY IF EXISTS "Users can delete own time entries" ON public.job_time_entries;
-
--- Create policies for users to manage their own time entries
-CREATE POLICY "Users can view own time entries"
-ON public.job_time_entries FOR SELECT
-TO authenticated
-USING (user_id = auth.uid());
-
-CREATE POLICY "Users can create own time entries"
-ON public.job_time_entries FOR INSERT
-TO authenticated
-WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "Users can update own time entries"
-ON public.job_time_entries FOR UPDATE
-TO authenticated
-USING (user_id = auth.uid())
-WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "Users can delete own time entries"
-ON public.job_time_entries FOR DELETE
-TO authenticated
-USING (user_id = auth.uid());
-
--- Create or replace the update_updated_at_column function if it doesn't exist
-CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Add trigger to automatically update the updated_at timestamp
-DROP TRIGGER IF EXISTS update_job_time_entries_updated_at ON public.job_time_entries;
-CREATE TRIGGER update_job_time_entries_updated_at
-BEFORE UPDATE ON public.job_time_entries
-FOR EACH ROW
-EXECUTE FUNCTION public.update_updated_at_column();
+/*\n  # Create Job Time Entries Table for Time Tracking\n\n  1. New Tables\n    - `job_time_entries`\n      - `id` (uuid, primary key)\n      - `lead_id` (uuid, foreign key to leads)\n      - `user_id` (uuid, foreign key to auth.users)\n      - `account_id` (uuid, foreign key to accounts)\n      - `clock_in` (timestamptz)\n      - `clock_out` (timestamptz, nullable)\n      - `is_auto` (boolean) - Whether this was auto-clocked via GPS\n      - `clock_in_lat` (double precision, nullable) - GPS coordinates\n      - `clock_in_lng` (double precision, nullable)\n      - `clock_out_lat` (double precision, nullable)\n      - `clock_out_lng` (double precision, nullable)\n      - `notes` (text, nullable)\n      - `created_at` (timestamptz)\n      - `updated_at` (timestamptz)\n\n  2. Security\n    - Enable RLS on `job_time_entries` table\n    - Add policies for authenticated users to manage their own time entries\n    \n  3. Indexes\n    - Index on lead_id for faster lookups\n    - Index on user_id for faster user-specific queries\n    - Index on account_id for account-level queries\n*/\n\n-- Create the table\nCREATE TABLE IF NOT EXISTS public.job_time_entries (\n  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,\n  lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,\n  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,\n  account_id UUID NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,\n  clock_in TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),\n  clock_out TIMESTAMP WITH TIME ZONE,\n  is_auto BOOLEAN NOT NULL DEFAULT true,\n  clock_in_lat DOUBLE PRECISION,\n  clock_in_lng DOUBLE PRECISION,\n  clock_out_lat DOUBLE PRECISION,\n  clock_out_lng DOUBLE PRECISION,\n  notes TEXT,\n  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),\n  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()\n);
+\n\n-- Create indexes for better query performance\nCREATE INDEX IF NOT EXISTS idx_job_time_entries_lead_id ON public.job_time_entries(lead_id);
+\nCREATE INDEX IF NOT EXISTS idx_job_time_entries_user_id ON public.job_time_entries(user_id);
+\nCREATE INDEX IF NOT EXISTS idx_job_time_entries_account_id ON public.job_time_entries(account_id);
+\n\n-- Enable RLS\nALTER TABLE public.job_time_entries ENABLE ROW LEVEL SECURITY;
+\n\n-- Drop existing policies if they exist\nDROP POLICY IF EXISTS "Users can view own time entries" ON public.job_time_entries;
+\nDROP POLICY IF EXISTS "Users can create own time entries" ON public.job_time_entries;
+\nDROP POLICY IF EXISTS "Users can update own time entries" ON public.job_time_entries;
+\nDROP POLICY IF EXISTS "Users can delete own time entries" ON public.job_time_entries;
+\n\n-- Create policies for users to manage their own time entries\nCREATE POLICY "Users can view own time entries"\nON public.job_time_entries FOR SELECT\nTO authenticated\nUSING (user_id = auth.uid());
+\n\nCREATE POLICY "Users can create own time entries"\nON public.job_time_entries FOR INSERT\nTO authenticated\nWITH CHECK (user_id = auth.uid());
+\n\nCREATE POLICY "Users can update own time entries"\nON public.job_time_entries FOR UPDATE\nTO authenticated\nUSING (user_id = auth.uid())\nWITH CHECK (user_id = auth.uid());
+\n\nCREATE POLICY "Users can delete own time entries"\nON public.job_time_entries FOR DELETE\nTO authenticated\nUSING (user_id = auth.uid());
+\n\n-- Create or replace the update_updated_at_column function if it doesn't exist\nCREATE OR REPLACE FUNCTION public.update_updated_at_column()\nRETURNS TRIGGER AS $$\nBEGIN\n  NEW.updated_at = now();
+\n  RETURN NEW;
+\nEND;
+\n$$ LANGUAGE plpgsql;
+\n\n-- Add trigger to automatically update the updated_at timestamp\nDROP TRIGGER IF EXISTS update_job_time_entries_updated_at ON public.job_time_entries;
+\nCREATE TRIGGER update_job_time_entries_updated_at\nBEFORE UPDATE ON public.job_time_entries\nFOR EACH ROW\nEXECUTE FUNCTION public.update_updated_at_column();
+\n;

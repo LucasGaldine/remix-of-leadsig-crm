@@ -1,31 +1,3 @@
-/*
-  # Fix account_members_with_profiles view - add missing id column
-
-  1. Modified Views
-    - `account_members_with_profiles`
-      - Added `id` column from account_members table
-      - This was missing and causing 400 errors when querying the view
-
-  2. Important Notes
-    - The view is dropped and recreated with the id column included
-    - No data is affected since this is just a view
-*/
-
-DROP VIEW IF EXISTS account_members_with_profiles;
-
-CREATE VIEW account_members_with_profiles AS
-SELECT
-  am.id,
-  am.account_id,
-  am.user_id,
-  am.role,
-  am.invited_by,
-  am.invited_at,
-  am.joined_at,
-  am.is_active,
-  p.full_name,
-  p.email,
-  p.phone,
-  p.avatar_url
-FROM account_members am
-LEFT JOIN profiles p ON am.user_id = p.user_id;
+/*\n  # Fix account_members_with_profiles view - add missing id column\n\n  1. Modified Views\n    - `account_members_with_profiles`\n      - Added `id` column from account_members table\n      - This was missing and causing 400 errors when querying the view\n\n  2. Important Notes\n    - The view is dropped and recreated with the id column included\n    - No data is affected since this is just a view\n*/\n\nDROP VIEW IF EXISTS account_members_with_profiles;
+\n\nCREATE VIEW account_members_with_profiles AS\nSELECT\n  am.id,\n  am.account_id,\n  am.user_id,\n  am.role,\n  am.invited_by,\n  am.invited_at,\n  am.joined_at,\n  am.is_active,\n  p.full_name,\n  p.email,\n  p.phone,\n  p.avatar_url\nFROM account_members am\nLEFT JOIN profiles p ON am.user_id = p.user_id;
+\n;

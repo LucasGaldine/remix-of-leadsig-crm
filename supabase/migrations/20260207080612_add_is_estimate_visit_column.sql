@@ -1,54 +1,11 @@
-/*
-  # Add is_estimate_visit column to leads table
-
-  1. Modified Tables
-    - `leads`
-      - `is_estimate_visit` (boolean, default false) - Indicates whether a job is an estimate visit
-        rather than a regular job. Replaces the previous convention of appending ", Estimate" to the job name.
-
-  2. Trigger Updates
-    - `auto_create_estimate_for_job` - Updated to check `is_estimate_visit` column instead of
-      name pattern matching. Estimate visits should not auto-generate estimate records.
-
-  3. Important Notes
-    - Existing estimate visit jobs (identified by name ending in ", Estimate") are backfilled
-      to have is_estimate_visit = true.
-    - This ensures the flag cannot be manipulated by users editing the job name.
-*/
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'leads' AND column_name = 'is_estimate_visit'
-  ) THEN
-    ALTER TABLE leads ADD COLUMN is_estimate_visit boolean NOT NULL DEFAULT false;
-  END IF;
-END $$;
-
-UPDATE leads
-SET is_estimate_visit = true
-WHERE name LIKE '%, Estimate'
-  AND status IN ('job', 'paid')
-  AND is_estimate_visit = false;
-
-CREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $function$
-BEGIN
-  IF NEW.status IN ('job', 'paid')
-  AND NEW.approval_status = 'approved'
-  AND NEW.is_estimate_visit = false THEN
-
-    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN
-      INSERT INTO public.estimates (job_id, account_id, status, total_amount)
-      VALUES (NEW.id, NEW.account_id, 'draft', 0);
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$function$;
+/*\n  # Add is_estimate_visit column to leads table\n\n  1. Modified Tables\n    - `leads`\n      - `is_estimate_visit` (boolean, default false) - Indicates whether a job is an estimate visit\n        rather than a regular job. Replaces the previous convention of appending ", Estimate" to the job name.\n\n  2. Trigger Updates\n    - `auto_create_estimate_for_job` - Updated to check `is_estimate_visit` column instead of\n      name pattern matching. Estimate visits should not auto-generate estimate records.\n\n  3. Important Notes\n    - Existing estimate visit jobs (identified by name ending in ", Estimate") are backfilled\n      to have is_estimate_visit = true.\n    - This ensures the flag cannot be manipulated by users editing the job name.\n*/\n\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'leads' AND column_name = 'is_estimate_visit'\n  ) THEN\n    ALTER TABLE leads ADD COLUMN is_estimate_visit boolean NOT NULL DEFAULT false;
+\n  END IF;
+\nEND $$;
+\n\nUPDATE leads\nSET is_estimate_visit = true\nWHERE name LIKE '%, Estimate'\n  AND status IN ('job', 'paid')\n  AND is_estimate_visit = false;
+\n\nCREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $function$\nBEGIN\n  IF NEW.status IN ('job', 'paid')\n  AND NEW.approval_status = 'approved'\n  AND NEW.is_estimate_visit = false THEN\n\n    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN\n      INSERT INTO public.estimates (job_id, account_id, status, total_amount)\n      VALUES (NEW.id, NEW.account_id, 'draft', 0);
+\n    END IF;
+\n  END IF;
+\n\n  RETURN NEW;
+\nEND;
+\n$function$;
+\n;

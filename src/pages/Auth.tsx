@@ -44,10 +44,11 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
   
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
-  const [eloSkoolEmail, setEloSkoolEmail] = useState('');
+  const [eloMembershipEmail, setEloMembershipEmail] = useState('');
   const [eloSignupGateCompleted, setEloSignupGateCompleted] = useState(!isEloSignup);
-  const [skoolAccountStatus, setSkoolAccountStatus] = useState<'free' | 'premium' | null>(null);
-  const [isCheckingSkoolStatus, setIsCheckingSkoolStatus] = useState(false);
+  const [eloMembershipStatus, setEloMembershipStatus] = useState<'free' | 'premium' | null>(null);
+  const [eloEligibilityMessage, setEloEligibilityMessage] = useState<string | null>(null);
+  const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [selectedRole, setSelectedRole] = useState<AppRole>('sales');
@@ -69,7 +70,7 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
     }
   }, [signupCompanyMode]);
   const [errors, setErrors] = useState<{
-    eloSkoolEmail?: string;
+    eloMembershipEmail?: string;
     email?: string;
     password?: string;
     fullName?: string;
@@ -105,9 +106,10 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
     setSelectedRole('sales');
     setSmsConsentEnabled(false);
     if (isEloSignup) {
-      setEloSkoolEmail('');
+      setEloMembershipEmail('');
       setEloSignupGateCompleted(false);
-      setSkoolAccountStatus(null);
+      setEloMembershipStatus(null);
+      setEloEligibilityMessage(null);
     }
   };
 
@@ -232,7 +234,7 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
 
     setIsLoading(true);
     const signupPlanOverride =
-      isEloSignup && skoolAccountStatus === 'premium'
+      isEloSignup && eloMembershipStatus === 'premium'
         ? { plan: 'basic' as const, tier: 'growth' as const }
         : undefined;
     const signupPayload = isCreatingCompany
@@ -284,15 +286,15 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
     }
   };
 
-  const handleEloSkoolEmailContinue = async () => {
+  const handleEloMembershipEmailContinue = async () => {
     const nextErrors: typeof errors = {};
-    const normalizedEmail = eloSkoolEmail.trim();
+    const normalizedEmail = eloMembershipEmail.trim();
 
     try {
       emailSchema.parse(normalizedEmail);
     } catch (e) {
       if (e instanceof z.ZodError) {
-        nextErrors.eloSkoolEmail = e.errors[0].message;
+        nextErrors.eloMembershipEmail = e.errors[0].message;
       }
     }
 
@@ -301,12 +303,12 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
       return;
     }
 
-    if (!skoolAccountStatus) {
-      setIsCheckingSkoolStatus(true);
-      const { data, error } = await supabase.functions.invoke('gohighlevel-membership-status', {
+    if (!eloMembershipStatus) {
+      setIsCheckingEligibility(true);
+      const { data, error } = await supabase.functions.invoke('elo-membership-status', {
         body: { email: normalizedEmail },
       });
-      setIsCheckingSkoolStatus(false);
+      setIsCheckingEligibility(false);
 
       if (error) {
         toast.error(error.message || 'Unable to check account status right now');
@@ -319,9 +321,19 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
         return;
       }
 
-      setSkoolAccountStatus(status);
+      setEloMembershipStatus(status);
       setEmail(normalizedEmail);
+      setEloEligibilityMessage(
+        status === 'premium'
+          ? 'Yes, this email has an Elo membership and qualifies for the LeadSig Growth plan.'
+          : 'No Elo membership found for this email, so LeadSig Growth signup is not available.',
+      );
       setErrors({});
+      return;
+    }
+
+    if (eloMembershipStatus !== 'premium') {
+      toast.error('This email is not eligible for Elo Growth signup');
       return;
     }
 
@@ -354,7 +366,7 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
           <CardTitle className="text-2xl">{isEloSignup ? 'Create your account' : 'Welcome'}</CardTitle>
           <CardDescription>
             {isEloSignup
-              ? 'Start with the email you used for your Skool account'
+              ? 'Elo Growth sign-up database check'
               : 'Sign in to your account or create a new one'}
           </CardDescription>
         </CardHeader>
@@ -450,33 +462,36 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
                 <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
                   {isEloSignup && !eloSignupGateCompleted ? (
                     <div className="space-y-3">
-                      <Label htmlFor="elo-skool-email">What email did you use for your Skool account?</Label>
+                      <Label htmlFor="elo-membership-email">What email did you use for your ELO membership?</Label>
                       <Input
-                        id="elo-skool-email"
+                        id="elo-membership-email"
                         type="email"
-                        placeholder="you@skool.com"
-                        value={eloSkoolEmail}
+                        placeholder="you@elo.com"
+                        value={eloMembershipEmail}
                         onChange={(e) => {
-                          setEloSkoolEmail(e.target.value);
-                          setSkoolAccountStatus(null);
+                          setEloMembershipEmail(e.target.value);
+                          setEloMembershipStatus(null);
                         }}
                         disabled={isLoading}
                       />
-                      {errors.eloSkoolEmail && (
-                        <p className="text-sm text-destructive">{errors.eloSkoolEmail}</p>
+                      {errors.eloMembershipEmail && (
+                        <p className="text-sm text-destructive">{errors.eloMembershipEmail}</p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        We will use this email to verify your paid community status in GoHighLevel.
+                        We will verify this email against the ELO membership table in the LeadSig database.
                       </p>
-                      {skoolAccountStatus && (
+                      {eloMembershipStatus && (
                         <p
                           className={cn(
                             'text-sm font-medium',
-                            skoolAccountStatus === 'premium' ? 'text-emerald-600' : 'text-amber-600',
+                            eloMembershipStatus === 'premium' ? 'text-emerald-600' : 'text-amber-600',
                           )}
                         >
-                          Account status: {skoolAccountStatus === 'premium' ? 'Premium' : 'Free'}
+                          Elo membership status: {eloMembershipStatus === 'premium' ? 'Yes' : 'No'}
                         </p>
+                      )}
+                      {eloEligibilityMessage && (
+                        <p className="text-xs text-muted-foreground">{eloEligibilityMessage}</p>
                       )}
                     </div>
                   ) : (
@@ -733,14 +748,16 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
                     <Button
                       type="button"
                       className="flex-1"
-                      onClick={handleEloSkoolEmailContinue}
-                      disabled={isLoading || isCheckingSkoolStatus}
+                      onClick={handleEloMembershipEmailContinue}
+                      disabled={isLoading || isCheckingEligibility}
                     >
-                      {isCheckingSkoolStatus
-                        ? 'Checking account status...'
-                        : skoolAccountStatus
-                          ? 'Continue to Sign Up'
-                          : 'Check account status first'}
+                      {isCheckingEligibility
+                        ? 'Checking eligibility...'
+                        : eloMembershipStatus
+                          ? eloMembershipStatus === 'premium'
+                            ? 'Continue to Sign Up'
+                            : 'Not Eligible'
+                          : 'Check eligibility first'}
                     </Button>
                   ) : (
                     <>

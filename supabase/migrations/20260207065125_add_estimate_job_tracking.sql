@@ -1,74 +1,19 @@
-/*
-  # Add estimate job tracking to leads
-
-  1. Modified Tables
-    - `leads`
-      - `estimate_job_id` (uuid, nullable) - references the "estimate visit" job
-        created when scheduling an estimate for this lead
-
-  2. Modified Functions
-    - `try_convert_lead_to_job` - now also marks the linked estimate job as 'paid'
-      (complete) when the lead converts to a real job
-
-  3. Important Notes
-    - The estimate_job_id links a lead to its estimate visit job
-    - When a lead converts to a job, the estimate visit job is auto-completed
-    - This keeps the estimate visit on the schedule until it's no longer needed
-*/
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'leads' AND column_name = 'estimate_job_id'
-  ) THEN
-    ALTER TABLE leads ADD COLUMN estimate_job_id uuid REFERENCES leads(id) ON DELETE SET NULL;
-  END IF;
-END $$;
-
-CREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _lead record;
-  _has_accepted_estimate boolean;
-  _has_photos boolean;
-BEGIN
-  SELECT status, estimate_job_id INTO _lead
-  FROM leads
-  WHERE id = p_lead_id;
-
-  IF _lead.status IS NULL OR _lead.status IN ('job', 'paid') THEN
-    RETURN;
-  END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM estimates
-    WHERE job_id = p_lead_id AND status = 'accepted'
-  ) INTO _has_accepted_estimate;
-
-  SELECT EXISTS (
-    SELECT 1 FROM lead_photos
-    WHERE lead_id = p_lead_id
-  ) INTO _has_photos;
-
-  IF _has_accepted_estimate AND _has_photos THEN
-    UPDATE leads SET status = 'job' WHERE id = p_lead_id;
-
-    IF _lead.estimate_job_id IS NOT NULL THEN
-      UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
-    END IF;
-
-    INSERT INTO interactions (lead_id, type, direction, summary)
-    VALUES (
-      p_lead_id,
-      'status_change',
-      'na',
-      'Converted to job (estimate approved + photos uploaded)'
-    );
-  END IF;
-END;
-$$;
+/*\n  # Add estimate job tracking to leads\n\n  1. Modified Tables\n    - `leads`\n      - `estimate_job_id` (uuid, nullable) - references the "estimate visit" job\n        created when scheduling an estimate for this lead\n\n  2. Modified Functions\n    - `try_convert_lead_to_job` - now also marks the linked estimate job as 'paid'\n      (complete) when the lead converts to a real job\n\n  3. Important Notes\n    - The estimate_job_id links a lead to its estimate visit job\n    - When a lead converts to a job, the estimate visit job is auto-completed\n    - This keeps the estimate visit on the schedule until it's no longer needed\n*/\n\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'leads' AND column_name = 'estimate_job_id'\n  ) THEN\n    ALTER TABLE leads ADD COLUMN estimate_job_id uuid REFERENCES leads(id) ON DELETE SET NULL;
+\n  END IF;
+\nEND $$;
+\n\nCREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)\nRETURNS void\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  _lead record;
+\n  _has_accepted_estimate boolean;
+\n  _has_photos boolean;
+\nBEGIN\n  SELECT status, estimate_job_id INTO _lead\n  FROM leads\n  WHERE id = p_lead_id;
+\n\n  IF _lead.status IS NULL OR _lead.status IN ('job', 'paid') THEN\n    RETURN;
+\n  END IF;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM estimates\n    WHERE job_id = p_lead_id AND status = 'accepted'\n  ) INTO _has_accepted_estimate;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM lead_photos\n    WHERE lead_id = p_lead_id\n  ) INTO _has_photos;
+\n\n  IF _has_accepted_estimate AND _has_photos THEN\n    UPDATE leads SET status = 'job' WHERE id = p_lead_id;
+\n\n    IF _lead.estimate_job_id IS NOT NULL THEN\n      UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
+\n    END IF;
+\n\n    INSERT INTO interactions (lead_id, type, direction, summary)\n    VALUES (\n      p_lead_id,\n      'status_change',\n      'na',\n      'Converted to job (estimate approved + photos uploaded)'\n    );
+\n  END IF;
+\nEND;
+\n$$;
+\n;

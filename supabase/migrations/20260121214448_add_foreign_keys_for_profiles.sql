@@ -1,40 +1,6 @@
-/*
-  # Add Foreign Keys for Profiles
-  
-  ## Overview
-  Adds foreign key relationships from account_members and job_assignments
-  to the profiles table to enable proper Supabase joins.
-  
-  ## Changes
-  - Add foreign key from account_members.user_id to profiles.user_id
-  - Add foreign key from job_assignments.user_id to profiles.user_id
-  
-  ## Notes
-  - These foreign keys enable Supabase's automatic join syntax
-  - Improves query performance with proper indexes
-*/
-
-DO $$
-BEGIN
-  -- Add foreign key from account_members to profiles if it doesn't exist
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.table_constraints 
-    WHERE constraint_name = 'account_members_user_id_fkey' 
-    AND table_name = 'account_members'
-  ) THEN
-    ALTER TABLE account_members 
-    ADD CONSTRAINT account_members_user_id_fkey 
-    FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
-  END IF;
-
-  -- Add foreign key from job_assignments to profiles if it doesn't exist
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.table_constraints 
-    WHERE constraint_name = 'job_assignments_user_id_fkey' 
-    AND table_name = 'job_assignments'
-  ) THEN
-    ALTER TABLE job_assignments 
-    ADD CONSTRAINT job_assignments_user_id_fkey 
-    FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
-  END IF;
-END $$;
+/*\n  # Add Foreign Keys for Profiles\n  \n  ## Overview\n  Adds foreign key relationships from account_members and job_assignments\n  to the profiles table to enable proper Supabase joins.\n  \n  ## Changes\n  - Add foreign key from account_members.user_id to profiles.user_id\n  - Add foreign key from job_assignments.user_id to profiles.user_id\n  \n  ## Notes\n  - These foreign keys enable Supabase's automatic join syntax\n  - Improves query performance with proper indexes\n*/\n\nDO $$\nBEGIN\n  -- Add foreign key from account_members to profiles if it doesn't exist\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.table_constraints \n    WHERE constraint_name = 'account_members_user_id_fkey' \n    AND table_name = 'account_members'\n  ) THEN\n    ALTER TABLE account_members \n    ADD CONSTRAINT account_members_user_id_fkey \n    FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+\n  END IF;
+\n\n  -- Add foreign key from job_assignments to profiles if it doesn't exist\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.table_constraints \n    WHERE constraint_name = 'job_assignments_user_id_fkey' \n    AND table_name = 'job_assignments'\n  ) THEN\n    ALTER TABLE job_assignments \n    ADD CONSTRAINT job_assignments_user_id_fkey \n    FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+\n  END IF;
+\nEND $$;
+;

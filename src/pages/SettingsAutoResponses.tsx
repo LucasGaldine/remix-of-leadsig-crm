@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, Loader2, Mail, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronDown, Loader2, Mail, MessageSquare, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PlanGate } from "@/components/features/PlanGate";
@@ -871,7 +871,7 @@ export default function SettingsAutoResponses() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1">
                   <CardTitle className="flex items-center gap-2">
-                    <Zap className="h-5 w-5 text-amber-500" />
+                    <MessageSquare className="h-5 w-5" />
                     Signal Intent Filtering
                   </CardTitle>
                   <CardDescription>

@@ -1,61 +1,10 @@
-/*
-  # Add Change Order Approval System
-
-  1. Changes to estimates table
-    - `has_pending_changes` (boolean) - Indicates if there are unapproved change orders
-
-  2. Changes to estimate_line_items table
-    - `change_order_approved` (boolean, nullable) - NULL for original items, false for pending changes, true for approved changes
-
-  3. Security
-    - No RLS changes needed as we're just adding columns to existing tables
-
-  This enables a workflow where:
-  - After initial approval, any modifications create change orders that need client approval
-  - Client can see both original and modified estimates in the portal
-  - Change orders must be approved before being considered final
-*/
-
--- Add has_pending_changes to estimates table
-ALTER TABLE estimates 
-  ADD COLUMN IF NOT EXISTS has_pending_changes boolean DEFAULT false;
-
--- Add change_order_approved to estimate_line_items table
-ALTER TABLE estimate_line_items 
-  ADD COLUMN IF NOT EXISTS change_order_approved boolean DEFAULT NULL;
-
--- Update existing change order items to have change_order_approved = true (assuming they were already implicitly approved)
-UPDATE estimate_line_items 
-SET change_order_approved = true 
-WHERE is_change_order = true 
-  AND change_order_approved IS NULL;
-
--- Create function to check if estimate has pending changes
-CREATE OR REPLACE FUNCTION check_estimate_pending_changes()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  -- Check if this estimate has any pending change orders
-  UPDATE estimates
-  SET has_pending_changes = EXISTS (
-    SELECT 1 
-    FROM estimate_line_items 
-    WHERE estimate_id = COALESCE(NEW.estimate_id, OLD.estimate_id)
-      AND is_change_order = true 
-      AND change_order_approved = false
-  )
-  WHERE id = COALESCE(NEW.estimate_id, OLD.estimate_id);
-
-  RETURN COALESCE(NEW, OLD);
-END;
-$$;
-
--- Create trigger to update has_pending_changes when line items change
-DROP TRIGGER IF EXISTS trigger_check_estimate_pending_changes ON estimate_line_items;
-CREATE TRIGGER trigger_check_estimate_pending_changes
-  AFTER INSERT OR UPDATE OR DELETE ON estimate_line_items
-  FOR EACH ROW
-  EXECUTE FUNCTION check_estimate_pending_changes();
+/*\n  # Add Change Order Approval System\n\n  1. Changes to estimates table\n    - `has_pending_changes` (boolean) - Indicates if there are unapproved change orders\n\n  2. Changes to estimate_line_items table\n    - `change_order_approved` (boolean, nullable) - NULL for original items, false for pending changes, true for approved changes\n\n  3. Security\n    - No RLS changes needed as we're just adding columns to existing tables\n\n  This enables a workflow where:\n  - After initial approval, any modifications create change orders that need client approval\n  - Client can see both original and modified estimates in the portal\n  - Change orders must be approved before being considered final\n*/\n\n-- Add has_pending_changes to estimates table\nALTER TABLE estimates \n  ADD COLUMN IF NOT EXISTS has_pending_changes boolean DEFAULT false;
+\n\n-- Add change_order_approved to estimate_line_items table\nALTER TABLE estimate_line_items \n  ADD COLUMN IF NOT EXISTS change_order_approved boolean DEFAULT NULL;
+\n\n-- Update existing change order items to have change_order_approved = true (assuming they were already implicitly approved)\nUPDATE estimate_line_items \nSET change_order_approved = true \nWHERE is_change_order = true \n  AND change_order_approved IS NULL;
+\n\n-- Create function to check if estimate has pending changes\nCREATE OR REPLACE FUNCTION check_estimate_pending_changes()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nBEGIN\n  -- Check if this estimate has any pending change orders\n  UPDATE estimates\n  SET has_pending_changes = EXISTS (\n    SELECT 1 \n    FROM estimate_line_items \n    WHERE estimate_id = COALESCE(NEW.estimate_id, OLD.estimate_id)\n      AND is_change_order = true \n      AND change_order_approved = false\n  )\n  WHERE id = COALESCE(NEW.estimate_id, OLD.estimate_id);
+\n\n  RETURN COALESCE(NEW, OLD);
+\nEND;
+\n$$;
+\n\n-- Create trigger to update has_pending_changes when line items change\nDROP TRIGGER IF EXISTS trigger_check_estimate_pending_changes ON estimate_line_items;
+\nCREATE TRIGGER trigger_check_estimate_pending_changes\n  AFTER INSERT OR UPDATE OR DELETE ON estimate_line_items\n  FOR EACH ROW\n  EXECUTE FUNCTION check_estimate_pending_changes();
+;

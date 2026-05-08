@@ -1,27 +1,4 @@
-/*
-  # Add foreign key relationship between lead_photos and profiles
-
-  1. Changes
-    - Add foreign key constraint from lead_photos.uploaded_by to profiles.user_id
-    - This allows PostgREST to properly join lead_photos with profiles table
-
-  2. Important Notes
-    - This enables the query: lead_photos.select('*, uploader:profiles(full_name)')
-    - The uploaded_by column references auth.users, but profiles.user_id also references auth.users
-    - This creates a valid path for PostgREST to traverse
-*/
-
--- Add foreign key constraint to enable PostgREST relationship
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.table_constraints
-    WHERE constraint_name = 'lead_photos_uploaded_by_profiles_fkey'
-    AND table_name = 'lead_photos'
-  ) THEN
-    ALTER TABLE lead_photos
-    ADD CONSTRAINT lead_photos_uploaded_by_profiles_fkey
-    FOREIGN KEY (uploaded_by)
-    REFERENCES profiles(user_id);
-  END IF;
-END $$;
+/*\n  # Add foreign key relationship between lead_photos and profiles\n\n  1. Changes\n    - Add foreign key constraint from lead_photos.uploaded_by to profiles.user_id\n    - This allows PostgREST to properly join lead_photos with profiles table\n\n  2. Important Notes\n    - This enables the query: lead_photos.select('*, uploader:profiles(full_name)')\n    - The uploaded_by column references auth.users, but profiles.user_id also references auth.users\n    - This creates a valid path for PostgREST to traverse\n*/\n\n-- Add foreign key constraint to enable PostgREST relationship\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.table_constraints\n    WHERE constraint_name = 'lead_photos_uploaded_by_profiles_fkey'\n    AND table_name = 'lead_photos'\n  ) THEN\n    ALTER TABLE lead_photos\n    ADD CONSTRAINT lead_photos_uploaded_by_profiles_fkey\n    FOREIGN KEY (uploaded_by)\n    REFERENCES profiles(user_id);
+\n  END IF;
+\nEND $$;
+\n;

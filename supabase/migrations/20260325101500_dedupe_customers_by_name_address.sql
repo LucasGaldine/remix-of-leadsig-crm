@@ -3,12 +3,10 @@
 -- to the canonical row before deleting duplicates.
 
 BEGIN;
-
 CREATE TEMP TABLE tmp_customer_dedup_map (
   duplicate_id uuid PRIMARY KEY,
   canonical_id uuid NOT NULL
 ) ON COMMIT DROP;
-
 WITH ranked AS (
   SELECT
     c.id,
@@ -35,7 +33,6 @@ SELECT r.id, r.keep_id
 FROM ranked r
 WHERE r.rn > 1
   AND r.id <> r.keep_id;
-
 DO $$
 DECLARE
   fk_record RECORD;
@@ -79,9 +76,7 @@ BEGIN
       fk_record.column_name;
   END LOOP;
 END $$;
-
 DELETE FROM public.customers c
 USING tmp_customer_dedup_map m
 WHERE c.id = m.duplicate_id;
-
 COMMIT;

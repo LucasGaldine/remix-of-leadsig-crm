@@ -50,6 +50,7 @@ interface Account {
   default_surcharge: number;
   pricing_plan: 'free' | 'basic' | 'premium';
   pricing_tier?: 'solo' | 'team' | 'growth' | null;
+  elo_entitlement_status?: 'active' | 'inactive' | 'grace' | null;
 }
 
 interface AccountMembership {
@@ -84,6 +85,8 @@ interface AuthContextType {
   isOwnerOrAdmin: () => boolean;
   isManager: () => boolean;
   isCrewMember: () => boolean;
+  hasActiveEloEntitlement: () => boolean;
+  requiresEloEntitlementGate: () => boolean;
   refreshProfile: () => Promise<void>;
   switchAccount: (accountId: string) => void;
 }
@@ -146,12 +149,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         account: m.accounts
       }));
 
-      setAccounts(formattedAccounts);
+      const accountIds = formattedAccounts.map((entry) => entry.account_id);
+      const { data: entitlementRows } = await supabase
+        .from('account_entitlements')
+        .select('account_id, status, entitlement_key')
+        .in('account_id', accountIds)
+        .eq('entitlement_key', 'leadsig_growth');
+
+      const entitlementByAccount = new Map<string, 'active' | 'inactive' | 'grace'>();
+      (entitlementRows ?? []).forEach((row: any) => {
+        if (row.account_id && (row.status === 'active' || row.status === 'inactive' || row.status === 'grace')) {
+          entitlementByAccount.set(row.account_id, row.status);
+        }
+      });
+
+      const formattedAccountsWithEntitlements: AccountMembership[] = formattedAccounts.map((entry) => ({
+        ...entry,
+        account: {
+          ...entry.account,
+          elo_entitlement_status: entitlementByAccount.get(entry.account_id) ?? null,
+        },
+      }));
+
+      setAccounts(formattedAccountsWithEntitlements);
 
       const storedAccountId = localStorage.getItem('currentAccountId');
       const accountToSet = storedAccountId
-        ? formattedAccounts.find(a => a.account_id === storedAccountId) ?? formattedAccounts[0]
-        : formattedAccounts[0];
+        ? formattedAccountsWithEntitlements.find(a => a.account_id === storedAccountId) ?? formattedAccountsWithEntitlements[0]
+        : formattedAccountsWithEntitlements[0];
 
       if (accountToSet) {
         setCurrentAccount(accountToSet.account);
@@ -298,6 +323,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return role === 'crew_member';
   };
 
+  const requiresEloEntitlementGate = (): boolean => {
+    return Boolean(currentAccount?.elo_entitlement_status);
+  };
+
+  const hasActiveEloEntitlement = (): boolean => {
+    if (!currentAccount?.elo_entitlement_status) return true;
+    return currentAccount.elo_entitlement_status === 'active' || currentAccount.elo_entitlement_status === 'grace';
+  };
+
   const refreshProfile = async () => {
     if (user) {
       await fetchUserData(user.id);
@@ -330,6 +364,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOwnerOrAdmin,
         isManager,
         isCrewMember,
+        hasActiveEloEntitlement,
+        requiresEloEntitlementGate,
         refreshProfile,
         switchAccount,
       }}

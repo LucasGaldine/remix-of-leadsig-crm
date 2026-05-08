@@ -121,6 +121,7 @@ const DAYS_OF_WEEK = [
   { value: 5, label: "Fri" },
   { value: 6, label: "Sat" },
 ];
+const DAYS_OF_MONTH = Array.from({ length: 31 }, (_, index) => index + 1);
 
 export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobDialogProps) {
   const navigate = useNavigate();
@@ -159,6 +160,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
   const [recurringTimeEnd, setRecurringTimeEnd] = useState("");
   const [recurringDaysOfWeek, setRecurringDaysOfWeek] = useState<number[]>([]);
   const [recurringDayOfMonth, setRecurringDayOfMonth] = useState("");
+  const [monthlyRecurrenceMode, setMonthlyRecurrenceMode] = useState<"each" | "on-the" | "workday">("each");
   const [crewByScheduleIndex, setCrewByScheduleIndex] = useState<Record<number, string[]>>({});
   const [crewConflictByMember, setCrewConflictByMember] = useState<Record<string, number[]>>({});
   const [crewConflictDetailsByMember, setCrewConflictDetailsByMember] = useState<
@@ -441,6 +443,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     setRecurringTimeEnd("");
     setRecurringDaysOfWeek([]);
     setRecurringDayOfMonth("");
+    setMonthlyRecurrenceMode("each");
     setCrewByScheduleIndex({});
     setCrewConflictByMember({});
     setCrewConflictDetailsByMember({});
@@ -490,6 +493,13 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
     if (scheduleMode === "recurring" && recurringFrequency === "monthly" && !recurringDayOfMonth) {
       toast.error("Select a day of the month for recurring visits");
       return;
+    }
+    if (scheduleMode === "recurring" && recurringFrequency === "monthly" && recurringDayOfMonth) {
+      const parsedRecurringDayOfMonth = Number.parseInt(recurringDayOfMonth, 10);
+      if (Number.isNaN(parsedRecurringDayOfMonth) || parsedRecurringDayOfMonth < 1 || parsedRecurringDayOfMonth > 31) {
+        toast.error("Day of month must be between 1 and 31");
+        return;
+      }
     }
 
     if (scheduleMode === "recurring" && recurringHasEndDate && !recurringEndDate) {
@@ -1271,7 +1281,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     ignoreExistingScheduleConstraints={isSinglePersonCompany}
                   />
                 ) : (
-                  <div className="space-y-4 rounded-lg border border-border p-3">
+                  <div className="space-y-4">
                     <div className="space-y-2">
                       <Label className="font-medium">How Often</Label>
                       <Select
@@ -1325,18 +1335,65 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
                     {recurringFrequency === "monthly" && (
                       <div className="space-y-2">
                         <Label className="font-medium">When It Reoccurs</Label>
-                        <Select value={recurringDayOfMonth} onValueChange={setRecurringDayOfMonth}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select day of month" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-                              <SelectItem key={day} value={String(day)}>
-                                Day {day}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="grid grid-cols-3 rounded-md bg-muted p-1">
+                          <button
+                            type="button"
+                            onClick={() => setMonthlyRecurrenceMode("each")}
+                            className={cn(
+                              "h-8 rounded-md text-sm font-medium transition-colors",
+                              monthlyRecurrenceMode === "each"
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            Each
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            className="h-8 rounded-md text-sm font-medium text-muted-foreground/70 cursor-not-allowed"
+                            title="Coming soon"
+                          >
+                            On the
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            className="h-8 rounded-md text-sm font-medium text-muted-foreground/70 cursor-not-allowed"
+                            title="Coming soon"
+                          >
+                            Workday
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1.5 rounded-md border border-border p-2">
+                          {DAYS_OF_MONTH.map((day) => (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => setRecurringDayOfMonth(String(day))}
+                              className={cn(
+                                "h-9 rounded-md text-sm font-medium transition-colors",
+                                recurringDayOfMonth === String(day)
+                                  ? "bg-foreground text-background"
+                                  : "text-foreground hover:bg-muted",
+                              )}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setRecurringDayOfMonth("31")}
+                            className={cn(
+                              "col-span-3 h-9 rounded-md text-sm font-medium transition-colors",
+                              recurringDayOfMonth === "31"
+                                ? "bg-foreground text-background"
+                                : "text-foreground hover:bg-muted",
+                            )}
+                          >
+                            Last Day
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -1405,6 +1462,7 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
             {!isSinglePersonCompany && manualStep === "crew-assignment" && (
               <CreateJobCrewAssignmentStep
                 addedSchedules={schedulesForAssignment}
+                isRecurringSchedule={scheduleMode === "recurring"}
                 crewMembers={crewMembers}
                 assignedCrewByScheduleIndex={crewByScheduleIndex}
                 filteredCrewMembers={filteredCrewMembers}

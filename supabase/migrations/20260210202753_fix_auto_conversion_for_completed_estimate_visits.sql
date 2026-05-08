@@ -1,161 +1,47 @@
-/*
-  # Fix auto-conversion for completed estimate visit jobs
-
-  ## Problem
-  When all checklist items on an estimate visit job are completed,
-  the `auto_complete_job_on_checklist` trigger sets status to 'completed'.
-  Later, when the customer approves the estimate, `try_convert_lead_to_job`
-  checks for `status = 'job'` and skips conversion since status is already 'completed'.
-  This means the regular job never gets created.
-
-  ## Changes
-  1. Update `try_convert_lead_to_job` to also handle estimate visit jobs
-     with status 'completed' (not just 'job')
-  2. Update `auto_complete_job_on_checklist` to skip estimate visit jobs,
-     since their lifecycle is managed by the conversion flow
-  3. Add account_id to interaction inserts within try_convert_lead_to_job
-     to ensure RLS compatibility
-*/
-
-CREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _lead record;
-  _has_accepted_estimate boolean;
-  _has_photos boolean;
-  _new_job_id uuid;
-BEGIN
-  SELECT * INTO _lead FROM leads WHERE id = p_lead_id;
-
-  IF _lead IS NULL THEN
-    RETURN;
-  END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM estimates WHERE job_id = p_lead_id AND status = 'accepted'
-  ) INTO _has_accepted_estimate;
-
-  SELECT EXISTS (
-    SELECT 1 FROM lead_photos WHERE lead_id = p_lead_id
-  ) INTO _has_photos;
-
-  IF NOT (_has_accepted_estimate AND _has_photos) THEN
-    RETURN;
-  END IF;
-
-  IF _lead.is_estimate_visit = true AND _lead.status IN ('job', 'completed') THEN
-    INSERT INTO leads (
-      name, status, service_type, address, city, state,
-      customer_id, account_id, created_by,
-      approval_status, is_estimate_visit, estimate_job_id,
-      estimated_value, phone, email, source
-    )
-    VALUES (
-      REPLACE(_lead.name, ', Estimate', ''),
-      'job',
-      _lead.service_type,
-      _lead.address,
-      _lead.city,
-      _lead.state,
-      _lead.customer_id,
-      _lead.account_id,
-      _lead.created_by,
-      'pending',
-      false,
-      p_lead_id,
-      _lead.estimated_value,
-      _lead.phone,
-      _lead.email,
-      _lead.source
-    )
-    RETURNING id INTO _new_job_id;
-
-    UPDATE estimates SET job_id = _new_job_id WHERE job_id = p_lead_id;
-
-    UPDATE lead_photos SET lead_id = _new_job_id WHERE lead_id = p_lead_id;
-
-    UPDATE leads SET approval_status = 'approved' WHERE id = _new_job_id;
-
-    IF _lead.client_share_token IS NOT NULL THEN
-      UPDATE leads SET client_share_token = NULL WHERE id = p_lead_id;
-      UPDATE leads SET client_share_token = _lead.client_share_token WHERE id = _new_job_id;
-    END IF;
-
-    UPDATE job_schedules
-    SET is_completed = true, completed_at = now()
-    WHERE lead_id = p_lead_id;
-
-    UPDATE leads SET status = 'completed' WHERE id = p_lead_id;
-
-    INSERT INTO interactions (lead_id, account_id, type, direction, summary)
-    VALUES (
-      _new_job_id,
-      _lead.account_id,
-      'status_change',
-      'na',
-      'Job created from completed estimate visit'
-    );
-
-    RETURN;
-  END IF;
-
-  IF _lead.status IN ('job', 'paid', 'completed') THEN
-    RETURN;
-  END IF;
-
-  UPDATE leads SET status = 'job' WHERE id = p_lead_id;
-
-  IF _lead.estimate_job_id IS NOT NULL THEN
-    UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
-  END IF;
-
-  INSERT INTO interactions (lead_id, account_id, type, direction, summary)
-  VALUES (
-    p_lead_id,
-    _lead.account_id,
-    'status_change',
-    'na',
-    'Converted to job (estimate approved + photos uploaded)'
-  );
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION auto_complete_job_on_checklist()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  total_count integer;
-  completed_count integer;
-  current_status unified_status;
-  is_ev boolean;
-BEGIN
-  IF NEW.is_completed = true AND (OLD.is_completed = false OR OLD.is_completed IS NULL) THEN
-    SELECT count(*), count(*) FILTER (WHERE is_completed = true)
-    INTO total_count, completed_count
-    FROM job_checklist_items
-    WHERE job_id = NEW.job_id;
-
-    IF total_count > 0 AND total_count = completed_count THEN
-      SELECT status, is_estimate_visit INTO current_status, is_ev
-      FROM leads WHERE id = NEW.job_id;
-
-      IF is_ev = true THEN
-        RETURN NEW;
-      END IF;
-
-      IF current_status = 'job' THEN
-        UPDATE leads SET status = 'completed' WHERE id = NEW.job_id;
-      END IF;
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
+/*\n  # Fix auto-conversion for completed estimate visit jobs\n\n  ## Problem\n  When all checklist items on an estimate visit job are completed,\n  the `auto_complete_job_on_checklist` trigger sets status to 'completed'.\n  Later, when the customer approves the estimate, `try_convert_lead_to_job`\n  checks for `status = 'job'` and skips conversion since status is already 'completed'.\n  This means the regular job never gets created.\n\n  ## Changes\n  1. Update `try_convert_lead_to_job` to also handle estimate visit jobs\n     with status 'completed' (not just 'job')\n  2. Update `auto_complete_job_on_checklist` to skip estimate visit jobs,\n     since their lifecycle is managed by the conversion flow\n  3. Add account_id to interaction inserts within try_convert_lead_to_job\n     to ensure RLS compatibility\n*/\n\nCREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)\nRETURNS void\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  _lead record;
+\n  _has_accepted_estimate boolean;
+\n  _has_photos boolean;
+\n  _new_job_id uuid;
+\nBEGIN\n  SELECT * INTO _lead FROM leads WHERE id = p_lead_id;
+\n\n  IF _lead IS NULL THEN\n    RETURN;
+\n  END IF;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM estimates WHERE job_id = p_lead_id AND status = 'accepted'\n  ) INTO _has_accepted_estimate;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM lead_photos WHERE lead_id = p_lead_id\n  ) INTO _has_photos;
+\n\n  IF NOT (_has_accepted_estimate AND _has_photos) THEN\n    RETURN;
+\n  END IF;
+\n\n  IF _lead.is_estimate_visit = true AND _lead.status IN ('job', 'completed') THEN\n    INSERT INTO leads (\n      name, status, service_type, address, city, state,\n      customer_id, account_id, created_by,\n      approval_status, is_estimate_visit, estimate_job_id,\n      estimated_value, phone, email, source\n    )\n    VALUES (\n      REPLACE(_lead.name, ', Estimate', ''),\n      'job',\n      _lead.service_type,\n      _lead.address,\n      _lead.city,\n      _lead.state,\n      _lead.customer_id,\n      _lead.account_id,\n      _lead.created_by,\n      'pending',\n      false,\n      p_lead_id,\n      _lead.estimated_value,\n      _lead.phone,\n      _lead.email,\n      _lead.source\n    )\n    RETURNING id INTO _new_job_id;
+\n\n    UPDATE estimates SET job_id = _new_job_id WHERE job_id = p_lead_id;
+\n\n    UPDATE lead_photos SET lead_id = _new_job_id WHERE lead_id = p_lead_id;
+\n\n    UPDATE leads SET approval_status = 'approved' WHERE id = _new_job_id;
+\n\n    IF _lead.client_share_token IS NOT NULL THEN\n      UPDATE leads SET client_share_token = NULL WHERE id = p_lead_id;
+\n      UPDATE leads SET client_share_token = _lead.client_share_token WHERE id = _new_job_id;
+\n    END IF;
+\n\n    UPDATE job_schedules\n    SET is_completed = true, completed_at = now()\n    WHERE lead_id = p_lead_id;
+\n\n    UPDATE leads SET status = 'completed' WHERE id = p_lead_id;
+\n\n    INSERT INTO interactions (lead_id, account_id, type, direction, summary)\n    VALUES (\n      _new_job_id,\n      _lead.account_id,\n      'status_change',\n      'na',\n      'Job created from completed estimate visit'\n    );
+\n\n    RETURN;
+\n  END IF;
+\n\n  IF _lead.status IN ('job', 'paid', 'completed') THEN\n    RETURN;
+\n  END IF;
+\n\n  UPDATE leads SET status = 'job' WHERE id = p_lead_id;
+\n\n  IF _lead.estimate_job_id IS NOT NULL THEN\n    UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
+\n  END IF;
+\n\n  INSERT INTO interactions (lead_id, account_id, type, direction, summary)\n  VALUES (\n    p_lead_id,\n    _lead.account_id,\n    'status_change',\n    'na',\n    'Converted to job (estimate approved + photos uploaded)'\n  );
+\nEND;
+\n$$;
+\n\nCREATE OR REPLACE FUNCTION auto_complete_job_on_checklist()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  total_count integer;
+\n  completed_count integer;
+\n  current_status unified_status;
+\n  is_ev boolean;
+\nBEGIN\n  IF NEW.is_completed = true AND (OLD.is_completed = false OR OLD.is_completed IS NULL) THEN\n    SELECT count(*), count(*) FILTER (WHERE is_completed = true)\n    INTO total_count, completed_count\n    FROM job_checklist_items\n    WHERE job_id = NEW.job_id;
+\n\n    IF total_count > 0 AND total_count = completed_count THEN\n      SELECT status, is_estimate_visit INTO current_status, is_ev\n      FROM leads WHERE id = NEW.job_id;
+\n\n      IF is_ev = true THEN\n        RETURN NEW;
+\n      END IF;
+\n\n      IF current_status = 'job' THEN\n        UPDATE leads SET status = 'completed' WHERE id = NEW.job_id;
+\n      END IF;
+\n    END IF;
+\n  END IF;
+\n\n  RETURN NEW;
+\nEND;
+\n$$;
+\n;

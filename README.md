@@ -60,11 +60,31 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## End-to-end testing with Playwright
+
+Playwright is installed and configured for cross-browser e2e tests.
+
+```sh
+# install dependencies
+npm i
+
+# install Playwright browsers (one-time per machine)
+npx playwright install
+
+# run all e2e tests (chromium, firefox, webkit)
+npm run test:e2e
+
+# interactive test runner
+npm run test:e2e:ui
+```
+
+Tests live in `e2e/` and use `playwright.config.ts`.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
 
-For team workflow and guardrails, see [DEPLOYMENT_PLAYBOOK.md](./DEPLOYMENT_PLAYBOOK.md).
+For team workflow and deployment guardrails, see [AGENTS.md](./AGENTS.md).
 
 ## Can I connect a custom domain to my Lovable project?
 

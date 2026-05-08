@@ -1,189 +1,38 @@
-/*
-  # Add tax tracking to jobs
-
-  1. New Columns on `leads` table
-    - `tax_rate` (numeric) - Tax rate applied (e.g., 0.08 for 8%)
-    - `tax` (numeric) - Calculated tax amount
-    - `subtotal` (numeric) - Subtotal before tax
-    - `total_with_tax` (numeric) - Total including tax
-
-  2. Updates
-    - Modify `try_convert_lead_to_job` to copy tax from estimate to new job
-    - These fields will be populated when job is created from estimate
-*/
-
--- Add tax tracking columns to leads table
-ALTER TABLE leads 
-  ADD COLUMN IF NOT EXISTS tax_rate numeric DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS tax numeric DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS subtotal numeric DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS total_with_tax numeric DEFAULT 0;
-
--- Update the conversion function to copy tax information
-CREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _lead record;
-  _has_accepted_estimate boolean;
-  _has_before_photos boolean;
-  _all_checklist_complete boolean;
-  _new_job_id uuid;
-  _estimate record;
-BEGIN
-  SELECT * INTO _lead FROM leads WHERE id = p_lead_id;
-
-  IF _lead IS NULL THEN
-    RETURN;
-  END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM estimates WHERE job_id = p_lead_id AND status = 'accepted'
-  ) INTO _has_accepted_estimate;
-
-  SELECT EXISTS (
-    SELECT 1 FROM lead_photos WHERE lead_id = p_lead_id AND photo_type = 'before'
-  ) INTO _has_before_photos;
-
-  IF NOT (_has_accepted_estimate AND _has_before_photos) THEN
-    RETURN;
-  END IF;
-
-  -- For estimate visit jobs, also check that all checklist items are complete
-  IF _lead.is_estimate_visit = true AND _lead.status = 'job' THEN
-    -- Check if all checklist items are completed
-    SELECT CASE 
-      WHEN count(*) = 0 THEN false
-      WHEN count(*) FILTER (WHERE is_completed = false) > 0 THEN false
-      ELSE true
-    END INTO _all_checklist_complete
-    FROM job_checklist_items
-    WHERE job_id = p_lead_id;
-
-    -- Only proceed if all checklist items are complete
-    IF NOT _all_checklist_complete THEN
-      RETURN;
-    END IF;
-
-    -- Get the estimate data including tax information
-    SELECT id, account_id, tax_rate, tax, subtotal, total
-    INTO _estimate
-    FROM estimates
-    WHERE job_id = p_lead_id AND status = 'accepted'
-    LIMIT 1;
-
-    -- Create new regular job from estimate visit
-    INSERT INTO leads (
-      name, status, service_type, address, city, state,
-      customer_id, account_id, created_by,
-      approval_status, is_estimate_visit, estimate_job_id,
-      estimated_value, phone, email, source,
-      tax_rate, tax, subtotal, total_with_tax
-    )
-    VALUES (
-      REPLACE(_lead.name, ', Estimate', ''),
-      'job',
-      _lead.service_type,
-      _lead.address,
-      _lead.city,
-      _lead.state,
-      _lead.customer_id,
-      _lead.account_id,
-      _lead.created_by,
-      'pending',
-      false,
-      p_lead_id,
-      _lead.estimated_value,
-      _lead.phone,
-      _lead.email,
-      _lead.source,
-      COALESCE(_estimate.tax_rate, 0),
-      COALESCE(_estimate.tax, 0),
-      COALESCE(_estimate.subtotal, 0),
-      COALESCE(_estimate.total, 0)
-    )
-    RETURNING id INTO _new_job_id;
-
-    -- Copy job line items from estimate to new job
-    IF _estimate.id IS NOT NULL THEN
-      INSERT INTO job_line_items (
-        lead_id,
-        name,
-        description,
-        quantity,
-        unit,
-        unit_price,
-        total,
-        sort_order,
-        account_id,
-        estimate_line_item_id
-      )
-      SELECT
-        _new_job_id,
-        name,
-        description,
-        quantity,
-        unit,
-        unit_price,
-        total,
-        sort_order,
-        _estimate.account_id,
-        id
-      FROM estimate_line_items
-      WHERE estimate_id = _estimate.id
-      AND is_change_order = false
-      ORDER BY sort_order;
-    END IF;
-
-    -- Update estimate to point to new job
-    UPDATE estimates SET job_id = _new_job_id WHERE job_id = p_lead_id;
-
-    -- Transfer photos to new job
-    UPDATE lead_photos SET lead_id = _new_job_id WHERE lead_id = p_lead_id;
-
-    -- Approve the new job
-    UPDATE leads SET approval_status = 'approved' WHERE id = _new_job_id;
-
-    -- Mark old estimate visit schedules as complete
-    UPDATE job_schedules
-    SET is_completed = true, completed_at = now()
-    WHERE lead_id = p_lead_id;
-
-    -- Mark estimate visit as completed
-    UPDATE leads SET status = 'completed' WHERE id = p_lead_id;
-
-    -- Add interaction log
-    INSERT INTO interactions (lead_id, type, direction, summary)
-    VALUES (
-      _new_job_id,
-      'status_change',
-      'na',
-      'Job created from completed estimate visit'
-    );
-
-    RETURN;
-  END IF;
-
-  -- Regular lead conversion (non-estimate visit)
-  IF _lead.status IN ('job', 'paid', 'completed') THEN
-    RETURN;
-  END IF;
-
-  UPDATE leads SET status = 'job' WHERE id = p_lead_id;
-
-  IF _lead.estimate_job_id IS NOT NULL THEN
-    UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
-  END IF;
-
-  INSERT INTO interactions (lead_id, type, direction, summary)
-  VALUES (
-    p_lead_id,
-    'status_change',
-    'na',
-    'Converted to job (estimate approved + photos uploaded)'
-  );
-END;
-$$;
+/*\n  # Add tax tracking to jobs\n\n  1. New Columns on `leads` table\n    - `tax_rate` (numeric) - Tax rate applied (e.g., 0.08 for 8%)\n    - `tax` (numeric) - Calculated tax amount\n    - `subtotal` (numeric) - Subtotal before tax\n    - `total_with_tax` (numeric) - Total including tax\n\n  2. Updates\n    - Modify `try_convert_lead_to_job` to copy tax from estimate to new job\n    - These fields will be populated when job is created from estimate\n*/\n\n-- Add tax tracking columns to leads table\nALTER TABLE leads \n  ADD COLUMN IF NOT EXISTS tax_rate numeric DEFAULT 0,\n  ADD COLUMN IF NOT EXISTS tax numeric DEFAULT 0,\n  ADD COLUMN IF NOT EXISTS subtotal numeric DEFAULT 0,\n  ADD COLUMN IF NOT EXISTS total_with_tax numeric DEFAULT 0;
+\n\n-- Update the conversion function to copy tax information\nCREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)\nRETURNS void\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  _lead record;
+\n  _has_accepted_estimate boolean;
+\n  _has_before_photos boolean;
+\n  _all_checklist_complete boolean;
+\n  _new_job_id uuid;
+\n  _estimate record;
+\nBEGIN\n  SELECT * INTO _lead FROM leads WHERE id = p_lead_id;
+\n\n  IF _lead IS NULL THEN\n    RETURN;
+\n  END IF;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM estimates WHERE job_id = p_lead_id AND status = 'accepted'\n  ) INTO _has_accepted_estimate;
+\n\n  SELECT EXISTS (\n    SELECT 1 FROM lead_photos WHERE lead_id = p_lead_id AND photo_type = 'before'\n  ) INTO _has_before_photos;
+\n\n  IF NOT (_has_accepted_estimate AND _has_before_photos) THEN\n    RETURN;
+\n  END IF;
+\n\n  -- For estimate visit jobs, also check that all checklist items are complete\n  IF _lead.is_estimate_visit = true AND _lead.status = 'job' THEN\n    -- Check if all checklist items are completed\n    SELECT CASE \n      WHEN count(*) = 0 THEN false\n      WHEN count(*) FILTER (WHERE is_completed = false) > 0 THEN false\n      ELSE true\n    END INTO _all_checklist_complete\n    FROM job_checklist_items\n    WHERE job_id = p_lead_id;
+\n\n    -- Only proceed if all checklist items are complete\n    IF NOT _all_checklist_complete THEN\n      RETURN;
+\n    END IF;
+\n\n    -- Get the estimate data including tax information\n    SELECT id, account_id, tax_rate, tax, subtotal, total\n    INTO _estimate\n    FROM estimates\n    WHERE job_id = p_lead_id AND status = 'accepted'\n    LIMIT 1;
+\n\n    -- Create new regular job from estimate visit\n    INSERT INTO leads (\n      name, status, service_type, address, city, state,\n      customer_id, account_id, created_by,\n      approval_status, is_estimate_visit, estimate_job_id,\n      estimated_value, phone, email, source,\n      tax_rate, tax, subtotal, total_with_tax\n    )\n    VALUES (\n      REPLACE(_lead.name, ', Estimate', ''),\n      'job',\n      _lead.service_type,\n      _lead.address,\n      _lead.city,\n      _lead.state,\n      _lead.customer_id,\n      _lead.account_id,\n      _lead.created_by,\n      'pending',\n      false,\n      p_lead_id,\n      _lead.estimated_value,\n      _lead.phone,\n      _lead.email,\n      _lead.source,\n      COALESCE(_estimate.tax_rate, 0),\n      COALESCE(_estimate.tax, 0),\n      COALESCE(_estimate.subtotal, 0),\n      COALESCE(_estimate.total, 0)\n    )\n    RETURNING id INTO _new_job_id;
+\n\n    -- Copy job line items from estimate to new job\n    IF _estimate.id IS NOT NULL THEN\n      INSERT INTO job_line_items (\n        lead_id,\n        name,\n        description,\n        quantity,\n        unit,\n        unit_price,\n        total,\n        sort_order,\n        account_id,\n        estimate_line_item_id\n      )\n      SELECT\n        _new_job_id,\n        name,\n        description,\n        quantity,\n        unit,\n        unit_price,\n        total,\n        sort_order,\n        _estimate.account_id,\n        id\n      FROM estimate_line_items\n      WHERE estimate_id = _estimate.id\n      AND is_change_order = false\n      ORDER BY sort_order;
+\n    END IF;
+\n\n    -- Update estimate to point to new job\n    UPDATE estimates SET job_id = _new_job_id WHERE job_id = p_lead_id;
+\n\n    -- Transfer photos to new job\n    UPDATE lead_photos SET lead_id = _new_job_id WHERE lead_id = p_lead_id;
+\n\n    -- Approve the new job\n    UPDATE leads SET approval_status = 'approved' WHERE id = _new_job_id;
+\n\n    -- Mark old estimate visit schedules as complete\n    UPDATE job_schedules\n    SET is_completed = true, completed_at = now()\n    WHERE lead_id = p_lead_id;
+\n\n    -- Mark estimate visit as completed\n    UPDATE leads SET status = 'completed' WHERE id = p_lead_id;
+\n\n    -- Add interaction log\n    INSERT INTO interactions (lead_id, type, direction, summary)\n    VALUES (\n      _new_job_id,\n      'status_change',\n      'na',\n      'Job created from completed estimate visit'\n    );
+\n\n    RETURN;
+\n  END IF;
+\n\n  -- Regular lead conversion (non-estimate visit)\n  IF _lead.status IN ('job', 'paid', 'completed') THEN\n    RETURN;
+\n  END IF;
+\n\n  UPDATE leads SET status = 'job' WHERE id = p_lead_id;
+\n\n  IF _lead.estimate_job_id IS NOT NULL THEN\n    UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
+\n  END IF;
+\n\n  INSERT INTO interactions (lead_id, type, direction, summary)\n  VALUES (\n    p_lead_id,\n    'status_change',\n    'na',\n    'Converted to job (estimate approved + photos uploaded)'\n  );
+\nEND;
+\n$$;
+;

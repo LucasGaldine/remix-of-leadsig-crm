@@ -1,19 +1,2 @@
-/*
-  # Remove tax tracking from job costs
-
-  1. Overview
-    - Job costs should only show the actual costs to the business
-    - Tax is a customer-facing concept that belongs on estimates/invoices
-    - Remove tax tracking columns from leads table
-
-  2. Changes
-    - Drop tax_rate, tax, subtotal, total_with_tax columns from leads table
-    - These fields are still maintained on estimates and invoices for customer pricing
-*/
-
--- Remove tax tracking columns from leads table
-ALTER TABLE leads 
-  DROP COLUMN IF EXISTS tax_rate,
-  DROP COLUMN IF EXISTS tax,
-  DROP COLUMN IF EXISTS subtotal,
-  DROP COLUMN IF EXISTS total_with_tax;
+/*\n  # Remove tax tracking from job costs\n\n  1. Overview\n    - Job costs should only show the actual costs to the business\n    - Tax is a customer-facing concept that belongs on estimates/invoices\n    - Remove tax tracking columns from leads table\n\n  2. Changes\n    - Drop tax_rate, tax, subtotal, total_with_tax columns from leads table\n    - These fields are still maintained on estimates and invoices for customer pricing\n*/\n\n-- Remove tax tracking columns from leads table\nALTER TABLE leads \n  DROP COLUMN IF EXISTS tax_rate,\n  DROP COLUMN IF EXISTS tax,\n  DROP COLUMN IF EXISTS subtotal,\n  DROP COLUMN IF EXISTS total_with_tax;
+;

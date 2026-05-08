@@ -1,41 +1,11 @@
-/*
-  # Fix remaining functions - remove paid status
-
-  1. Changes
-    - Update cleanup_estimate_job_on_lead_delete to check for 'job' and 'completed' only
-    - Update validate_invoice_job_completion to check for 'completed' and 'invoiced' only
-*/
-
-CREATE OR REPLACE FUNCTION cleanup_estimate_job_on_lead_delete()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-BEGIN
-  IF OLD.estimate_job_id IS NOT NULL
-  AND OLD.status NOT IN ('job', 'completed') THEN
-    DELETE FROM leads WHERE id = OLD.estimate_job_id;
-  END IF;
-  RETURN OLD;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION validate_invoice_job_completion()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM leads
-    WHERE id = NEW.job_id
-    AND status IN ('completed', 'invoiced')
-  ) THEN
-    RAISE EXCEPTION 'Cannot create invoice for job that is not completed';
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
+/*\n  # Fix remaining functions - remove paid status\n\n  1. Changes\n    - Update cleanup_estimate_job_on_lead_delete to check for 'job' and 'completed' only\n    - Update validate_invoice_job_completion to check for 'completed' and 'invoiced' only\n*/\n\nCREATE OR REPLACE FUNCTION cleanup_estimate_job_on_lead_delete()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\nBEGIN\n  IF OLD.estimate_job_id IS NOT NULL\n  AND OLD.status NOT IN ('job', 'completed') THEN\n    DELETE FROM leads WHERE id = OLD.estimate_job_id;
+\n  END IF;
+\n  RETURN OLD;
+\nEND;
+\n$$;
+\n\nCREATE OR REPLACE FUNCTION validate_invoice_job_completion()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM leads\n    WHERE id = NEW.job_id\n    AND status IN ('completed', 'invoiced')\n  ) THEN\n    RAISE EXCEPTION 'Cannot create invoice for job that is not completed';
+\n  END IF;
+\n\n  RETURN NEW;
+\nEND;
+\n$$;
+;

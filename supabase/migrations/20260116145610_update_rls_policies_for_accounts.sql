@@ -1,954 +1,129 @@
-/*
-  # Update RLS Policies for Account-Based Access
-
-  ## Overview
-  Updates all RLS policies to use account-based access control instead of user-based.
-  Users can access resources that belong to accounts they are members of.
-  
-  ## Changes
-  
-  Drops and recreates RLS policies for:
-  - leads
-  - customers
-  - estimates
-  - invoices
-  - payments
-  - material_lists
-  - supply_orders
-  - quick_estimates
-  - pricing_rules
-  - api_keys
-  - stripe_connect_accounts
-  - lead_source_connections
-  - interactions
-  - estimate_line_items
-  - invoice_line_items
-  - material_items
-  - supply_order_items
-  - lead_qualifications
-  
-  ## Security Model
-  
-  - SELECT: All account members can view
-  - INSERT: All account members can create
-  - UPDATE: All account members can update
-  - DELETE: Only owners and admins can delete
-  
-  Some tables like invoices and estimates may have stricter policies based on role.
-*/
-
--- Drop existing policies for leads
-DROP POLICY IF EXISTS "Users can view leads they created" ON public.leads;
-DROP POLICY IF EXISTS "Users can insert leads" ON public.leads;
-DROP POLICY IF EXISTS "Users can update leads they created" ON public.leads;
-DROP POLICY IF EXISTS "Users can delete leads they created" ON public.leads;
-DROP POLICY IF EXISTS "Users can view own leads" ON public.leads;
-DROP POLICY IF EXISTS "Users can create leads" ON public.leads;
-DROP POLICY IF EXISTS "Users can update own leads" ON public.leads;
-DROP POLICY IF EXISTS "Users can delete own leads" ON public.leads;
-
--- Create account-based policies for leads
-CREATE POLICY "Account members can view leads"
-  ON public.leads FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create leads"
-  ON public.leads FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update leads"
-  ON public.leads FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete leads"
-  ON public.leads FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Drop existing policies for customers
-DROP POLICY IF EXISTS "Users can view customers they created" ON public.customers;
-DROP POLICY IF EXISTS "Users can insert customers" ON public.customers;
-DROP POLICY IF EXISTS "Users can update customers they created" ON public.customers;
-DROP POLICY IF EXISTS "Users can delete customers they created" ON public.customers;
-
--- Create account-based policies for customers
-CREATE POLICY "Account members can view customers"
-  ON public.customers FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create customers"
-  ON public.customers FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update customers"
-  ON public.customers FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete customers"
-  ON public.customers FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Drop existing policies for estimates
-DROP POLICY IF EXISTS "Users can view estimates they created" ON public.estimates;
-DROP POLICY IF EXISTS "Users can insert estimates" ON public.estimates;
-DROP POLICY IF EXISTS "Users can update estimates they created" ON public.estimates;
-DROP POLICY IF EXISTS "Users can delete estimates they created" ON public.estimates;
-
--- Create account-based policies for estimates
-CREATE POLICY "Account members can view estimates"
-  ON public.estimates FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create estimates"
-  ON public.estimates FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update estimates"
-  ON public.estimates FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete estimates"
-  ON public.estimates FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Drop existing policies for invoices
-DROP POLICY IF EXISTS "Users can view invoices they created" ON public.invoices;
-DROP POLICY IF EXISTS "Users can insert invoices" ON public.invoices;
-DROP POLICY IF EXISTS "Users can update invoices they created" ON public.invoices;
-DROP POLICY IF EXISTS "Users can delete invoices they created" ON public.invoices;
-
--- Create account-based policies for invoices
-CREATE POLICY "Account members can view invoices"
-  ON public.invoices FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create invoices"
-  ON public.invoices FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update invoices"
-  ON public.invoices FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete invoices"
-  ON public.invoices FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Drop existing policies for payments
-DROP POLICY IF EXISTS "Users can view payments they processed" ON public.payments;
-DROP POLICY IF EXISTS "Users can insert payments" ON public.payments;
-DROP POLICY IF EXISTS "Users can update payments they processed" ON public.payments;
-DROP POLICY IF EXISTS "Users can delete payments they processed" ON public.payments;
-
--- Create account-based policies for payments
-CREATE POLICY "Account members can view payments"
-  ON public.payments FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create payments"
-  ON public.payments FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update payments"
-  ON public.payments FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete payments"
-  ON public.payments FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Material lists policies
-DROP POLICY IF EXISTS "Users can view material lists they created" ON public.material_lists;
-DROP POLICY IF EXISTS "Users can insert material lists" ON public.material_lists;
-DROP POLICY IF EXISTS "Users can update material lists they created" ON public.material_lists;
-DROP POLICY IF EXISTS "Users can delete material lists they created" ON public.material_lists;
-
-CREATE POLICY "Account members can view material lists"
-  ON public.material_lists FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create material lists"
-  ON public.material_lists FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update material lists"
-  ON public.material_lists FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete material lists"
-  ON public.material_lists FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Supply orders policies
-DROP POLICY IF EXISTS "Users can view supply orders they created" ON public.supply_orders;
-DROP POLICY IF EXISTS "Users can insert supply orders" ON public.supply_orders;
-DROP POLICY IF EXISTS "Users can update supply orders they created" ON public.supply_orders;
-DROP POLICY IF EXISTS "Users can delete supply orders they created" ON public.supply_orders;
-
-CREATE POLICY "Account members can view supply orders"
-  ON public.supply_orders FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create supply orders"
-  ON public.supply_orders FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update supply orders"
-  ON public.supply_orders FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete supply orders"
-  ON public.supply_orders FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Quick estimates policies
-DROP POLICY IF EXISTS "Users can view quick estimates they created" ON public.quick_estimates;
-DROP POLICY IF EXISTS "Users can insert quick estimates" ON public.quick_estimates;
-DROP POLICY IF EXISTS "Users can update quick estimates they created" ON public.quick_estimates;
-DROP POLICY IF EXISTS "Users can delete quick estimates they created" ON public.quick_estimates;
-
-CREATE POLICY "Account members can view quick estimates"
-  ON public.quick_estimates FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create quick estimates"
-  ON public.quick_estimates FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update quick estimates"
-  ON public.quick_estimates FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete quick estimates"
-  ON public.quick_estimates FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Pricing rules policies
-DROP POLICY IF EXISTS "Users can view their pricing rules" ON public.pricing_rules;
-DROP POLICY IF EXISTS "Users can insert their pricing rules" ON public.pricing_rules;
-DROP POLICY IF EXISTS "Users can update their pricing rules" ON public.pricing_rules;
-DROP POLICY IF EXISTS "Users can delete their pricing rules" ON public.pricing_rules;
-
-CREATE POLICY "Account members can view pricing rules"
-  ON public.pricing_rules FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create pricing rules"
-  ON public.pricing_rules FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update pricing rules"
-  ON public.pricing_rules FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete pricing rules"
-  ON public.pricing_rules FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- API keys policies
-DROP POLICY IF EXISTS "Users can view their API keys" ON public.api_keys;
-DROP POLICY IF EXISTS "Users can insert their API keys" ON public.api_keys;
-DROP POLICY IF EXISTS "Users can update their API keys" ON public.api_keys;
-DROP POLICY IF EXISTS "Users can delete their API keys" ON public.api_keys;
-
-CREATE POLICY "Account members can view API keys"
-  ON public.api_keys FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can create API keys"
-  ON public.api_keys FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
-CREATE POLICY "Account owners and admins can update API keys"
-  ON public.api_keys FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete API keys"
-  ON public.api_keys FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Stripe connect accounts policies
-DROP POLICY IF EXISTS "Users can view their Stripe accounts" ON public.stripe_connect_accounts;
-DROP POLICY IF EXISTS "Users can insert their Stripe accounts" ON public.stripe_connect_accounts;
-DROP POLICY IF EXISTS "Users can update their Stripe accounts" ON public.stripe_connect_accounts;
-DROP POLICY IF EXISTS "Users can delete their Stripe accounts" ON public.stripe_connect_accounts;
-
-CREATE POLICY "Account members can view Stripe accounts"
-  ON public.stripe_connect_accounts FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can create Stripe accounts"
-  ON public.stripe_connect_accounts FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
-CREATE POLICY "Account owners and admins can update Stripe accounts"
-  ON public.stripe_connect_accounts FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete Stripe accounts"
-  ON public.stripe_connect_accounts FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Lead source connections policies
-DROP POLICY IF EXISTS "Users can view their lead source connections" ON public.lead_source_connections;
-DROP POLICY IF EXISTS "Users can insert their lead source connections" ON public.lead_source_connections;
-DROP POLICY IF EXISTS "Users can update their lead source connections" ON public.lead_source_connections;
-DROP POLICY IF EXISTS "Users can delete their lead source connections" ON public.lead_source_connections;
-
-CREATE POLICY "Account members can view lead source connections"
-  ON public.lead_source_connections FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can create lead source connections"
-  ON public.lead_source_connections FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
-CREATE POLICY "Account owners and admins can update lead source connections"
-  ON public.lead_source_connections FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete lead source connections"
-  ON public.lead_source_connections FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Interactions policies
-DROP POLICY IF EXISTS "Users can view interactions" ON public.interactions;
-DROP POLICY IF EXISTS "Users can insert interactions" ON public.interactions;
-DROP POLICY IF EXISTS "Users can update interactions" ON public.interactions;
-DROP POLICY IF EXISTS "Users can delete interactions" ON public.interactions;
-
-CREATE POLICY "Account members can view interactions"
-  ON public.interactions FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create interactions"
-  ON public.interactions FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update interactions"
-  ON public.interactions FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account owners and admins can delete interactions"
-  ON public.interactions FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')
-    )
-  );
-
--- Line item policies (these follow their parent's account)
-CREATE POLICY "Account members can view estimate line items"
-  ON public.estimate_line_items FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create estimate line items"
-  ON public.estimate_line_items FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update estimate line items"
-  ON public.estimate_line_items FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can delete estimate line items"
-  ON public.estimate_line_items FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can view invoice line items"
-  ON public.invoice_line_items FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create invoice line items"
-  ON public.invoice_line_items FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update invoice line items"
-  ON public.invoice_line_items FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can delete invoice line items"
-  ON public.invoice_line_items FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can view material items"
-  ON public.material_items FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create material items"
-  ON public.material_items FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update material items"
-  ON public.material_items FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can delete material items"
-  ON public.material_items FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can view supply order items"
-  ON public.supply_order_items FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create supply order items"
-  ON public.supply_order_items FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update supply order items"
-  ON public.supply_order_items FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can delete supply order items"
-  ON public.supply_order_items FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can view lead qualifications"
-  ON public.lead_qualifications FOR SELECT
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can create lead qualifications"
-  ON public.lead_qualifications FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can update lead qualifications"
-  ON public.lead_qualifications FOR UPDATE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  )
-  WITH CHECK (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
-
-CREATE POLICY "Account members can delete lead qualifications"
-  ON public.lead_qualifications FOR DELETE
-  TO authenticated
-  USING (
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND is_active = true
-    )
-  );
+/*\n  # Update RLS Policies for Account-Based Access\n\n  ## Overview\n  Updates all RLS policies to use account-based access control instead of user-based.\n  Users can access resources that belong to accounts they are members of.\n  \n  ## Changes\n  \n  Drops and recreates RLS policies for:\n  - leads\n  - customers\n  - estimates\n  - invoices\n  - payments\n  - material_lists\n  - supply_orders\n  - quick_estimates\n  - pricing_rules\n  - api_keys\n  - stripe_connect_accounts\n  - lead_source_connections\n  - interactions\n  - estimate_line_items\n  - invoice_line_items\n  - material_items\n  - supply_order_items\n  - lead_qualifications\n  \n  ## Security Model\n  \n  - SELECT: All account members can view\n  - INSERT: All account members can create\n  - UPDATE: All account members can update\n  - DELETE: Only owners and admins can delete\n  \n  Some tables like invoices and estimates may have stricter policies based on role.\n*/\n\n-- Drop existing policies for leads\nDROP POLICY IF EXISTS "Users can view leads they created" ON public.leads;
+\nDROP POLICY IF EXISTS "Users can insert leads" ON public.leads;
+\nDROP POLICY IF EXISTS "Users can update leads they created" ON public.leads;
+\nDROP POLICY IF EXISTS "Users can delete leads they created" ON public.leads;
+\nDROP POLICY IF EXISTS "Users can view own leads" ON public.leads;
+\nDROP POLICY IF EXISTS "Users can create leads" ON public.leads;
+\nDROP POLICY IF EXISTS "Users can update own leads" ON public.leads;
+\nDROP POLICY IF EXISTS "Users can delete own leads" ON public.leads;
+\n\n-- Create account-based policies for leads\nCREATE POLICY "Account members can view leads"\n  ON public.leads FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create leads"\n  ON public.leads FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update leads"\n  ON public.leads FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete leads"\n  ON public.leads FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Drop existing policies for customers\nDROP POLICY IF EXISTS "Users can view customers they created" ON public.customers;
+\nDROP POLICY IF EXISTS "Users can insert customers" ON public.customers;
+\nDROP POLICY IF EXISTS "Users can update customers they created" ON public.customers;
+\nDROP POLICY IF EXISTS "Users can delete customers they created" ON public.customers;
+\n\n-- Create account-based policies for customers\nCREATE POLICY "Account members can view customers"\n  ON public.customers FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create customers"\n  ON public.customers FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update customers"\n  ON public.customers FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete customers"\n  ON public.customers FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Drop existing policies for estimates\nDROP POLICY IF EXISTS "Users can view estimates they created" ON public.estimates;
+\nDROP POLICY IF EXISTS "Users can insert estimates" ON public.estimates;
+\nDROP POLICY IF EXISTS "Users can update estimates they created" ON public.estimates;
+\nDROP POLICY IF EXISTS "Users can delete estimates they created" ON public.estimates;
+\n\n-- Create account-based policies for estimates\nCREATE POLICY "Account members can view estimates"\n  ON public.estimates FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create estimates"\n  ON public.estimates FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update estimates"\n  ON public.estimates FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete estimates"\n  ON public.estimates FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Drop existing policies for invoices\nDROP POLICY IF EXISTS "Users can view invoices they created" ON public.invoices;
+\nDROP POLICY IF EXISTS "Users can insert invoices" ON public.invoices;
+\nDROP POLICY IF EXISTS "Users can update invoices they created" ON public.invoices;
+\nDROP POLICY IF EXISTS "Users can delete invoices they created" ON public.invoices;
+\n\n-- Create account-based policies for invoices\nCREATE POLICY "Account members can view invoices"\n  ON public.invoices FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create invoices"\n  ON public.invoices FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update invoices"\n  ON public.invoices FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete invoices"\n  ON public.invoices FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Drop existing policies for payments\nDROP POLICY IF EXISTS "Users can view payments they processed" ON public.payments;
+\nDROP POLICY IF EXISTS "Users can insert payments" ON public.payments;
+\nDROP POLICY IF EXISTS "Users can update payments they processed" ON public.payments;
+\nDROP POLICY IF EXISTS "Users can delete payments they processed" ON public.payments;
+\n\n-- Create account-based policies for payments\nCREATE POLICY "Account members can view payments"\n  ON public.payments FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create payments"\n  ON public.payments FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update payments"\n  ON public.payments FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete payments"\n  ON public.payments FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Material lists policies\nDROP POLICY IF EXISTS "Users can view material lists they created" ON public.material_lists;
+\nDROP POLICY IF EXISTS "Users can insert material lists" ON public.material_lists;
+\nDROP POLICY IF EXISTS "Users can update material lists they created" ON public.material_lists;
+\nDROP POLICY IF EXISTS "Users can delete material lists they created" ON public.material_lists;
+\n\nCREATE POLICY "Account members can view material lists"\n  ON public.material_lists FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create material lists"\n  ON public.material_lists FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update material lists"\n  ON public.material_lists FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete material lists"\n  ON public.material_lists FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Supply orders policies\nDROP POLICY IF EXISTS "Users can view supply orders they created" ON public.supply_orders;
+\nDROP POLICY IF EXISTS "Users can insert supply orders" ON public.supply_orders;
+\nDROP POLICY IF EXISTS "Users can update supply orders they created" ON public.supply_orders;
+\nDROP POLICY IF EXISTS "Users can delete supply orders they created" ON public.supply_orders;
+\n\nCREATE POLICY "Account members can view supply orders"\n  ON public.supply_orders FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create supply orders"\n  ON public.supply_orders FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update supply orders"\n  ON public.supply_orders FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete supply orders"\n  ON public.supply_orders FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Quick estimates policies\nDROP POLICY IF EXISTS "Users can view quick estimates they created" ON public.quick_estimates;
+\nDROP POLICY IF EXISTS "Users can insert quick estimates" ON public.quick_estimates;
+\nDROP POLICY IF EXISTS "Users can update quick estimates they created" ON public.quick_estimates;
+\nDROP POLICY IF EXISTS "Users can delete quick estimates they created" ON public.quick_estimates;
+\n\nCREATE POLICY "Account members can view quick estimates"\n  ON public.quick_estimates FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create quick estimates"\n  ON public.quick_estimates FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update quick estimates"\n  ON public.quick_estimates FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete quick estimates"\n  ON public.quick_estimates FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Pricing rules policies\nDROP POLICY IF EXISTS "Users can view their pricing rules" ON public.pricing_rules;
+\nDROP POLICY IF EXISTS "Users can insert their pricing rules" ON public.pricing_rules;
+\nDROP POLICY IF EXISTS "Users can update their pricing rules" ON public.pricing_rules;
+\nDROP POLICY IF EXISTS "Users can delete their pricing rules" ON public.pricing_rules;
+\n\nCREATE POLICY "Account members can view pricing rules"\n  ON public.pricing_rules FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create pricing rules"\n  ON public.pricing_rules FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update pricing rules"\n  ON public.pricing_rules FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete pricing rules"\n  ON public.pricing_rules FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- API keys policies\nDROP POLICY IF EXISTS "Users can view their API keys" ON public.api_keys;
+\nDROP POLICY IF EXISTS "Users can insert their API keys" ON public.api_keys;
+\nDROP POLICY IF EXISTS "Users can update their API keys" ON public.api_keys;
+\nDROP POLICY IF EXISTS "Users can delete their API keys" ON public.api_keys;
+\n\nCREATE POLICY "Account members can view API keys"\n  ON public.api_keys FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can create API keys"\n  ON public.api_keys FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can update API keys"\n  ON public.api_keys FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete API keys"\n  ON public.api_keys FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Stripe connect accounts policies\nDROP POLICY IF EXISTS "Users can view their Stripe accounts" ON public.stripe_connect_accounts;
+\nDROP POLICY IF EXISTS "Users can insert their Stripe accounts" ON public.stripe_connect_accounts;
+\nDROP POLICY IF EXISTS "Users can update their Stripe accounts" ON public.stripe_connect_accounts;
+\nDROP POLICY IF EXISTS "Users can delete their Stripe accounts" ON public.stripe_connect_accounts;
+\n\nCREATE POLICY "Account members can view Stripe accounts"\n  ON public.stripe_connect_accounts FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can create Stripe accounts"\n  ON public.stripe_connect_accounts FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can update Stripe accounts"\n  ON public.stripe_connect_accounts FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete Stripe accounts"\n  ON public.stripe_connect_accounts FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Lead source connections policies\nDROP POLICY IF EXISTS "Users can view their lead source connections" ON public.lead_source_connections;
+\nDROP POLICY IF EXISTS "Users can insert their lead source connections" ON public.lead_source_connections;
+\nDROP POLICY IF EXISTS "Users can update their lead source connections" ON public.lead_source_connections;
+\nDROP POLICY IF EXISTS "Users can delete their lead source connections" ON public.lead_source_connections;
+\n\nCREATE POLICY "Account members can view lead source connections"\n  ON public.lead_source_connections FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can create lead source connections"\n  ON public.lead_source_connections FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can update lead source connections"\n  ON public.lead_source_connections FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete lead source connections"\n  ON public.lead_source_connections FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Interactions policies\nDROP POLICY IF EXISTS "Users can view interactions" ON public.interactions;
+\nDROP POLICY IF EXISTS "Users can insert interactions" ON public.interactions;
+\nDROP POLICY IF EXISTS "Users can update interactions" ON public.interactions;
+\nDROP POLICY IF EXISTS "Users can delete interactions" ON public.interactions;
+\n\nCREATE POLICY "Account members can view interactions"\n  ON public.interactions FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create interactions"\n  ON public.interactions FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update interactions"\n  ON public.interactions FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account owners and admins can delete interactions"\n  ON public.interactions FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true AND role IN ('owner', 'admin')\n    )\n  );
+\n\n-- Line item policies (these follow their parent's account)\nCREATE POLICY "Account members can view estimate line items"\n  ON public.estimate_line_items FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create estimate line items"\n  ON public.estimate_line_items FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update estimate line items"\n  ON public.estimate_line_items FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can delete estimate line items"\n  ON public.estimate_line_items FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can view invoice line items"\n  ON public.invoice_line_items FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create invoice line items"\n  ON public.invoice_line_items FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update invoice line items"\n  ON public.invoice_line_items FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can delete invoice line items"\n  ON public.invoice_line_items FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can view material items"\n  ON public.material_items FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create material items"\n  ON public.material_items FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update material items"\n  ON public.material_items FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can delete material items"\n  ON public.material_items FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can view supply order items"\n  ON public.supply_order_items FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create supply order items"\n  ON public.supply_order_items FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update supply order items"\n  ON public.supply_order_items FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can delete supply order items"\n  ON public.supply_order_items FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can view lead qualifications"\n  ON public.lead_qualifications FOR SELECT\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can create lead qualifications"\n  ON public.lead_qualifications FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can update lead qualifications"\n  ON public.lead_qualifications FOR UPDATE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  )\n  WITH CHECK (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+\n\nCREATE POLICY "Account members can delete lead qualifications"\n  ON public.lead_qualifications FOR DELETE\n  TO authenticated\n  USING (\n    account_id IN (\n      SELECT account_id FROM public.account_members\n      WHERE user_id = auth.uid() AND is_active = true\n    )\n  );
+;
