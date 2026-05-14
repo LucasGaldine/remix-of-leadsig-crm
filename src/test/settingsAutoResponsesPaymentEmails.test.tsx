@@ -504,18 +504,38 @@ describe("SettingsAutoResponses payment emails", () => {
     expect(invokeFunctionMock).not.toHaveBeenCalled();
   });
 
-  it("adds common auto-message templates from the Add template button", () => {
+  it("creates a new message when Add message is clicked after editing an existing template", () => {
+    mockSettings = {
+      job_message_automation: {
+        enabled: true,
+        message_templates: [
+          {
+            id: "template-1",
+            name: "Existing Template",
+            content: "Existing content",
+            is_finished: true,
+            delivery_channel: "text",
+            job_service_types: [],
+            trigger: { type: "immediate", offset_value: 0, offset_unit: "days" },
+          },
+        ],
+      },
+    };
+
     render(
       <MemoryRouter>
         <SettingsAutoResponses />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("switch", { name: /enable job message automation/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^add template$/i }));
+    fireEvent.click(screen.getByText("Existing Template"));
+    fireEvent.click(screen.getByRole("button", { name: /close/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add message$/i }));
+    fireEvent.change(screen.getByPlaceholderText(/reminder: \{\{job_name\}\} is scheduled/i), { target: { value: "New content" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm template/i }));
 
-    expect(screen.getByText("24-Hour Reminder")).toBeInTheDocument();
-    expect(screen.getByText("2-Hour Reminder")).toBeInTheDocument();
-    expect(screen.getByText("Ask for Review")).toBeInTheDocument();
+    expect(screen.getByText("Existing Template")).toBeInTheDocument();
+    expect(screen.getByText("Existing content")).toBeInTheDocument();
+    expect(screen.getByText("New content")).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, Loader2, Mail, MessageSquare, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronDown, ChevronsUpDown, Loader2, Mail, MessageSquare, Pencil, Plus, Save, Trash2, X, Zap } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { PlanGate } from "@/components/features/PlanGate";
@@ -1009,19 +1009,19 @@ export default function SettingsAutoResponses() {
                   type="button"
                   variant="outline"
                   className="gap-2"
-                  onClick={addCommonMessageTemplates}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add template
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-2"
                   onClick={() => {
                     setIsAddingTemplate((current) => {
                       const next = !current;
-                      if (!next) {
+                      if (next) {
+                        setEditingTemplateId(null);
+                        setJobMessageTemplateDraft("");
+                        setJobMessageTemplateName("");
+                        setDraftServiceTypes([]);
+                        setDraftTriggerType("immediate");
+                        setDraftOffsetValue("0");
+                        setDraftOffsetUnit("days");
+                        setDraftDeliveryChannel("text");
+                      } else {
                         setEditingTemplateId(null);
                         setJobMessageTemplateDraft("");
                         setJobMessageTemplateName("");
@@ -1040,8 +1040,15 @@ export default function SettingsAutoResponses() {
                 </Button>
               </div>
 
-              {isAddingTemplate ? (
-                <div className="space-y-5 rounded-lg border bg-background p-4">
+              <Dialog open={isAddingTemplate} onOpenChange={setIsAddingTemplate}>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingTemplateId ? "Edit message" : "Add message"}</DialogTitle>
+                    <DialogDescription>
+                      Configure an automated message template, delivery channel, and trigger schedule.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-5 py-1">
                   <div className="space-y-3">
                     <Label htmlFor="job-message-template-name">Message template</Label>
                     <div className="space-y-2">
@@ -1229,8 +1236,9 @@ export default function SettingsAutoResponses() {
                       {editingTemplateId ? "Save template" : "Confirm template"}
                     </Button>
                   </div>
-                </div>
-              ) : null}
+                  </div>
+                </DialogContent>
+              </Dialog>
 
                 </>
               ) : null}
@@ -1313,7 +1321,7 @@ export default function SettingsAutoResponses() {
 
         </main>
 
-        <div className="fixed bottom-24 right-4 z-40 sm:bottom-6 sm:right-6">
+        <div className="fixed right-3 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-40 sm:right-6 sm:bottom-6">
           <Button
             onClick={handleSave}
             size="icon"
