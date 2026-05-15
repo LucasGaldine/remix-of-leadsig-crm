@@ -20,7 +20,6 @@ import {
   shouldShowOnboardingTutorial,
 } from "@/lib/onboarding";
 import { filterSearchPages } from "@/lib/globalSearch";
-import { onboardingSlides } from "@/lib/onboardingContent";
 import Tutorial from "@/pages/Tutorial";
 
 vi.mock("@/components/layout/PageHeader", () => ({
@@ -151,22 +150,8 @@ describe("global search tutorial entry", () => {
   });
 });
 
-describe("onboarding slide content", () => {
-  it("keeps the requested onboarding stages in order", () => {
-    expect(onboardingSlides.map((slide) => slide.id)).toEqual([
-      "lead-storage-management",
-      "job-tracking-scheduling",
-      "before-photos",
-      "team-setup",
-      "ad-integrations",
-      "branded-website-client-portal",
-      "sms-email-notifications",
-      "automations-auto-replies",
-      "crm-recap-premium-preview",
-    ]);
-  });
-
-  it("renders tutorial details for the active slide", () => {
+describe("tutorial page content", () => {
+  it("renders the embedded tutorial video", () => {
     render(
       createElement(
         MemoryRouter,
@@ -179,13 +164,13 @@ describe("onboarding slide content", () => {
       ),
     );
 
-    const slideTitle = screen.getByRole("heading", { name: "Lead Storage & Management" });
-    expect(slideTitle).toBeInTheDocument();
-    expect(screen.getByText(/Capture, organize, and move leads/i)).toBeInTheDocument();
+    const iframe = screen.getByTitle("LeadSig product tutorial video");
+    expect(iframe).toBeInTheDocument();
+    expect(iframe.getAttribute("src")).toBe("https://www.youtube.com/embed/BqVdPVgaqqY");
   });
 
-  it("renders text-only tutorial content", () => {
-    const { container } = render(
+  it("removes legacy walkthrough content", () => {
+    render(
       createElement(
         MemoryRouter,
         { initialEntries: ["/tutorial"] },
@@ -197,10 +182,8 @@ describe("onboarding slide content", () => {
       ),
     );
 
-    const walkthroughPill = screen.getByText("Product walkthrough");
-    const sceneElement = container.querySelector("[aria-label^='Tutorial scene:']");
-
-    expect(walkthroughPill).toBeInTheDocument();
-    expect(sceneElement).toBeNull();
+    expect(screen.getByText("Video tutorial")).toBeInTheDocument();
+    expect(screen.queryByText("Product walkthrough")).toBeNull();
+    expect(screen.queryByLabelText(/^Tutorial scene:/i)).toBeNull();
   });
 });

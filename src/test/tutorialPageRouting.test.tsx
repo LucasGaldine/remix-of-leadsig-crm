@@ -45,12 +45,10 @@ describe("Tutorial completion routing", () => {
     window.localStorage.setItem(ONBOARDING_TUTORIAL_STORAGE_KEY, "pending");
     render(<Tutorial />);
 
-    while (screen.queryByRole("button", { name: /Finish tutorial/i }) === null) {
-      fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
-    }
-
     fireEvent.click(screen.getByRole("button", { name: /Finish tutorial/i }));
 
+    expect(window.localStorage.getItem(ONBOARDING_TUTORIAL_STORAGE_KEY)).toBe("completed");
+    expect(window.localStorage.getItem(ONBOARDING_PLAN_STORAGE_KEY)).toBe("pending");
     expect(navigateMock).toHaveBeenCalledWith("/onboarding/plan");
   });
 });
