@@ -36,6 +36,12 @@ vi.mock("@/hooks/useLeads", () => ({
   useLeads: () => ({ data: [], isLoading: false, refetch: vi.fn() }),
 }));
 
+vi.mock("@/hooks/usePendingLeads", () => ({
+  usePendingLeads: () => ({ data: [], isLoading: false }),
+  useApproveLead: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRejectLead: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/hooks/useJobs", () => ({
   useJobs: () => ({
     data: [

@@ -901,10 +901,10 @@ export function CreateJobDialog({ open, onOpenChange, onJobCreated }: CreateJobD
         queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] }),
       ]);
 
+      navigate(`/jobs/${createdJob.id}`);
       toast.success("Job created successfully!");
       resetForm();
       onOpenChange(false);
-      navigate(`/jobs/${createdJob.id}`);
       try {
         onJobCreated?.(createdJob.id);
       } catch (callbackError) {

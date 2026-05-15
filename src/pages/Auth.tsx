@@ -47,7 +47,6 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
   const [eloMembershipEmail, setEloMembershipEmail] = useState('');
   const [eloSignupGateCompleted, setEloSignupGateCompleted] = useState(!isEloSignup);
   const [eloMembershipStatus, setEloMembershipStatus] = useState<'free' | 'premium' | null>(null);
-  const [eloEligibilityMessage, setEloEligibilityMessage] = useState<string | null>(null);
   const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -109,7 +108,6 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
       setEloMembershipEmail('');
       setEloSignupGateCompleted(false);
       setEloMembershipStatus(null);
-      setEloEligibilityMessage(null);
     }
   };
 
@@ -323,17 +321,7 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
 
       setEloMembershipStatus(status);
       setEmail(normalizedEmail);
-      setEloEligibilityMessage(
-        status === 'premium'
-          ? 'Yes, this email has an Elo membership and qualifies for the LeadSig Growth plan.'
-          : 'No Elo membership found for this email, so LeadSig Growth signup is not available.',
-      );
       setErrors({});
-      return;
-    }
-
-    if (eloMembershipStatus !== 'premium') {
-      toast.error('This email is not eligible for Elo Growth signup');
       return;
     }
 
@@ -477,21 +465,19 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
                       {errors.eloMembershipEmail && (
                         <p className="text-sm text-destructive">{errors.eloMembershipEmail}</p>
                       )}
-                      <p className="text-xs text-muted-foreground">
-                        We will verify this email against the ELO membership table in the LeadSig database.
-                      </p>
-                      {eloMembershipStatus && (
+                      {eloMembershipStatus ? (
                         <p
                           className={cn(
-                            'text-sm font-medium',
-                            eloMembershipStatus === 'premium' ? 'text-emerald-600' : 'text-amber-600',
+                            'text-sm font-medium text-center',
+                            eloMembershipStatus === 'premium' ? 'text-emerald-600' : 'text-emerald-600',
                           )}
                         >
-                          Elo membership status: {eloMembershipStatus === 'premium' ? 'Yes' : 'No'}
+                          {eloMembershipStatus === 'premium' ? 'Elo membership status: Yes' : 'You have access to a 14 day free trial!'}
                         </p>
-                      )}
-                      {eloEligibilityMessage && (
-                        <p className="text-xs text-muted-foreground">{eloEligibilityMessage}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          We will verify this email against the ELO membership table in the LeadSig database.
+                        </p>
                       )}
                     </div>
                   ) : (
@@ -754,9 +740,7 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
                       {isCheckingEligibility
                         ? 'Checking eligibility...'
                         : eloMembershipStatus
-                          ? eloMembershipStatus === 'premium'
-                            ? 'Continue to Sign Up'
-                            : 'Not Eligible'
+                          ? 'Continue'
                           : 'Check eligibility first'}
                     </Button>
                   ) : (

@@ -12,6 +12,7 @@ import {
   CreditCard,
   ArrowUpDown,
   Check,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,8 +28,10 @@ import { useEstimates } from "@/hooks/useEstimates";
 import { useInvoices } from "@/hooks/useInvoices";
 import { usePayments } from "@/hooks/usePayments";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { useApproveLead, usePendingLeads, useRejectLead } from "@/hooks/usePendingLeads";
 import { cn } from "@/lib/utils";
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
+import { toast } from "sonner";
 
 type InboxType = "client" | "lead" | "job" | "estimate" | "invoice" | "payment";
 type InboxFilter = "all" | InboxType;
@@ -45,6 +48,7 @@ interface InboxItem {
   timestamp: number;
   path: string;
   searchableText: string;
+  isPendingLead?: boolean;
 }
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -175,14 +179,17 @@ export default function Inbox() {
 
   const { data: customers = [], isLoading: customersLoading, refetch: refetchCustomers } = useCustomers();
   const { data: leads = [], isLoading: leadsLoading, refetch: refetchLeads } = useLeads();
+  const { data: pendingLeads = [], isLoading: pendingLeadsLoading } = usePendingLeads();
   const { data: jobs = [], isLoading: jobsLoading, refetch: refetchJobs } = useJobs();
   const { data: estimates = [], isLoading: estimatesLoading } = useEstimates({ limit: 100 });
   const { data: invoices = [], isLoading: invoicesLoading } = useInvoices({ limit: 100 });
   const { data: payments = [], isLoading: paymentsLoading } = usePayments({ limit: 100 });
   const { data: teamMembers = [] } = useTeamMembers();
+  const approveLeadMutation = useApproveLead();
+  const rejectLeadMutation = useRejectLead();
   const isSinglePersonCompany = isSinglePersonCompanyByMembers(teamMembers);
 
-  const isLoading = customersLoading || leadsLoading || jobsLoading || estimatesLoading || invoicesLoading || paymentsLoading;
+  const isLoading = customersLoading || leadsLoading || pendingLeadsLoading || jobsLoading || estimatesLoading || invoicesLoading || paymentsLoading;
 
   const items = useMemo<InboxItem[]>(() => {
     const clientItems: InboxItem[] = (customers as any[]).map((customer) => ({
@@ -211,6 +218,18 @@ export default function Inbox() {
         searchableText: `${lead.name || ""} ${lead.service_type || ""} ${lead.source || ""} ${lead.address || ""} ${lead.city || ""}`.toLowerCase(),
       };
     });
+    const pendingLeadItems: InboxItem[] = (pendingLeads as any[]).map((lead) => ({
+      id: lead.id,
+      type: "lead",
+      title: lead.name || "Unnamed Lead",
+      subtitle: `${formatDate(lead.submitted_at || lead.created_at)} | ${lead.service_type || "No service type"}`,
+      status: "Pending Approval",
+      tone: "pending",
+      timestamp: toTimestamp(lead.submitted_at || lead.created_at),
+      path: `/leads/${lead.id}`,
+      searchableText: `${lead.name || ""} ${lead.service_type || ""} ${lead.source || ""} ${lead.address || ""} ${lead.city || ""}`.toLowerCase(),
+      isPendingLead: true,
+    }));
 
     const jobItems: InboxItem[] = (jobs as any[]).map((job) => {
       const rawStatus = String(job.status || "");
@@ -287,10 +306,28 @@ export default function Inbox() {
       };
     });
 
-    return [...clientItems, ...leadItems, ...jobItems, ...estimateItems, ...invoiceItems, ...paymentItems].sort(
+    return [...clientItems, ...leadItems, ...pendingLeadItems, ...jobItems, ...estimateItems, ...invoiceItems, ...paymentItems].sort(
       (a, b) => b.timestamp - a.timestamp,
     );
-  }, [customers, leads, jobs, estimates, invoices, isSinglePersonCompany, payments]);
+  }, [customers, leads, pendingLeads, jobs, estimates, invoices, isSinglePersonCompany, payments]);
+
+  const handleApprovePendingLead = async (leadId: string) => {
+    try {
+      await approveLeadMutation.mutateAsync(leadId);
+      toast.success("Lead approved");
+    } catch {
+      toast.error("Failed to approve lead");
+    }
+  };
+
+  const handleRejectPendingLead = async (leadId: string) => {
+    try {
+      await rejectLeadMutation.mutateAsync({ id: leadId, reason: "other" });
+      toast.success("Lead denied");
+    } catch {
+      toast.error("Failed to deny lead");
+    }
+  };
 
   const counts = useMemo(() => {
     const base = { client: 0, lead: 0, job: 0, estimate: 0, invoice: 0, payment: 0 };
@@ -442,9 +479,17 @@ export default function Inbox() {
                   const iconData = rowIconConfig[item.type];
                   const RowIcon = iconData.icon;
                   return (
-                    <button
+                    <div
+                      role="button"
+                      tabIndex={0}
                       key={`${item.type}-${item.id}`}
                       onClick={() => navigate(item.path)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(item.path);
+                        }
+                      }}
                       className={cn(
                         "w-full border-t border-border bg-card px-4 py-8 text-left transition-colors hover:bg-accent/40 md:border-0 md:bg-transparent md:py-3",
                         index > 0 && "md:relative md:before:absolute md:before:left-4 md:before:right-4 md:before:top-0 md:before:h-px md:before:bg-border",
@@ -460,12 +505,45 @@ export default function Inbox() {
                             <p className="truncate text-sm text-muted-foreground">{item.subtitle}</p>
                           </div>
                         </div>
-                        <div className={cn("inline-flex items-center gap-2 text-base font-medium text-right md:text-sm", toneClass[item.tone])}>
-                          <span>{item.status}</span>
-                          <span className={cn("h-2.5 w-2.5 rounded-full", item.tone === "confirmed" ? "bg-[hsl(var(--status-confirmed))]" : item.tone === "attention" ? "bg-[hsl(var(--status-attention))]" : item.tone === "pending" ? "bg-[hsl(var(--status-pending))]" : "bg-muted-foreground/50")} />
-                        </div>
+                        {item.isPendingLead ? (
+                          <div className="inline-flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-9 w-9 rounded-full border-[hsl(var(--status-confirmed))] text-[hsl(var(--status-confirmed))] hover:bg-[hsl(var(--status-confirmed-bg))]"
+                              aria-label={`Approve ${item.title}`}
+                              disabled={approveLeadMutation.isPending || rejectLeadMutation.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleApprovePendingLead(item.id);
+                              }}
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-9 w-9 rounded-full border-[hsl(var(--status-attention))] text-[hsl(var(--status-attention))] hover:bg-[hsl(var(--status-attention-bg))]"
+                              aria-label={`Deny ${item.title}`}
+                              disabled={approveLeadMutation.isPending || rejectLeadMutation.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleRejectPendingLead(item.id);
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className={cn("inline-flex items-center gap-2 text-base font-medium text-right md:text-sm", toneClass[item.tone])}>
+                            <span>{item.status}</span>
+                            <span className={cn("h-2.5 w-2.5 rounded-full", item.tone === "confirmed" ? "bg-[hsl(var(--status-confirmed))]" : item.tone === "attention" ? "bg-[hsl(var(--status-attention))]" : item.tone === "pending" ? "bg-[hsl(var(--status-pending))]" : "bg-muted-foreground/50")} />
+                          </div>
+                        )}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>

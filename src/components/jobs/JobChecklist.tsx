@@ -141,6 +141,7 @@ export function JobChecklist({
   const [isMaterialNameFocused, setIsMaterialNameFocused] = useState(false);
   const [copiedPortal, setCopiedPortal] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [noBeforePhotosDialogOpen, setNoBeforePhotosDialogOpen] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
   const [isScanningReceipt, setIsScanningReceipt] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -344,9 +345,14 @@ export function JobChecklist({
   const handleCompleteClick = () => {
     if (editMode || isJobCompleted) return;
     if (isEstimateVisit && !hasBeforePhotos) {
-      toast.error("Before photos must be uploaded before marking this job as complete");
+      setNoBeforePhotosDialogOpen(true);
       return;
     }
+    setCompleteDialogOpen(true);
+  };
+
+  const handleConfirmNoBeforePhotosComplete = () => {
+    setNoBeforePhotosDialogOpen(false);
     setCompleteDialogOpen(true);
   };
 
@@ -710,6 +716,24 @@ export function JobChecklist({
               </AlertDialogCancel>
               <AlertDialogAction size="lg" className="flex-1" onClick={handleConfirmComplete} disabled={markingComplete}>
                 {markingComplete ? "Completing..." : "Yes, Mark Complete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog open={noBeforePhotosDialogOpen} onOpenChange={setNoBeforePhotosDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Complete Without Before Photos?</AlertDialogTitle>
+              <AlertDialogDescription>
+                No before photos are uploaded for this estimate visit. Are you sure you want to continue?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-row gap-2 sm:gap-2">
+              <AlertDialogCancel size="lg" className="mt-0 flex-1" onClick={() => setNoBeforePhotosDialogOpen(false)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction size="lg" className="flex-1" onClick={handleConfirmNoBeforePhotosComplete}>
+                Yes, Continue
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1389,6 +1413,24 @@ export function JobChecklist({
             </AlertDialogCancel>
             <AlertDialogAction size="lg" className="flex-1" onClick={handleConfirmComplete} disabled={markingComplete}>
               {markingComplete ? "Completing..." : "Yes, Mark Complete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={noBeforePhotosDialogOpen} onOpenChange={setNoBeforePhotosDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Complete Without Before Photos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              No before photos are uploaded for this estimate visit. Are you sure you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row gap-2 sm:gap-2">
+            <AlertDialogCancel size="lg" className="mt-0 flex-1" onClick={() => setNoBeforePhotosDialogOpen(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction size="lg" className="flex-1" onClick={handleConfirmNoBeforePhotosComplete}>
+              Yes, Continue
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

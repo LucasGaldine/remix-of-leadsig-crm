@@ -8,6 +8,7 @@ const CREW_TWO_ID = "22222222-2222-4222-8222-222222222222";
 
 const {
   createJobMutateAsync,
+  navigateMock,
   onOpenChangeMock,
   supabaseFromMock,
   jobLineItemsInsertMock,
@@ -24,6 +25,7 @@ const {
   invalidateQueriesMock,
 } = vi.hoisted(() => ({
   createJobMutateAsync: vi.fn().mockResolvedValue({ id: "job_1" }),
+  navigateMock: vi.fn(),
   deleteJobMutateAsync: vi.fn().mockResolvedValue(undefined),
   onOpenChangeMock: vi.fn(),
   supabaseFromMock: vi.fn(),
@@ -38,6 +40,10 @@ const {
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
   invalidateQueriesMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => navigateMock,
 }));
 
 vi.mock("sonner", () => ({
@@ -234,6 +240,7 @@ function buildJobAssignmentsTableMock(options?: {
 
 describe("CreateJobDialog estimate flow", () => {
   beforeEach(() => {
+    navigateMock.mockClear();
     createJobMutateAsync.mockClear();
     onOpenChangeMock.mockClear();
     supabaseFromMock.mockReset();
@@ -460,6 +467,7 @@ describe("CreateJobDialog estimate flow", () => {
       expect(onOpenChangeMock).toHaveBeenCalledWith(false);
     });
 
+    expect(navigateMock).toHaveBeenCalledWith("/jobs/job_1");
     expect(estimateInsertMock).toHaveBeenCalled();
     expect(estimateLineItemsInsertMock).toHaveBeenCalled();
     expect(estimateVersionsInsertMock).toHaveBeenCalled();

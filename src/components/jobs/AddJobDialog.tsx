@@ -115,9 +115,9 @@ export function AddJobDialog({ open, onOpenChange, onJobCreated }: AddJobDialogP
         notes: "",
       });
       
+      navigate(`/jobs/${job.id}`);
       onOpenChange(false);
       onJobCreated?.(job.id);
-      navigate(`/jobs/${job.id}`);
     } catch (error) {
       console.error("Error creating job:", error);
       toast.error("Failed to create job");

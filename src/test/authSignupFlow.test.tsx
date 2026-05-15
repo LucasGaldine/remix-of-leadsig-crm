@@ -382,7 +382,7 @@ describe("Auth signup flow", () => {
 
     expect(screen.getByText(/Elo membership status: Yes/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Continue to Sign Up/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
 
     expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Email/i)).toHaveValue("member@elo.com");
@@ -407,7 +407,7 @@ describe("Auth signup flow", () => {
       expect(screen.getByText(/Elo membership status: Yes/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Continue to Sign Up/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: "Taylor Smith" } });
     fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "StrongPassword123!" } });
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
@@ -437,7 +437,7 @@ describe("Auth signup flow", () => {
     });
   });
 
-  it("blocks Elo signup continuation when membership is not eligible", async () => {
+  it("allows Elo free users to continue signup with a free trial path", async () => {
     invokeFunctionMock.mockResolvedValue({ data: { status: "free" }, error: null });
 
     render(
@@ -452,10 +452,10 @@ describe("Auth signup flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /Check eligibility first/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Elo membership status: No/i)).toBeInTheDocument();
+      expect(screen.getByText(/You have access to a 14 day free trial!/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Not Eligible/i }));
-    expect(screen.queryByText(/Step 1 of 3/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
   });
 });

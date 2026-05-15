@@ -20,16 +20,16 @@ test.describe('ELO signup flow', () => {
     await page.getByRole('button', { name: 'Check eligibility first' }).click();
 
     await expect(page.getByText('Elo membership status: Yes')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Continue to Sign Up' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Continue to Sign Up' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
 
     await expect(page.getByText('Step 1 of 3')).toBeVisible();
     await expect(page.getByLabel('Email')).toHaveValue('eligible@example.com');
     await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
   });
 
-  test('blocks ineligible ELO user at the gate', async ({ page }) => {
+  test('allows free ELO users to continue with a free trial path', async ({ page }) => {
     await page.route('**/functions/v1/elo-membership-status', async (route) => {
       await route.fulfill({
         status: 200,
@@ -43,13 +43,10 @@ test.describe('ELO signup flow', () => {
     await page.getByLabel('What email did you use for your ELO membership?').fill('free@example.com');
     await page.getByRole('button', { name: 'Check eligibility first' }).click();
 
-    await expect(page.getByText('Elo membership status: No')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Not Eligible' })).toBeVisible();
-    await expect(
-      page.getByText('No Elo membership found for this email, so LeadSig Growth signup is not available.'),
-    ).toBeVisible();
-
-    await page.getByRole('button', { name: 'Not Eligible' }).click();
-    await expect(page.getByText('Step 1 of 3')).not.toBeVisible();
+    await expect(page.getByText('You have access to a 14 day free trial!')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByText('Step 1 of 3')).toBeVisible();
+    await expect(page.getByLabel('Email')).toHaveValue('free@example.com');
   });
 });
