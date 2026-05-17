@@ -68,7 +68,33 @@ export function useJobChecklist(jobId: string | undefined) {
 
       if (error) throw error;
     },
-    onSuccess: () => {
+    onMutate: async ({ id, is_completed }) => {
+      await queryClient.cancelQueries({ queryKey: ["job-checklist", jobId] });
+
+      const previousItems = queryClient.getQueryData<ChecklistItem[]>(["job-checklist", jobId]);
+
+      queryClient.setQueryData<ChecklistItem[]>(
+        ["job-checklist", jobId],
+        (currentItems = []) =>
+          currentItems.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  is_completed,
+                  updated_at: new Date().toISOString(),
+                }
+              : item,
+          ),
+      );
+
+      return { previousItems };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousItems) {
+        queryClient.setQueryData(["job-checklist", jobId], context.previousItems);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["job-checklist", jobId] });
       queryClient.invalidateQueries({ queryKey: ["job", jobId] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });

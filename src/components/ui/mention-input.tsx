@@ -30,6 +30,8 @@ declare global {
   }
 }
 
+const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
+
 function appendTranscript(existingValue: string, transcript: string) {
   const trimmedTranscript = transcript.trim();
 
@@ -87,7 +89,7 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
       };
     }, []);
 
-    const displayValue = value.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
+    const displayValue = value.replace(MENTION_REGEX, "@$1");
     const RecognitionConstructor =
       typeof window === "undefined" ? undefined : window.SpeechRecognition || window.webkitSpeechRecognition;
     const speechSupported = Boolean(RecognitionConstructor);
@@ -121,13 +123,13 @@ export const MentionInput = forwardRef<HTMLTextAreaElement, MentionInputProps>(
 
     const syncActualValue = (newDisplayValue: string, oldActualValue: string): string => {
       let result = newDisplayValue;
-      const oldDisplayValue = oldActualValue.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
+      const oldDisplayValue = oldActualValue.replace(MENTION_REGEX, "@$1");
 
       if (newDisplayValue === oldDisplayValue) {
         return oldActualValue;
       }
 
-      const mentions = Array.from(oldActualValue.matchAll(/@\[([^\]]+)\]\(([a-f0-9-]+)\)/g));
+      const mentions = Array.from(oldActualValue.matchAll(MENTION_REGEX));
       mentions.reverse().forEach((match) => {
         const displayName = `@${match[1]}`;
         const fullMention = match[0];

@@ -3,10 +3,10 @@ import {
   Play,
   Square,
   Wifi,
-  ChevronDown,
-  ChevronUp,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useGeofence, geocodeAddress } from "@/hooks/useGeofence";
@@ -49,7 +49,7 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
   const [elapsed, setElapsed] = useState(0);
   const [manualMode, setManualMode] = useState(false);
   const [tableExists, setTableExists] = useState(true);
-  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const autoClockInDoneRef = useRef(false);
   const autoClockOutDoneRef = useRef(false);
 
@@ -202,9 +202,6 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
   };
 
   const completedEntries = entries.filter((e) => e.clock_out);
-  const visibleHistoryEntries = historyExpanded
-    ? completedEntries
-    : [];
 
   if (!tableExists) {
     return (
@@ -245,10 +242,10 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
       )}
 
       {!activeEntry && !loading && (
-        <div className="mb-1">
+        <div className="mb-1 flex items-center gap-2">
           <Button
             size="lg"
-            className="w-full"
+            className="flex-1"
             onClick={() => {
               setManualMode(true);
               clockIn(false);
@@ -257,28 +254,30 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
             <Play />
             Clock In
           </Button>
+          {completedEntries.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              className="h-11 w-11 p-0 shrink-0"
+              onClick={() => setHistoryDialogOpen(true)}
+              aria-label="Show logged hours"
+              aria-haspopup="dialog"
+              aria-expanded={historyDialogOpen}
+            >
+              <CalendarClock className="h-5 w-5" />
+            </Button>
+          )}
         </div>
       )}
 
-      {/* Past entries */}
-      {!activeEntry && completedEntries.length > 0 && (
-        <div className="space-y-1.5 pt-3">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 py-0.5 text-left"
-            onClick={() => setHistoryExpanded((prev) => !prev)}
-            aria-expanded={historyExpanded}
-          >
-            <span className="text-base md:text-sm font-medium text-muted-foreground">Logged Hours</span>
-            {historyExpanded ? (
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            )}
-          </button>
-
-          <div className="space-y-1 mt-0.5">
-            {visibleHistoryEntries.map((e) => {
+      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Logged Hours</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
+            {completedEntries.map((e) => {
               const dur = new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime();
               return (
                 <div key={e.id} className="flex items-center justify-between text-base md:text-sm py-1">
@@ -300,8 +299,8 @@ export function JobTimeTracker({ jobId, jobAddress, accountId, embedded = false 
               );
             })}
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

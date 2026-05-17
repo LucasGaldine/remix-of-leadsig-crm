@@ -5,9 +5,11 @@ export interface ParsedMention {
   endIndex: number;
 }
 
+const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
+
 export function extractMentions(text: string): ParsedMention[] {
   const mentions: ParsedMention[] = [];
-  const mentionRegex = /@\[([^\]]+)\]\(([a-f0-9-]+)\)/g;
+  const mentionRegex = new RegExp(MENTION_REGEX);
   let match;
 
   while ((match = mentionRegex.exec(text)) !== null) {
@@ -23,12 +25,12 @@ export function extractMentions(text: string): ParsedMention[] {
 }
 
 export function renderMentionsAsText(text: string): string {
-  return text.replace(/@\[([^\]]+)\]\([a-f0-9-]+\)/g, '@$1');
+  return text.replace(MENTION_REGEX, "@$1");
 }
 
 export function parseMentionsForDisplay(text: string): Array<{ type: 'text' | 'mention'; content: string; userId?: string }> {
   const parts: Array<{ type: 'text' | 'mention'; content: string; userId?: string }> = [];
-  const mentionRegex = /@\[([^\]]+)\]\(([a-f0-9-]+)\)/g;
+  const mentionRegex = new RegExp(MENTION_REGEX);
   let lastIndex = 0;
   let match;
 
@@ -48,5 +50,5 @@ export function parseMentionsForDisplay(text: string): Array<{ type: 'text' | 'm
 }
 
 export function parseMentionsToHTML(text: string): string {
-  return text.replace(/@\[([^\]]+)\]\(([a-f0-9-]+)\)/g, '<span class="font-semibold text-primary">@$1</span>');
+  return text.replace(MENTION_REGEX, '<span class="font-semibold text-primary">@$1</span>');
 }

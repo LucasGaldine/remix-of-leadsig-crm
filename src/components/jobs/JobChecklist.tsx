@@ -103,6 +103,7 @@ const isSupportedMaterialUnit = (unit: string) =>
   MATERIAL_UNIT_OPTIONS.some((option) => option.value === unit);
 const normalizeMaterialUnit = (unit?: string | null) =>
   unit && isSupportedMaterialUnit(unit) ? unit : DEFAULT_MATERIAL_UNIT;
+const CHECKLIST_EMPTY_TITLE_CLASS = "font-medium leading-tight text-muted-foreground text-base";
 
 const DEFAULT_EDITOR_STATE: ChecklistEditorState = {
   open: false,
@@ -205,11 +206,6 @@ export function JobChecklist({
         null;
       return isJobCompleted ? true : linked?.is_completed ?? false;
     });
-  const completedCount =
-    checklistProgressItems.filter((i) => (isJobCompleted ? true : i.is_completed)).length +
-    materialProgress.filter(Boolean).length;
-  const totalCount = checklistProgressItems.length + materialProgress.length;
-  const allComplete = totalCount > 0 && completedCount === totalCount;
   const hasReviewRequestItem = items.some((item) => isReviewRequestChecklistItem(item.label));
   const shouldShowPortalCopyHint = shouldUsePortalFallback(isTwilioConfigured, customerPhone);
   const categoryOptions: { value: Exclude<ChecklistItemCategory, "standard">; label: string }[] = [
@@ -342,6 +338,15 @@ export function JobChecklist({
     }
   };
 
+  const isInteractiveToggleTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, [role='button'], [role='link'], [data-skip-row-toggle='true']",
+      ),
+    );
+  };
+
   const handleCompleteClick = () => {
     if (editMode || isJobCompleted) return;
     if (isEstimateVisit && !hasBeforePhotos) {
@@ -370,8 +375,9 @@ export function JobChecklist({
         await onMarkComplete();
       }
       toast.success("Job marked as complete");
-    } catch {
-      toast.error("Failed to complete job");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to complete job";
+      toast.error(message);
     } finally {
       setMarkingComplete(false);
       setCompleteDialogOpen(false);
@@ -744,73 +750,6 @@ export function JobChecklist({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-lg md:text-sm font-medium text-muted-foreground">
-            {completedCount}/{totalCount}
-            <span className="hidden md:inline"> complete</span>
-          </span>
-          {allComplete && (
-            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-              All done
-            </span>
-          )}
-        </div>
-        <div className="flex-1 min-w-0 self-center">
-          <div className="h-2.5 md:h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-            <div
-              className={cn(
-                "h-full rounded-full transition-all duration-500",
-                allComplete ? "bg-green-600" : "bg-primary",
-              )}
-              style={{
-                width:
-                  totalCount > 0
-                    ? completedCount === 0
-                      ? "12px"
-                      : `${(completedCount / totalCount) * 100}%`
-                    : "0%",
-              }}
-            />
-          </div>
-        </div>
-        {isManager && !isJobCompleted && (
-          <div
-            className={cn(
-              "flex shrink-0 items-center justify-end gap-2",
-              "w-auto",
-            )}
-          >
-            {editMode ? (
-              <Button
-                variant="default"
-                size="lg"
-                onClick={() => {
-                  setEditMode(false);
-                  resetEditor();
-                }}
-              >
-                <Save className="h-4 w-4 mr-1" />
-                Done
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditMode(true);
-                  resetEditor();
-                }}
-              >
-                <div className="text-muted-foreground flex gap-1 justify-center items-center">
-                  <Pencil className="h-4 w-4 mr-1" />
-                  <span className="text-lg md:text-sm">Edit</span>
-                </div>
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
       <input
         ref={receiptInputRef}
         type="file"
@@ -825,27 +764,69 @@ export function JobChecklist({
           embedded ? "" : "rounded-lg border border-border bg-card",
         )}
       >
-        {checklistSections.map((section, index) => {
-          const Icon = section.icon;
-          const sectionList = sectionItems[section.category];
-          const sectionEmptyCopy = emptySectionCopy[section.category];
-          const hasItemsInSection = sectionList.length > 0;
+        {isJobCompleted ? (
+          <div className="text-center py-12">
+            <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
+            <p className="text-muted-foreground mb-0">This job is complete</p>
+          </div>
+        ) : (
+          <div>
+          {checklistSections.map((section, index) => {
+            const Icon = section.icon;
+            const sectionList = sectionItems[section.category];
+            const sectionEmptyCopy = emptySectionCopy[section.category];
+            const hasItemsInSection = sectionList.length > 0;
 
-          return (
-            <section
-              key={section.category}
-              aria-label={`${section.title} checklist`}
-              className={cn(
-                "px-3 md:p-3 space-y-1",
-                index === 0 ? "pt-5 pb-3" : "py-3",
-              )}
-            >
+            if (!editMode && sectionList.length === 0) {
+              return null;
+            }
+
+            return (
+              <section
+                key={section.category}
+                aria-label={`${section.title} checklist`}
+                className={cn(
+                  "px-3 md:p-3 space-y-1",
+                  index === 0 ? "pt-5 pb-3" : "py-3",
+                )}
+              >
               {hasItemsInSection && (
                 <div className="flex items-center gap-2 md:gap-1.5">
                   <Icon className="h-4 w-4 md:h-3 md:w-3 shrink-0 text-muted-foreground" />
                   <h3 className="text-sm md:text-xs uppercase tracking-wide leading-none text-muted-foreground">
                     {section.title}
                   </h3>
+                  {section.category === "task" && isManager && !isJobCompleted && (
+                    <div className="ml-auto">
+                      {editMode ? (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => {
+                            setEditMode(false);
+                            resetEditor();
+                          }}
+                          aria-label="Done editing checklist"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => {
+                            setEditMode(true);
+                            resetEditor();
+                          }}
+                          aria-label="Edit checklist"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {sectionList.length === 0 && !editMode ? (
@@ -855,7 +836,7 @@ export function JobChecklist({
                   </div>
                   <div className="min-w-0">
                     <p
-                      className="font-medium leading-tight text-foreground text-base"
+                      className={CHECKLIST_EMPTY_TITLE_CLASS}
                     >
                       {sectionEmptyCopy.title}
                     </p>
@@ -880,13 +861,17 @@ export function JobChecklist({
                             "flex items-start gap-3 p-3 transition-colors",
                             "hover:bg-muted/40",
                           )}
+                          onClick={(event) => {
+                            if (isInteractiveToggleTarget(event.target)) return;
+                            void handleMaterialToggle(materialItem);
+                          }}
                         >
                           {!editMode ? (
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-10 w-10 md:h-8 md:w-8 flex-shrink-0 [&_svg]:!h-6 [&_svg]:!w-6 md:[&_svg]:!h-4 md:[&_svg]:!w-4"
+                              className="ml-1 h-10 w-10 md:h-8 md:w-8 flex-shrink-0 [&_svg]:!h-6 [&_svg]:!w-6 md:[&_svg]:!h-4 md:[&_svg]:!w-4"
                               aria-label={
                                 isMaterialCompleted
                                   ? `Mark ${materialItem.name} as incomplete`
@@ -894,6 +879,7 @@ export function JobChecklist({
                               }
                               onClick={() => handleMaterialToggle(materialItem)}
                               disabled={isJobCompleted}
+                              data-skip-row-toggle="true"
                             >
                               {isMaterialCompleted ? (
                                 <CheckCircle2 className="text-green-600" />
@@ -909,7 +895,7 @@ export function JobChecklist({
                           <div className="flex-1 min-w-0 space-y-1">
                             <span
                               className={cn(
-                                "block text-xl md:text-sm font-semibold",
+                                "block text-xl md:text-sm font-medium",
                                 isMaterialCompleted &&
                                   !editMode &&
                                   "line-through text-muted-foreground",
@@ -1005,13 +991,17 @@ export function JobChecklist({
                           setDraggedTaskId(null);
                           setDragOverTaskId(null);
                         }}
+                        onClick={(event) => {
+                          if (isInteractiveToggleTarget(event.target)) return;
+                          void handleToggle(checklistItem);
+                        }}
                       >
                         {!editMode && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-10 w-10 md:h-8 md:w-8 flex-shrink-0 [&_svg]:!h-6 [&_svg]:!w-6 md:[&_svg]:!h-4 md:[&_svg]:!w-4"
+                            className="ml-1 h-10 w-10 md:h-8 md:w-8 flex-shrink-0 [&_svg]:!h-6 [&_svg]:!w-6 md:[&_svg]:!h-4 md:[&_svg]:!w-4"
                             aria-label={
                               isChecklistItemCompleted
                                 ? `Mark ${checklistItem.label} as incomplete`
@@ -1019,6 +1009,7 @@ export function JobChecklist({
                             }
                             onClick={() => handleToggle(checklistItem)}
                             disabled={isJobCompleted}
+                            data-skip-row-toggle="true"
                           >
                             {isChecklistItemCompleted ? (
                               <CheckCircle2 className="text-green-600" />
@@ -1055,10 +1046,7 @@ export function JobChecklist({
                         <div className="flex-1 min-w-0 space-y-1">
                           <span
                             className={cn(
-                              "block font-semibold",
-                              normalizedLabel === "navigate to address"
-                                ? "text-base"
-                                : "text-xl md:text-sm",
+                              "block font-medium text-base",
                               isChecklistItemCompleted && !editMode && "line-through text-muted-foreground",
                             )}
                           >
@@ -1076,6 +1064,7 @@ export function JobChecklist({
                               e.stopPropagation();
                               copyPortalLink();
                             }}
+                            data-skip-row-toggle="true"
                           >
                             {copiedPortal ? (
                               <Check className="h-3.5 w-3.5" />
@@ -1094,6 +1083,7 @@ export function JobChecklist({
                               size="sm"
                               className="h-8 gap-1.5 text-xs shrink-0"
                               onClick={onGoToDetailsTab}
+                              data-skip-row-toggle="true"
                             >
                               Generate Link
                               <ArrowRight className="h-3.5 w-3.5" />
@@ -1152,29 +1142,29 @@ export function JobChecklist({
                   </span>
                 </button>
               )}
-            </section>
-          );
-        })}
+              </section>
+            );
+          })}
 
-        <div className="!border-t-0 border-border my-4">
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="w-full"
-            onClick={handleCompleteClick}
-            disabled={isJobCompleted || editMode}
-          >
-            {isJobCompleted ? (
-              <CheckCircle2 />
-            ) : (
-              <CheckCircle2 />
-            )}
-            <span className={cn(isJobCompleted && "line-through text-muted-foreground")}>
-              Complete
-            </span>
-          </Button>
-        </div>
+          {!isJobCompleted && (
+            <div className="!border-t-0 border-border my-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full"
+                onClick={handleCompleteClick}
+                disabled={isJobCompleted || editMode}
+              >
+                <CheckCircle2 />
+                <span className={cn(isJobCompleted && "line-through text-muted-foreground")}>
+                  Complete
+                </span>
+              </Button>
+            </div>
+          )}
+          </div>
+        )}
       </div>
 
       <Dialog

@@ -20,6 +20,10 @@ const deleteMutateAsyncMock = vi.fn();
 const addLineItemMutateAsyncMock = vi.fn();
 const updateLineItemMutateAsyncMock = vi.fn();
 const deleteLineItemMutateMock = vi.fn();
+const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
+  toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
 const templateState = {
   templates: [] as LineItemTemplate[],
 };
@@ -65,8 +69,8 @@ vi.mock("@/lib/lineItemTemplates", () => ({
 
 vi.mock("sonner", () => ({
   toast: {
-    success: vi.fn(),
-    error: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
   },
 }));
 
@@ -140,6 +144,8 @@ describe("JobChecklist metadata categories", () => {
     deleteLineItemMutateMock.mockReset();
     checklistState.lineItems = [];
     templateState.templates = [];
+    toastSuccessMock.mockReset();
+    toastErrorMock.mockReset();
   });
 
   it("renders separate Tasks, Tools, and Materials sections and keeps legacy/null items in Tasks without task badges or inner cards", () => {
@@ -198,9 +204,9 @@ describe("JobChecklist metadata categories", () => {
 
     render(<JobChecklist jobId="job_1" isManager={false} />);
 
-    const tasksSection = screen.getByRole("region", { name: "Tasks" });
-    const toolsSection = screen.getByRole("region", { name: "Tools" });
-    const materialsSection = screen.getByRole("region", { name: "Materials" });
+    const tasksSection = screen.getByRole("region", { name: "Tasks checklist" });
+    const toolsSection = screen.getByRole("region", { name: "Tools checklist" });
+    const materialsSection = screen.getByRole("region", { name: "Materials checklist" });
 
     expect(within(tasksSection).getByText("Knock and announce arrival")).toBeInTheDocument();
     expect(within(toolsSection).getByText("Hedge trimmer")).toBeInTheDocument();
@@ -209,6 +215,39 @@ describe("JobChecklist metadata categories", () => {
     expect(tasksSection.querySelector(".rounded-md.border.border-border.bg-card")).toBeNull();
     expect(toolsSection.querySelector(".rounded-md.border.border-border.bg-card")).toBeNull();
     expect(materialsSection.querySelector(".rounded-md.border.border-border.bg-card")).toBeNull();
+  });
+
+  it("shows a centered completion summary and hides checklist sections when the job is completed", () => {
+    checklistState.items = [
+      {
+        id: "task-1",
+        job_id: "job_1",
+        account_id: "acct_1",
+        label: "Bring ladder",
+        is_completed: true,
+        sort_order: 0,
+        created_at: "2026-04-01T00:00:00.000Z",
+        updated_at: "2026-04-01T00:00:00.000Z",
+        metadata: { category: "task" },
+      },
+      {
+        id: "tool-1",
+        job_id: "job_1",
+        account_id: "acct_1",
+        label: "Leaf blower",
+        is_completed: true,
+        sort_order: 1,
+        created_at: "2026-04-01T00:00:00.000Z",
+        updated_at: "2026-04-01T00:00:00.000Z",
+        metadata: { category: "tool" },
+      },
+    ];
+
+    render(<JobChecklist jobId="job_1" jobStatus="completed" isManager={false} />);
+
+    expect(screen.getByText("This job is complete")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^complete$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /tasks/i })).not.toBeInTheDocument();
   });
 
   it("shows per-section add controls in edit mode and persists non-standard metadata", async () => {
@@ -320,7 +359,7 @@ describe("JobChecklist metadata categories", () => {
 
     render(<JobChecklist jobId="job_1" isManager />);
 
-    fireEvent.click(screen.getByRole("button", { name: /add checklist items/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add task, tool, or material/i }));
     fireEvent.click(screen.getByRole("button", { name: /^add material$/i }));
     fireEvent.change(screen.getByLabelText(/material name/i), {
       target: { value: "River rock" },
@@ -344,5 +383,36 @@ describe("JobChecklist metadata categories", () => {
         description: "3/4 inch decorative",
       }),
     );
+  });
+
+  it("shows the onMarkComplete error message instead of a false success", async () => {
+    checklistState.items = [
+      {
+        id: "task-1",
+        job_id: "job_1",
+        account_id: "acct_1",
+        label: "Upload before photos",
+        is_completed: false,
+        sort_order: 0,
+        created_at: "2026-04-01T00:00:00.000Z",
+        updated_at: "2026-04-01T00:00:00.000Z",
+        metadata: { category: "task" },
+      },
+    ];
+
+    const completionError = new Error("Add at least one before photo before completing this estimate visit.");
+    const onMarkComplete = vi.fn().mockRejectedValue(completionError);
+
+    render(<JobChecklist jobId="job_1" isManager={false} onMarkComplete={onMarkComplete} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^complete$/i }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /yes, mark complete/i }));
+    });
+
+    expect(onMarkComplete).toHaveBeenCalledTimes(1);
+    expect(toastErrorMock).toHaveBeenCalledWith(completionError.message);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Job marked as complete");
   });
 });

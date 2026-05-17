@@ -1973,15 +1973,44 @@ export default function JobDetail() {
                     scanReceiptSignal={scanReceiptSignal}
                     onMarkComplete={async () => {
                       if (job?.is_estimate_visit) {
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        const waitForConvertedJob = async () => {
+                          const timeoutMs = 10000;
+                          const pollMs = 300;
+                          const startedAt = Date.now();
 
-                        const { data: newJob } = await supabase
-                          .from("leads")
-                          .select("*")
-                          .eq("estimate_job_id", id)
-                          .eq("is_estimate_visit", false)
-                          .eq("status", "job")
-                          .maybeSingle();
+                          while (Date.now() - startedAt < timeoutMs) {
+                            const { data: convertedJob, error: convertedJobError } = await supabase
+                              .from("leads")
+                              .select("*")
+                              .eq("estimate_job_id", id)
+                              .eq("is_estimate_visit", false)
+                              .order("created_at", { ascending: false })
+                              .limit(1)
+                              .maybeSingle();
+
+                            if (convertedJobError) {
+                              throw convertedJobError;
+                            }
+
+                            if (convertedJob) {
+                              return convertedJob;
+                            }
+
+                            await new Promise((resolve) => setTimeout(resolve, pollMs));
+                          }
+
+                          return null;
+                        };
+
+                        const { error: conversionError } = await supabase.rpc("try_convert_lead_to_job", {
+                          p_lead_id: id!,
+                        });
+
+                        if (conversionError) {
+                          throw conversionError;
+                        }
+
+                        const newJob = await waitForConvertedJob();
 
                         if (newJob) {
                           queryClient.invalidateQueries({ queryKey: ["jobs"] });
@@ -1991,6 +2020,7 @@ export default function JobDetail() {
                         } else {
                           queryClient.invalidateQueries({ queryKey: ["jobs"] });
                           queryClient.invalidateQueries({ queryKey: ["leads"] });
+                          throw new Error("This estimate visit did not complete. Please try again.");
                         }
                       } else {
                         const { error } = await supabase
@@ -2066,6 +2096,7 @@ export default function JobDetail() {
                     textareaClassName="text-base md:text-sm"
                   />
                   <Button
+                    variant="outline"
                     size="lg"
                     className="mt-3 text-base md:h-8 md:px-3 md:py-1.5 md:text-xs"
                     onClick={addNote}
