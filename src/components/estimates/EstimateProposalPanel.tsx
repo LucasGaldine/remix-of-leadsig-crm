@@ -18,6 +18,7 @@ import { getBrandFontOption, loadGoogleBrandFont } from "@/lib/brandFonts";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { approveEstimateManuallyById } from "@/lib/estimateApproval";
 import { generateAgreementTemplates } from "@/lib/agreementTemplates";
+import { renderDocumentTemplateMarkdownHtml } from "@/lib/documentTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -92,6 +93,53 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   });
 
+interface ProposalDocumentTemplateRecord {
+  id: string;
+  name: string;
+  system_key: string | null;
+  body: string | null;
+}
+
+interface ProposalJobDocumentConfigRecord {
+  id: string;
+  lead_id: string;
+  template_id: string;
+  include_in_job: boolean;
+  email_timing: string;
+  requires_signature: boolean;
+  sort_order: number;
+  template: ProposalDocumentTemplateRecord | null;
+}
+
+interface ProposalJobDocumentRecord {
+  id: string;
+  template_id: string | null;
+  config_id: string | null;
+  document_key: string;
+  file_path: string;
+  created_at: string;
+}
+
+const normalizeProposalConfigRows = (rows: unknown[]): ProposalJobDocumentConfigRecord[] =>
+  rows.map((row) => {
+    const record = row as Record<string, any>;
+    const rawTemplate = record.template;
+    const template = Array.isArray(rawTemplate)
+      ? (rawTemplate[0] as ProposalDocumentTemplateRecord | undefined) || null
+      : (rawTemplate as ProposalDocumentTemplateRecord | null);
+
+    return {
+      id: String(record.id || ""),
+      lead_id: String(record.lead_id || ""),
+      template_id: String(record.template_id || ""),
+      include_in_job: Boolean(record.include_in_job),
+      email_timing: String(record.email_timing || "never"),
+      requires_signature: Boolean(record.requires_signature),
+      sort_order: Number(record.sort_order || 0),
+      template,
+    };
+  });
+
 export function EstimateProposalPanel({
   estimate,
   estimateVersions,
@@ -117,6 +165,7 @@ export function EstimateProposalPanel({
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
   const [openEditorSection, setOpenEditorSection] = useState<string>("");
   const [selectedAgreementKey, setSelectedAgreementKey] = useState<(typeof AGREEMENT_KEYS)[number] | null>(null);
+  const [selectedDocumentPreview, setSelectedDocumentPreview] = useState<{ title: string; content: string } | null>(null);
   const [approving, setApproving] = useState(false);
   const [portalLink, setPortalLink] = useState("");
   const [portalLinkLoading, setPortalLinkLoading] = useState(false);
@@ -126,7 +175,8 @@ export function EstimateProposalPanel({
   const [generatingScope, setGeneratingScope] = useState(false);
   const [advancingFromPricing, setAdvancingFromPricing] = useState(false);
   const [scopeItemDialogOpen, setScopeItemDialogOpen] = useState(false);
-  const [scopeItemDraft, setScopeItemDraft] = useState("");
+  const [scopeItemDraftLabel, setScopeItemDraftLabel] = useState("");
+  const [scopeItemDraftDescription, setScopeItemDraftDescription] = useState("");
   const [editingScopeItemId, setEditingScopeItemId] = useState<string | null>(null);
   const [agreementDrafts, setAgreementDrafts] = useState<Record<string, string>>({});
   const [customDepositPercentage, setCustomDepositPercentage] = useState("33");
@@ -136,6 +186,8 @@ export function EstimateProposalPanel({
   const [selectedPricingOptionId, setSelectedPricingOptionId] = useState<string | null>(null);
   const [beforePhotos, setBeforePhotos] = useState<Array<{ filePath: string; url: string }>>([]);
   const [activeVisualizationIndex, setActiveVisualizationIndex] = useState(0);
+  const [proposalDocumentConfigs, setProposalDocumentConfigs] = useState<ProposalJobDocumentConfigRecord[]>([]);
+  const [proposalDocumentsByKey, setProposalDocumentsByKey] = useState<Record<string, ProposalJobDocumentRecord>>({});
   const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingSignatureRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -153,6 +205,31 @@ export function EstimateProposalPanel({
   const addItem = checklistQuery.addItem;
   const updateItem = checklistQuery.updateItem;
   const deleteItem = checklistQuery.deleteItem;
+
+  const getScopeItemDescription = (item: any) =>
+    typeof item?.metadata?.description === "string" ? item.metadata.description.trim() : "";
+
+  const buildScopeItemMetadata = (existingMetadata: unknown, description: string) => {
+    const base =
+      existingMetadata && typeof existingMetadata === "object" && !Array.isArray(existingMetadata)
+        ? { ...(existingMetadata as Record<string, unknown>) }
+        : {};
+    base.category = "task";
+    const trimmedDescription = description.trim();
+    if (trimmedDescription.length > 0) {
+      base.description = trimmedDescription;
+    } else {
+      delete base.description;
+    }
+    return base;
+  };
+
+  const formatScopeItemForProposal = (item: any) => {
+    const label = String(item?.label || "").trim();
+    const description = getScopeItemDescription(item);
+    if (!label) return "";
+    return description ? `${label}: ${description}` : label;
+  };
 
   const currentSettings = (estimate?.proposal_settings || {}) as any;
   const currentSections = currentSettings.sections || {};
@@ -241,6 +318,55 @@ export function EstimateProposalPanel({
     () => beforePhotos.filter((photo) => selectedBeforePhotoPaths.has(photo.filePath)).map((photo) => photo.url),
     [beforePhotos, selectedBeforePhotoPaths],
   );
+  const configsWithTemplate = useMemo(
+    () =>
+      proposalDocumentConfigs
+        .filter((config) => Boolean(config.template))
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [proposalDocumentConfigs],
+  );
+
+  const getUploadedDocumentForConfig = useCallback(
+    (config: Pick<ProposalJobDocumentConfigRecord, "id" | "template_id">) => {
+      const directByConfig = proposalDocumentsByKey[`config:${config.id}`];
+      if (directByConfig) return directByConfig;
+
+      const templateMatches = configsWithTemplate.filter((item) => item.template_id === config.template_id);
+      const hasDuplicatesForTemplate = templateMatches.length > 1;
+      if (hasDuplicatesForTemplate) return null;
+
+      const directByTemplate = proposalDocumentsByKey[`template:${config.template_id}`];
+      if (directByTemplate) return directByTemplate;
+
+      return null;
+    },
+    [configsWithTemplate, proposalDocumentsByKey],
+  );
+  const approvalRequiredDocuments = useMemo(
+    () =>
+      configsWithTemplate.filter(
+        (config) => config.include_in_job && config.email_timing === "on_estimate_approval" && config.requires_signature,
+      ),
+    [configsWithTemplate],
+  );
+  const manuallySentDocuments = useMemo(
+    () =>
+      configsWithTemplate.filter((config) => {
+        if (!config.include_in_job || config.email_timing !== "manual" || !config.requires_signature) return false;
+        return Boolean(getUploadedDocumentForConfig(config));
+      }),
+    [configsWithTemplate, getUploadedDocumentForConfig],
+  );
+  const presentationApprovalDocuments = useMemo(() => {
+    const byConfigId = new Map<string, ProposalJobDocumentConfigRecord>();
+    for (const config of approvalRequiredDocuments) {
+      byConfigId.set(config.id, config);
+    }
+    for (const config of manuallySentDocuments) {
+      byConfigId.set(config.id, config);
+    }
+    return Array.from(byConfigId.values()).sort((a, b) => a.sort_order - b.sort_order);
+  }, [approvalRequiredDocuments, manuallySentDocuments]);
   const activeVisualizationUrl =
     visualizationPhotos[Math.min(activeVisualizationIndex, Math.max(visualizationPhotos.length - 1, 0))] || "";
   const websiteSettings = estimate?.account?.settings?.website || {};
@@ -291,14 +417,8 @@ export function EstimateProposalPanel({
   };
   const isWarrantyEnabledForActiveVersion = isWarrantyEnabledForVersion(getActivePricingOptionId());
   const hasGeneratedAgreements = useMemo(
-    () =>
-      AGREEMENT_KEYS
-        .filter((key) => key !== "warranty_agreement" || isWarrantyEnabledForActiveVersion)
-        .every((key) => {
-        const draftValue = typeof agreementDrafts[key] === "string" ? agreementDrafts[key] : "";
-        return draftValue.trim().length > 0;
-      }),
-    [agreementDrafts, isWarrantyEnabledForActiveVersion],
+    () => true,
+    [],
   );
   const selectedTeamMemberCount = useMemo(
     () => teamMembers.filter((member) => selectedTeamIds.has(member.user_id)).length,
@@ -429,7 +549,7 @@ export function EstimateProposalPanel({
 
   const getAgreementScopeItems = () => {
     const scopeItems = checklistItems
-      .map((item) => String(item?.label || "").trim())
+      .map((item) => formatScopeItemForProposal(item))
       .filter((value) => value.length > 0);
     const fallbackScopeItems = (displayLineItems || [])
       .map((item: any) => String(item?.name || "").trim())
@@ -483,7 +603,7 @@ export function EstimateProposalPanel({
       || "Address to be confirmed";
 
     const scopeItems = checklistItems
-      .map((item) => String(item?.label || "").trim())
+      .map((item) => formatScopeItemForProposal(item))
       .filter((value) => value.length > 0);
 
     const fallbackScopeItems = (displayLineItems || [])
@@ -568,7 +688,7 @@ This release confirms that the project is considered complete and closed as of t
       || "Address to be confirmed";
 
     const scopeItems = checklistItems
-      .map((item) => String(item?.label || "").trim())
+      .map((item) => formatScopeItemForProposal(item))
       .filter((value) => value.length > 0);
     const fallbackScopeItems = (displayLineItems || [])
       .map((item: any) => String(item?.name || "").trim())
@@ -711,7 +831,7 @@ This document represents the full agreement between the parties and supersedes a
       || "Address to be confirmed";
 
     const scopeItems = checklistItems
-      .map((item) => String(item?.label || "").trim())
+      .map((item) => formatScopeItemForProposal(item))
       .filter((value) => value.length > 0);
     const fallbackScopeItems = (displayLineItems || [])
       .map((item: any) => String(item?.name || "").trim())
@@ -861,6 +981,69 @@ $${formatCurrency(contractTotal)}
   useEffect(() => {
     setCustomWarrantyLength(getSelectedWarrantyLength());
   }, [selectedPricingOptionId, currentSettings?.version_warranty_lengths, currentSettings?.recommended_version_id, estimateVersions]);
+
+  useEffect(() => {
+    if (isTestMode) {
+      setProposalDocumentConfigs([]);
+      setProposalDocumentsByKey({});
+      return;
+    }
+
+    const leadId = estimate?.job_id;
+    if (!leadId) {
+      setProposalDocumentConfigs([]);
+      setProposalDocumentsByKey({});
+      return;
+    }
+
+    let cancelled = false;
+    const fetchProposalDocuments = async () => {
+      const [configResult, documentResult] = await Promise.all([
+        supabase
+          .from("job_document_configs")
+          .select(
+            "id, lead_id, template_id, include_in_job, email_timing, requires_signature, sort_order, template:document_templates(id, name, system_key, body)",
+          )
+          .eq("lead_id", leadId)
+          .order("sort_order", { ascending: true }),
+        supabase
+          .from("job_documents")
+          .select("id, template_id, config_id, document_key, file_path, created_at")
+          .eq("lead_id", leadId)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      if (cancelled) return;
+
+      if (configResult.error) {
+        console.error("Failed to fetch proposal document configs:", configResult.error);
+        setProposalDocumentConfigs([]);
+      } else {
+        setProposalDocumentConfigs(normalizeProposalConfigRows((configResult.data || []) as unknown[]));
+      }
+
+      if (documentResult.error) {
+        console.error("Failed to fetch proposal documents:", documentResult.error);
+        setProposalDocumentsByKey({});
+      } else {
+        const next: Record<string, ProposalJobDocumentRecord> = {};
+        for (const rawDocument of (documentResult.data || []) as ProposalJobDocumentRecord[]) {
+          const configKey = rawDocument.config_id ? `config:${rawDocument.config_id}` : "";
+          const templateKey = rawDocument.template_id ? `template:${rawDocument.template_id}` : "";
+          const key = configKey || templateKey || `legacy:${rawDocument.document_key}`;
+          if (!key || next[key]) continue;
+          next[key] = rawDocument;
+        }
+        setProposalDocumentsByKey(next);
+      }
+    };
+
+    void fetchProposalDocuments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [estimate?.job_id, isTestMode]);
 
   const clearSignature = () => {
     const canvas = signatureCanvasRef.current;
@@ -1124,6 +1307,43 @@ $${formatCurrency(contractTotal)}
     setSelectedAgreementKey(key);
   };
 
+  const openApprovalDocumentPreview = useCallback((config: ProposalJobDocumentConfigRecord) => {
+    const template = config.template;
+    if (!template) {
+      toast.error("No document available.");
+      return;
+    }
+
+    const generatedTemplates = buildAgreementTemplatesForCurrentContext();
+    const systemKey = String(template.system_key || "").trim();
+    const templateBody = String(template.body || "").trim();
+    let content = templateBody;
+
+    if (systemKey === "job_agreement") {
+      content =
+        String(agreementDrafts.job_agreement || "").trim()
+        || String(estimate?.agreement_templates?.job_agreement || "").trim()
+        || String(generatedTemplates.job_agreement || "").trim()
+        || templateBody;
+    } else if (systemKey === "warranty_agreement") {
+      content =
+        String(agreementDrafts.warranty_agreement || "").trim()
+        || String(estimate?.agreement_templates?.warranty_agreement || "").trim()
+        || String(generatedTemplates.warranty_agreement || "").trim()
+        || templateBody;
+    }
+
+    if (!content) {
+      toast.error("No agreement text available for this document.");
+      return;
+    }
+
+    setSelectedDocumentPreview({
+      title: template.name || "Agreement",
+      content,
+    });
+  }, [agreementDrafts.job_agreement, agreementDrafts.warranty_agreement, buildAgreementTemplatesForCurrentContext, estimate?.agreement_templates]);
+
   const saveCustomPaymentSchedule = () => {
     if (isProposalLocked) return;
     const parsedDeposit = parseFloat(customDepositPercentage) || 0;
@@ -1231,7 +1451,12 @@ $${formatCurrency(contractTotal)}
               {checklistItems.map((item) => (
                 <div key={item.id} className="flex items-start gap-6">
                   <CheckCircle2 className="h-9 w-9 shrink-0 text-slate-700 mt-0.5" />
-                  <p className="text-3xl font-medium leading-tight">{item.label}</p>
+                  <div>
+                    <p className="text-3xl font-medium leading-tight">{item.label}</p>
+                    {getScopeItemDescription(item) ? (
+                      <p className="mt-2 text-xl text-slate-600 leading-snug">{getScopeItemDescription(item)}</p>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1514,21 +1739,30 @@ $${formatCurrency(contractTotal)}
         content: (
           <div className="rounded-lg bg-white p-8">
             <h3 className="text-3xl font-semibold mb-4">Agreements & Signatures</h3>
-            <div className="space-y-4">
-              {AGREEMENT_KEYS.filter((key) => key !== "warranty_agreement" || isWarrantyEnabledForActiveVersion).map((key) => (
-                <div key={key} className="rounded border border-border p-4">
-                  <p className="text-sm uppercase tracking-wide text-muted-foreground">{AGREEMENT_LABELS[key]}</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-2"
-                    onClick={() => setSelectedAgreementKey(key)}
-                  >
-                    View full agreement
-                  </Button>
-                </div>
-              ))}
-            </div>
+            {presentationApprovalDocuments.length > 0 ? (
+              <div className="space-y-3">
+                {presentationApprovalDocuments.map((config) => {
+                  const template = config.template;
+                  return (
+                    <div key={config.id} className="rounded border border-border bg-slate-50/60 p-4">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-slate-600">
+                        {template?.name || "Document"}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-3 rounded-full"
+                        onClick={() => openApprovalDocumentPreview(config)}
+                      >
+                        View full agreement
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No approval-required documents are configured.</p>
+            )}
             {isEstimateAlreadyApproved ? (
               <div className="mt-8 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                 <p className="text-sm font-semibold text-emerald-900">This estimate has already been approved.</p>
@@ -1635,6 +1869,8 @@ $${formatCurrency(contractTotal)}
     portalLinkLoading,
     isEstimateAlreadyApproved,
     currentSettings?.version_warranty_enabled,
+    presentationApprovalDocuments,
+    openApprovalDocumentPreview,
   ]);
 
   const resolveClientPortalLink = async () => {
@@ -1739,22 +1975,8 @@ $${formatCurrency(contractTotal)}
   const handlePresentationNext = async () => {
     const currentSlideKey = slides[activeSlide]?.key;
     const nextSlideKey = slides[activeSlide + 1]?.key;
-
-    if (currentSlideKey === "pricing_options" && nextSlideKey === "agreements_and_signatures") {
-      if (!selectedPricingOptionId) {
-        toast.error("Select a pricing option before continuing.");
-        return;
-      }
-      if (advancingFromPricing) return;
-      setAdvancingFromPricing(true);
-      try {
-        await regenerateAgreementsForSelection();
-        setActiveSlide((value) => Math.min(value + 1, slides.length - 1));
-      } catch {
-        toast.error("Failed to regenerate agreements");
-      } finally {
-        setAdvancingFromPricing(false);
-      }
+    if (currentSlideKey === "pricing_options" && nextSlideKey === "agreements_and_signatures" && !selectedPricingOptionId) {
+      toast.error("Select a pricing option before continuing.");
       return;
     }
 
@@ -1867,7 +2089,7 @@ $${formatCurrency(contractTotal)}
     });
   };
 
-  const ensureChecklistItem = async (label: string) => {
+  const ensureChecklistItem = async (label: string, description: string) => {
     if (isProposalLocked) return false;
     if (!estimate?.job_id) {
       toast.error("Scope sync requires a linked job");
@@ -1881,7 +2103,7 @@ $${formatCurrency(contractTotal)}
     await addItem.mutateAsync({
       label,
       sort_order: checklistItems.length,
-      metadata: { category: "task" },
+      metadata: buildScopeItemMetadata({ category: "task" }, description),
     });
     toast.success("Added to job tasks");
     return true;
@@ -1893,11 +2115,19 @@ $${formatCurrency(contractTotal)}
     toast.success("Removed from job tasks");
   };
 
-  const updateChecklistItemLabel = async (id: string, nextLabel: string, previousLabel: string) => {
+  const updateChecklistItem = async (
+    id: string,
+    nextLabel: string,
+    nextDescription: string,
+    existingItem: any,
+  ) => {
     if (isProposalLocked) return;
     const trimmed = nextLabel.trim();
-    const previousTrimmed = previousLabel.trim();
-    if (!trimmed || trimmed === previousTrimmed) return;
+    const previousTrimmed = String(existingItem?.label || "").trim();
+    const previousDescription = getScopeItemDescription(existingItem);
+    const trimmedDescription = nextDescription.trim();
+    if (!trimmed) return;
+    if (trimmed === previousTrimmed && trimmedDescription === previousDescription) return;
 
     const duplicate = checklistItems.some(
       (item) => item.id !== id && item.label.trim().toLowerCase() === trimmed.toLowerCase(),
@@ -1907,27 +2137,34 @@ $${formatCurrency(contractTotal)}
       return;
     }
 
-    await updateItem.mutateAsync({ id, label: trimmed });
+    await updateItem.mutateAsync({
+      id,
+      label: trimmed,
+      metadata: buildScopeItemMetadata(existingItem?.metadata, trimmedDescription),
+    });
     toast.success("Scope task updated");
   };
 
   const openAddScopeItemDialog = () => {
     if (isProposalLocked) return;
     setEditingScopeItemId(null);
-    setScopeItemDraft("");
+    setScopeItemDraftLabel("");
+    setScopeItemDraftDescription("");
     setScopeItemDialogOpen(true);
   };
 
-  const openEditScopeItemDialog = (id: string, label: string) => {
+  const openEditScopeItemDialog = (id: string, label: string, description: string) => {
     if (isProposalLocked) return;
     setEditingScopeItemId(id);
-    setScopeItemDraft(label);
+    setScopeItemDraftLabel(label);
+    setScopeItemDraftDescription(description);
     setScopeItemDialogOpen(true);
   };
 
   const saveScopeItemFromDialog = async () => {
     if (isProposalLocked) return;
-    const nextLabel = scopeItemDraft.trim();
+    const nextLabel = scopeItemDraftLabel.trim();
+    const nextDescription = scopeItemDraftDescription.trim();
     if (!nextLabel) {
       toast.error("Enter a scope item name");
       return;
@@ -1939,12 +2176,12 @@ $${formatCurrency(contractTotal)}
         toast.error("Scope task no longer exists");
         return;
       }
-      await updateChecklistItemLabel(editingScopeItemId, nextLabel, existingItem.label);
+      await updateChecklistItem(editingScopeItemId, nextLabel, nextDescription, existingItem);
       setScopeItemDialogOpen(false);
       return;
     }
 
-    const added = await ensureChecklistItem(nextLabel);
+    const added = await ensureChecklistItem(nextLabel, nextDescription);
     if (added) {
       setScopeItemDialogOpen(false);
     }
@@ -2026,9 +2263,6 @@ $${formatCurrency(contractTotal)}
             <Presentation className="h-4 w-4 text-muted-foreground" />
             <h3 className="font-semibold">Project Proposal</h3>
           </div>
-          {!hasGeneratedAgreements ? (
-            <p className="text-xs text-muted-foreground">Present Now is disabled until all agreement templates are generated.</p>
-          ) : null}
           {isProposalLocked ? (
             <p className="text-xs text-muted-foreground">Proposal editing is locked because this estimate is approved.</p>
           ) : null}
@@ -2046,7 +2280,7 @@ $${formatCurrency(contractTotal)}
         onValueChange={setOpenEditorSection}
         className={`rounded border border-border ${isProposalLocked ? "pointer-events-none opacity-70" : ""}`}
       >
-        {SECTIONS.map((section) => (
+        {SECTIONS.filter((section) => section.key !== "agreements_and_signatures").map((section) => (
           <AccordionItem key={section.key} value={section.key}>
             <AccordionTrigger className="px-4 py-3">
               <div className="flex items-center gap-3 text-left">
@@ -2094,14 +2328,19 @@ $${formatCurrency(contractTotal)}
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Scope of Work (syncs with job tasks)</p>
                     <div className="rounded border border-border divide-y">
                       {checklistItems.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                          <span>{item.label}</span>
+                        <div key={item.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                          <div className="min-w-0">
+                            <p>{item.label}</p>
+                            {getScopeItemDescription(item) ? (
+                              <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap">{getScopeItemDescription(item)}</p>
+                            ) : null}
+                          </div>
                           <div className="flex items-center gap-1">
                             <Button
                               variant="ghost"
                               size="sm"
                               className="gap-1"
-                              onClick={() => openEditScopeItemDialog(item.id, item.label)}
+                              onClick={() => openEditScopeItemDialog(item.id, item.label, getScopeItemDescription(item))}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                               Edit
@@ -2459,7 +2698,14 @@ $${formatCurrency(contractTotal)}
             <div>
               <h5 className="font-semibold mb-2">Scope of Work</h5>
               <ul className="list-disc pl-5 text-sm space-y-1">
-                {checklistItems.map((item) => <li key={item.id}>{item.label}</li>)}
+                {checklistItems.map((item) => (
+                  <li key={item.id}>
+                    {item.label}
+                    {getScopeItemDescription(item) ? (
+                      <p className="mt-0.5 list-none text-xs text-muted-foreground">{getScopeItemDescription(item)}</p>
+                    ) : null}
+                  </li>
+                ))}
               </ul>
             </div>
           )}
@@ -2619,11 +2865,30 @@ $${formatCurrency(contractTotal)}
           <DialogHeader>
             <DialogTitle>{selectedAgreementKey ? AGREEMENT_LABELS[selectedAgreementKey] : "Agreement"}</DialogTitle>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4 text-sm whitespace-pre-wrap">
-            {selectedAgreementKey
-              ? agreementDrafts[selectedAgreementKey]?.trim() || estimate?.agreement_templates?.[selectedAgreementKey]?.trim() || "No agreement text added yet."
-              : ""}
-          </div>
+          <div
+            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
+            dangerouslySetInnerHTML={{
+              __html: renderDocumentTemplateMarkdownHtml(
+                selectedAgreementKey
+                  ? agreementDrafts[selectedAgreementKey]?.trim() || estimate?.agreement_templates?.[selectedAgreementKey]?.trim() || "No agreement text added yet."
+                  : "No agreement text added yet.",
+              ),
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedDocumentPreview)} onOpenChange={(open) => !open && setSelectedDocumentPreview(null)}>
+        <DialogContent className="z-[130]">
+          <DialogHeader>
+            <DialogTitle>{selectedDocumentPreview?.title || "Agreement"}</DialogTitle>
+          </DialogHeader>
+          <div
+            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
+            dangerouslySetInnerHTML={{
+              __html: renderDocumentTemplateMarkdownHtml(selectedDocumentPreview?.content || "No document text available."),
+            }}
+          />
         </DialogContent>
       </Dialog>
 
@@ -2658,11 +2923,11 @@ $${formatCurrency(contractTotal)}
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              {editingScopeItemId ? "Update the scope task name." : "What do you want to call this scope item?"}
+              {editingScopeItemId ? "Update the scope task details." : "Add a scope task name and optional description."}
             </p>
             <Input
-              value={scopeItemDraft}
-              onChange={(event) => setScopeItemDraft(event.target.value)}
+              value={scopeItemDraftLabel}
+              onChange={(event) => setScopeItemDraftLabel(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
@@ -2670,6 +2935,12 @@ $${formatCurrency(contractTotal)}
                 }
               }}
               placeholder="e.g. Demolition and debris removal"
+            />
+            <Textarea
+              value={scopeItemDraftDescription}
+              onChange={(event) => setScopeItemDraftDescription(event.target.value)}
+              rows={3}
+              placeholder="Optional description (e.g. Haul debris to approved dump site)"
             />
             <div className="flex justify-end">
               <Button onClick={() => void saveScopeItemFromDialog()} className="gap-2">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Camera, Trash2, AlertTriangle, CalendarDays, CheckCircle2, Loader2 } from "lucide-react";
+import { Camera, Trash2, AlertTriangle, CalendarDays, CheckCircle2, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { StickyActionBar } from "@/components/settings/StickyActionBar";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ProfileAvatar } from "@/components/profile/ProfileAvatar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,6 +78,8 @@ export default function SettingsProfile() {
   });
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarFocusX, setAvatarFocusX] = useState(50);
+  const [avatarFocusY, setAvatarFocusY] = useState(50);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const formatRole = (role: string | null) => {
@@ -100,6 +103,8 @@ export default function SettingsProfile() {
       });
 
       setAvatarUrl(profile.avatar_url || null);
+      setAvatarFocusX(typeof profile.avatar_focus_x === "number" ? profile.avatar_focus_x : 50);
+      setAvatarFocusY(typeof profile.avatar_focus_y === "number" ? profile.avatar_focus_y : 50);
     }
   }, [profile, user]);
 
@@ -113,6 +118,8 @@ export default function SettingsProfile() {
         email: formData.email,
         phone: formData.phone,
         timezone: formData.timezone,
+        avatar_focus_x: avatarFocusX,
+        avatar_focus_y: avatarFocusY,
         updated_at: new Date().toISOString(),
       };
 
@@ -276,6 +283,8 @@ export default function SettingsProfile() {
         .from("profiles")
         .update({
           avatar_url: publicUrl,
+          avatar_focus_x: avatarFocusX,
+          avatar_focus_y: avatarFocusY,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
@@ -313,17 +322,13 @@ export default function SettingsProfile() {
           <h3 className="font-semibold text-lg mb-4">Profile Photo</h3>
           <div className="flex items-center gap-4">
             <div className="relative">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt="Profile"
-                  className="w-20 h-20 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center">
-                  <User className="h-10 w-10 text-muted-foreground" />
-                </div>
-              )}
+              <ProfileAvatar
+                className="w-20 h-20"
+                avatarUrl={avatarUrl}
+                fullName={formData.full_name || profile?.full_name || null}
+                focusX={avatarFocusX}
+                focusY={avatarFocusY}
+              />
               {uploadingAvatar && (
                 <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
                   <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full" />
@@ -349,6 +354,41 @@ export default function SettingsProfile() {
                 JPG, PNG or GIF. Max 5MB.
               </p>
             </div>
+          </div>
+          <div className="mt-5 space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="avatar-focus-x">Horizontal position ({avatarFocusX}%)</Label>
+              <Input
+                id="avatar-focus-x"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={avatarFocusX}
+                onChange={(e) => {
+                  setAvatarFocusX(Number(e.target.value));
+                  setIsDirty(true);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="avatar-focus-y">Vertical position ({avatarFocusY}%)</Label>
+              <Input
+                id="avatar-focus-y"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={avatarFocusY}
+                onChange={(e) => {
+                  setAvatarFocusY(Number(e.target.value));
+                  setIsDirty(true);
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Adjust where the avatar crop starts. This applies everywhere your profile photo is shown.
+            </p>
           </div>
         </div>
 

@@ -5,12 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
-import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText, Navigation, Share2, CreditCard as Edit, Trash2, EllipsisVertical } from "lucide-react";
+import { Loader as Loader2, Phone, MessageSquare, Mail, MapPin, Calendar, DollarSign, Wrench, FileText, Navigation, Share2, CreditCard as Edit, Trash2, EllipsisVertical, Copy, Check, User, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { ClientShareLink } from "@/components/jobs/ClientShareLink";
 import { toast } from "sonner";
 import { EditCustomerDialog } from "@/components/customers/EditCustomerDialog";
 import {
@@ -25,10 +24,23 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Copy, Check } from "lucide-react";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { openMapsWithAddress } from "@/lib/openMaps";
 
-function PortalLinkButton({ customerId, customDomain }: { customerId: string; customDomain?: string | null }) {
+function PortalLinkButton({
+  customerId,
+  customDomain,
+  className,
+  variant = "default",
+  size = "lg",
+}: {
+  customerId: string;
+  customDomain?: string | null;
+  className?: string;
+  variant?: "default" | "secondary" | "outline" | "ghost";
+  size?: "default" | "sm" | "lg" | "icon";
+}) {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -78,7 +90,9 @@ function PortalLinkButton({ customerId, customDomain }: { customerId: string; cu
   return (
     <>
       <Button
-        size="lg"
+        className={className}
+        variant={variant}
+        size={size}
         onClick={handleGenerateLink}
         disabled={loading}
       >
@@ -136,6 +150,7 @@ export default function CustomerDetail() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [headerInfoOpen, setHeaderInfoOpen] = useState(false);
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ["customer", id],
@@ -217,6 +232,7 @@ export default function CustomerDetail() {
   const totalEstimatedValue = jobs.reduce((sum: number, job: any) => sum + (job.estimated_value || 0), 0);
   const totalActualValue = jobs.reduce((sum: number, job: any) => sum + (job.actual_value || 0), 0);
   const totalValue = totalActualValue || totalEstimatedValue;
+  const contactAddress = [customer.address, customer.city].filter(Boolean).join(", ");
 
   const handleDeleteCustomer = async () => {
     if (!customer?.id) return;
@@ -245,24 +261,39 @@ export default function CustomerDetail() {
     queryClient.invalidateQueries({ queryKey: ["customer", id] });
   };
 
+  const handleCall = () => {
+    if (!customer.phone) return;
+    window.open(`tel:${customer.phone}`, "_self");
+  };
+
+  const handleText = () => {
+    if (!customer.phone) return;
+    window.open(`sms:${customer.phone}`, "_self");
+  };
+
+  const handleNavigate = () => {
+    if (!contactAddress) return;
+    openMapsWithAddress(contactAddress);
+  };
+
   return (
     <div className="min-h-screen bg-surface-sunken pb-24">
       <PageHeader title="" showBack backTo="/customers" />
 
-      <main className="max-w-[var(--content-max-width)] m-auto p-4 pb-0">
-        {/* Contact Info Card */}
-        <div className="bg-card rounded-lg border border-border">
-          <div className="flex p-4 pt-8 pb-8">
-            {/* Left Column */}
-            <div className="flex flex-col w-full justify-between gap-4">
-              {/* Customer Info */}
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2 items-center">
-                  <p className="text-1">{customer.name}</p>
+      <div className="max-w-[var(--content-max-width)] m-auto px-4 pt-6 md:pt-8 pb-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-3 min-w-0 w-full">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-700 border border-sky-100 md:h-16 md:w-16">
+                <User className="h-7 w-7 md:h-8 md:w-8" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-start gap-2">
+                  <p className="text-1 text-2xl md:text-1 break-words">{customer.name}</p>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <EllipsisVertical className="h-5 w-5" />
+                      <Button variant="ghost" size="icon" className="h-8 w-8 -mt-0.5">
+                        <EllipsisVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
@@ -277,85 +308,90 @@ export default function CustomerDetail() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-
-                <div className="text-5 animate-in fade-in slide-in-from-top-1 duration-200">
-                  <div className="flex items-start gap-2">
-                    <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    <span className="break-words min-w-0">{customer.phone || "No phone"}</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    <span className="break-words min-w-0">{customer.email || "No email"}</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    <span className="break-words min-w-0">
-                      {customer.address && customer.city
-                        ? `${customer.address}, ${customer.city}`
-                        : customer.address || customer.city || "No address"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contact Buttons */}
-              <div className="flex gap-4">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => window.open(`tel:${customer.phone}`)}
-                  disabled={!customer.phone}
+                <button
+                  type="button"
+                  onClick={() => setHeaderInfoOpen((current) => !current)}
+                  className="group mt-1 flex items-center gap-2 p-0 text-muted-foreground transition-colors hover:text-foreground"
                 >
+                  <span>More info</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 transition-transform duration-200",
+                      headerInfoOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <Collapsible
+              open={headerInfoOpen}
+              onOpenChange={setHeaderInfoOpen}
+              className={cn(
+                "w-full flex flex-col gap-0 md:flex-row md:items-center",
+                headerInfoOpen ? "md:flex-wrap" : "md:flex-nowrap md:justify-between",
+              )}
+            >
+              <CollapsibleContent className="order-2 w-full space-y-2 rounded-xl border border-border bg-card p-4 text-muted-foreground md:rounded-none md:border-0 md:bg-transparent md:p-0">
+                <div className="space-y-2 text-base md:text-sm">
+                  <p className="flex items-start gap-1">
+                    <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0 text-foreground">{customer.phone || "No phone"}</span>
+                  </p>
+                  <p className="flex items-start gap-1">
+                    <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-all min-w-0 text-foreground">{customer.email || "No email"}</span>
+                  </p>
+                  <p className="flex items-start gap-1">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0 text-foreground">{contactAddress || "No address"}</span>
+                  </p>
+                  <p className="flex items-start gap-1">
+                    <Calendar className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0 text-foreground">
+                      Contact since {format(new Date(customer.created_at), "MMM d, yyyy")}
+                    </span>
+                  </p>
+                  <p className="flex items-start gap-1">
+                    <DollarSign className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0 text-foreground">
+                      {totalValue > 0 ? `$${Number(totalValue).toLocaleString()}` : "No recorded revenue yet"}
+                    </span>
+                  </p>
+                </div>
+              </CollapsibleContent>
+
+              <div
+                className={cn(
+                  "hidden md:flex items-center gap-2 flex-nowrap",
+                  headerInfoOpen ? "order-3 w-full justify-start" : "order-1",
+                )}
+              >
+                <Button aria-label="Call" variant="secondary" size="icon" onClick={handleCall} disabled={!customer.phone}>
                   <Phone className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => window.open(`sms:${customer.phone}`)}
-                  disabled={!customer.phone}
-                >
+                <Button aria-label="Text" variant="secondary" size="icon" onClick={handleText} disabled={!customer.phone}>
                   <MessageSquare className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => {
-                    const location = [customer.address, customer.city].filter(Boolean).join(", ");
-                    window.open(`https://maps.google.com/?q=${encodeURIComponent(location)}`);
-                  }}
-                  disabled={!customer.address && !customer.city}
-                >
+                <Button aria-label="Navigate" variant="secondary" size="icon" onClick={handleNavigate} disabled={!contactAddress}>
                   <Navigation className="h-4 w-4" />
                 </Button>
+                <PortalLinkButton
+                  customerId={customer.id}
+                  customDomain={currentAccount?.settings?.website?.custom_domain ?? null}
+                  variant="secondary"
+                  size="default"
+                />
               </div>
-            </div>
-
-            {/* Right Column */}
-            <div className="flex flex-col w-full justify-between">
-              {/* Customer Stats */}
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-end">
-                  {/* Empty space to match layout */}
-                </div>
-
-                <div className="text-5 text-right animate-in fade-in slide-in-from-top-1 duration-200">
-                  <p className="text-2">{jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}</p>
-                </div>
-              </div>
-
-              {/* CTA */}
-              <div className="flex flex-col sm:flex-row justify-end gap-2">
-                    <PortalLinkButton
-                      customerId={customer.id}
-                      customDomain={currentAccount?.settings?.website?.custom_domain ?? null}
-                    />
-              </div>
-            </div>
+            </Collapsible>
           </div>
+        </div>
+      </div>
 
-          {/* Tabs */}
-          <div className="max-w-[var(--content-max-width)] border-t ml-auto mr-auto px-4">
-            <div className="flex">
+      <div className="max-w-[var(--content-max-width)] m-auto px-4 pb-4 pt-2 md:pt-3">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
+          <div className="bg-card -mx-4 md:mx-0 rounded-none md:rounded-lg md:border md:border-border overflow-hidden">
+            <div className="grid grid-cols-3 px-2 md:border-b md:border-border">
               {[
                 { id: "jobs", label: "Jobs" },
                 { id: "estimates", label: "Estimates" },
@@ -365,7 +401,7 @@ export default function CustomerDetail() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
                   className={cn(
-                    "px-4 py-3 text-sm font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
+                    "w-full px-2 py-3 text-center text-base font-medium border-b-2 transition-colors min-h-touch whitespace-nowrap",
                     activeTab === tab.id
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -375,123 +411,154 @@ export default function CustomerDetail() {
                 </button>
               ))}
             </div>
+
+            <div className="space-y-2 p-5">
+              {activeTab === "jobs" && (
+                <>
+                  {jobs.length === 0 ? (
+                    <div className="card-elevated rounded-lg p-6 text-center">
+                      <Wrench className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-muted-foreground">No jobs for this customer</p>
+                    </div>
+                  ) : (
+                    jobs.map((job: any) => (
+                      <button
+                        key={job.id}
+                        onClick={() => navigate(`/jobs/${job.id}`)}
+                        className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-foreground">{job.name}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              {job.service_type || "Service"} • {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
+                            </p>
+                          </div>
+                          <StatusBadge status={job.status} />
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </>
+              )}
+
+              {activeTab === "estimates" && (
+                <>
+                  {estimates.length === 0 ? (
+                    <div className="card-elevated rounded-lg p-6 text-center">
+                      <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-muted-foreground">No estimates for this customer</p>
+                    </div>
+                  ) : (
+                    estimates.map((est: any) => (
+                      <button
+                        key={est.id}
+                        onClick={() => navigate(`/payments/estimates/${est.id}`)}
+                        className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-foreground">{est.name || "Estimate"}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              {format(new Date(est.created_at), "MMM d, yyyy")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-foreground">
+                              ${Number(est.total || 0).toLocaleString()}
+                            </p>
+                            <StatusBadge status={est.status} />
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </>
+              )}
+
+              {activeTab === "invoices" && (
+                <>
+                  {invoices.length === 0 ? (
+                    <div className="card-elevated rounded-lg p-6 text-center">
+                      <DollarSign className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-muted-foreground">No invoices for this customer</p>
+                    </div>
+                  ) : (
+                    invoices.map((inv: any) => (
+                      <button
+                        key={inv.id}
+                        onClick={() => navigate(`/payments/invoices/${inv.id}`)}
+                        className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-foreground">
+                              ${Number(inv.total || 0).toLocaleString()}
+                            </h3>
+                            {inv.lead && (
+                              <p className="text-sm text-muted-foreground">
+                                {inv.lead.name}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {format(new Date(inv.created_at), "MMM d, yyyy")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <StatusBadge status={inv.status} />
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="card-elevated rounded-lg p-4">
+              <p className="text-sm font-semibold text-foreground">Contact Snapshot</p>
+              <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                <p className="flex items-center justify-between">
+                  <span>Jobs</span>
+                  <span className="text-foreground font-medium">{jobs.length}</span>
+                </p>
+                <p className="flex items-center justify-between">
+                  <span>Estimates</span>
+                  <span className="text-foreground font-medium">{estimates.length}</span>
+                </p>
+                <p className="flex items-center justify-between">
+                  <span>Invoices</span>
+                  <span className="text-foreground font-medium">{invoices.length}</span>
+                </p>
+                <p className="flex items-center justify-between">
+                  <span>Total Value</span>
+                  <span className="text-foreground font-medium">
+                    {totalValue > 0 ? `$${Number(totalValue).toLocaleString()}` : "$0"}
+                  </span>
+                </p>
+              </div>
+
+              <div className="mt-4 md:hidden">
+                <PortalLinkButton
+                  customerId={customer.id}
+                  customDomain={currentAccount?.settings?.website?.custom_domain ?? null}
+                  className="w-full"
+                  size="default"
+                />
+              </div>
+            </div>
+
+            {customer.notes && (
+              <div className="card-elevated rounded-xl p-5">
+                <h3 className="font-semibold text-foreground mb-2">Notes</h3>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
+              </div>
+            )}
           </div>
         </div>
-      </main>
-
-      {/* Tab Content */}
-      <div className="p-4 max-w-[var(--content-max-width)] m-auto">{activeTab === "jobs" && (
-          <div className="space-y-2">
-
-            {jobs.length === 0 ? (
-              <div className="card-elevated rounded-lg p-6 text-center">
-                <Wrench className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No jobs for this customer</p>
-              </div>
-            ) : (
-              jobs.map((job: any) => (
-                <button
-                  key={job.id}
-                  onClick={() => navigate(`/jobs/${job.id}`)}
-                  className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-foreground">{job.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {job.service_type || "Service"} • {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
-                      </p>
-                    </div>
-                    <StatusBadge status={job.status} />
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-
-        {activeTab === "estimates" && (
-          <div className="space-y-2">
-            {estimates.length === 0 ? (
-              <div className="card-elevated rounded-lg p-6 text-center">
-                <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No estimates for this customer</p>
-              </div>
-            ) : (
-              estimates.map((est: any) => (
-                <button
-                  key={est.id}
-                  onClick={() => navigate(`/payments/estimates/${est.id}`)}
-                  className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-foreground">{est.name || "Estimate"}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(est.created_at), "MMM d, yyyy")}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-foreground">
-                        ${Number(est.total || 0).toLocaleString()}
-                      </p>
-                      <StatusBadge status={est.status} />
-                    </div>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-
-        {activeTab === "invoices" && (
-          <div className="space-y-2">
-            {invoices.length === 0 ? (
-              <div className="card-elevated rounded-lg p-6 text-center">
-                <DollarSign className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No invoices for this customer</p>
-              </div>
-            ) : (
-              invoices.map((inv: any) => (
-                <button
-                  key={inv.id}
-                  onClick={() => navigate(`/payments/invoices/${inv.id}`)}
-                  className="w-full card-elevated rounded-lg p-4 text-left hover:shadow-md active:scale-[0.98] transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-foreground">
-                        ${Number(inv.total || 0).toLocaleString()}
-                      </h3>
-                      {inv.lead && (
-                        <p className="text-sm text-muted-foreground">
-                          {inv.lead.name}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(inv.created_at), "MMM d, yyyy")}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <StatusBadge status={inv.status} />
-                    </div>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
       </div>
-
-      {/* Notes */}
-      {customer.notes && (
-        <div className="p-4 max-w-[var(--content-max-width)] m-auto">
-          <div className="card-elevated rounded-xl p-5">
-            <h3 className="font-semibold text-foreground mb-2">Notes</h3>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
-          </div>
-        </div>
-      )}
 
       <EditCustomerDialog
         open={showEditDialog}

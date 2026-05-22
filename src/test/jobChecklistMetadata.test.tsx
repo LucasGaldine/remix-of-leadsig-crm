@@ -385,6 +385,67 @@ describe("JobChecklist metadata categories", () => {
     );
   });
 
+  it("persists optional task descriptions when adding a task", async () => {
+    render(<JobChecklist jobId="job_1" isManager />);
+
+    fireEvent.click(screen.getByRole("button", { name: /add task, tool, or material/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add task$/i }));
+
+    fireEvent.change(screen.getByLabelText(/item label/i), {
+      target: { value: "Prep work area" },
+    });
+    fireEvent.change(screen.getByLabelText(/^description$/i), {
+      target: { value: "Cover floors and mask adjacent surfaces." },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /add checklist item/i }));
+    });
+
+    expect(addMutateAsyncMock).toHaveBeenCalledWith({
+      label: "Prep work area",
+      sort_order: 0,
+      metadata: { category: "task", description: "Cover floors and mask adjacent surfaces." },
+    });
+  });
+
+  it("loads and updates optional task descriptions when editing a task", async () => {
+    checklistState.items = [
+      {
+        id: "task-1",
+        job_id: "job_1",
+        account_id: "acct_1",
+        label: "Prime walls",
+        is_completed: false,
+        sort_order: 0,
+        created_at: "2026-04-01T00:00:00.000Z",
+        updated_at: "2026-04-01T00:00:00.000Z",
+        metadata: { category: "task", description: "Use stain-blocking primer." },
+      },
+    ];
+
+    render(<JobChecklist jobId="job_1" isManager />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit checklist item prime walls/i }));
+
+    expect(screen.getByLabelText(/^description$/i)).toHaveValue("Use stain-blocking primer.");
+
+    fireEvent.change(screen.getByLabelText(/^description$/i), {
+      target: { value: "Use two coats in high-humidity areas." },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /save checklist item/i }));
+    });
+
+    expect(updateMutateAsyncMock).toHaveBeenCalledWith({
+      id: "task-1",
+      label: "Prime walls",
+      metadata: { category: "task", description: "Use two coats in high-humidity areas." },
+    });
+  });
+
   it("shows the onMarkComplete error message instead of a false success", async () => {
     checklistState.items = [
       {

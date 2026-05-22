@@ -23,6 +23,8 @@ interface Profile {
   email: string | null;
   phone: string | null;
   avatar_url: string | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
   timezone: string | null;
   notification_preferences: Record<string, any> | null;
   dashboard_preferences: { cards: string[] } | null;

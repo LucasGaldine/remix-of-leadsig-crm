@@ -50,6 +50,10 @@ vi.mock("@/components/photos/PhotoSection", () => ({
   PhotoSection: () => <div>photo section</div>,
 }));
 
+vi.mock("@/components/jobs/JobDocumentsSection", () => ({
+  JobDocumentsSection: () => <div>job documents section</div>,
+}));
+
 vi.mock("@/components/jobs/ClientShareLink", () => ({
   ClientShareLink: () => <div>client share link</div>,
 }));
@@ -835,7 +839,8 @@ describe("JobDetail status guidance", () => {
     expect(within(leftCard).getByRole("button", { name: "Schedule" })).toBeInTheDocument();
     expect(within(leftCard).getByRole("button", { name: "Tasks" })).toBeInTheDocument();
     expect(within(leftCard).getByRole("button", { name: "Photos" })).toBeInTheDocument();
-    expect(within(leftCard).getByRole("button", { name: "Notes" })).toBeInTheDocument();
+    expect(within(leftCard).getByRole("button", { name: "Documents" })).toBeInTheDocument();
+    expect(within(leftCard).queryByRole("button", { name: "Notes" })).not.toBeInTheDocument();
 
     expect(within(leftCard).getByText("Schedule")).toBeInTheDocument();
     expect(within(leftCard).queryByText("Wednesday, Mar 25, 2026")).not.toBeInTheDocument();
@@ -963,7 +968,7 @@ describe("JobDetail status guidance", () => {
     renderJobDetail();
     await screen.findByRole("button", { name: /open job status guide for scheduled/i });
 
-    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Documents" }));
 
     const leftColumn = screen.getByTestId("job-details-left-column");
     const rightColumn = screen.getByTestId("job-details-right-column");

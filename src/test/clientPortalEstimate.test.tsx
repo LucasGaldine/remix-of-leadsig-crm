@@ -707,4 +707,134 @@ describe("ClientPortalEstimate", () => {
       signature_data_url: "data:image/png;base64,signature123",
     });
   });
+
+  it("shows estimate-approval documents plus already sent manual documents", () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          id: "estimate_1",
+          total: 1250,
+          subtotal: 1250,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Mulch",
+              quantity: 1,
+              unit: "job",
+              unit_price: 1250,
+              total: 1250,
+            },
+          ],
+          job_document_configs: [
+            {
+              id: "cfg_job",
+              lead_id: "lead_1",
+              template_id: "tpl_job",
+              include_in_job: true,
+              email_timing: "on_estimate_approval",
+              requires_signature: true,
+              sort_order: 1,
+              template: {
+                id: "tpl_job",
+                name: "Job Agreement",
+                system_key: "job_agreement",
+                body: "Job agreement body",
+              },
+            },
+            {
+              id: "cfg_warranty",
+              lead_id: "lead_1",
+              template_id: "tpl_warranty",
+              include_in_job: true,
+              email_timing: "on_estimate_approval",
+              requires_signature: true,
+              sort_order: 2,
+              template: {
+                id: "tpl_warranty",
+                name: "Warranty Agreement",
+                system_key: "warranty_agreement",
+                body: "Warranty body",
+              },
+            },
+            {
+              id: "cfg_custom",
+              lead_id: "lead_1",
+              template_id: "tpl_custom",
+              include_in_job: true,
+              email_timing: "on_estimate_approval",
+              requires_signature: true,
+              sort_order: 3,
+              template: {
+                id: "tpl_custom",
+                name: "Test Estimate Approval",
+                system_key: null,
+                body: "Custom body",
+              },
+            },
+            {
+              id: "cfg_manual_sent",
+              lead_id: "lead_1",
+              template_id: "tpl_manual",
+              include_in_job: true,
+              email_timing: "manual",
+              requires_signature: true,
+              sort_order: 4,
+              template: {
+                id: "tpl_manual",
+                name: "Manual Signed Addendum",
+                system_key: null,
+                body: "Manual body",
+              },
+            },
+            {
+              id: "cfg_manual_unsent",
+              lead_id: "lead_1",
+              template_id: "tpl_manual_unsent",
+              include_in_job: true,
+              email_timing: "manual",
+              requires_signature: true,
+              sort_order: 5,
+              template: {
+                id: "tpl_manual_unsent",
+                name: "Manual Unsent Document",
+                system_key: null,
+                body: "Manual unsent body",
+              },
+            },
+          ],
+          job_documents: [
+            {
+              id: "doc_manual_1",
+              lead_id: "lead_1",
+              template_id: "tpl_manual",
+              config_id: "cfg_manual_sent",
+              document_key: "manual_signed_addendum",
+              file_name: "manual-signed-addendum.pdf",
+              file_path: "path/manual-signed-addendum.pdf",
+              mime_type: "application/pdf",
+              created_at: "2026-03-22T00:00:00.000Z",
+              url: "https://example.com/manual-signed-addendum.pdf",
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Job Agreement")).toBeInTheDocument();
+    expect(screen.getByText("Warranty Agreement")).toBeInTheDocument();
+    expect(screen.getByText("Test Estimate Approval")).toBeInTheDocument();
+    expect(screen.getByText("Manual Signed Addendum")).toBeInTheDocument();
+    expect(screen.queryByText("Manual Unsent Document")).not.toBeInTheDocument();
+    expect(screen.queryByText("No approval or manually sent documents are available yet.")).not.toBeInTheDocument();
+  });
+
 });

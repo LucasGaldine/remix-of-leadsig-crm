@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Building2, Megaphone, ShieldAlert, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { MobileNav } from "@/components/layout/MobileNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -538,7 +537,7 @@ export default function Admin() {
 
   if (!isAllowedAdmin && !canManageReleaseUpdates) {
     return (
-      <div className="min-h-screen bg-surface-sunken pb-24">
+      <div className="min-h-screen bg-surface-sunken">
         <PageHeader title="Admin" subtitle="Restricted area" showBack />
         <main className="px-4 py-4">
           <div className="card-elevated rounded-lg p-4">
@@ -554,13 +553,12 @@ export default function Admin() {
             </Button>
           </div>
         </main>
-        <MobileNav />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-surface-sunken pb-24">
+    <div className="min-h-screen bg-surface-sunken">
       <PageHeader title="Admin" subtitle="Company accounts and documentation" showBack />
 
       <main className="space-y-4 px-4 py-4">
@@ -927,8 +925,6 @@ export default function Admin() {
           </>
         ) : null}
       </main>
-
-      <MobileNav />
 
       <AlertDialog open={!!upgradeModalCompany} onOpenChange={(open) => !open && setUpgradeModalCompany(null)}>
         <AlertDialogContent>

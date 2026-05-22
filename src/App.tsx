@@ -10,6 +10,7 @@ import { AppKeyboardShortcuts } from "@/components/layout/AppKeyboardShortcuts";
 import { ReleaseUpdateModal } from "@/components/modals/ReleaseUpdateModal";
 import { useAuth } from "@/hooks/useAuth";
 import { shouldAnimateMainPageTransition } from "@/lib/pageTransition";
+import { buildAdminAppUrl, isAdminAppHostname } from "@/lib/adminDomain";
 import { getLatestUnseenReleaseUpdate, markReleaseUpdateSeen, type ReleaseUpdate } from "@/lib/releaseUpdates";
 import { supabaseConfigError } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
@@ -42,6 +43,7 @@ import SettingsAutoResponses from "./pages/SettingsAutoResponses";
 import SettingsLeadAutomations from "./pages/SettingsLeadAutomations";
 import SettingsNotifications from "./pages/SettingsNotifications";
 import SettingsPricingRules from "./pages/SettingsPricingRules";
+import SettingsDocumentTemplates from "./pages/SettingsDocumentTemplates";
 import SettingsDashboard from "./pages/SettingsDashboard";
 import SettingsPricing from "./pages/SettingsPricing";
 import Auth from "./pages/Auth";
@@ -74,6 +76,41 @@ import ComingSoon from "./pages/ComingSoon";
 import MembershipRequired from "./pages/MembershipRequired";
 
 const queryClient = new QueryClient();
+
+function ExternalRedirect({ to }: { to: string }) {
+  useEffect(() => {
+    window.location.replace(to);
+  }, [to]);
+
+  return null;
+}
+
+function HomeRoute() {
+  if (isAdminAppHostname(window.location.hostname)) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return (
+    <Protected>
+      <Index />
+    </Protected>
+  );
+}
+
+function AdminRoute() {
+  const location = useLocation();
+
+  if (!isAdminAppHostname(window.location.hostname)) {
+    const target = buildAdminAppUrl(location.pathname, location.search, location.hash);
+    return <ExternalRedirect to={target} />;
+  }
+
+  return (
+    <Protected>
+      <Admin />
+    </Protected>
+  );
+}
 
 function RootLayout() {
   if (supabaseConfigError) {
@@ -256,7 +293,7 @@ const router = createBrowserRouter([
       { path: "/tutorial", element: <Protected><Tutorial /></Protected> },
       { path: "/stripe-callback", element: <Protected><StripeCallback /></Protected> },
       { path: "/facebook-callback", element: <Protected><FacebookCallback /></Protected> },
-      { path: "/", element: <Protected><Index /></Protected> },
+      { path: "/", element: <HomeRoute /> },
       { path: "/analytics", element: <Protected><Analytics /></Protected> },
       { path: "/schedule", element: <Protected><Schedule /></Protected> },
       { path: "/leads", element: <Protected><Leads /></Protected> },
@@ -279,6 +316,7 @@ const router = createBrowserRouter([
       { path: "/settings/lead-automations", element: <Protected><SettingsLeadAutomations /></Protected> },
       { path: "/settings/notifications", element: <Protected><SettingsNotifications /></Protected> },
       { path: "/settings/pricing-rules", element: <Protected><SettingsPricingRules /></Protected> },
+      { path: "/settings/document-templates", element: <Protected><SettingsDocumentTemplates /></Protected> },
       { path: "/settings/dashboard", element: <Protected><SettingsDashboard /></Protected> },
       { path: "/settings/pricing", element: <Protected><SettingsPricing /></Protected> },
       { path: "/payments", element: <Protected><Payments /></Protected> },
@@ -291,7 +329,7 @@ const router = createBrowserRouter([
       { path: "/payments/:id", element: <Protected><PaymentDetail /></Protected> },
       { path: "/customers", element: <Protected><Customers /></Protected> },
       { path: "/customers/:id", element: <Protected><CustomerDetail /></Protected> },
-      { path: "/admin", element: <Protected><Admin /></Protected> },
+      { path: "/admin", element: <AdminRoute /> },
       { path: "/website", element: <Protected><Website /></Protected> },
       { path: "/hiring", element: <Protected><Hiring /></Protected> },
       { path: "/coming-soon", element: <Protected><ComingSoon /></Protected> },

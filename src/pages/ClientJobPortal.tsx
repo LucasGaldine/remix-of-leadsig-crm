@@ -150,6 +150,34 @@ interface EstimateData {
   agreement_templates?: Record<string, unknown> | null;
   agreement_acceptance?: Record<string, unknown> | null;
   agreement_source_estimate_id?: string | null;
+  job_document_config_lead_id?: string | null;
+  job_document_configs?: Array<{
+    id: string;
+    lead_id: string;
+    template_id: string;
+    include_in_job: boolean;
+    email_timing: string;
+    requires_signature: boolean;
+    sort_order: number;
+    template: {
+      id: string;
+      name: string;
+      system_key: string | null;
+      body: string | null;
+    } | null;
+  }>;
+  job_documents?: Array<{
+    id: string;
+    lead_id: string;
+    template_id: string | null;
+    config_id: string | null;
+    document_key: string;
+    file_name: string;
+    file_path: string;
+    mime_type: string | null;
+    created_at: string;
+    url: string;
+  }>;
 }
 
 interface PhotoItem {
@@ -404,7 +432,7 @@ export default function ClientJobPortal() {
                 Welcome, {customerData.customer.name}
               </h1>
               <p className="mt-1" style={{ color: hexToRgba(customerPortalTextColor, 0.78) }}>
-                View your project detaiils
+                View your jobs and project details
               </p>
               {(customerData.company.company_phone ||
                 customerData.company.company_email ||
@@ -694,6 +722,11 @@ export default function ClientJobPortal() {
             companyLogoUrl={company.logo_url}
             companyEmail={company.company_email}
             companyPhone={company.company_phone}
+            companyDefaultPaymentSchedule={
+              company.settings && typeof company.settings === "object"
+                ? ((company.settings as Record<string, unknown>).default_payment_schedule as Record<string, unknown> | null)
+                : null
+            }
             createdAt={job.created_at}
             portalColor={portalColor}
             portalTextColor={portalTextColor}

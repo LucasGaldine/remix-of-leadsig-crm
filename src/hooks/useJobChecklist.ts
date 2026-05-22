@@ -8,6 +8,8 @@ export type ChecklistItemCategory = (typeof CHECKLIST_ITEM_CATEGORIES)[number];
 export interface ChecklistItemMetadata {
   category?: ChecklistItemCategory;
   job_line_item_id?: string;
+  description?: string;
+  generated_by?: string;
 }
 
 export function getChecklistItemCategory(

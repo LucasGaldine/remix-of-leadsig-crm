@@ -1,4 +1,5 @@
 import { resolveAgreementTemplatesForEstimates } from "./agreement-templates.ts";
+import { fetchPortalDocumentsForLeadFamily } from "./portal-documents.ts";
 import { getJobReleaseForLead, isLeadFullyPaid } from "./job-release.ts";
 
 export async function handleSingleJobGet(
@@ -206,6 +207,19 @@ export async function handleSingleJobGet(
     }
   }
 
+  const baseDocumentLeadIds = [
+    typeof parentEstimate?.job_id === "string" ? parentEstimate.job_id : null,
+    typeof estimate?.job_id === "string" ? estimate.job_id : null,
+    typeof job?.estimate_job_id === "string" ? job.estimate_job_id : null,
+    typeof job?.id === "string" ? job.id : null,
+  ].filter((value): value is string => Boolean(value));
+  const portalDocuments = await fetchPortalDocumentsForLeadFamily(
+    supabase,
+    supabaseUrl,
+    baseDocumentLeadIds,
+    "portal job documents",
+  );
+
   return jsonResponse({
     job: {
       name: job.name,
@@ -266,6 +280,9 @@ export async function handleSingleJobGet(
           agreement_source_estimate_id: resolvedAgreement.sourceEstimateId,
           agreement_acceptance: parentEstimate.agreement_acceptance || null,
           estimate_versions: estimateVersions || [],
+          job_document_config_lead_id: portalDocuments.leadId,
+          job_document_configs: portalDocuments.configs,
+          job_documents: portalDocuments.documents,
         }
       : null,
     photos: {

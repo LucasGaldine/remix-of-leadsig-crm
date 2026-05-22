@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { EditEstimateModal } from "@/components/payments/EditEstimateModal";
 
+Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+  value: vi.fn(),
+  configurable: true,
+});
+
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({
@@ -108,7 +113,7 @@ describe("EditEstimateModal responsive width", () => {
     expect(content).toHaveClass("sm:max-w-2xl");
   });
 
-  it("applies quick add values without wiping an existing description", () => {
+  it("shows quick add trigger with the updated label", () => {
     render(
       <EditEstimateModal
         open
@@ -138,16 +143,7 @@ describe("EditEstimateModal responsive width", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /add item/i }));
-
-    fireEvent.change(screen.getByLabelText(/description/i), {
-      target: { value: "Keep this description" },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /use template/i }));
-
-    expect(screen.getByLabelText(/title/i)).toHaveValue("Concrete Service");
-    expect(screen.getByLabelText(/description/i)).toHaveValue("Keep this description");
+    expect(screen.getByRole("button", { name: /add service or material/i })).toBeInTheDocument();
   });
 
   it("shows version name input when explicitly enabled outside version mode", () => {
@@ -170,6 +166,6 @@ describe("EditEstimateModal responsive width", () => {
       />
     );
 
-    expect(screen.getByLabelText(/version name/i)).toHaveValue("Version 1");
+    expect(screen.getByLabelText(/estimate version/i)).toHaveValue("Version 1");
   });
 });

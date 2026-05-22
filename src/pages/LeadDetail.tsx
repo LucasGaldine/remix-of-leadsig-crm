@@ -1560,16 +1560,18 @@ export default function LeadDetail() {
                       {lead.status === "qualified" && (
                         <div className="space-y-4">
                           <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              size="lg"
-                              variant="secondary"
-                              className="flex-1"
-                              onClick={() => setLineItemsDialogOpen(true)}
-                            >
-                              <DollarSign className="h-4 w-4 shrink-0" />
-                              Build Estimate
-                            </Button>
+                            {showBuildEstimateAction && (
+                              <Button
+                                type="button"
+                                size="lg"
+                                variant="secondary"
+                                className="flex-1"
+                                onClick={() => setLineItemsDialogOpen(true)}
+                              >
+                                <DollarSign className="h-4 w-4 shrink-0" />
+                                Build Estimate
+                              </Button>
+                            )}
                             {scheduleVisitDisabledReason ? (
                               <Tooltip>
                                 <Popover>

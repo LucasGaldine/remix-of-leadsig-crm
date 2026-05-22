@@ -135,6 +135,7 @@ const estimateVersionsEqMock = vi.fn(() => ({
 const estimateVersionsSelectMock = vi.fn(() => ({
   eq: estimateVersionsEqMock,
 }));
+const estimateVersionsInsertMock = vi.fn().mockResolvedValue({ error: null });
 const storageUploadMock = vi.fn().mockResolvedValue({ error: null });
 const storageGetPublicUrlMock = vi.fn(() => ({
   data: { publicUrl: "https://example.com/manual-approval-photo.jpg" },
@@ -248,7 +249,7 @@ vi.mock("@/integrations/supabase/client", () => ({
       if (table === "estimate_versions") {
         return {
           select: estimateVersionsSelectMock,
-          insert: vi.fn().mockResolvedValue({ error: null }),
+          insert: estimateVersionsInsertMock,
           update: vi.fn(() => ({
             eq: vi.fn().mockResolvedValue({ error: null }),
           })),
@@ -287,6 +288,7 @@ describe("EstimateDetail layout", () => {
     estimateVersionsOrderMock.mockClear();
     estimateVersionsEqMock.mockClear();
     estimateVersionsSelectMock.mockClear();
+    estimateVersionsInsertMock.mockClear();
     generateEstimatePDF.mockClear();
     storageUploadMock.mockClear();
     storageGetPublicUrlMock.mockClear();
@@ -498,6 +500,123 @@ describe("EstimateDetail layout", () => {
           total: 215,
           notes: "Version 2 notes",
           createdAt: "2026-04-02T00:00:00.000Z",
+        }),
+      );
+    });
+  });
+
+  it("creates a new version from the selected estimate version", async () => {
+    mockEstimate = buildEstimate({
+      has_pending_changes: false,
+      original_total: null,
+      original_line_items: null,
+    });
+
+    estimateVersionsOrderMock
+      .mockResolvedValueOnce({
+      data: [
+        {
+          id: "ver_1",
+          name: "Version 1",
+          subtotal: 111,
+          tax_rate: 0.05,
+          tax: 5.55,
+          discount: 3,
+          total: 113.55,
+          profit_margin: 11,
+          surcharge: 9,
+          notes: "Version 1 notes",
+          line_items: [
+            {
+              name: "Version 1 item",
+              description: "Version 1 description",
+              quantity: 3,
+              unit: "ea",
+              unit_price: 37,
+              total: 111,
+              sort_order: 0,
+              category: "labor",
+            },
+          ],
+          created_at: "2026-04-01T00:00:00.000Z",
+          updated_at: "2026-04-01T00:00:00.000Z",
+        },
+        {
+          id: "ver_2",
+          name: "Version 2",
+          subtotal: 999,
+          tax_rate: 0.2,
+          tax: 199.8,
+          discount: 0,
+          total: 1198.8,
+          profit_margin: 0,
+          surcharge: 0,
+          notes: "Version 2 notes",
+          line_items: [
+            {
+              name: "Version 2 item",
+              description: "Version 2 description",
+              quantity: 1,
+              unit: "job",
+              unit_price: 999,
+              total: 999,
+              sort_order: 0,
+              category: "materials",
+            },
+          ],
+          created_at: "2026-04-02T00:00:00.000Z",
+          updated_at: "2026-04-02T00:00:00.000Z",
+        },
+      ],
+      error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [],
+        error: null,
+      });
+
+    render(
+      <MemoryRouter initialEntries={["/payments/estimates/est_1"]}>
+        <Routes>
+          <Route path="/payments/estimates/:id" element={<EstimateDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const versionOneTab = await screen.findByRole("tab", { name: /version 1/i });
+    fireEvent.mouseDown(versionOneTab);
+    fireEvent.click(versionOneTab);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Add$/i }));
+    fireEvent.change(screen.getByPlaceholderText("Version name"), {
+      target: { value: "Version 3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /confirm version creation/i }));
+
+    await waitFor(() => {
+      expect(estimateVersionsInsertMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Version 3",
+          subtotal: 111,
+          tax_rate: 0.05,
+          tax: 5.55,
+          discount: 3,
+          total: 113.55,
+          profit_margin: 11,
+          surcharge: 9,
+          notes: "Version 1 notes",
+          line_items: [
+            expect.objectContaining({
+              name: "Version 1 item",
+              description: "Version 1 description",
+              quantity: 3,
+              unit: "ea",
+              unit_price: 37,
+              total: 111,
+              sort_order: 0,
+              category: "labor",
+            }),
+          ],
         }),
       );
     });

@@ -8,6 +8,10 @@ import {
   uploadSignatureDataUrl,
 } from "./signature.ts";
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function handleEstimateAction(
   supabase: any,
   estimate: {
@@ -29,6 +33,7 @@ export async function handleEstimateAction(
   signatureDataUrl?: string | null,
   agreementAcceptance?: Record<string, boolean> | null,
   agreementTemplates?: Record<string, unknown> | null,
+  requiredDocumentConfigIds?: string[],
 ) {
   void portalJobId;
   const isWarrantyEnabledForVersion = (versionId: string | null | undefined) => {
@@ -150,6 +155,11 @@ export async function handleEstimateAction(
     if (acceptedKeys.length !== requiredAgreementKeys.length) {
       return jsonResponse({ error: "All required agreements must be accepted before approval." }, 400);
     }
+    const requiredConfigIds = (requiredDocumentConfigIds || []).filter((id) => typeof id === "string" && id.length > 0);
+    const allRequiredConfigsAccepted = requiredConfigIds.every((id) => agreementAcceptance?.[id] === true);
+    if (!allRequiredConfigsAccepted) {
+      return jsonResponse({ error: "Please accept all required documents before approval." }, 400);
+    }
 
     let uploadedSignature: { filePath: string; publicUrl: string } | null = null;
     if (signatureDataUrl) {
@@ -170,6 +180,12 @@ export async function handleEstimateAction(
       }
     }
 
+    const acceptedDocumentConfigMap = Object.fromEntries(
+      Object.entries(agreementAcceptance || {})
+        .filter(([key, value]) => isUuid(key) && value === true)
+        .map(([key]) => [key, true]),
+    );
+
     const estimateUpdatePayload: Record<string, unknown> = {
       status: "accepted",
       accepted_at: new Date().toISOString(),
@@ -178,6 +194,7 @@ export async function handleEstimateAction(
         job_agreement: agreementAcceptance?.job_agreement === true,
         warranty_agreement: agreementAcceptance?.warranty_agreement === true,
         accepted_at: new Date().toISOString(),
+        ...acceptedDocumentConfigMap,
       },
       updated_at: new Date().toISOString(),
     };

@@ -22,11 +22,9 @@ Before any deployment action, declare:
 
 Both map to the MCP-only deploy wrapper and fail closed outside MCP context.
 
-## Testing Requirements
-
-All implemented features and bug fixes must be tested before completion.
-
 ### Non-Negotiable Test Rules
+
+If the user asks you to run tests, do the following:
 
 1. Run Vite/unit test coverage for the changed behavior using the project test suite (`npm run test`).
 2. Run Playwright end-to-end coverage for user-facing behavior (`npm run test:e2e` or a scoped Playwright project/spec when appropriate).

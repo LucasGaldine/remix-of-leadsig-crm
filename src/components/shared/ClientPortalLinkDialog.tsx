@@ -18,7 +18,21 @@ interface ClientPortalLinkDialogProps {
   clientEmail?: string | null;
   allowTextClient?: boolean;
   allowEmailClient?: boolean;
+  portalSentAt?: string | null;
+  portalViewedAt?: string | null;
 }
+
+const formatPortalStatusDate = (value: string) => {
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(parsedDate);
+};
 
 export function ClientPortalLinkDialog({
   open,
@@ -34,11 +48,15 @@ export function ClientPortalLinkDialog({
   clientEmail,
   allowTextClient = true,
   allowEmailClient = true,
+  portalSentAt = null,
+  portalViewedAt = null,
 }: ClientPortalLinkDialogProps) {
   const normalizedClientPhone = clientPhone?.trim() || "";
   const normalizedClientEmail = clientEmail?.trim() || "";
   const canTextClient = allowTextClient && normalizedClientPhone.length > 0;
   const canEmailClient = allowEmailClient && normalizedClientEmail.length > 0;
+  const viewedLabel = portalViewedAt ? formatPortalStatusDate(portalViewedAt) : null;
+  const portalStatusText = viewedLabel ? `Viewed on ${viewedLabel}` : portalSentAt ? "Not viewed yet" : "Not sent yet";
 
   const handleTextClient = async () => {
     if (!allowTextClient) {
@@ -126,6 +144,7 @@ export function ClientPortalLinkDialog({
             {emailSending ? "Sending" : emailSent ? "Email sent" : "Send via email"}
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">{portalStatusText}</p>
       </DialogContent>
     </Dialog>
   );

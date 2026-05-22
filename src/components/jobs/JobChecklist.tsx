@@ -214,8 +214,19 @@ export function JobChecklist({
     { value: "material", label: "Material" },
   ];
 
-  const buildMetadataFromCategory = (category: ChecklistItemCategory) =>
-    category === "standard" ? null : { category };
+  const getChecklistItemDescription = (item: ChecklistItem) =>
+    typeof item.metadata?.description === "string" ? item.metadata.description : "";
+
+  const buildMetadataFromCategory = (
+    category: ChecklistItemCategory,
+    description?: string,
+  ) => {
+    if (category === "standard") return null;
+    const trimmedDescription = (description || "").trim();
+    return trimmedDescription.length > 0
+      ? { category, description: trimmedDescription }
+      : { category };
+  };
 
   const sectionItems = useMemo(
     () => ({
@@ -298,7 +309,7 @@ export function JobChecklist({
       jobLineItemId: null,
       label: item.label,
       category: getDisplayCategory(item),
-      description: "",
+      description: getChecklistItemDescription(item),
       quantity: "1",
       unit: DEFAULT_MATERIAL_UNIT,
       unit_price: "0",
@@ -437,7 +448,7 @@ export function JobChecklist({
           await updateItem.mutateAsync({
             id: editor.itemId,
             label,
-            metadata: buildMetadataFromCategory(editor.category),
+            metadata: buildMetadataFromCategory(editor.category, editor.description),
           });
         }
       } else {
@@ -445,13 +456,13 @@ export function JobChecklist({
           await addItem.mutateAsync({
             label,
             sort_order: items.length,
-            metadata: buildMetadataFromCategory(editor.category),
+            metadata: buildMetadataFromCategory(editor.category, editor.description),
           });
         } else if (editor.itemId) {
           await updateItem.mutateAsync({
             id: editor.itemId,
             label,
-            metadata: buildMetadataFromCategory(editor.category),
+            metadata: buildMetadataFromCategory(editor.category, editor.description),
           });
         }
       }
@@ -1052,6 +1063,16 @@ export function JobChecklist({
                           >
                             {checklistItem.label}
                           </span>
+                          {getChecklistItemDescription(checklistItem) ? (
+                            <p
+                              className={cn(
+                                "text-sm text-muted-foreground whitespace-pre-wrap",
+                                isChecklistItemCompleted && !editMode && "line-through",
+                              )}
+                            >
+                              {getChecklistItemDescription(checklistItem)}
+                            </p>
+                          ) : null}
                         </div>
 
                         {!editMode && (isPortalItem || (isReviewItem && shouldShowPortalCopyHint)) && clientPortalUrl && (
@@ -1290,20 +1311,20 @@ export function JobChecklist({
                 ) : null}
               </div>
             </div>
+            <div className="space-y-2">
+              <label className="text-base md:text-sm font-medium" htmlFor="checklist-item-description">
+                Description
+              </label>
+              <Input
+                id="checklist-item-description"
+                className="h-12 md:h-10"
+                value={editor.description}
+                onChange={(e) => setEditor((current) => ({ ...current, description: e.target.value }))}
+                placeholder="Optional description"
+              />
+            </div>
             {editor.category === "material" && (
               <>
-                <div className="space-y-2">
-                  <label className="text-base md:text-sm font-medium" htmlFor="checklist-item-description">
-                    Description
-                  </label>
-                  <Input
-                    id="checklist-item-description"
-                    className="h-12 md:h-10"
-                    value={editor.description}
-                    onChange={(e) => setEditor((current) => ({ ...current, description: e.target.value }))}
-                    placeholder="Optional description"
-                  />
-                </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-2">
                     <label className="text-base md:text-sm font-medium" htmlFor="checklist-item-quantity">

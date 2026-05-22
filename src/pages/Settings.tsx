@@ -88,6 +88,13 @@ export default function Settings() {
           onClick: () => navigate("/settings/pricing-rules"),
           searchTerms: ["pricing", "rates", "square foot", "per foot", "linear foot", "margin", "markup", "tax rate", "labor cost", "material cost", "base labor rate", "material rate", "waste factor", "overhead", "profit margin", "pavers", "turf", "concrete", "sod", "mulch", "gravel", "pricing rules", "estimate calculation", "cost"],
         },
+        {
+          icon: <FileText className="h-5 w-5" />,
+          label: "Document Templates",
+          description: "Default job documents and signature/email rules",
+          onClick: () => navigate("/settings/document-templates"),
+          searchTerms: ["documents", "templates", "job agreement", "warranty", "job release", "signature", "document email", "default docs", "job documents"],
+        },
       ],
     },
     {

@@ -93,7 +93,7 @@ export function ClientSelector({
   }
 
   return (
-    <div>
+    <div ref={containerRef}>
       <div className="flex items-center justify-between">
         <Label>Contact <span className="text-destructive">*</span></Label>
         {mode === "new" ? (
@@ -117,7 +117,7 @@ export function ClientSelector({
       </div>
 
       {mode === "existing" ? (
-        <div ref={containerRef} className="relative">
+        <div className="relative">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input

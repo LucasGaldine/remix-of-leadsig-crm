@@ -191,6 +191,7 @@ export default function EstimateDetail() {
   const [portalCopied, setPortalCopied] = useState(false);
   const [portalClientPhone, setPortalClientPhone] = useState("");
   const [portalClientEmail, setPortalClientEmail] = useState("");
+  const [portalLastViewedAt, setPortalLastViewedAt] = useState<string | null>(null);
   const [manualApproving, setManualApproving] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showApprovedDetails, setShowApprovedDetails] = useState(false);
@@ -282,19 +283,24 @@ export default function EstimateDetail() {
   const createEstimateVersion = async (nameOverride?: string): Promise<boolean> => {
     if (!estimate || !id) return false;
 
-    const activeLineItems = estimate.line_items
-      .filter((item: any) => !item.is_change_order || item.change_order_type !== "deleted")
-      .sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
-      .map((item: any, index: number) => ({
-        name: item.name,
-        description: item.description || null,
-        quantity: Number(item.quantity) || 0,
-        unit: item.unit,
-        unit_price: Number(item.unit_price) || 0,
-        total: Number(item.total) || 0,
-        sort_order: Number(item.sort_order ?? index),
-        category: normalizeCategory(item.category),
-      }));
+    const sourceVersion = selectedVersion;
+
+    const sourceLineItems = sourceVersion
+      ? sourceVersion.line_items || []
+      : estimate.line_items
+          .filter((item: any) => !item.is_change_order || item.change_order_type !== "deleted")
+          .sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+
+    const activeLineItems = sourceLineItems.map((item: any, index: number) => ({
+      name: item.name,
+      description: item.description || null,
+      quantity: Number(item.quantity) || 0,
+      unit: item.unit,
+      unit_price: Number(item.unit_price) || 0,
+      total: Number(item.total) || 0,
+      sort_order: Number(item.sort_order ?? index),
+      category: normalizeCategory(item.category),
+    }));
 
     const normalizedNameOverride =
       typeof nameOverride === "string" ? nameOverride : `Version ${estimateVersions.length + 1}`;
@@ -311,14 +317,14 @@ export default function EstimateDetail() {
         estimateId: id,
         accountId: estimate.account_id,
         name: newVersionName,
-        subtotal: Number(estimate.subtotal) || 0,
-        taxRate: Number(estimate.tax_rate) || 0,
-        tax: Number(estimate.tax) || 0,
-        discount: Number(estimate.discount) || 0,
-        total: Number(estimate.total) || 0,
-        profitMargin: Number((estimate as any).profit_margin) || 0,
-        surcharge: Number((estimate as any).surcharge) || 0,
-        notes: estimate.notes || null,
+        subtotal: Number(sourceVersion?.subtotal ?? estimate.subtotal) || 0,
+        taxRate: Number(sourceVersion?.tax_rate ?? estimate.tax_rate) || 0,
+        tax: Number(sourceVersion?.tax ?? estimate.tax) || 0,
+        discount: Number(sourceVersion?.discount ?? estimate.discount) || 0,
+        total: Number(sourceVersion?.total ?? estimate.total) || 0,
+        profitMargin: Number(sourceVersion?.profit_margin ?? (estimate as any).profit_margin) || 0,
+        surcharge: Number(sourceVersion?.surcharge ?? (estimate as any).surcharge) || 0,
+        notes: sourceVersion?.notes ?? estimate.notes ?? null,
         lineItems: activeLineItems,
       });
 
@@ -938,11 +944,29 @@ export default function EstimateDetail() {
       throw new Error("No customer associated with this estimate");
     }
 
-    const { data: customer, error: fetchError } = await supabase
-      .from("customers")
-      .select("client_portal_token, phone, email")
-      .eq("id", customerId)
-      .maybeSingle();
+    const readCustomerPortalFields = async (includeViewTracking: boolean) =>
+      supabase
+        .from("customers")
+        .select(
+          includeViewTracking
+            ? "client_portal_token, phone, email, portal_last_viewed_at"
+            : "client_portal_token, phone, email",
+        )
+        .eq("id", customerId)
+        .maybeSingle();
+
+    let { data: customer, error: fetchError } = await readCustomerPortalFields(true);
+    const isMissingPortalViewColumn = Boolean(
+      fetchError &&
+        typeof fetchError === "object" &&
+        "code" in fetchError &&
+        (fetchError as { code?: string }).code === "PGRST204",
+    );
+    if (isMissingPortalViewColumn) {
+      const fallback = await readCustomerPortalFields(false);
+      customer = fallback.data;
+      fetchError = fallback.error;
+    }
 
     if (fetchError) throw fetchError;
 
@@ -963,6 +987,10 @@ export default function EstimateDetail() {
       }),
       phone: customer?.phone?.trim() || "",
       email: customer?.email?.trim() || "",
+      lastViewedAt:
+        customer && typeof customer === "object" && "portal_last_viewed_at" in customer
+          ? ((customer as { portal_last_viewed_at?: string | null }).portal_last_viewed_at ?? null)
+          : null,
     };
   };
 
@@ -974,6 +1002,7 @@ export default function EstimateDetail() {
       setPortalLink(portalData.link);
       setPortalClientPhone(portalData.phone);
       setPortalClientEmail(portalData.email);
+      setPortalLastViewedAt(portalData.lastViewedAt);
       setPortalDialogOpen(true);
     } catch {
       toast.error("Failed to generate portal link");
@@ -2133,6 +2162,8 @@ export default function EstimateDetail() {
         clientEmail={portalClientEmail || estimate.customer?.email || ""}
         allowTextClient={currentAccount?.pricing_plan !== "free"}
         allowEmailClient={currentAccount?.pricing_plan !== "free"}
+        portalSentAt={estimate?.sent_at || null}
+        portalViewedAt={portalLastViewedAt || estimate?.viewed_at || null}
       />
 
       <EditEstimateModal

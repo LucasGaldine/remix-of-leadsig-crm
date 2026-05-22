@@ -39,6 +39,13 @@ export interface InvoicePDFData extends PdfBaseData {
   balanceDue?: number;
 }
 
+export interface TemplateDocumentPDFData {
+  title: string;
+  content: string;
+  fileName?: string;
+  requiresSignature?: boolean;
+}
+
 async function getImageDataUrl(imageUrl: string) {
   const response = await fetch(imageUrl);
   if (!response.ok) {
@@ -389,4 +396,143 @@ export async function generateInvoicePDF(data: InvoicePDFData) {
 
   const filename = `invoice-${data.customerName.replace(/[^a-z0-9]/gi, "_").toLowerCase()}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
   doc.save(filename);
+}
+
+function sanitizePdfBaseName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "document";
+}
+
+type MarkdownLineStyle = "h1" | "h2" | "h3" | "bullet" | "ordered" | "paragraph";
+
+function stripInlineMarkdown(value: string) {
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .trim();
+}
+
+function normalizeDocumentLine(line: string): { text: string; style: MarkdownLineStyle } {
+  const trimmed = line.trim();
+  if (!trimmed) return { text: "", style: "paragraph" };
+
+  if (/^###\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^###\s+/, "")), style: "h3" };
+  }
+  if (/^##\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^##\s+/, "")), style: "h2" };
+  }
+  if (/^#\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^#\s+/, "")), style: "h1" };
+  }
+  if (/^\s*[-*]\s+/.test(trimmed)) {
+    return { text: `• ${stripInlineMarkdown(trimmed.replace(/^\s*[-*]\s+/, ""))}`, style: "bullet" };
+  }
+  if (/^\s*\d+\.\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^\s*(\d+)\.\s+/, "$1. ")), style: "ordered" };
+  }
+  return { text: stripInlineMarkdown(trimmed), style: "paragraph" };
+}
+
+function createTemplateDocumentPdf(data: TemplateDocumentPDFData) {
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 48;
+  const maxWidth = pageWidth - margin * 2;
+  const lineHeight = 16;
+  const rawContent = String(data.content || "").replace(/\r\n/g, "\n");
+  if (!rawContent.trim()) return null;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text(data.title || "Document", margin, margin);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated: ${format(new Date(), "MMMM d, yyyy 'at' h:mm a")}`, margin, margin + 18);
+  doc.setTextColor(0, 0, 0);
+
+  let y = margin + 42;
+  const lines = rawContent.split(/\n/);
+
+  const ensurePageRoom = (requiredHeight: number) => {
+    if (y + requiredHeight <= pageHeight - margin) return;
+    doc.addPage();
+    y = margin;
+  };
+
+  for (const line of lines) {
+    const { text, style } = normalizeDocumentLine(line);
+    if (!text) {
+      y += Math.floor(lineHeight / 2);
+      continue;
+    }
+
+    if (style === "h1") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+    } else if (style === "h2") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+    } else if (style === "h3") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+    }
+
+    const wrapped = doc.splitTextToSize(text, maxWidth) as string[];
+    ensurePageRoom(Math.max(lineHeight, wrapped.length * lineHeight));
+    for (const segment of wrapped) {
+      doc.text(segment, margin, y);
+      y += lineHeight;
+    }
+    if (style === "h1" || style === "h2" || style === "h3") {
+      y += 4;
+    }
+  }
+
+  if (data.requiresSignature) {
+    ensurePageRoom(100);
+    y += 12;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Signature", margin, y);
+    y += 22;
+
+    doc.setDrawColor(120, 120, 120);
+    doc.line(margin, y, margin + 260, y);
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 90, 90);
+    doc.text("Client Signature", margin, y);
+    doc.line(margin + 300, y - 14, margin + 440, y - 14);
+    doc.text("Date", margin + 300, y);
+    doc.setTextColor(0, 0, 0);
+  }
+
+  return doc;
+}
+
+export function generateTemplateDocumentPDF(data: TemplateDocumentPDFData) {
+  const doc = createTemplateDocumentPdf(data);
+  if (!doc) return;
+  const baseName = sanitizePdfBaseName(data.fileName || data.title || "document");
+  doc.save(`${baseName}.pdf`);
+}
+
+export function buildTemplateDocumentPDFBlob(data: TemplateDocumentPDFData) {
+  const doc = createTemplateDocumentPdf(data);
+  if (!doc) return null;
+  return doc.output("blob");
 }

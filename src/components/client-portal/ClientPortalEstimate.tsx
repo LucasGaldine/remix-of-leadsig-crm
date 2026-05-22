@@ -3,6 +3,12 @@ import { Check, ChevronLeft, ChevronRight, DollarSign, X, Download, CircleAlert 
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { normalizeClientPortalColor, normalizeClientPortalTextColor } from "@/lib/clientPortalTheme";
 import { generateAgreementTemplates } from "@/lib/agreementTemplates";
+import {
+  buildScopeOfWorkValue,
+  getDocumentFallbackText,
+  renderDocumentTemplateMarkdownHtml,
+  type DocumentTemplateMergeFields,
+} from "@/lib/documentTemplates";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface LineItem {
@@ -18,6 +24,43 @@ interface LineItem {
   change_order_approved?: boolean | null;
   changed_at?: string;
 }
+
+type PortalDocumentTemplate = {
+  id: string;
+  name: string;
+  system_key: string | null;
+  body: string | null;
+};
+
+type PortalJobDocumentConfig = {
+  id: string;
+  lead_id: string;
+  template_id: string;
+  include_in_job: boolean;
+  email_timing: string;
+  requires_signature: boolean;
+  sort_order: number;
+  template: PortalDocumentTemplate | null;
+};
+
+type PortalJobDocument = {
+  id: string;
+  lead_id: string;
+  template_id: string | null;
+  config_id: string | null;
+  document_key: string;
+  file_name: string;
+  file_path: string;
+  mime_type: string | null;
+  created_at: string;
+  url: string;
+};
+
+const LEGACY_DOCUMENT_KEY_BY_SYSTEM_KEY: Record<string, string> = {
+  job_agreement: "job_agreement",
+  warranty_agreement: "warranty",
+  job_release: "job_release",
+};
 
 interface ClientPortalEstimateProps {
   estimate: {
@@ -82,6 +125,34 @@ interface ClientPortalEstimateProps {
     approved_via?: string | null;
     accepted_at?: string | null;
     manual_approval_photo_url?: string | null;
+    job_document_config_lead_id?: string | null;
+    job_document_configs?: Array<{
+      id: string;
+      lead_id: string;
+      template_id: string;
+      include_in_job: boolean;
+      email_timing: string;
+      requires_signature: boolean;
+      sort_order: number;
+      template: {
+        id: string;
+        name: string;
+        system_key: string | null;
+        body: string | null;
+      } | null;
+    }>;
+    job_documents?: Array<{
+      id: string;
+      lead_id: string;
+      template_id: string | null;
+      config_id: string | null;
+      document_key: string;
+      file_name: string;
+      file_path: string;
+      mime_type: string | null;
+      created_at: string;
+      url: string;
+    }>;
   };
   token: string;
   apiUrl: string;
@@ -95,6 +166,7 @@ interface ClientPortalEstimateProps {
   companyLogoUrl?: string;
   companyEmail?: string;
   companyPhone?: string;
+  companyDefaultPaymentSchedule?: Record<string, unknown> | null;
   createdAt?: string;
   expiresAt?: string;
   portalColor?: string;
@@ -196,6 +268,7 @@ export function ClientPortalEstimate({
   companyLogoUrl = "",
   companyEmail = "",
   companyPhone = "",
+  companyDefaultPaymentSchedule = null,
   createdAt,
   expiresAt,
   portalColor = "",
@@ -214,10 +287,7 @@ export function ClientPortalEstimate({
   const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
   const [approvalAgreementTemplates, setApprovalAgreementTemplates] = useState<Record<string, string> | null>(null);
   const [isVisualizationPortrait, setIsVisualizationPortrait] = useState(false);
-  const [agreementChecks, setAgreementChecks] = useState({
-    job_agreement: true,
-    warranty_agreement: true,
-  });
+  const [agreementChecks, setAgreementChecks] = useState<Record<string, boolean>>({});
   const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingSignatureRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -272,6 +342,30 @@ export function ClientPortalEstimate({
         (key) => key !== "warranty_agreement" || isWarrantyEnabledForCurrentSelection,
       ),
     [isWarrantyEnabledForCurrentSelection],
+  );
+  const hasPortalDocumentPayload = useMemo(
+    () => Array.isArray(estimate.job_document_configs),
+    [estimate.job_document_configs],
+  );
+  const normalizeEmailTimingValue = useCallback((value: unknown) => {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+  }, []);
+  const portalDocumentConfigs = useMemo(
+    () =>
+      ((estimate.job_document_configs || []) as PortalJobDocumentConfig[])
+        .filter((config) => Boolean(config?.id))
+        .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)),
+    [estimate.job_document_configs],
+  );
+  const portalDocuments = useMemo(
+    () =>
+      ((estimate.job_documents || []) as PortalJobDocument[])
+        .filter((document) => Boolean(document?.id))
+        .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
+    [estimate.job_documents],
   );
   const maxVersionWindowStart = Math.max(availableVersions.length - versionWindowSize, 0);
   const visibleVersions = useMemo(
@@ -421,10 +515,152 @@ export function ClientPortalEstimate({
     () => approvalAgreementTemplates || templateRecord,
     [approvalAgreementTemplates, templateRecord],
   );
+  const mergeFields = useMemo((): DocumentTemplateMergeFields => {
+    const defaultScheduleRaw =
+      companyDefaultPaymentSchedule && typeof companyDefaultPaymentSchedule === "object"
+        ? companyDefaultPaymentSchedule
+        : {};
+    const readPercent = (value: unknown, fallback: number) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 0) return fallback;
+      return numeric;
+    };
+    const formatPercent = (value: number) =>
+      Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/u, "");
+    const defaultSchedule = {
+      deposit: readPercent(defaultScheduleRaw.deposit_percentage, 33),
+      midpoint: readPercent(defaultScheduleRaw.midpoint_percentage, 33),
+      final: readPercent(defaultScheduleRaw.final_percentage, 34),
+    };
+
+    const scopeOfWork = Array.isArray(estimate.scope_of_work_items) && estimate.scope_of_work_items.length > 0
+      ? estimate.scope_of_work_items
+          .map((item) => String(item || "").trim())
+          .filter((item) => item.length > 0)
+          .map((item, index) => `${index + 1}. ${item}`)
+          .join("\n")
+      : buildScopeOfWorkValue({
+          lineItems: displayLineItems,
+          fallbackDescription: estimate.notes || "",
+        });
+
+    return {
+      current_date: new Date().toISOString().slice(0, 10),
+      job_name: String(estimate?.proposal_settings?.title || jobName || "").trim(),
+      job_address: String(address || "").trim(),
+      service_type: "",
+      client_name: String(customerName || "").trim(),
+      client_email: "",
+      client_phone: "",
+      company_name: String(companyName || "").trim(),
+      company_email: String(companyEmail || "").trim(),
+      company_phone: String(companyPhone || "").trim(),
+      estimate_total: `$${Number(displayTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      estimate_subtotal: `$${Number(displaySubtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      estimate_tax: `$${Number(displayTax || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      estimate_discount: `$${Number(displayDiscount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      default_payment_schedule: `Deposit ${formatPercent(defaultSchedule.deposit)}%, Midpoint ${formatPercent(defaultSchedule.midpoint)}%, Final ${formatPercent(defaultSchedule.final)}%`,
+      default_payment_deposit_percentage: formatPercent(defaultSchedule.deposit),
+      default_payment_midpoint_percentage: formatPercent(defaultSchedule.midpoint),
+      default_payment_final_percentage: formatPercent(defaultSchedule.final),
+      scope_of_work: scopeOfWork || "",
+    };
+  }, [
+    address,
+    companyDefaultPaymentSchedule,
+    companyEmail,
+    companyName,
+    companyPhone,
+    customerName,
+    displayDiscount,
+    displayLineItems,
+    displaySubtotal,
+    displayTax,
+    displayTotal,
+    estimate.notes,
+    estimate.proposal_settings?.title,
+    estimate.scope_of_work_items,
+    jobName,
+  ]);
+  const getUploadedDocumentForConfig = useCallback((config: PortalJobDocumentConfig) => {
+    const directByConfig = portalDocuments.find((document) => document.config_id === config.id);
+    if (directByConfig) return directByConfig;
+
+    const templateId = config.template?.id || config.template_id;
+    if (!templateId) return null;
+    const hasDuplicateTemplateConfigs = portalDocumentConfigs.filter((row) => row.template_id === templateId).length > 1;
+    if (!hasDuplicateTemplateConfigs) {
+      const directByTemplate = portalDocuments.find((document) => document.template_id === templateId);
+      if (directByTemplate) return directByTemplate;
+    }
+
+    const systemKey = config.template?.system_key ? String(config.template.system_key) : "";
+    const legacyKey = systemKey ? LEGACY_DOCUMENT_KEY_BY_SYSTEM_KEY[systemKey] : "";
+    if (legacyKey) {
+      return portalDocuments.find((document) => String(document.document_key || "") === legacyKey) || null;
+    }
+
+    return null;
+  }, [portalDocumentConfigs, portalDocuments]);
+  const approvalRequiredDocuments = useMemo(
+    () =>
+      portalDocumentConfigs.filter(
+        (config) => {
+          const timing = normalizeEmailTimingValue(config.email_timing);
+          return Boolean(config.include_in_job)
+            && timing === "on_estimate_approval"
+            && config.requires_signature === true
+            && (config.template?.system_key !== "warranty_agreement" || isWarrantyEnabledForCurrentSelection);
+        },
+      ),
+    [isWarrantyEnabledForCurrentSelection, normalizeEmailTimingValue, portalDocumentConfigs],
+  );
+  const manuallySentDocuments = useMemo(
+    () =>
+      portalDocumentConfigs.filter(
+        (config) => {
+          const timing = normalizeEmailTimingValue(config.email_timing);
+          return Boolean(config.include_in_job)
+            && timing === "manual"
+            && config.requires_signature === true
+            && Boolean(getUploadedDocumentForConfig(config));
+        },
+      ),
+    [getUploadedDocumentForConfig, normalizeEmailTimingValue, portalDocumentConfigs],
+  );
+  const visiblePortalDocuments = useMemo(() => {
+    if (approvalRequiredDocuments.length === 0 && manuallySentDocuments.length === 0) return [];
+    const byId = new Map<string, PortalJobDocumentConfig>();
+    for (const config of approvalRequiredDocuments) byId.set(config.id, config);
+    for (const config of manuallySentDocuments) byId.set(config.id, config);
+    return Array.from(byId.values()).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+  }, [approvalRequiredDocuments, manuallySentDocuments]);
   const agreementEntries = requiredAgreementKeys.map((key) => ({
     key,
     text: resolveAgreementTextByKey(effectiveAgreementRecord, key),
   }));
+  const approvalCheckboxItems = useMemo(() => {
+    if (!hasPortalDocumentPayload) return [];
+
+    return approvalRequiredDocuments.map((config) => ({
+      id: config.id,
+      title: String(config.template?.name || "Document"),
+      config,
+    }));
+  }, [approvalRequiredDocuments, hasPortalDocumentPayload]);
+  useEffect(() => {
+    setAgreementChecks((previous) => {
+      const next: Record<string, boolean> = {};
+      for (const item of approvalCheckboxItems) {
+        next[item.id] = previous[item.id] ?? true;
+      }
+      return next;
+    });
+  }, [approvalCheckboxItems]);
+  const hasAcceptedAllRequiredDocuments = useMemo(
+    () => approvalCheckboxItems.every((item) => agreementChecks[item.id] === true),
+    [agreementChecks, approvalCheckboxItems],
+  );
   const approvedChangeOrderEntries = useMemo(
     () => estimate.line_items.filter((item) => item.is_change_order === true && item.change_order_approved === true),
     [estimate.line_items],
@@ -597,11 +833,36 @@ export function ClientPortalEstimate({
     });
   };
 
+  const resolveConfigDocumentText = useCallback((config: PortalJobDocumentConfig) => {
+    const template = config.template;
+    if (!template) return "";
+    return getDocumentFallbackText({
+      template,
+      estimateAgreementTemplates: effectiveAgreementRecord,
+      jobReleaseText: null,
+      templateMergeFields: mergeFields,
+    });
+  }, [effectiveAgreementRecord, mergeFields]);
+
+  const openDocumentFromConfig = useCallback((config: PortalJobDocumentConfig) => {
+    const title = String(config.template?.name || "Document");
+    const uploadedDocument = getUploadedDocumentForConfig(config);
+    if (uploadedDocument?.url) {
+      window.open(uploadedDocument.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const content = resolveConfigDocumentText(config);
+    setActiveDocument({
+      title,
+      content: content || "No document text available for this document.",
+    });
+  }, [getUploadedDocumentForConfig, resolveConfigDocumentText]);
+
   const handleAction = async (action: "approve" | "decline") => {
     if (action === "approve") {
-      const allAccepted = requiredAgreementKeys.every((key) => agreementChecks[key]);
-      if (!allAccepted) {
-        setError("Please accept all agreements before approving.");
+      if (!hasAcceptedAllRequiredDocuments) {
+        setError("Please accept all required documents before approving.");
         return false;
       }
     }
@@ -621,10 +882,27 @@ export function ClientPortalEstimate({
           estimate_version_id: action === "approve" ? selectedVersionId : undefined,
           agreement_acceptance: action === "approve"
             ? {
-                ...agreementChecks,
                 // Backward compatibility with deployed edge functions that may still require this key.
                 job_release_agreement: true,
-                warranty_agreement: isWarrantyEnabledForCurrentSelection ? agreementChecks.warranty_agreement : false,
+                job_agreement:
+                  (() => {
+                    const keyDocument = approvalRequiredDocuments.find((config) => config.template?.system_key === "job_agreement");
+                    if (keyDocument) return agreementChecks[keyDocument.id] === true;
+                    if ("job_agreement" in agreementChecks) return agreementChecks.job_agreement === true;
+                    return true;
+                  })(),
+                warranty_agreement:
+                  isWarrantyEnabledForCurrentSelection
+                    ? (() => {
+                        const keyDocument = approvalRequiredDocuments.find((config) => config.template?.system_key === "warranty_agreement");
+                        if (keyDocument) return agreementChecks[keyDocument.id] === true;
+                        if ("warranty_agreement" in agreementChecks) return agreementChecks.warranty_agreement === true;
+                        return true;
+                      })()
+                    : false,
+                ...Object.fromEntries(
+                  approvalCheckboxItems.map((item) => [item.id, agreementChecks[item.id] === true]),
+                ),
               }
             : undefined,
           agreement_templates: action === "approve" ? approvalAgreementTemplates : undefined,
@@ -687,10 +965,12 @@ export function ClientPortalEstimate({
     clearSignature();
     setError(null);
     setActiveDocument(null);
-    setAgreementChecks({
-      job_agreement: true,
-      warranty_agreement: true,
-    });
+    setAgreementChecks(
+      approvalCheckboxItems.reduce((acc, item) => {
+        acc[item.id] = true;
+        return acc;
+      }, {} as Record<string, boolean>),
+    );
     setApprovalAgreementTemplates(null);
     setApprovalDialogAction(action);
   };
@@ -843,9 +1123,9 @@ export function ClientPortalEstimate({
         <div className="px-4 py-3 space-y-3">
           <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
             {adjustedEstimate.lineItems.length > 0 ? (
-              adjustedEstimate.lineItems.map((item) => (
+              adjustedEstimate.lineItems.map((item, itemIndex) => (
                 <div
-                  key={item.id}
+                  key={`comparison-line-item-${item.id || "missing"}-${itemIndex}`}
                   className={isHighlighted ? "pb-2 border-b border-white/20 last:border-b-0 last:pb-0" : "pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1056,9 +1336,9 @@ export function ClientPortalEstimate({
                       <div className="px-4 py-3 space-y-3">
                         <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                           {versionWithProfitFolded.lineItems.length > 0 ? (
-                            versionWithProfitFolded.lineItems.map((item) => (
+                            versionWithProfitFolded.lineItems.map((item, itemIndex) => (
                               <div
-                                key={item.id}
+                                key={`version-line-item-${version.id}-${item.id || "missing"}-${itemIndex}`}
                                 className={isSelectedVersion ? "pb-2 border-b border-white/20 last:border-b-0 last:pb-0" : "pb-2 border-b border-slate-100 last:border-b-0 last:pb-0"}
                               >
                                 <div className="flex items-start justify-between gap-2">
@@ -1227,8 +1507,8 @@ export function ClientPortalEstimate({
                 Material Highlights
               </p>
               <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-                {highlightedItems.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between text-sm">
+                {highlightedItems.map((item, itemIndex) => (
+                  <div key={`highlighted-item-${item.id || "missing"}-${itemIndex}`} className="flex items-center justify-between text-sm">
                     <span className="text-slate-700">{item.name}</span>
                     <span className="font-semibold text-slate-900">
                       ${Number(item.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -1259,8 +1539,8 @@ export function ClientPortalEstimate({
           {!isVersionComparisonMode && displayLineItems.length > 0 && (
             <div className="px-6 sm:px-8 py-5">
               <div className="space-y-0">
-                {displayLineItemsWithProfitFolded.map((item) => (
-                  <div key={item.id} className="py-3 first:pt-0 last:pb-0">
+                {displayLineItemsWithProfitFolded.map((item, itemIndex) => (
+                  <div key={`display-line-item-${item.id || "missing"}-${itemIndex}`} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0 mr-4">
                         <p className="font-medium text-slate-900">{item.name}</p>
@@ -1350,85 +1630,67 @@ export function ClientPortalEstimate({
         </>
       )}
 
-      {!isPending && (
-        <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
-          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-            Documents
-          </p>
-          <div className="space-y-3">
-            {agreementEntries.map(({ key }) => (
-              <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-900">
-                  {formatAgreementLabel(key)}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const entry = agreementEntries.find((value) => value.key === key);
-                    setActiveDocument({
-                      title: formatAgreementLabel(key),
-                      content: entry?.text || "No agreement text available for this document.",
-                    });
-                  }}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                >
-                  View Document
-                </button>
-              </div>
-            ))}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-900">Original Estimate</p>
+      <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+          Documents
+        </p>
+        <div className="space-y-3">
+          {!hasPortalDocumentPayload && (
+            <p className="text-sm text-slate-600">
+              Document configuration is unavailable in this portal response. Refresh after the latest portal backend is deployed.
+            </p>
+          )}
+          {hasPortalDocumentPayload && visiblePortalDocuments.map((config, index) => (
+            <div
+              key={`portal-document-${config.id || "missing"}-${config.template_id || "template"}-${index}`}
+              className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3"
+            >
+              <p className="text-sm font-semibold text-slate-900">
+                {config.template?.name || "Document"}
+              </p>
               <button
                 type="button"
-                onClick={() =>
-                  setActiveDocument({
-                    title: "Original Estimate",
-                    content: buildOriginalEstimateDocumentText({
-                      lineItems:
-                        Array.isArray(estimate.original_line_items) && estimate.original_line_items.length > 0
-                          ? estimate.original_line_items
-                          : mostRecentApprovedBaselineLineItems,
-                      subtotal:
-                        typeof estimate.original_subtotal === "number"
-                          ? estimate.original_subtotal
-                          : approvedBaselineSubtotal,
-                      tax:
-                        typeof estimate.original_tax === "number"
-                          ? estimate.original_tax
-                          : approvedBaselineTax,
-                      discount:
-                        typeof estimate.original_discount === "number"
-                          ? estimate.original_discount
-                          : approvedBaselineDiscount,
-                      total:
-                        typeof estimate.original_total === "number"
-                          ? estimate.original_total
-                          : approvedBaselineTotal,
-                      taxRate: Number(estimate.tax_rate || 0),
-                    }),
-                  })}
+                onClick={() => openDocumentFromConfig(config)}
                 className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
               >
                 View Document
               </button>
             </div>
-            {mostRecentApprovedChangeOrder && (
+          ))}
+          {hasPortalDocumentPayload && visiblePortalDocuments.length === 0 && (
+            <p className="text-sm text-slate-600">No approval or manually sent documents are available yet.</p>
+          )}
+          {!isPending && (
+            <>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-900">
-                  Most Recent Approved Change Order
-                </p>
+                <p className="text-sm font-semibold text-slate-900">Original Estimate</p>
                 <button
                   type="button"
                   onClick={() =>
                     setActiveDocument({
-                      title: "Most Recent Approved Change Order",
-                      content: buildApprovedChangeOrderDocumentText({
-                        changedAt: mostRecentApprovedChangeOrder.changedAt,
-                        items: mostRecentApprovedChangeOrder.items,
-                        approvedVia: estimate.approved_via || null,
-                        approvedAt: estimate.accepted_at || null,
-                        hasSignature: Boolean(estimate.manual_approval_photo_url),
-                        total: Number(estimate.total || 0),
+                      title: "Original Estimate",
+                      content: buildOriginalEstimateDocumentText({
+                        lineItems:
+                          Array.isArray(estimate.original_line_items) && estimate.original_line_items.length > 0
+                            ? estimate.original_line_items
+                            : mostRecentApprovedBaselineLineItems,
+                        subtotal:
+                          typeof estimate.original_subtotal === "number"
+                            ? estimate.original_subtotal
+                            : approvedBaselineSubtotal,
+                        tax:
+                          typeof estimate.original_tax === "number"
+                            ? estimate.original_tax
+                            : approvedBaselineTax,
+                        discount:
+                          typeof estimate.original_discount === "number"
+                            ? estimate.original_discount
+                            : approvedBaselineDiscount,
+                        total:
+                          typeof estimate.original_total === "number"
+                            ? estimate.original_total
+                            : approvedBaselineTotal,
+                        taxRate: Number(estimate.tax_rate || 0),
                       }),
                     })}
                   className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
@@ -1436,10 +1698,35 @@ export function ClientPortalEstimate({
                   View Document
                 </button>
               </div>
-            )}
-          </div>
+              {mostRecentApprovedChangeOrder && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Most Recent Approved Change Order
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveDocument({
+                        title: "Most Recent Approved Change Order",
+                        content: buildApprovedChangeOrderDocumentText({
+                          changedAt: mostRecentApprovedChangeOrder.changedAt,
+                          items: mostRecentApprovedChangeOrder.items,
+                          approvedVia: estimate.approved_via || null,
+                          approvedAt: estimate.accepted_at || null,
+                          hasSignature: Boolean(estimate.manual_approval_photo_url),
+                          total: Number(estimate.total || 0),
+                        }),
+                      })}
+                    className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    View Document
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {isPending && !hasPendingChanges && (
         <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
@@ -1485,26 +1772,30 @@ export function ClientPortalEstimate({
           {signaturePad}
           {approvalDialogAction === "approve" && (
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm font-medium text-slate-900">Required agreements</p>
-              {requiredAgreementKeys.map((key) => (
-                <div key={key} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+              <p className="text-sm font-medium text-slate-900">Required documents</p>
+              {approvalCheckboxItems.map((item, index) => (
+                <div key={`approval-item-${item.id || "missing"}-${index}`} className="rounded-md border border-slate-200 bg-white px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <label className="flex items-start gap-2 text-sm text-slate-700">
                       <input
                         type="checkbox"
-                        checked={agreementChecks[key]}
+                        checked={agreementChecks[item.id] === true}
                         onChange={(event) =>
-                          setAgreementChecks((previous) => ({ ...previous, [key]: event.target.checked }))
+                          setAgreementChecks((previous) => ({ ...previous, [item.id]: event.target.checked }))
                         }
                       />
-                      <span className="font-medium">{formatAgreementLabel(key)}</span>
+                      <span className="font-medium">{item.title}</span>
                     </label>
                     <button
                       type="button"
                       onClick={() => {
-                        const entry = agreementEntries.find((value) => value.key === key);
+                        if (item.config) {
+                          openDocumentFromConfig(item.config);
+                          return;
+                        }
+                        const entry = agreementEntries.find((value) => value.key === item.id);
                         setActiveDocument({
-                          title: formatAgreementLabel(key),
+                          title: item.title,
                           content: entry?.text || "No agreement text available for this document.",
                         });
                       }}
@@ -1515,6 +1806,13 @@ export function ClientPortalEstimate({
                   </div>
                 </div>
               ))}
+              {approvalCheckboxItems.length === 0 && (
+                <p className="text-xs text-slate-600">
+                  {hasPortalDocumentPayload
+                    ? "No estimate-approval documents are configured."
+                    : "Document configuration is unavailable in this portal response."}
+                </p>
+              )}
             </div>
           )}
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -1530,7 +1828,11 @@ export function ClientPortalEstimate({
             <button
               type="button"
               onClick={handleConfirmApproval}
-              disabled={submitting !== null || !hasSignature}
+              disabled={
+                submitting !== null
+                || !hasSignature
+                || (approvalDialogAction === "approve" && !hasAcceptedAllRequiredDocuments)
+              }
               className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
               style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
             >
@@ -1550,11 +1852,12 @@ export function ClientPortalEstimate({
           <DialogHeader>
             <DialogTitle>{activeDocument?.title || "Document"}</DialogTitle>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-sm text-slate-700 whitespace-pre-wrap">
-              {activeDocument?.content || "No document available."}
-            </p>
-          </div>
+          <div
+            className="prose prose-sm min-h-0 max-w-none flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1"
+            dangerouslySetInnerHTML={{
+              __html: renderDocumentTemplateMarkdownHtml(activeDocument?.content || "No document text available."),
+            }}
+          />
           <DialogFooter>
             <button
               type="button"

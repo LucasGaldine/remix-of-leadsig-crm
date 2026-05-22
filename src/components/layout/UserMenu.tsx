@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ProfileAvatar } from '@/components/profile/ProfileAvatar';
 import { Badge } from '@/components/ui/badge';
 import { LogOut, Settings, Crown, Bug } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -43,14 +43,6 @@ export function UserMenu({ clickable = true }: UserMenuProps) {
 
   if (!user) return null;
 
-  const initials = profile?.full_name
-    ? profile.full_name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-    : user.email?.[0].toUpperCase() || 'U';
-
   const handleSignOut = async () => {
     await signOut();
     toast.success('Signed out successfully');
@@ -58,12 +50,14 @@ export function UserMenu({ clickable = true }: UserMenuProps) {
   };
 
   const avatar = (
-    <Avatar className="h-10 w-10">
-      <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
-      <AvatarFallback className="bg-primary/10 text-primary">
-        {initials}
-      </AvatarFallback>
-    </Avatar>
+    <ProfileAvatar
+      className="h-10 w-10"
+      avatarUrl={profile?.avatar_url}
+      fullName={profile?.full_name}
+      fallbackText={user.email?.[0].toUpperCase() || 'U'}
+      focusX={profile?.avatar_focus_x}
+      focusY={profile?.avatar_focus_y}
+    />
   );
 
   if (!clickable) {

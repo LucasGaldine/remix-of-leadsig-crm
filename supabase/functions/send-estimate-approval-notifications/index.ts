@@ -2,7 +2,65 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6.10.1";
 import { jsPDF as JsPDF } from "npm:jspdf@2.5.2";
 import { format } from "npm:date-fns@3.6.0";
-type JsPdfDoc = InstanceType<typeof JsPDF>;
+
+type RequestBody = {
+  estimate_id?: string;
+  event_type?: "estimate_approved" | "change_order_approved";
+  force_resend?: boolean;
+};
+
+type RecipientType = "customer" | "user";
+type EmailAttachment = { filename: string; content: Uint8Array; contentType: string };
+
+type JobDocumentConfig = {
+  id?: string | null;
+  lead_id?: string | null;
+  template_id?: string | null;
+  include_in_job?: boolean | null;
+  email_timing?: string | null;
+  requires_signature?: boolean | null;
+  template?: { name?: string | null; system_key?: string | null; body?: string | null } | null;
+};
+type JobDocument = {
+  id?: string | null;
+  lead_id?: string | null;
+  template_id?: string | null;
+  config_id?: string | null;
+  document_key?: string | null;
+  file_name?: string | null;
+  file_path?: string | null;
+  mime_type?: string | null;
+  created_at?: string | null;
+};
+
+async function loadJobDocuments(supabase: any, leadIds: string[]): Promise<JobDocument[]> {
+  const primary = await supabase
+    .from("job_documents")
+    .select("id,lead_id,template_id,config_id,document_key,file_name,file_path,mime_type,created_at")
+    .in("lead_id", leadIds)
+    .order("created_at", { ascending: false });
+
+  if (!primary.error) return (primary.data || []) as JobDocument[];
+
+  const fallback = await supabase
+    .from("job_documents")
+    .select("id,lead_id,document_type,file_name,file_path,mime_type,created_at")
+    .in("lead_id", leadIds)
+    .order("created_at", { ascending: false });
+
+  if (fallback.error) return [];
+  return ((fallback.data || []) as any[]).map((row) => ({
+    id: row.id,
+    lead_id: row.lead_id,
+    template_id: null,
+    config_id: null,
+    document_key: row.document_type || "",
+    file_name: row.file_name,
+    file_path: row.file_path,
+    mime_type: row.mime_type,
+    created_at: row.created_at,
+  })) as JobDocument[];
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,23 +68,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-type RequestBody = {
-  estimate_id?: string;
-  event_type?: "estimate_approved" | "change_order_approved";
-};
-
-type RecipientType = "customer" | "user";
-type AgreementKey = "job_agreement" | "warranty_agreement";
-type PdfAttachment = {
-  filename: string;
-  content: Uint8Array;
-  contentType: string;
-};
-const AGREEMENT_LABELS: Record<AgreementKey, string> = {
-  job_agreement: "Job Agreement",
-  warranty_agreement: "Warranty Agreement",
-};
-const AGREEMENT_ATTACHMENT_KEYS: AgreementKey[] = ["job_agreement", "warranty_agreement"];
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -37,78 +84,36 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function buildCustomerHtml(params: {
-  companyName: string;
-  customerName: string;
-  estimateTotal: number;
-  jobName: string;
-  eventType: "estimate_approved" | "change_order_approved";
-}) {
-  const companyName = escapeHtml(params.companyName);
-  const customerName = escapeHtml(params.customerName);
-  const jobName = escapeHtml(params.jobName);
-  const amount = Number(params.estimateTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const approvalLabel = params.eventType === "change_order_approved" ? "change order" : "estimate";
-
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-    <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-        <div style="background:#0f172a;padding:20px 24px;">
-          <h1 style="margin:0;color:#fff;font-size:20px;">${companyName}</h1>
-          <p style="margin:6px 0 0;color:#cbd5e1;font-size:13px;">Estimate Confirmation</p>
-        </div>
-        <div style="padding:24px;">
-          <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.5;">Hi ${customerName},</p>
-          <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.6;">
-            Thanks for approving your ${approvalLabel} for <strong>${jobName}</strong>.
-          </p>
-          <p style="margin:0 0 12px;color:#0f172a;font-size:14px;">Approved total: <strong>$${amount}</strong></p>
-          <p style="margin:0;color:#64748b;font-size:13px;line-height:1.5;">${companyName} will follow up with the next steps.</p>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>`;
+function sanitizeFilePart(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "customer";
 }
 
-function buildUserHtml(params: {
-  userName: string;
-  customerName: string;
-  estimateTotal: number;
-  jobName: string;
-  companyName: string;
-  eventType: "estimate_approved" | "change_order_approved";
-}) {
-  const userName = escapeHtml(params.userName || "there");
-  const customerName = escapeHtml(params.customerName);
-  const jobName = escapeHtml(params.jobName);
-  const companyName = escapeHtml(params.companyName);
-  const amount = Number(params.estimateTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const approvedLabel = params.eventType === "change_order_approved" ? "change order" : "estimate";
-  const title = params.eventType === "change_order_approved" ? "Change Order Approved" : "Estimate Approved";
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-    <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-        <div style="background:#0f172a;padding:20px 24px;">
-          <h1 style="margin:0;color:#fff;font-size:20px;">${title}</h1>
-          <p style="margin:6px 0 0;color:#cbd5e1;font-size:13px;">${companyName}</p>
-        </div>
-        <div style="padding:24px;">
-          <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.5;">Hi ${userName},</p>
-          <p style="margin:0 0 10px;color:#334155;font-size:15px;line-height:1.6;">
-            ${customerName} approved the ${approvedLabel} for <strong>${jobName}</strong>.
-          </p>
-          <p style="margin:0;color:#0f172a;font-size:14px;">Approved total: <strong>$${amount}</strong></p>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>`;
+function normalizeTiming(value: unknown) {
+  return normalizeText(value).toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function stripMarkdown(value: string) {
+  return value
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "• ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function renderTemplate(text: string, fields: Record<string, string>) {
+  return text.replace(/(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/gi, (m, a, b) => {
+    const key = String(a || b || "").toLowerCase();
+    const val = fields[key];
+    return typeof val === "string" && val.length > 0 ? val : m;
+  });
 }
 
 async function getImageDataUrl(imageUrl: string) {
@@ -129,551 +134,333 @@ async function getImageDataUrl(imageUrl: string) {
   return `data:${blob.type || "image/png"};base64,${btoa(binary)}`;
 }
 
-function resolveImageFormat(imageDataUrl: string) {
-  if (imageDataUrl.startsWith("data:image/jpeg") || imageDataUrl.startsWith("data:image/jpg")) {
-    return "JPEG";
-  }
-
-  if (imageDataUrl.startsWith("data:image/webp")) {
-    return "WEBP";
-  }
-
-  return "PNG";
-}
-
-async function addCompanyLogo(doc: JsPdfDoc, logoUrl: string | undefined, margin: number, yPosition: number) {
-  if (!logoUrl) return yPosition;
-
-  try {
-    const logoDataUrl = await getImageDataUrl(logoUrl);
-    const logoProps = doc.getImageProperties(logoDataUrl);
-    const maxLogoWidth = 36;
-    const maxLogoHeight = 18;
-    const widthScale = maxLogoWidth / logoProps.width;
-    const heightScale = maxLogoHeight / logoProps.height;
-    const logoScale = Math.min(widthScale, heightScale);
-    const logoWidth = logoProps.width * logoScale;
-    const logoHeight = logoProps.height * logoScale;
-
-    doc.addImage(logoDataUrl, "PNG", margin, yPosition, logoWidth, logoHeight);
-    return yPosition + logoHeight + 6;
-  } catch {
-    return yPosition;
-  }
-}
-
-function addHeader(doc: JsPdfDoc, title: string, margin: number, yPosition: number) {
-  doc.setFontSize(24);
-  doc.setFont("helvetica", "bold");
-  doc.text(title, margin, yPosition);
-  return yPosition + 15;
-}
-
-function addGeneratedTimestamp(doc: JsPdfDoc, margin: number, yPosition: number) {
-  const timestamp = format(new Date(), "MMMM d, yyyy 'at' h:mm a");
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${timestamp}`, margin, yPosition);
-  doc.setTextColor(0, 0, 0);
-  return yPosition + 15;
-}
-
-function addCompanySection(
-  doc: JsPdfDoc,
-  company: { name?: string | null; email?: string | null; phone?: string | null },
-  margin: number,
-  yPosition: number,
-) {
-  if (!company.name) return yPosition;
-
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text(company.name, margin, yPosition);
-  yPosition += 6;
-
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-
-  if (company.email) {
-    doc.text(company.email, margin, yPosition);
-    yPosition += 5;
-  }
-
-  if (company.phone) {
-    doc.text(company.phone, margin, yPosition);
-    yPosition += 5;
-  }
-
-  return yPosition + 5;
-}
-
-function addRecipientSection(
-  doc: JsPdfDoc,
-  recipient: { customerName: string; jobName: string; address?: string | null },
-  margin: number,
-  yPosition: number,
-) {
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("BILL TO:", margin, yPosition);
-  yPosition += 6;
-
-  doc.setFont("helvetica", "normal");
-  doc.text(recipient.customerName, margin, yPosition);
-  yPosition += 5;
-
-  if (recipient.jobName) {
-    doc.text(recipient.jobName, margin, yPosition);
-    yPosition += 5;
-  }
-
-  if (recipient.address) {
-    doc.text(recipient.address, margin, yPosition);
-    yPosition += 5;
-  }
-
-  return yPosition + 10;
-}
-
-function addDocumentMeta(doc: JsPdfDoc, lines: string[], margin: number, yPosition: number) {
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(100, 100, 100);
-
-  for (const line of lines) {
-    doc.text(line, margin, yPosition);
-    yPosition += 5;
-  }
-
-  doc.setTextColor(0, 0, 0);
-  return yPosition + 5;
-}
-
-function addLineItemsTable(
-  doc: JsPdfDoc,
-  lineItems: Array<{
-    name: string;
-    description?: string | null;
-    quantity?: number | null;
-    unit?: string | null;
-    unit_price?: number | null;
-    total?: number | null;
-  }>,
-  margin: number,
-  pageWidth: number,
-  yPosition: number,
-) {
-  doc.setFillColor(240, 240, 240);
-  doc.rect(margin, yPosition, pageWidth - margin * 2, 8, "F");
-
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text("Description", margin + 2, yPosition + 5);
-  doc.text("Qty", pageWidth - 100, yPosition + 5);
-  doc.text("Price", pageWidth - 70, yPosition + 5);
-  doc.text("Total", pageWidth - margin - 2, yPosition + 5, { align: "right" });
-
-  yPosition += 10;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-
-  for (const item of lineItems) {
-    if (yPosition > 270) {
-      doc.addPage();
-      yPosition = 20;
-    }
-
-    doc.setFont("helvetica", "bold");
-    doc.text(item.name || "Line item", margin, yPosition);
-    yPosition += 5;
-
-    if (item.description) {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      const descLines = doc.splitTextToSize(item.description, pageWidth - margin * 2 - 20);
-      doc.text(descLines, margin, yPosition);
-      yPosition += descLines.length * 4;
-      doc.setFontSize(10);
-    }
-
-    doc.setFont("helvetica", "normal");
-    doc.text(`${Number(item.quantity || 0)} ${item.unit || ""}`.trim(), pageWidth - 100, yPosition);
-    doc.text(`$${Number(item.unit_price || 0).toFixed(2)}`, pageWidth - 70, yPosition);
-    doc.text(`$${Number(item.total || 0).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
-
-    yPosition += 8;
-  }
-
-  return yPosition;
-}
-
-function addSummary(
-  doc: JsPdfDoc,
-  params: { subtotal: number; taxRate: number; tax: number; discount: number; total: number },
-  margin: number,
-  pageWidth: number,
-  yPosition: number,
-) {
-  yPosition += 5;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, yPosition, pageWidth - margin, yPosition);
-  yPosition += 8;
-
-  const summaryX = pageWidth - 80;
-  doc.setFont("helvetica", "normal");
-
-  doc.text("Subtotal:", summaryX, yPosition);
-  doc.text(`$${Number(params.subtotal).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
-  yPosition += 6;
-
-  doc.text(`Tax (${(params.taxRate * 100).toFixed(1)}%):`, summaryX, yPosition);
-  doc.text(`$${Number(params.tax).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
-  yPosition += 6;
-
-  if (params.discount > 0) {
-    doc.text("Discount:", summaryX, yPosition);
-    doc.text(`-$${Number(params.discount).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
-    yPosition += 6;
-  }
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Total:", summaryX, yPosition);
-  doc.text(`$${Number(params.total).toFixed(2)}`, pageWidth - margin - 2, yPosition, { align: "right" });
-  return yPosition + 8;
-}
-
-function addNotes(doc: JsPdfDoc, notes: string | undefined, margin: number, pageWidth: number, yPosition: number) {
-  if (!notes) return yPosition;
-
-  yPosition += 15;
-  if (yPosition > 250) {
-    doc.addPage();
-    yPosition = 20;
-  }
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Notes:", margin, yPosition);
-  yPosition += 6;
-
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  const notesLines = doc.splitTextToSize(notes, pageWidth - margin * 2);
-  doc.text(notesLines, margin, yPosition);
-  return yPosition + notesLines.length * 4;
-}
-
-async function addSignaturePage(
-  doc: JsPdfDoc,
-  signatureImageUrl: string | undefined,
-  margin: number,
-  pageWidth: number,
-  pageHeight: number,
-) {
-  if (!signatureImageUrl) return;
-
-  try {
-    const signatureDataUrl = await getImageDataUrl(signatureImageUrl);
-    const signatureProps = doc.getImageProperties(signatureDataUrl);
-    const imageFormat = resolveImageFormat(signatureDataUrl);
-
-    doc.addPage();
-    let yPosition = 20;
-
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text("Signature", margin, yPosition);
-    yPosition += 8;
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 100, 100);
-    doc.text("Captured during estimate approval", margin, yPosition);
-    doc.setTextColor(0, 0, 0);
-    yPosition += 8;
-
-    const maxImageWidth = pageWidth - margin * 2;
-    const maxImageHeight = pageHeight - yPosition - margin;
-    const widthScale = maxImageWidth / signatureProps.width;
-    const heightScale = maxImageHeight / signatureProps.height;
-    const imageScale = Math.min(widthScale, heightScale);
-    const imageWidth = signatureProps.width * imageScale;
-    const imageHeight = signatureProps.height * imageScale;
-    const imageX = (pageWidth - imageWidth) / 2;
-
-    doc.addImage(signatureDataUrl, imageFormat, imageX, yPosition, imageWidth, imageHeight);
-  } catch {
-    // Keep PDF generation resilient when signature image fails to load.
-  }
-}
-
-async function buildEstimatePdfAttachment(params: {
-  estimateId: string;
-  eventType?: "estimate_approved" | "change_order_approved";
-  companyName: string;
-  companyLogoUrl?: string | null;
-  companyEmail?: string | null;
-  companyPhone?: string | null;
-  customerName: string;
-  jobName: string;
-  address?: string | null;
-  total: number;
-  subtotal: number;
-  taxRate: number;
-  tax: number;
-  discount: number;
-  notes?: string | null;
-  createdAt?: string | null;
-  expiresAt?: string | null;
-  signatureImageUrl?: string | null;
-  acceptedAt?: string | null;
-  lineItems: Array<{
-    name: string;
-    description?: string | null;
-    quantity?: number | null;
-    unit?: string | null;
-    unit_price?: number | null;
-    total?: number | null;
-    sort_order?: number | null;
-    is_change_order?: boolean | null;
-    change_order_type?: string | null;
-  }>;
-}) {
+async function buildSimplePdf(
+  title: string,
+  body: string,
+  customerName: string,
+  prefix: string,
+  includeSignatureSection = false,
+  signatureImageUrl = "",
+  signatureDateIso = "",
+): Promise<EmailAttachment> {
   const doc = new JsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
-  let yPosition = 20;
-
-  yPosition = await addCompanyLogo(doc, params.companyLogoUrl || undefined, margin, yPosition);
-  const isChangeOrderDoc = params.eventType === "change_order_approved";
-  yPosition = addHeader(doc, isChangeOrderDoc ? "CHANGE OF ORDER" : "ESTIMATE", margin, yPosition);
-  yPosition = addGeneratedTimestamp(doc, margin, yPosition);
-  yPosition = addCompanySection(
-    doc,
-    { name: params.companyName, email: params.companyEmail, phone: params.companyPhone },
-    margin,
-    yPosition,
-  );
-  yPosition = addRecipientSection(
-    doc,
-    { customerName: params.customerName, jobName: params.jobName, address: params.address },
-    margin,
-    yPosition,
-  );
-
-  const metaLines: string[] = [];
-  if (params.createdAt) metaLines.push(`Created: ${format(new Date(params.createdAt), "MMM d, yyyy")}`);
-  if (params.expiresAt) metaLines.push(`Expires: ${format(new Date(params.expiresAt), "MMM d, yyyy")}`);
-  if (!params.createdAt && params.acceptedAt) metaLines.push(`Approved: ${format(new Date(params.acceptedAt), "MMM d, yyyy")}`);
-  if (metaLines.length > 0) {
-    yPosition = addDocumentMeta(doc, metaLines, margin, yPosition);
-  }
-
-  const visibleLineItems = params.lineItems
-    .filter((item) => !item.is_change_order || item.change_order_type !== "deleted")
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-  yPosition = addLineItemsTable(doc, visibleLineItems, margin, pageWidth, yPosition);
-  yPosition = addSummary(
-    doc,
-    {
-      subtotal: Number(params.subtotal || 0),
-      taxRate: Number(params.taxRate || 0),
-      tax: Number(params.tax || 0),
-      discount: Number(params.discount || 0),
-      total: Number(params.total || 0),
-    },
-    margin,
-    pageWidth,
-    yPosition,
-  );
-  addNotes(doc, params.notes || undefined, margin, pageWidth, yPosition);
-  await addSignaturePage(doc, params.signatureImageUrl || undefined, margin, pageWidth, pageHeight);
-
-  const attachmentBuffer = doc.output("arraybuffer");
-  const filenameSafeCustomer = params.customerName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "customer";
-  return {
-    filename: `${isChangeOrderDoc ? "change-order" : "estimate"}-${filenameSafeCustomer}-${format(new Date(), "yyyy-MM-dd")}.pdf`,
-    content: new Uint8Array(attachmentBuffer),
-    contentType: "application/pdf",
-  };
-}
-
-function normalizeAgreementText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function stripAgreementSignaturePlaceholders(agreementText: string): string {
-  const lines = agreementText.split(/\r?\n/);
-  const signatureHeadingPattern = /^signatures?$/i;
-  const signatureLinePattern = /^(client signature|contractor signature|printed name|date)\s*:/i;
-  const underlineOnlyPattern = /^[_\s.-]+$/;
-
-  const filtered = lines.filter((rawLine) => {
-    const line = rawLine.trim();
-    if (!line) return true;
-    if (signatureHeadingPattern.test(line)) return false;
-    if (signatureLinePattern.test(line)) return false;
-    if (underlineOnlyPattern.test(line)) return false;
-    return true;
-  });
-
-  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-function normalizeAgreementBodyText(agreementText: string): string {
-  const lines = agreementText.split(/\r?\n/);
-  const normalized: string[] = [];
-  let previousWasBlank = false;
-
-  for (const line of lines) {
-    const trimmed = line.trimEnd();
-    const isBlank = trimmed.trim().length === 0;
-    if (isBlank) {
-      if (previousWasBlank) continue;
-      normalized.push("");
-      previousWasBlank = true;
-      continue;
-    }
-
-    normalized.push(trimmed);
-    previousWasBlank = false;
-  }
-
-  return normalized.join("\n").trim();
-}
-
-function addAgreementBody(
-  doc: JsPdfDoc,
-  agreementText: string,
-  margin: number,
-  pageWidth: number,
-  startY: number,
-  reservedBottomSpace = 88,
-) {
-  const maxTextWidth = pageWidth - margin * 2;
-  const lines = agreementText.split(/\r?\n/);
-  const maxBodyY = 275 - reservedBottomSpace;
-  let yPosition = startY;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    const printable = line.length > 0 ? line : " ";
-    const wrapped = doc.splitTextToSize(printable, maxTextWidth);
-
-    for (const chunk of wrapped) {
-      if (yPosition > maxBodyY) {
-        doc.addPage();
-        yPosition = margin;
-      }
-      doc.text(chunk, margin, yPosition);
-      yPosition += 6;
-    }
-  }
-
-  return yPosition;
-}
-
-async function buildAgreementPdfAttachment(params: {
-  customerName: string;
-  agreementKey: AgreementKey;
-  agreementText: string;
-}): Promise<PdfAttachment> {
-  const doc = new JsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 20;
-  const label = AGREEMENT_LABELS[params.agreementKey];
+  const width = doc.internal.pageSize.getWidth() - margin * 2;
+  let y = 24;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
-  doc.text(label, margin, 24);
+  doc.text(title, margin, y);
+  y += 8;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${format(new Date(), "MMMM d, yyyy 'at' h:mm a")}`, margin, 31);
+  doc.text(`Generated: ${format(new Date(), "MMMM d, yyyy 'at' h:mm a")}`, margin, y);
   doc.setTextColor(0, 0, 0);
+  y += 9;
 
-  const bodyText = normalizeAgreementBodyText(stripAgreementSignaturePlaceholders(params.agreementText));
-  addAgreementBody(doc, bodyText, margin, pageWidth, 40);
+  doc.setFontSize(11);
+  const lines = doc.splitTextToSize(stripMarkdown(body), width);
+  for (const line of lines) {
+    if (y > 275) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.text(String(line), margin, y);
+    y += 6;
+  }
 
-  const filenameSafeCustomer = params.customerName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "customer";
-  const filePrefix = params.agreementKey.replaceAll("_agreement", "").replaceAll("_", "-");
+  if (includeSignatureSection) {
+    if (y > 235) {
+      doc.addPage();
+      y = 20;
+    }
+
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Signature", margin, y);
+    y += 6;
+
+    const pageRight = doc.internal.pageSize.getWidth() - margin;
+    const signatureUrl = normalizeText(signatureImageUrl);
+    const hasCapturedSignature = Boolean(signatureUrl);
+    const signedDateLabel = normalizeText(signatureDateIso)
+      ? format(new Date(signatureDateIso), "MMMM d, yyyy")
+      : format(new Date(), "MMMM d, yyyy");
+
+    if (hasCapturedSignature) {
+      const lineY = y + 10;
+      const dateX = Math.min(margin + 105, pageRight - 35);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(90, 90, 90);
+      doc.text("Client Signature", margin, lineY + 6);
+      doc.text("Date", dateX, lineY + 6);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(9);
+      doc.text(signedDateLabel, dateX, lineY + 12);
+
+      const sigY = lineY + 10;
+      try {
+        const signatureDataUrl = await getImageDataUrl(signatureUrl);
+        doc.addImage(signatureDataUrl, "PNG", margin, sigY, 90, 20);
+      } catch {
+        // Leave just labels/date if image cannot be loaded.
+      }
+      y = sigY + 22;
+    } else {
+      const lineY = y + 10;
+      const dateX = Math.min(margin + 105, pageRight - 35);
+      doc.setDrawColor(120, 120, 120);
+      doc.line(margin, lineY, Math.min(margin + 90, pageRight), lineY);
+      doc.line(dateX, lineY, Math.min(dateX + 45, pageRight), lineY);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(90, 90, 90);
+      doc.text("Client Signature", margin, lineY + 6);
+      doc.text("Date", dateX, lineY + 6);
+      doc.setTextColor(0, 0, 0);
+      y = lineY + 12;
+    }
+  }
 
   return {
-    filename: `${filePrefix}-${filenameSafeCustomer}-${format(new Date(), "yyyy-MM-dd")}.pdf`,
+    filename: `${prefix}-${sanitizeFilePart(customerName)}-${format(new Date(), "yyyy-MM-dd")}.pdf`,
     content: new Uint8Array(doc.output("arraybuffer")),
     contentType: "application/pdf",
   };
 }
 
-async function sendEmail(params: {
-  smtpHost: string;
-  smtpPort: number;
-  smtpSecure: boolean;
-  smtpUser: string;
-  smtpPass: string;
-  smtpFrom: string;
-  to: string;
-  subject: string;
-  html: string;
-  text: string;
-  replyTo?: string;
-  attachments?: Array<{
-    filename: string;
-    content: Uint8Array;
-    contentType: string;
-  }>;
-}) {
-  const transporter = nodemailer.createTransport({
-    host: params.smtpHost,
-    port: params.smtpPort,
-    secure: params.smtpSecure,
-    auth: {
-      user: params.smtpUser,
-      pass: params.smtpPass,
-    },
-  });
+function resolveTemplateBody(
+  template: { system_key?: string | null; body?: string | null } | null | undefined,
+  agreementTemplates: Record<string, unknown>,
+) {
+  const body = normalizeText(template?.body);
+  if (body) return body;
 
-  return transporter.sendMail({
-    from: params.smtpFrom,
-    to: [params.to],
-    replyTo: params.replyTo,
-    subject: params.subject,
-    html: params.html,
-    text: params.text,
-    attachments: params.attachments,
-  });
+  const key = normalizeText(template?.system_key);
+  if (key === "job_agreement") return normalizeText(agreementTemplates.job_agreement);
+  if (key === "warranty_agreement") return normalizeText(agreementTemplates.warranty_agreement);
+  if (key === "job_release") return normalizeText(agreementTemplates.job_release);
+  return "";
+}
+
+function buildEstimatePdf(params: {
+  eventType: "estimate_approved" | "change_order_approved";
+  companyName: string;
+  customerName: string;
+  jobName: string;
+  address?: string;
+  subtotal: number;
+  taxRate: number;
+  tax: number;
+  discount: number;
+  total: number;
+  notes?: string;
+  lineItems: Array<{ name?: string | null; quantity?: number | null; unit?: string | null; unit_price?: number | null; total?: number | null; description?: string | null; sort_order?: number | null; is_change_order?: boolean | null; change_order_type?: string | null }>;
+}): EmailAttachment {
+  const doc = new JsPDF();
+  const margin = 20;
+  const right = doc.internal.pageSize.getWidth() - margin;
+  let y = 24;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.text(params.eventType === "change_order_approved" ? "CHANGE ORDER" : "ESTIMATE", margin, y);
+  y += 10;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(params.companyName, margin, y);
+  y += 6;
+  doc.text(`Bill To: ${params.customerName}`, margin, y);
+  y += 6;
+  doc.text(`Project: ${params.jobName}`, margin, y);
+  y += 6;
+  if (params.address) {
+    doc.text(`Address: ${params.address}`, margin, y);
+    y += 6;
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Description", margin, y);
+  doc.text("Qty", right - 45, y, { align: "right" });
+  doc.text("Total", right, y, { align: "right" });
+  y += 5;
+  doc.setLineWidth(0.2);
+  doc.line(margin, y, right, y);
+  y += 6;
+
+  const rows = params.lineItems
+    .filter((i) => !i?.is_change_order || i?.change_order_type !== "deleted")
+    .sort((a, b) => Number(a?.sort_order || 0) - Number(b?.sort_order || 0));
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+
+  for (const item of rows) {
+    const name = normalizeText(item?.name) || "Line item";
+    const qty = `${Number(item?.quantity || 0)} ${normalizeText(item?.unit)}`.trim();
+    const total = `$${Number(item?.total || 0).toFixed(2)}`;
+    const desc = normalizeText(item?.description);
+
+    if (y > 265) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.text(name, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(qty, right - 45, y, { align: "right" });
+    doc.text(total, right, y, { align: "right" });
+    y += 5;
+
+    if (desc) {
+      const wrapped = doc.splitTextToSize(desc, right - margin - 55);
+      for (const line of wrapped) {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(String(line), margin + 2, y);
+        y += 4;
+      }
+    }
+
+    y += 2;
+  }
+
+  if (y > 245) {
+    doc.addPage();
+    y = 20;
+  }
+
+  const summaryX = right - 65;
+  doc.setFontSize(10);
+  doc.text("Subtotal:", summaryX, y);
+  doc.text(`$${params.subtotal.toFixed(2)}`, right, y, { align: "right" });
+  y += 6;
+  doc.text(`Tax (${(params.taxRate * 100).toFixed(1)}%):`, summaryX, y);
+  doc.text(`$${params.tax.toFixed(2)}`, right, y, { align: "right" });
+  y += 6;
+  if (params.discount > 0) {
+    doc.text("Discount:", summaryX, y);
+    doc.text(`-$${params.discount.toFixed(2)}`, right, y, { align: "right" });
+    y += 6;
+  }
+  doc.setFont("helvetica", "bold");
+  doc.text("Total:", summaryX, y);
+  doc.text(`$${params.total.toFixed(2)}`, right, y, { align: "right" });
+
+  if (normalizeText(params.notes)) {
+    y += 10;
+    doc.setFont("helvetica", "bold");
+    doc.text("Notes:", margin, y);
+    y += 5;
+    doc.setFont("helvetica", "normal");
+    const wrapped = doc.splitTextToSize(params.notes || "", right - margin);
+    for (const line of wrapped) {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(String(line), margin, y);
+      y += 5;
+    }
+  }
+
+  return {
+    filename: `${params.eventType === "change_order_approved" ? "change-order" : "estimate"}-${sanitizeFilePart(params.customerName)}-${format(new Date(), "yyyy-MM-dd")}.pdf`,
+    content: new Uint8Array(doc.output("arraybuffer")),
+    contentType: "application/pdf",
+  };
+}
+
+function extensionFromContentType(contentType: string) {
+  const normalized = contentType.toLowerCase();
+  if (normalized.includes("pdf")) return "pdf";
+  if (normalized.includes("png")) return "png";
+  if (normalized.includes("jpeg") || normalized.includes("jpg")) return "jpg";
+  if (normalized.includes("webp")) return "webp";
+  if (normalized.includes("gif")) return "gif";
+  return "bin";
+}
+
+function fileNameFromUrl(url: string, fallbackBase: string, contentType = "") {
+  try {
+    const pathname = new URL(url).pathname;
+    const last = pathname.split("/").pop() || "";
+    if (last.includes(".")) return last;
+  } catch {
+    // Fall through to generated file name.
+  }
+  return `${fallbackBase}.${extensionFromContentType(contentType)}`;
+}
+
+async function fetchUrlAttachment(url: string, fallbackBase: string): Promise<EmailAttachment | null> {
+  const target = normalizeText(url);
+  if (!target) return null;
+  try {
+    const response = await fetch(target);
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length === 0) return null;
+    const contentType = normalizeText(response.headers.get("content-type")) || "application/octet-stream";
+    const filename = fileNameFromUrl(target, fallbackBase, contentType);
+    return { filename, content: bytes, contentType };
+  } catch {
+    return null;
+  }
+}
+
+async function expandLeadFamilyIds(supabase: any, seedLeadIds: string[]) {
+  const relatedLeadFamilyIds = new Set<string>(seedLeadIds.filter(Boolean));
+  if (seedLeadIds.length === 0) return Array.from(relatedLeadFamilyIds);
+
+  const [relatedByIdResult, relatedByEstimateJobIdResult] = await Promise.all([
+    supabase.from("leads").select("id, estimate_job_id").in("id", seedLeadIds),
+    supabase.from("leads").select("id, estimate_job_id").in("estimate_job_id", seedLeadIds),
+  ]);
+
+  const relatedLeadRows = [
+    ...(relatedByIdResult.data || []),
+    ...(relatedByEstimateJobIdResult.data || []),
+  ];
+  for (const row of relatedLeadRows) {
+    const id = String((row as any)?.id || "");
+    const estimateJobId = String((row as any)?.estimate_job_id || "");
+    if (id) relatedLeadFamilyIds.add(id);
+    if (estimateJobId) relatedLeadFamilyIds.add(estimateJobId);
+  }
+  return Array.from(relatedLeadFamilyIds);
+}
+
+function buildCustomerHtml(companyName: string, customerName: string, total: number, jobName: string, eventType: "estimate_approved" | "change_order_approved") {
+  const label = eventType === "change_order_approved" ? "change order" : "estimate";
+  return `<!doctype html><html><body style="font-family:Arial,sans-serif"><p>Hi ${escapeHtml(customerName)},</p><p>Thanks for approving your ${label} for <strong>${escapeHtml(jobName)}</strong>.</p><p>Approved total: <strong>$${Number(total || 0).toFixed(2)}</strong></p><p>${escapeHtml(companyName)} will follow up with next steps.</p></body></html>`;
+}
+
+function buildUserHtml(companyName: string, userName: string, customerName: string, total: number, jobName: string, eventType: "estimate_approved" | "change_order_approved") {
+  const label = eventType === "change_order_approved" ? "change order" : "estimate";
+  return `<!doctype html><html><body style="font-family:Arial,sans-serif"><p>Hi ${escapeHtml(userName || "there")},</p><p>${escapeHtml(customerName)} approved the ${label} for <strong>${escapeHtml(jobName)}</strong>.</p><p>Approved total: <strong>$${Number(total || 0).toFixed(2)}</strong></p><p>${escapeHtml(companyName)}</p></body></html>`;
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
     const body: RequestBody = await req.json().catch(() => ({}));
     const estimateId = body.estimate_id?.trim();
-    const eventType = body.event_type === "change_order_approved" ? "change_order_approved" : "estimate_approved";
+    if (!estimateId) return json({ error: "estimate_id is required" }, 400);
 
-    if (!estimateId) {
-      return new Response(JSON.stringify({ error: "estimate_id is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const eventType = body.event_type === "change_order_approved" ? "change_order_approved" : "estimate_approved";
+    const forceResend = body.force_resend === true;
 
     const smtpHost = Deno.env.get("SMTP_HOST") || "smtp.gmail.com";
     const smtpPort = Number(Deno.env.get("SMTP_PORT") || "465");
@@ -682,252 +469,230 @@ Deno.serve(async (req: Request) => {
     const smtpPass = Deno.env.get("SMTP_PASS")?.replace(/\s+/gu, "");
     const smtpFrom = Deno.env.get("SMTP_FROM_EMAIL") || smtpUser || "";
 
-    if (!smtpUser || !smtpPass || !smtpFrom || Number.isNaN(smtpPort)) {
-      return new Response(JSON.stringify({ error: "SMTP not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!smtpUser || !smtpPass || !smtpFrom || Number.isNaN(smtpPort)) return json({ error: "SMTP not configured" }, 500);
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const { data: estimate, error: estimateError } = await supabase
       .from("estimates")
-      .select(`
-        id,
-        account_id,
-        customer_id,
-        job_id,
-        created_at,
-        expires_at,
-        total,
-        subtotal,
-        tax_rate,
-        tax,
-        discount,
-        notes,
-        status,
-        accepted_at,
-        manual_approval_photo_url,
-        proposal_settings,
-        agreement_acceptance,
-        agreement_templates,
-        customer:customers(name, email),
-        job:leads!estimates_job_id_fkey(name, address),
-        line_items:estimate_line_items(name, description, quantity, unit, unit_price, total, sort_order, is_change_order, change_order_type)
-      `)
+      .select(`id,account_id,customer_id,job_id,status,total,subtotal,tax_rate,tax,discount,notes,accepted_at,manual_approval_photo_url,agreement_templates,agreement_acceptance,customer:customers(name,email,phone),job:leads!estimates_job_id_fkey(name,address,city,service_type),line_items:estimate_line_items(name,description,quantity,unit,unit_price,total,sort_order,is_change_order,change_order_type)`)
       .eq("id", estimateId)
       .maybeSingle();
 
-    if (estimateError || !estimate) {
-      return new Response(JSON.stringify({ error: "Estimate not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (estimate.status !== "accepted") {
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: "Estimate not accepted" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Only send estimate-approval emails when a signature image is present.
-    // Manual approvals without a signature should not notify anyone.
-    if (eventType === "estimate_approved" && !(estimate as any).manual_approval_photo_url) {
-      return new Response(JSON.stringify({
-        success: true,
-        skipped: true,
-        reason: "Signature is required before sending estimate approval emails",
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (estimateError || !estimate) return json({ error: "Estimate not found" }, 404);
+    if (estimate.status !== "accepted") return json({ success: true, skipped: true, reason: "Estimate not accepted" });
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name, company_email, company_phone, logo_url, settings, pricing_plan")
+      .select("company_name,company_email,settings,pricing_plan")
       .eq("id", estimate.account_id)
       .maybeSingle();
 
-    if (account?.pricing_plan === "free") {
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: "Notifications are not available on the Free plan" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (account?.pricing_plan === "free") return json({ success: true, skipped: true, reason: "Notifications are not available on the Free plan" });
+    if ((account?.settings as any)?.job_message_automation?.payment_emails?.estimate_approved === false) {
+      return json({ success: true, skipped: true, reason: "Estimate approved emails disabled" });
     }
 
-    const paymentEmails = (account?.settings as any)?.job_message_automation?.payment_emails;
-    if (paymentEmails?.estimate_approved === false) {
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: "Estimate approved emails disabled" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const companyName = normalizeText(account?.company_name) || "LeadSig";
+    const customerName = normalizeText((estimate as any)?.customer?.name) || "there";
+    const customerEmail = normalizeText((estimate as any)?.customer?.email);
+    const customerPhone = normalizeText((estimate as any)?.customer?.phone);
+    const jobName = normalizeText((estimate as any)?.job?.name) || "your project";
 
-    const companyName = account?.company_name?.trim() || "LeadSig";
-    const companyReplyTo = account?.company_email?.trim() || undefined;
-    const customerName = estimate.customer?.name?.trim() || "there";
-    const jobName = estimate.job?.name?.trim() || "your project";
-    const pdfAttachment = await buildEstimatePdfAttachment({
-      estimateId: estimate.id,
-      eventType,
-      companyName,
-      companyLogoUrl: (account as any)?.logo_url || null,
-      companyEmail: account?.company_email || null,
-      companyPhone: (account as any)?.company_phone || null,
-      customerName,
-      jobName,
-      address: (estimate as any)?.job?.address || null,
-      total: Number(estimate.total || 0),
-      subtotal: Number((estimate as any).subtotal || 0),
-      taxRate: Number((estimate as any).tax_rate || 0),
-      tax: Number((estimate as any).tax || 0),
-      discount: Number((estimate as any).discount || 0),
-      notes: (estimate as any).notes || null,
-      createdAt: (estimate as any).created_at || null,
-      expiresAt: (estimate as any).expires_at || null,
-      signatureImageUrl: (estimate as any).manual_approval_photo_url || null,
-      acceptedAt: estimate.accepted_at || null,
-      lineItems: (estimate as any).line_items || [],
-    });
-    const attachments: PdfAttachment[] = [pdfAttachment];
-    const agreementTemplates = (estimate as any).agreement_templates && typeof (estimate as any).agreement_templates === "object"
-      ? ((estimate as any).agreement_templates as Record<string, unknown>)
-      : {};
+    const attachments: EmailAttachment[] = [
+      buildEstimatePdf({
+        eventType,
+        companyName,
+        customerName,
+        jobName,
+        address: [normalizeText((estimate as any)?.job?.address), normalizeText((estimate as any)?.job?.city)].filter(Boolean).join(", "),
+        subtotal: Number((estimate as any)?.subtotal || 0),
+        taxRate: Number((estimate as any)?.tax_rate || 0),
+        tax: Number((estimate as any)?.tax || 0),
+        discount: Number((estimate as any)?.discount || 0),
+        total: Number((estimate as any)?.total || 0),
+        notes: normalizeText((estimate as any)?.notes),
+        lineItems: ((estimate as any)?.line_items || []) as any[],
+      }),
+    ];
 
-    const warrantyAccepted = (estimate as any)?.agreement_acceptance?.warranty_agreement === true;
+    const approvalSignatureUrl = normalizeText((estimate as any)?.manual_approval_photo_url);
+
     if (eventType !== "change_order_approved") {
-      for (const key of AGREEMENT_ATTACHMENT_KEYS) {
-        if (key === "warranty_agreement" && !warrantyAccepted) continue;
-        const agreementText = normalizeAgreementText(agreementTemplates[key]);
-        if (!agreementText) continue;
-        attachments.push(
-          await buildAgreementPdfAttachment({
-            customerName,
-            agreementKey: key,
-            agreementText,
-          }),
-        );
+      const mergeFields: Record<string, string> = {
+        current_date: format(new Date(), "yyyy-MM-dd"),
+        job_name: jobName,
+        job_address: [normalizeText((estimate as any)?.job?.address), normalizeText((estimate as any)?.job?.city)].filter(Boolean).join(", "),
+        service_type: normalizeText((estimate as any)?.job?.service_type),
+        client_name: customerName,
+        client_email: customerEmail,
+        client_phone: customerPhone,
+        company_name: companyName,
+        company_email: normalizeText(account?.company_email),
+        estimate_total: `$${Number((estimate as any)?.total || 0).toFixed(2)}`,
+        estimate_subtotal: `$${Number((estimate as any)?.subtotal || 0).toFixed(2)}`,
+        estimate_tax: `$${Number((estimate as any)?.tax || 0).toFixed(2)}`,
+        estimate_discount: `$${Number((estimate as any)?.discount || 0).toFixed(2)}`,
+      };
+
+      const agreementTemplates = ((estimate as any)?.agreement_templates && typeof (estimate as any)?.agreement_templates === "object")
+        ? ((estimate as any).agreement_templates as Record<string, unknown>)
+        : {};
+
+      if (estimate.job_id) {
+        try {
+          const leadIds = await expandLeadFamilyIds(supabase, [String(estimate.job_id)]);
+          const { data: configs } = await supabase
+            .from("job_document_configs")
+            .select("id,lead_id,template_id,include_in_job,email_timing,requires_signature,template:document_templates(name,system_key,body)")
+            .in("lead_id", leadIds)
+            .order("sort_order", { ascending: true });
+
+          const rows = (configs || []) as JobDocumentConfig[];
+          if (rows.length > 0) {
+            const requiredRows = rows.filter(
+              (row) => row.include_in_job === true && normalizeTiming(row.email_timing || "never") === "on_estimate_approval",
+            );
+            const jobDocuments = await loadJobDocuments(supabase, leadIds);
+
+            // Single source of truth: required configs drive attachments.
+            // For each required config, prefer its exact uploaded document by config_id.
+            // If missing/unreadable, generate fallback from the config template body.
+            for (const row of requiredRows) {
+              const rowId = String(row.id || "");
+              if (!rowId) continue;
+
+              const uploaded = jobDocuments.find((doc) => String(doc.config_id || "") === rowId) || null;
+              let attachedFromUpload = false;
+
+              if (uploaded) {
+                const path = normalizeText(uploaded.file_path);
+                if (path) {
+                  const { data } = supabase.storage.from("job-documents").getPublicUrl(path);
+                  const attachment = await fetchUrlAttachment(
+                    data?.publicUrl || "",
+                    sanitizeFilePart(uploaded.file_name || "document"),
+                  );
+                  if (attachment) {
+                    attachment.filename = normalizeText(uploaded.file_name) || attachment.filename;
+                    attachment.contentType = normalizeText(uploaded.mime_type) || attachment.contentType;
+                    attachments.push(attachment);
+                    attachedFromUpload = true;
+                  }
+                }
+              }
+
+              if (attachedFromUpload) continue;
+
+              const t = row.template;
+              const title = normalizeText(t?.name) || "Document";
+              const bodyText = renderTemplate(resolveTemplateBody(t, agreementTemplates), mergeFields);
+              if (!bodyText) continue;
+              attachments.push(
+                await buildSimplePdf(
+                  title,
+                  bodyText,
+                  customerName,
+                  title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document",
+                  row.requires_signature === true,
+                  approvalSignatureUrl,
+                  normalizeText((estimate as any)?.accepted_at),
+                ),
+              );
+            }
+          }
+        } catch (attachmentError) {
+          const message = attachmentError instanceof Error ? attachmentError.message : "Unknown attachment assembly error";
+          console.error("Attachment assembly failed; continuing with available attachments:", message);
+          await supabase.from("estimate_email_notifications_log").insert({
+            estimate_id: estimate.id,
+            account_id: estimate.account_id,
+            event_type: eventType,
+            recipient_email: null,
+            recipient_type: "user",
+            status: "failed",
+            error_message: `Attachment assembly failed: ${message}`,
+          });
+        }
       }
+
     }
 
-    // Absolute guard: never send Job Release as part of estimate approval emails.
-    const filteredAttachments = attachments.filter((attachment) => !attachment.filename.startsWith("job-release-"));
-    console.log("estimate-approval attachments", {
-      estimateId: estimate.id,
-      eventType,
-      attachmentFilenames: filteredAttachments.map((attachment) => attachment.filename),
-    });
-
-    const { data: members } = await supabase
-      .from("account_members")
-      .select("user_id")
-      .eq("account_id", estimate.account_id)
-      .eq("is_active", true);
-
-    const memberUserIds = (members || [])
-      .map((row: any) => row.user_id as string)
-      .filter((value: string | null | undefined): value is string => Boolean(value));
-
-    let memberProfiles: Array<{
-      user_id: string;
-      email: string | null;
-      full_name: string | null;
-      notification_preferences: any;
-    }> = [];
-
-    if (memberUserIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, email, full_name, notification_preferences")
-        .in("user_id", memberUserIds);
-
-      memberProfiles = profiles || [];
-    }
-
-    const { data: sentRows } = await supabase
-      .from("estimate_email_notifications_log")
-      .select("recipient_email, recipient_type")
-      .eq("estimate_id", estimate.id)
-      .eq("event_type", eventType)
-      .eq("status", "sent");
-
-    const alreadySent = new Set((sentRows || []).map((row: any) => `${row.recipient_type}:${(row.recipient_email || "").toLowerCase()}`));
+    const filteredAttachments = attachments.filter((a) => !a.filename.startsWith("job-release-"));
 
     const recipients: Array<{ email: string; name: string; recipientType: RecipientType }> = [];
+    const recipientKeys = new Set<string>();
+    const addRecipient = (emailRaw: string, name: string, recipientType: RecipientType) => {
+      const email = normalizeText(emailRaw).toLowerCase();
+      if (!email) return;
+      const key = `${recipientType}:${email}`;
+      if (recipientKeys.has(key)) return;
+      recipientKeys.add(key);
+      recipients.push({ email, name, recipientType });
+    };
 
-    const customerEmail = estimate.customer?.email?.trim();
     if (customerEmail) {
-      recipients.push({ email: customerEmail, name: customerName, recipientType: "customer" });
-    }
-
-    for (const profile of memberProfiles) {
-      const email = profile?.email?.trim();
-      if (!email) continue;
-
-      const prefs = profile?.notification_preferences || {};
-      const channelEmailEnabled = prefs?.channels?.email !== false;
-      const eventEnabled = prefs?.email_events?.estimate_approved !== false;
-      if (!channelEmailEnabled || !eventEnabled) continue;
-
-      recipients.push({
-        email,
-        name: profile?.full_name?.trim() || "there",
-        recipientType: "user",
+      addRecipient(customerEmail, customerName, "customer");
+    } else {
+      await supabase.from("estimate_email_notifications_log").insert({
+        estimate_id: estimate.id,
+        account_id: estimate.account_id,
+        event_type: eventType,
+        recipient_email: null,
+        recipient_type: "customer",
+        status: "failed",
+        error_message: "Customer email is missing; could not send estimate approval email.",
       });
     }
+
+    const companyEmail = normalizeText(account?.company_email);
+    if (companyEmail) {
+      addRecipient(companyEmail, companyName, "user");
+    }
+
+    if (recipients.length === 0) {
+      return json({
+        success: true,
+        sent: 0,
+        skipped: 1,
+        errors: [{ email: "", error: "No eligible recipients found (missing customer and company emails)." }],
+      });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
 
     let sent = 0;
     let skipped = 0;
     const errors: Array<{ email: string; error: string }> = [];
 
     for (const recipient of recipients) {
-      const dedupeKey = `${recipient.recipientType}:${recipient.email.toLowerCase()}`;
-      if (alreadySent.has(dedupeKey)) {
-        skipped += 1;
-        continue;
-      }
+      void forceResend;
 
       const subject = recipient.recipientType === "customer"
-        ? (eventType === "change_order_approved"
-          ? `${companyName} | Change Order Approved`
-          : `${companyName} | Estimate Approved`)
-        : (eventType === "change_order_approved"
-          ? `${companyName} | Change Order Approved by ${customerName}`
-          : `${companyName} | Estimate Approved by ${customerName}`);
+        ? `${companyName} | ${eventType === "change_order_approved" ? "Change Order Approved" : "Estimate Approved"}`
+        : `${companyName} | ${eventType === "change_order_approved" ? "Change Order Approved" : "Estimate Approved"} by ${customerName}`;
 
       const html = recipient.recipientType === "customer"
-        ? buildCustomerHtml({ companyName, customerName, estimateTotal: Number(estimate.total || 0), jobName, eventType })
-        : buildUserHtml({ userName: recipient.name, customerName, estimateTotal: Number(estimate.total || 0), jobName, companyName, eventType });
+        ? buildCustomerHtml(companyName, customerName, Number((estimate as any)?.total || 0), jobName, eventType)
+        : buildUserHtml(companyName, recipient.name, customerName, Number((estimate as any)?.total || 0), jobName, eventType);
 
-      const text = recipient.recipientType === "customer"
-        ? (eventType === "change_order_approved"
-          ? `Hi ${customerName},\n\nThanks for approving your change order for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}\n\n${companyName} will follow up with the next steps.`
-          : `Hi ${customerName},\n\nThanks for approving your estimate for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}\n\n${companyName} will follow up with the next steps.`)
-        : (eventType === "change_order_approved"
-          ? `Hi ${recipient.name},\n\n${customerName} approved the change order for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}`
-          : `Hi ${recipient.name},\n\n${customerName} approved the estimate for ${jobName}.\nApproved total: $${Number(estimate.total || 0).toFixed(2)}`);
+      const text = `${recipient.recipientType === "customer" ? `Hi ${customerName}` : `Hi ${recipient.name}`},\n\n${customerName} approved the ${eventType === "change_order_approved" ? "change order" : "estimate"} for ${jobName}.\nApproved total: $${Number((estimate as any)?.total || 0).toFixed(2)}`;
 
       try {
-          await sendEmail({
-          smtpHost,
-          smtpPort,
-          smtpSecure,
-          smtpUser,
-          smtpPass,
-          smtpFrom,
-          to: recipient.email,
+        await transporter.sendMail({
+          from: smtpFrom,
+          to: [recipient.email],
+          replyTo: normalizeText(account?.company_email) || undefined,
           subject,
           html,
           text,
-          replyTo: companyReplyTo,
-            attachments: filteredAttachments,
-          });
+          attachments: filteredAttachments,
+        });
 
         sent += 1;
 
@@ -956,15 +721,9 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, sent, skipped, errors }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: true, sent, skipped, errors });
   } catch (error) {
     console.error("send-estimate-approval-notifications error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Internal server error" }, 500);
   }
 });

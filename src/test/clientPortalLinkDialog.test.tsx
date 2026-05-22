@@ -167,4 +167,51 @@ describe("ClientPortalLinkDialog", () => {
 
     expect(screen.getByRole("button", { name: /email sent/i })).toBeEnabled();
   });
+
+  it("renders compact portal status text below the link", () => {
+    const { rerender } = render(
+      <ClientPortalLinkDialog
+        open
+        onOpenChange={vi.fn()}
+        portalLink="https://example.com/client/job?token=abc"
+        copied={false}
+        onCopy={vi.fn()}
+        clientPhone="5551234567"
+        clientEmail="client@example.com"
+      />,
+    );
+
+    expect(screen.getByText(/not sent yet/i)).toBeInTheDocument();
+
+    rerender(
+      <ClientPortalLinkDialog
+        open
+        onOpenChange={vi.fn()}
+        portalLink="https://example.com/client/job?token=abc"
+        copied={false}
+        onCopy={vi.fn()}
+        clientPhone="5551234567"
+        clientEmail="client@example.com"
+        portalSentAt="2026-05-22T19:14:00.000Z"
+      />,
+    );
+
+    expect(screen.getByText(/not viewed yet/i)).toBeInTheDocument();
+
+    rerender(
+      <ClientPortalLinkDialog
+        open
+        onOpenChange={vi.fn()}
+        portalLink="https://example.com/client/job?token=abc"
+        copied={false}
+        onCopy={vi.fn()}
+        clientPhone="5551234567"
+        clientEmail="client@example.com"
+        portalSentAt="2026-05-22T19:14:00.000Z"
+        portalViewedAt="2026-05-22T20:01:00.000Z"
+      />,
+    );
+
+    expect(screen.getByText(/viewed on/i)).toBeInTheDocument();
+  });
 });

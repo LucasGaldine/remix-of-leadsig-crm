@@ -120,6 +120,91 @@ function addWrappedText(doc: JsPdfDoc, text: string, margin: number, yPosition: 
   return yPosition;
 }
 
+type MarkdownLineStyle = "h1" | "h2" | "h3" | "bullet" | "ordered" | "paragraph";
+
+function stripInlineMarkdown(value: string): string {
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .trim();
+}
+
+function normalizeMarkdownLine(line: string): { text: string; style: MarkdownLineStyle } {
+  const trimmed = line.trim();
+  if (!trimmed) return { text: "", style: "paragraph" };
+
+  if (/^###\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^###\s+/, "")), style: "h3" };
+  }
+  if (/^##\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^##\s+/, "")), style: "h2" };
+  }
+  if (/^#\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^#\s+/, "")), style: "h1" };
+  }
+  if (/^\s*[-*]\s+/.test(trimmed)) {
+    return { text: `• ${stripInlineMarkdown(trimmed.replace(/^\s*[-*]\s+/, ""))}`, style: "bullet" };
+  }
+  if (/^\s*\d+\.\s+/.test(trimmed)) {
+    return { text: stripInlineMarkdown(trimmed.replace(/^\s*(\d+)\.\s+/, "$1. ")), style: "ordered" };
+  }
+
+  return { text: stripInlineMarkdown(trimmed), style: "paragraph" };
+}
+
+function addMarkdownBodyText(doc: JsPdfDoc, markdown: string, margin: number, yPosition: number) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const maxWidth = pageWidth - margin * 2;
+  const maxY = pageHeight - margin;
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+
+  const ensurePageRoom = (requiredHeight: number) => {
+    if (yPosition + requiredHeight <= maxY) return;
+    doc.addPage();
+    yPosition = margin;
+  };
+
+  for (const rawLine of lines) {
+    const { text, style } = normalizeMarkdownLine(rawLine);
+    if (!text) {
+      yPosition += 2;
+      continue;
+    }
+
+    if (style === "h1") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+    } else if (style === "h2") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+    } else if (style === "h3") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+    }
+
+    const lineHeight = style === "h1" ? 6 : style === "h2" ? 5.5 : 5;
+    const wrapped = doc.splitTextToSize(text, maxWidth);
+    ensurePageRoom(Math.max(lineHeight, wrapped.length * lineHeight));
+    for (const chunk of wrapped) {
+      doc.text(chunk, margin, yPosition);
+      yPosition += lineHeight;
+    }
+
+    if (style === "h1" || style === "h2" || style === "h3") {
+      yPosition += 1;
+    }
+  }
+
+  return yPosition;
+}
+
 async function buildJobReleasePdf(params: {
   companyName: string;
   customerName: string;
@@ -157,9 +242,7 @@ async function buildJobReleasePdf(params: {
   doc.text("Agreement Text", margin, yPosition);
   yPosition += 6;
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  yPosition = addWrappedText(doc, params.releaseText, margin, yPosition);
+  yPosition = addMarkdownBodyText(doc, String(params.releaseText || ""), margin, yPosition);
 
   if (params.signatureImageUrl) {
     try {
@@ -171,7 +254,18 @@ async function buildJobReleasePdf(params: {
       yPosition += 6;
       doc.setFont("helvetica", "bold");
       doc.text("Client Signature", margin, yPosition);
+      doc.text("Date", margin + 100, yPosition);
       yPosition += 4;
+      doc.setDrawColor(220, 220, 220);
+      doc.line(margin + 100, yPosition, margin + 155, yPosition);
+      yPosition += 3;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const signedDateLabel = params.signedAt
+        ? format(new Date(params.signedAt), "MMMM d, yyyy")
+        : format(new Date(), "MMMM d, yyyy");
+      doc.text(signedDateLabel, margin + 100, yPosition + 4);
+      yPosition += 1;
       doc.setDrawColor(220, 220, 220);
       doc.rect(margin, yPosition, 80, 28);
       doc.addImage(signatureDataUrl, "PNG", margin + 2, yPosition + 2, 76, 24);
@@ -269,6 +363,54 @@ Deno.serve(async (req: Request) => {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    let releaseDocumentConfig: {
+      include_in_job?: boolean | null;
+      email_timing?: string | null;
+      requires_signature?: boolean | null;
+    } | null = null;
+
+    const { data: releaseConfigRows, error: releaseConfigError } = await supabase
+      .from("job_document_configs")
+      .select("include_in_job, email_timing, requires_signature, template:document_templates(system_key)")
+      .eq("lead_id", (jobRelease as any).lead_id)
+      .order("sort_order", { ascending: true });
+
+    if (releaseConfigError) {
+      console.error("Failed to load job document config for job release emails", releaseConfigError);
+    } else {
+      for (const row of (releaseConfigRows || []) as Array<any>) {
+        const templateRaw = row?.template;
+        const template = Array.isArray(templateRaw) ? templateRaw[0] : templateRaw;
+        if ((template?.system_key || "") === "job_release") {
+          releaseDocumentConfig = row;
+          break;
+        }
+      }
+    }
+
+    if (releaseDocumentConfig) {
+      if (releaseDocumentConfig.include_in_job !== true) {
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: "Job release template is disabled for this job" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (eventType === "request_signature" && releaseDocumentConfig.email_timing !== "on_job_completion") {
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: "Job release email timing is not set to job completion" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (eventType === "signed_copy" && releaseDocumentConfig.requires_signature !== true) {
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: "Signed copy emails require signature-enabled template" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const companyName = (jobRelease as any).account?.company_name?.trim() || "LeadSig";

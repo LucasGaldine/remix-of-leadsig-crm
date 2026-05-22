@@ -36,6 +36,12 @@ vi.mock("@/hooks/useTeamMembers", () => ({
         email: "alex@example.com",
         role: "crew_member",
       },
+      {
+        user_id: "crew_2",
+        full_name: "Jamie Crew",
+        email: "jamie@example.com",
+        role: "crew_member",
+      },
     ],
   }),
 }));
@@ -64,8 +70,21 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 vi.mock("@/components/ui/calendar", () => ({
-  Calendar: ({ onSelect }: { onSelect?: (date: Date) => void }) => (
-    <button type="button" onClick={() => onSelect?.(new Date(2030, 0, 5))}>
+  Calendar: ({
+    onSelect,
+    onDayClick,
+  }: {
+    onSelect?: (date: Date) => void;
+    onDayClick?: (date: Date) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => {
+        const pickedDate = new Date(2030, 0, 5);
+        onSelect?.(pickedDate);
+        onDayClick?.(pickedDate);
+      }}
+    >
       pick date
     </button>
   ),

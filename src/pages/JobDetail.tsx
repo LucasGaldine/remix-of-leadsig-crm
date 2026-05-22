@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { MapPin, User, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, Calendar, Clock, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Hammer, Navigation, ChevronDown, Mail, Share2, AlertTriangle, Receipt, ScanLine } from "lucide-react";
+import { MapPin, User, Phone, MessageSquare, EllipsisVertical, SquareCheck as CheckSquare, FileText, DollarSign, Calendar, Clock, Pencil as Edit, Trash2, Archive, MoveVertical as MoreVertical, Plus, Info, Unlink, Hammer, Navigation, ChevronDown, Mail, Share2, AlertTriangle, Receipt, ScanLine, Calculator } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
@@ -42,6 +42,7 @@ import { JobInvoiceCard } from "@/components/jobs/JobInvoiceCard";
 import { JobTimeTracker } from "@/components/jobs/JobTimeTracker";
 import { Repeat } from "lucide-react";
 import { JobCosts } from "@/components/jobs/JobCosts";
+import { JobDocumentsSection } from "@/components/jobs/JobDocumentsSection";
 import { LineItemsEstimateDialog } from "@/components/leads/LineItemsEstimateDialog";
 import { MentionInput } from "@/components/ui/mention-input";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
@@ -100,12 +101,21 @@ const JOB_STATUS_GUIDANCE = [
   },
 ] as const;
 
+const readPaymentSchedulePercent = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+};
+
+const formatPaymentSchedulePercent = (value: number) =>
+  Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/u, "");
+
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isManager, user, currentAccount } = useAuth();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState<"details" | "checklist" | "photos" | "notes">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "checklist" | "photos" | "documents">("details");
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -177,6 +187,7 @@ export default function JobDetail() {
   const [portalEmailSent, setPortalEmailSent] = useState(false);
   const [portalClientPhone, setPortalClientPhone] = useState("");
   const [portalClientEmail, setPortalClientEmail] = useState("");
+  const [portalLastViewedAt, setPortalLastViewedAt] = useState<string | null>(null);
   const [isTwilioConfigured, setIsTwilioConfigured] = useState(true);
   const [headerInfoOpen, setHeaderInfoOpen] = useState(false);
   const [openLogPaymentSignal, setOpenLogPaymentSignal] = useState(0);
@@ -199,6 +210,59 @@ export default function JobDetail() {
   const hasMultipleEstimateVersions = estimateVersions.length > 1;
   const isAcceptedEstimate = String(displayEstimate?.status || "") === "accepted";
   const estimateCardTotal = getEstimateCardTotal(displayEstimate);
+  const scopeOfWorkFromTasks = (() => {
+    const taskLines = checklistItems
+      .filter((item) => {
+        const rawCategory =
+          item.metadata &&
+          typeof item.metadata === "object" &&
+          "category" in item.metadata &&
+          typeof item.metadata.category === "string"
+            ? item.metadata.category
+            : "standard";
+        const category = rawCategory === "task" || rawCategory === "tool" || rawCategory === "material"
+          ? rawCategory
+          : "standard";
+        return category === "task" || category === "standard";
+      })
+      .map((item) => {
+        const label = String(item.label || "").trim();
+        if (!label) return "";
+        const description = typeof item.metadata?.description === "string"
+          ? item.metadata.description.trim()
+          : "";
+        return description ? `${label}: ${description}` : label;
+      })
+      .filter(Boolean);
+
+    if (taskLines.length === 0) {
+      return "No scope of work created";
+    }
+
+    return taskLines.map((line, index) => `${index + 1}. ${line}`).join("\n");
+  })();
+  const defaultPaymentScheduleRaw =
+    currentAccount?.settings &&
+    typeof currentAccount.settings === "object" &&
+    !Array.isArray(currentAccount.settings) &&
+    "default_payment_schedule" in currentAccount.settings
+      ? (currentAccount.settings as Record<string, any>).default_payment_schedule
+      : null;
+  const defaultPaymentSchedule =
+    defaultPaymentScheduleRaw &&
+    typeof defaultPaymentScheduleRaw === "object" &&
+    !Array.isArray(defaultPaymentScheduleRaw)
+      ? {
+          deposit: readPaymentSchedulePercent((defaultPaymentScheduleRaw as Record<string, unknown>).deposit_percentage, 33),
+          midpoint: readPaymentSchedulePercent((defaultPaymentScheduleRaw as Record<string, unknown>).midpoint_percentage, 33),
+          final: readPaymentSchedulePercent((defaultPaymentScheduleRaw as Record<string, unknown>).final_percentage, 34),
+        }
+      : {
+          deposit: 33,
+          midpoint: 33,
+          final: 34,
+        };
+  const defaultPaymentScheduleSummary = `Deposit ${formatPaymentSchedulePercent(defaultPaymentSchedule.deposit)}%, Midpoint ${formatPaymentSchedulePercent(defaultPaymentSchedule.midpoint)}%, Final ${formatPaymentSchedulePercent(defaultPaymentSchedule.final)}%`;
 
   const formatScheduleTimeLabel = (time?: string | null) => {
     if (!time) return null;
@@ -399,7 +463,7 @@ export default function JobDetail() {
         const masterQuote = await fetchPreferredEstimate(() =>
           supabase
             .from("estimates")
-            .select("id, total, status, notes, line_items:estimate_line_items(id), versions:estimate_versions(id, total)")
+            .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, has_pending_changes, notes, agreement_templates, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
             .eq("recurring_job_id", currentJob.recurring_job_id),
         );
         setEstimate(masterQuote);
@@ -410,7 +474,7 @@ export default function JobDetail() {
       let data = await fetchPreferredEstimate(() =>
         supabase
           .from("estimates")
-          .select("id, total, status, notes, line_items:estimate_line_items(id), versions:estimate_versions(id, total)")
+          .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, has_pending_changes, notes, agreement_templates, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
           .eq("job_id", id),
       );
 
@@ -425,7 +489,7 @@ export default function JobDetail() {
           data = await fetchPreferredEstimate(() =>
             supabase
               .from("estimates")
-              .select("id, total, status, notes, line_items:estimate_line_items(id), versions:estimate_versions(id, total)")
+              .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, has_pending_changes, notes, agreement_templates, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
               .eq("job_id", parentLead.id),
           );
         }
@@ -540,11 +604,29 @@ export default function JobDetail() {
       throw new Error("No customer linked to this job");
     }
 
-    const { data: customer, error: fetchError } = await supabase
-      .from("customers")
-      .select("client_portal_token, phone, email")
-      .eq("id", customerId)
-      .maybeSingle();
+    const readCustomerPortalFields = async (includeViewTracking: boolean) =>
+      supabase
+        .from("customers")
+        .select(
+          includeViewTracking
+            ? "client_portal_token, phone, email, portal_last_viewed_at"
+            : "client_portal_token, phone, email",
+        )
+        .eq("id", customerId)
+        .maybeSingle();
+
+    let { data: customer, error: fetchError } = await readCustomerPortalFields(true);
+    const isMissingPortalViewColumn = Boolean(
+      fetchError &&
+        typeof fetchError === "object" &&
+        "code" in fetchError &&
+        (fetchError as { code?: string }).code === "PGRST204",
+    );
+    if (isMissingPortalViewColumn) {
+      const fallback = await readCustomerPortalFields(false);
+      customer = fallback.data;
+      fetchError = fallback.error;
+    }
 
     if (fetchError) throw fetchError;
 
@@ -565,6 +647,10 @@ export default function JobDetail() {
       }),
       phone: customer?.phone?.trim() || "",
       email: customer?.email?.trim() || "",
+      lastViewedAt:
+        customer && typeof customer === "object" && "portal_last_viewed_at" in customer
+          ? ((customer as { portal_last_viewed_at?: string | null }).portal_last_viewed_at ?? null)
+          : null,
     };
   };
 
@@ -576,6 +662,7 @@ export default function JobDetail() {
       setPortalLink(portalData.link);
       setPortalClientPhone(portalData.phone);
       setPortalClientEmail(portalData.email);
+      setPortalLastViewedAt(portalData.lastViewedAt);
       setPortalEmailSent(false);
       setPortalDialogOpen(true);
     } catch (err) {
@@ -650,6 +737,7 @@ export default function JobDetail() {
     const portalFallback = shouldUsePortalFallback(isTwilioConfigured, job.customer.phone);
     const portalData = await resolveClientPortalLink();
     const portalLink = portalData.link;
+    setPortalLastViewedAt(portalData.lastViewedAt);
 
     if (portalFallback) {
       setPortalLink(portalLink);
@@ -799,6 +887,7 @@ export default function JobDetail() {
         setPortalLink(portalData.link);
         setPortalClientPhone(portalData.phone);
         setPortalClientEmail(portalData.email);
+        setPortalLastViewedAt(portalData.lastViewedAt);
       }
 
       const { data, error } = await supabase.functions.invoke("send-job-automation-message", {
@@ -1431,7 +1520,7 @@ export default function JobDetail() {
             group: "navigation",
           }]
         : [{
-            icon: <DollarSign className="h-5 w-5" />,
+            icon: <Calculator className="h-5 w-5" />,
             label: "Build Estimate",
             onClick: () => void openBuildEstimateModal(),
             group: "navigation",
@@ -1693,27 +1782,30 @@ export default function JobDetail() {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
           <div data-testid="job-details-left-column">
             <div
-              className="bg-card -mx-4 md:mx-0 rounded-none md:rounded-lg md:border md:border-border overflow-hidden"
+              className={cn(
+                "bg-card -mx-4 md:mx-0 rounded-none md:rounded-lg md:border md:border-border",
+                activeTab === "checklist" ? "overflow-visible" : "overflow-hidden",
+              )}
               data-testid="job-details-left-card"
             >
               <div className="grid grid-cols-4 px-2 md:border-b md:border-border">
                 {(isMobile
                   ? [
                       { id: "checklist", label: "Tasks" },
-                      { id: "photos", label: "Photos" },
                       { id: "details", label: "Schedule" },
-                      { id: "notes", label: "Notes" },
+                      { id: "photos", label: "Photos" },
+                      { id: "documents", label: "Documents" },
                     ]
                   : [
-                      { id: "details", label: "Schedule" },
                       { id: "checklist", label: "Tasks" },
+                      { id: "details", label: "Schedule" },
                       { id: "photos", label: "Photos" },
-                      { id: "notes", label: "Notes" },
+                      { id: "documents", label: "Documents" },
                     ]).map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => {
-                      setActiveTab(tab.id as "details" | "checklist" | "photos" | "notes");
+                      setActiveTab(tab.id as "details" | "checklist" | "photos" | "documents");
                       if (tab.id === "checklist") {
                         fetchBeforePhotos();
                       }
@@ -2053,6 +2145,7 @@ export default function JobDetail() {
                     }}
                   />
                 </div>
+
               </>
             )}
 
@@ -2078,14 +2171,53 @@ export default function JobDetail() {
               </>
             )}
 
-            {activeTab === "notes" && (
+            {activeTab === "documents" && id && (
               <>
-                <div className="flex gap-2">
-                  <FileText className="h-5 w-5 md:h-4 md:w-4 text-muted-foreground" />
-                  <p className="text-base md:text-xs uppercase tracking-wide text-muted-foreground">
-                    notes
-                  </p>
+                <JobDocumentsSection
+                  leadId={job?.is_estimate_visit && parentLeadId ? parentLeadId : id}
+                  estimateId={displayEstimate?.id || null}
+                  estimateStatus={typeof displayEstimate?.status === "string" ? displayEstimate.status : null}
+                  estimateHasPendingChanges={displayEstimate?.has_pending_changes === true}
+                  onViewEstimate={
+                    displayEstimate?.id ? () => navigate(`/payments/estimates/${displayEstimate.id}`) : undefined
+                  }
+                  onBuildEstimate={
+                    !displayEstimate && !estimateLoading ? () => void openBuildEstimateModal() : undefined
+                  }
+                  accountId={currentAccount?.id}
+                  userId={user?.id}
+                  estimateAgreementTemplates={
+                    displayEstimate?.agreement_templates && typeof displayEstimate.agreement_templates === "object"
+                      ? (displayEstimate.agreement_templates as Record<string, unknown>)
+                      : null
+                  }
+                  templateMergeFields={{
+                    current_date: format(new Date(), "yyyy-MM-dd"),
+                    job_name: job?.name || "",
+                    job_address: [job?.address, job?.city].filter(Boolean).join(", "),
+                    service_type: typeof job?.service_type === "string" && job.service_type.trim() ? job.service_type : "Other",
+                    client_name: job?.customer?.name || "",
+                    client_email: job?.customer?.email || "",
+                    client_phone: job?.customer?.phone || "",
+                    company_name: currentAccount?.company_name || "",
+                    company_email: currentAccount?.company_email || "",
+                    company_phone: currentAccount?.company_phone || "",
+                    estimate_total: displayEstimate?.total ?? "",
+                    estimate_subtotal: displayEstimate?.subtotal ?? "",
+                    estimate_tax: displayEstimate?.tax ?? "",
+                    estimate_discount: displayEstimate?.discount ?? "",
+                    default_payment_schedule: defaultPaymentScheduleSummary,
+                    default_payment_deposit_percentage: formatPaymentSchedulePercent(defaultPaymentSchedule.deposit),
+                    default_payment_midpoint_percentage: formatPaymentSchedulePercent(defaultPaymentSchedule.midpoint),
+                    default_payment_final_percentage: formatPaymentSchedulePercent(defaultPaymentSchedule.final),
+                    scope_of_work: scopeOfWorkFromTasks,
+                  }}
+                />
+
+                <div className="py-1">
+                  <Separator />
                 </div>
+
                 <div>
                   <MentionInput
                     value={newNote}
@@ -2117,7 +2249,7 @@ export default function JobDetail() {
                         <div className="flex-1 items-center justify-between gap-2 mb-0.5">
                           <p className="text-xl md:text-base whitespace-pre-wrap">
                             {parseMentionsForDisplay(note.body || note.summary || "").map((part, idx) =>
-                              part.type === 'mention' ? (
+                              part.type === "mention" ? (
                                 <span key={idx} className="font-bold text-primary">@{part.content}</span>
                               ) : (
                                 <span key={idx}>{part.content}</span>
@@ -2305,6 +2437,8 @@ export default function JobDetail() {
         emailSent={portalEmailSent}
         clientPhone={portalClientPhone || job.customer?.phone || ""}
         clientEmail={portalClientEmail || job.customer?.email || ""}
+        portalSentAt={estimate?.sent_at || null}
+        portalViewedAt={portalLastViewedAt || estimate?.viewed_at || null}
       />
 
       <Dialog open={statusGuidanceOpen} onOpenChange={setStatusGuidanceOpen}>
