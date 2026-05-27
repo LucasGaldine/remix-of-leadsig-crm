@@ -264,6 +264,8 @@ export function formatDocumentTemplateToken(key: string) {
 }
 
 const DOCUMENT_TEMPLATE_TOKEN_PATTERN = /(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/i;
+const DOCUMENT_TEMPLATE_VARIABLE_KEY_SET = new Set(DOCUMENT_TEMPLATE_VARIABLES.map((variable) => variable.key));
+const DEFAULT_BUILT_IN_TEMPLATE_FALLBACK = "Not provided";
 
 function normalizeTemplateVariableKey(key: unknown) {
   return String(key || "").trim().toLowerCase();
@@ -300,7 +302,25 @@ export function findMissingDocumentTemplateVariableKeys(
   mergeFields?: DocumentTemplateMergeFields | null,
 ) {
   const variableKeys = extractDocumentTemplateVariableKeys(templateBody);
-  return variableKeys.filter((key) => !hasTemplateMergeFieldValue(mergeFields?.[key]));
+  return variableKeys.filter((key) => {
+    if (hasTemplateMergeFieldValue(mergeFields?.[key])) return false;
+    return resolveTemplateVariableFallbackValue(key).length === 0;
+  });
+}
+
+function resolveTemplateVariableFallbackValue(key: string) {
+  const normalizedKey = normalizeTemplateVariableKey(key);
+  if (!normalizedKey) return "";
+
+  if (normalizedKey === "current_date") {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  if (DOCUMENT_TEMPLATE_VARIABLE_KEY_SET.has(normalizedKey)) {
+    return DEFAULT_BUILT_IN_TEMPLATE_FALLBACK;
+  }
+
+  return "";
 }
 
 function formatPhoneTemplateValue(value: string) {
@@ -337,9 +357,13 @@ export function renderDocumentTemplateText(
     const rawKey = rawSquareKey || rawCurlyKey;
     const normalizedKey = normalizeTemplateVariableKey(rawKey);
     const rawValue = mergeFields?.[normalizedKey];
-    if (rawValue === null || rawValue === undefined) return fullMatch;
+    if (rawValue === null || rawValue === undefined) {
+      return resolveTemplateVariableFallbackValue(normalizedKey);
+    }
+
     const next = maybeFormatTemplateMergeFieldValue(normalizedKey, String(rawValue).trim());
-    return next ? next : fullMatch;
+    if (next) return next;
+    return resolveTemplateVariableFallbackValue(normalizedKey);
   });
 }
 

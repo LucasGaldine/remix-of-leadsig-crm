@@ -85,6 +85,24 @@ describe("documentTemplates", () => {
     ).toBe("Hi Taylor, your project is Kitchen Remodel.");
   });
 
+  it("uses fallback text for missing built-in variables", () => {
+    expect(
+      renderDocumentTemplateText(
+        "Client: [[client_name]] | Date: [[current_date]]",
+        {},
+      ),
+    ).toMatch(/^Client: Not provided \| Date: \d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("renders custom variables as blank when missing", () => {
+    expect(
+      renderDocumentTemplateText(
+        "Custom: [[test_variable]] End",
+        {},
+      ),
+    ).toBe("Custom:  End");
+  });
+
   it("extracts unique variable keys from both token styles", () => {
     expect(
       extractDocumentTemplateVariableKeys(
