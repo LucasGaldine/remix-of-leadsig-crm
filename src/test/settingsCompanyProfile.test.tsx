@@ -34,6 +34,11 @@ const mockCurrentAccount = {
   website: "https://example.com",
   invite_code: "TEAM123",
   logo_url: null as string | null,
+  settings: {
+    client_portal_color: "#123456",
+    client_portal_text_color: "#f0f0f0",
+    client_portal_highlight_color: "#ff9900",
+  },
 };
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -73,5 +78,20 @@ describe("SettingsCompanyProfile logo uploader", () => {
     );
 
     expect(screen.queryByRole("heading", { name: /client portal preview/i })).not.toBeInTheDocument();
+  });
+
+  it("renders brand color controls with saved values", () => {
+    render(
+      <MemoryRouter>
+        <SettingsCompanyProfile />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText(/^Brand Color$/i, { selector: "input" })).toHaveValue("#123456");
+    expect(screen.getByLabelText(/^Brand Text Color$/i, { selector: "input" })).toHaveValue("#f0f0f0");
+    expect(screen.getByLabelText(/^Highlight Color$/i, { selector: "input" })).toHaveValue("#ff9900");
+    expect(screen.getByLabelText(/Brand color swatch/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Brand text color swatch/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Highlight color swatch/i)).toBeInTheDocument();
   });
 });

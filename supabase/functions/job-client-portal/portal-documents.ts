@@ -29,42 +29,49 @@ export type PortalJobDocument = {
 
 async function expandLeadFamilyIds(supabase: any, seedLeadIds: string[], errorContext: string) {
   const relatedLeadFamilyIds = new Set<string>(seedLeadIds.filter(Boolean));
+  const queue = Array.from(relatedLeadFamilyIds);
+  const visited = new Set<string>();
 
-  if (seedLeadIds.length === 0) {
-    return Array.from(relatedLeadFamilyIds);
-  }
+  while (queue.length > 0) {
+    const batch = queue.splice(0, 50).filter((id) => !visited.has(id));
+    if (batch.length === 0) continue;
+    for (const id of batch) visited.add(id);
 
-  const [relatedByIdResult, relatedByEstimateJobIdResult] = await Promise.all([
-    supabase
-      .from("leads")
-      .select("id, estimate_job_id")
-      .in("id", seedLeadIds),
-    supabase
-      .from("leads")
-      .select("id, estimate_job_id")
-      .in("estimate_job_id", seedLeadIds),
-  ]);
+    const [relatedByIdResult, relatedByEstimateJobIdResult] = await Promise.all([
+      supabase
+        .from("leads")
+        .select("id, estimate_job_id")
+        .in("id", batch),
+      supabase
+        .from("leads")
+        .select("id, estimate_job_id")
+        .in("estimate_job_id", batch),
+    ]);
 
-  if (relatedByIdResult.error) {
-    console.error(`Failed to fetch ${errorContext} related leads by id:`, relatedByIdResult.error);
-  }
-  if (relatedByEstimateJobIdResult.error) {
-    console.error(
-      `Failed to fetch ${errorContext} related leads by estimate_job_id:`,
-      relatedByEstimateJobIdResult.error,
-    );
-  }
+    if (relatedByIdResult.error) {
+      console.error(`Failed to fetch ${errorContext} related leads by id:`, relatedByIdResult.error);
+    }
+    if (relatedByEstimateJobIdResult.error) {
+      console.error(
+        `Failed to fetch ${errorContext} related leads by estimate_job_id:`,
+        relatedByEstimateJobIdResult.error,
+      );
+    }
 
-  const relatedLeadRows = [
-    ...(relatedByIdResult.data || []),
-    ...(relatedByEstimateJobIdResult.data || []),
-  ];
+    const relatedLeadRows = [
+      ...(relatedByIdResult.data || []),
+      ...(relatedByEstimateJobIdResult.data || []),
+    ];
 
-  for (const row of relatedLeadRows) {
-    const id = String((row as any)?.id || "");
-    const estimateJobId = String((row as any)?.estimate_job_id || "");
-    if (id) relatedLeadFamilyIds.add(id);
-    if (estimateJobId) relatedLeadFamilyIds.add(estimateJobId);
+    for (const row of relatedLeadRows) {
+      const id = String((row as any)?.id || "");
+      const estimateJobId = String((row as any)?.estimate_job_id || "");
+      for (const candidate of [id, estimateJobId]) {
+        if (!candidate || relatedLeadFamilyIds.has(candidate)) continue;
+        relatedLeadFamilyIds.add(candidate);
+        queue.push(candidate);
+      }
+    }
   }
 
   return Array.from(relatedLeadFamilyIds);
@@ -103,7 +110,7 @@ export async function fetchPortalDocumentsForLeadFamily(
 
   let { data: configRows, error: configError } = await readConfigs();
 
-  if (!configError && (configRows || []).length === 0) {
+  if (!configError) {
     const defaultLeadId = seedLeadIds.find(Boolean) || leadIds[0] || null;
     if (defaultLeadId) {
       const { data: leadRow, error: leadError } = await supabase
@@ -126,18 +133,29 @@ export async function fetchPortalDocumentsForLeadFamily(
 
           if (templateError) {
             console.error(`Failed to fetch ${errorContext} default templates for config seed:`, templateError);
-          }
-          else {
-            const templates = (templateRows || []).filter((row: any) => String(row?.id || ""));
-            if (templates.length > 0) {
-              const insertPayload = templates.map((template: any, index: number) => ({
+          } else {
+            const existingTemplateIds = new Set(
+              ((configRows || []) as any[])
+                .map((row) => String((row as any)?.template_id || ""))
+                .filter(Boolean),
+            );
+            const templatesToInsert = (templateRows || [])
+              .map((row: any) => ({
+                id: String(row?.id || ""),
+                default_email_timing: String(row?.default_email_timing || "never"),
+                default_requires_signature: row?.default_requires_signature === true,
+              }))
+              .filter((row) => row.id.length > 0 && !existingTemplateIds.has(row.id));
+
+            if (templatesToInsert.length > 0) {
+              const insertPayload = templatesToInsert.map((template, index) => ({
                 lead_id: defaultLeadId,
                 account_id: accountId,
-                template_id: String(template.id),
+                template_id: template.id,
                 include_in_job: true,
-                email_timing: String(template.default_email_timing || "never"),
-                requires_signature: template.default_requires_signature === true,
-                sort_order: index,
+                email_timing: template.default_email_timing,
+                requires_signature: template.default_requires_signature,
+                sort_order: (configRows || []).length + index,
                 created_by: null,
               }));
 
@@ -229,6 +247,69 @@ export async function fetchPortalDocumentsForLeadFamily(
         if (document.template_id && selectedTemplateIds.has(document.template_id)) return true;
         return leadIds.includes(document.lead_id);
       });
+  }
+
+  if (configs.length === 0 && documents.length > 0) {
+    const templateIds = Array.from(
+      new Set(documents.map((document) => String(document.template_id || "")).filter(Boolean)),
+    );
+    const templateById = new Map<string, { id: string; name: string; system_key: string | null; body: string | null }>();
+
+    if (templateIds.length > 0) {
+      const { data: templateRows, error: templateRowsError } = await supabase
+        .from("document_templates")
+        .select("id, name, system_key, body")
+        .in("id", templateIds);
+
+      if (templateRowsError) {
+        console.error(`Failed to fetch ${errorContext} templates for synthetic configs:`, templateRowsError);
+      } else {
+        for (const row of templateRows || []) {
+          const id = String((row as any)?.id || "");
+          if (!id) continue;
+          templateById.set(id, {
+            id,
+            name: String((row as any)?.name || ""),
+            system_key: (row as any)?.system_key ? String((row as any).system_key) : null,
+            body: typeof (row as any)?.body === "string" ? String((row as any).body) : null,
+          });
+        }
+      }
+    }
+
+    const syntheticConfigsByKey = new Map<string, PortalJobDocumentConfig>();
+    for (let index = 0; index < documents.length; index += 1) {
+      const document = documents[index];
+      const templateId = String(document.template_id || "");
+      const dedupeKey = templateId || `legacy:${String(document.document_key || document.id)}`;
+      if (syntheticConfigsByKey.has(dedupeKey)) continue;
+
+      const template = templateId ? templateById.get(templateId) : null;
+      syntheticConfigsByKey.set(dedupeKey, {
+        id: `virtual:${dedupeKey}`,
+        lead_id: String(document.lead_id || leadIds[0] || ""),
+        template_id: templateId,
+        include_in_job: true,
+        email_timing: "manual",
+        requires_signature: true,
+        sort_order: index,
+        template: template
+          ? {
+              id: template.id,
+              name: template.name || "Document",
+              system_key: template.system_key,
+              body: template.body,
+            }
+          : {
+              id: templateId,
+              name: String(document.file_name || "Document"),
+              system_key: null,
+              body: null,
+            },
+      });
+    }
+
+    configs = Array.from(syntheticConfigsByKey.values());
   }
 
   return {

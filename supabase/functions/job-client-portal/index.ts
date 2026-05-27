@@ -1,20 +1,20 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { handleEstimateAction } from "./handle-estimate-action.ts";
-import { handleRecurringJobPortal } from "./handle-recurring-job-portal.ts";
-import { handleSingleJobGet } from "./handle-single-job-get.ts";
-import { fetchPortalDocumentsForLeadFamily } from "./portal-documents.ts";
-import { signJobRelease } from "./job-release.ts";
+import nodemailer from "npm:nodemailer@6.10.1";
+import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const BOT_USER_AGENT_PATTERN =
-  /(bot|crawler|spider|slurp|facebookexternalhit|linkedinbot|twitterbot|whatsapp|slackbot|discordbot|telegrambot|googleweblight)/i;
-const PORTAL_VIEW_COUNT_THROTTLE_MS = 15 * 60 * 1000;
+const LEGACY_DOCUMENT_KEY_BY_SYSTEM_KEY: Record<string, string> = {
+  job_agreement: "job_agreement",
+  warranty_agreement: "warranty",
+  job_release: "job_release",
+};
+
+const MAX_SIGNATURE_IMAGE_BYTES = 6 * 1024 * 1024;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -22,82 +22,1175 @@ function jsonResponse(body: unknown, status = 200) {
     headers: {
       ...corsHeaders,
       "Content-Type": "application/json",
-      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
-      Pragma: "no-cache",
-      Expires: "0",
+      "Cache-Control": "no-store",
     },
   });
 }
 
-function getClientIp(req: Request): string | null {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const firstIp = forwardedFor.split(",")[0]?.trim();
-    if (firstIp) return firstIp;
+function normalizeTiming(value: unknown): string {
+  return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function decodeBase64(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function parseSignatureDataUrl(signatureDataUrl: string): { bytes: Uint8Array; contentType: string; extension: string } | null {
+  const trimmed = signatureDataUrl.trim();
+  const match = trimmed.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) return null;
+
+  const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const extensionByContentType: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+  };
+  const extension = extensionByContentType[contentType];
+  if (!extension) return null;
+
+  let bytes: Uint8Array;
+  try {
+    bytes = decodeBase64(match[2]);
+  } catch {
+    return null;
   }
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
-  const cfIp = req.headers.get("cf-connecting-ip")?.trim();
-  if (cfIp) return cfIp;
+  if (!bytes.length || bytes.length > MAX_SIGNATURE_IMAGE_BYTES) return null;
+
+  return { bytes, contentType, extension };
+}
+
+async function uploadSignatureDataUrl(
+  supabase: any,
+  estimateId: string,
+  signatureDataUrl: string,
+): Promise<{ ok: true; filePath: string; publicUrl: string } | { ok: false; error: string; statusCode: number }> {
+  const parsed = parseSignatureDataUrl(signatureDataUrl);
+  if (!parsed) return { ok: false, error: "Invalid signature format. Please sign again.", statusCode: 400 };
+
+  const filePath = `estimate-approvals/${estimateId}/${crypto.randomUUID()}.${parsed.extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from("lead-photos")
+    .upload(filePath, parsed.bytes, { contentType: parsed.contentType, upsert: false });
+
+  if (uploadError) return { ok: false, error: "Failed to upload signature image", statusCode: 500 };
+  const { data: urlData } = supabase.storage.from("lead-photos").getPublicUrl(filePath);
+  return { ok: true, filePath, publicUrl: urlData.publicUrl };
+}
+
+async function expandLeadFamilyIds(supabase: any, seedLeadIds: string[]): Promise<string[]> {
+  const known = new Set(seedLeadIds.filter(Boolean));
+  const queue = Array.from(known);
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const batch = queue.splice(0, 50).filter((id) => !visited.has(id));
+    if (batch.length === 0) continue;
+    for (const id of batch) visited.add(id);
+
+    const [byId, byEstimateId] = await Promise.all([
+      supabase.from("leads").select("id, estimate_job_id").in("id", batch),
+      supabase.from("leads").select("id, estimate_job_id").in("estimate_job_id", batch),
+    ]);
+
+    for (const row of [...(byId.data || []), ...(byEstimateId.data || [])]) {
+      const id = String((row as any)?.id || "");
+      const estimateId = String((row as any)?.estimate_job_id || "");
+      for (const candidate of [id, estimateId]) {
+        if (!candidate || known.has(candidate)) continue;
+        known.add(candidate);
+        queue.push(candidate);
+      }
+    }
+  }
+
+  return Array.from(known);
+}
+
+async function fetchPortalDocumentsForLeadFamily(
+  supabase: any,
+  supabaseUrl: string,
+  seedLeadIds: string[],
+): Promise<{ leadIds: string[]; leadId: string | null; configs: any[]; documents: any[] }> {
+  const leadIds = await expandLeadFamilyIds(supabase, seedLeadIds);
+  if (leadIds.length === 0) return { leadIds, leadId: null, configs: [], documents: [] };
+
+  const readConfigs = async () =>
+    supabase
+      .from("job_document_configs")
+      .select("id, lead_id, template_id, include_in_job, email_timing, requires_signature, sort_order, template:document_templates(id, name, system_key, body)")
+      .in("lead_id", leadIds)
+      .order("sort_order", { ascending: true });
+
+  let { data: configRows, error: configError } = await readConfigs();
+
+  if (!configError) {
+    const defaultLeadId = seedLeadIds.find(Boolean) || leadIds[0] || null;
+    if (defaultLeadId) {
+      const { data: leadRow } = await supabase
+        .from("leads")
+        .select("id, account_id")
+        .eq("id", defaultLeadId)
+        .maybeSingle();
+
+      const accountId = String(leadRow?.account_id || "");
+      if (accountId) {
+        const { data: templateRows, error: templateError } = await supabase
+          .from("document_templates")
+          .select("id, default_email_timing, default_requires_signature")
+          .eq("account_id", accountId)
+          .eq("default_included_in_jobs", true)
+          .order("created_at", { ascending: true });
+
+        if (!templateError) {
+          const existingTemplateIds = new Set(
+            ((configRows || []) as any[])
+              .map((row) => String((row as any)?.template_id || ""))
+              .filter(Boolean),
+          );
+
+          const templatesToInsert = (templateRows || [])
+            .map((row: any) => ({
+              id: String(row?.id || ""),
+              default_email_timing: String(row?.default_email_timing || "never"),
+              default_requires_signature: row?.default_requires_signature === true,
+            }))
+            .filter((row) => row.id.length > 0 && !existingTemplateIds.has(row.id));
+
+          if (templatesToInsert.length > 0) {
+            const insertPayload = templatesToInsert.map((template, index) => ({
+              lead_id: defaultLeadId,
+              account_id: accountId,
+              template_id: template.id,
+              include_in_job: true,
+              email_timing: template.default_email_timing,
+              requires_signature: template.default_requires_signature,
+              sort_order: (configRows || []).length + index,
+              created_by: null,
+            }));
+
+            const { error: seedError } = await supabase
+              .from("job_document_configs")
+              .insert(insertPayload);
+
+            if (!seedError) {
+              const refreshed = await readConfigs();
+              configRows = refreshed.data;
+              configError = refreshed.error;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  let configs: any[] = [];
+  if (!configError) {
+    const leadPriority = new Map(leadIds.map((id, index) => [id, index]));
+    configs = (configRows || [])
+      .map((row: any) => {
+        const templateRaw = row?.template;
+        const template = Array.isArray(templateRaw) ? templateRaw[0] : templateRaw;
+        return {
+          id: String(row?.id || ""),
+          lead_id: String(row?.lead_id || ""),
+          template_id: String(row?.template_id || ""),
+          include_in_job: row?.include_in_job === true,
+          email_timing: String(row?.email_timing || "never"),
+          requires_signature: row?.requires_signature === true,
+          sort_order: Number(row?.sort_order || 0),
+          template: template
+            ? {
+                id: String(template.id || ""),
+                name: String(template.name || ""),
+                system_key: template.system_key ? String(template.system_key) : null,
+                body: typeof template.body === "string" ? template.body : null,
+              }
+            : null,
+        };
+      })
+      .filter((cfg: any) => cfg.id && cfg.lead_id)
+      .sort((a: any, b: any) => {
+        const ap = leadPriority.get(a.lead_id) ?? Number.MAX_SAFE_INTEGER;
+        const bp = leadPriority.get(b.lead_id) ?? Number.MAX_SAFE_INTEGER;
+        if (ap !== bp) return ap - bp;
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+  }
+
+  const { data: documentRows } = await supabase
+    .from("job_documents")
+    .select("id, lead_id, template_id, config_id, document_key, file_name, file_path, mime_type, created_at")
+    .in("lead_id", leadIds)
+    .order("created_at", { ascending: false });
+
+  let documents = (documentRows || [])
+    .map((row: any) => ({
+      id: String(row?.id || ""),
+      lead_id: String(row?.lead_id || ""),
+      template_id: row?.template_id ? String(row.template_id) : null,
+      config_id: row?.config_id ? String(row.config_id) : null,
+      document_key: String(row?.document_key || ""),
+      file_name: String(row?.file_name || ""),
+      file_path: String(row?.file_path || ""),
+      mime_type: row?.mime_type ? String(row.mime_type) : null,
+      created_at: String(row?.created_at || ""),
+      url: `${supabaseUrl}/storage/v1/object/public/job-documents/${row.file_path}`,
+    }))
+    .filter((doc: any) => doc.id && doc.file_path);
+
+  if (configs.length === 0 && documents.length > 0) {
+    const templateIds = Array.from(new Set(documents.map((doc: any) => String(doc.template_id || "")).filter(Boolean)));
+    const templateById = new Map<string, any>();
+
+    if (templateIds.length > 0) {
+      const { data: templateRows } = await supabase
+        .from("document_templates")
+        .select("id, name, system_key, body")
+        .in("id", templateIds);
+      for (const row of templateRows || []) {
+        const id = String((row as any)?.id || "");
+        if (!id) continue;
+        templateById.set(id, row);
+      }
+    }
+
+    const synthetic = new Map<string, any>();
+    for (let i = 0; i < documents.length; i += 1) {
+      const document = documents[i];
+      const templateId = String(document.template_id || "");
+      const key = templateId || `legacy:${String(document.document_key || document.id)}`;
+      if (synthetic.has(key)) continue;
+
+      const template = templateId ? templateById.get(templateId) : null;
+      synthetic.set(key, {
+        id: `virtual:${key}`,
+        lead_id: String(document.lead_id || leadIds[0] || ""),
+        template_id: templateId,
+        include_in_job: true,
+        email_timing: "manual",
+        requires_signature: true,
+        sort_order: i,
+        template: template
+          ? {
+              id: String(template.id || ""),
+              name: String(template.name || "Document"),
+              system_key: template.system_key ? String(template.system_key) : null,
+              body: typeof template.body === "string" ? template.body : null,
+            }
+          : {
+              id: templateId,
+              name: String(document.file_name || "Document"),
+              system_key: null,
+              body: null,
+            },
+      });
+    }
+
+    configs = Array.from(synthetic.values());
+  }
+
+  const configIds = new Set(configs.map((cfg: any) => cfg.id));
+  const templateIds = new Set(configs.map((cfg: any) => cfg.template_id).filter(Boolean));
+  documents = documents.filter((doc: any) => {
+    if (doc.config_id && configIds.has(doc.config_id)) return true;
+    if (configIds.size === 0) return true;
+    if (doc.template_id && templateIds.has(doc.template_id)) return true;
+    return leadIds.includes(doc.lead_id);
+  });
+
+  return { leadIds, leadId: leadIds[0] || null, configs, documents };
+}
+
+function resolveUploadedDocumentForConfig(config: any, allConfigs: any[], allDocuments: any[]) {
+  const configId = String(config?.id || "");
+  if (configId) {
+    const byConfig = allDocuments.find((doc: any) => String(doc?.config_id || "") === configId);
+    if (byConfig) return byConfig;
+
+    const byDocumentKeyConfigSuffix = allDocuments.find((doc: any) =>
+      String(doc?.document_key || "").endsWith(`_${configId}`),
+    );
+    if (byDocumentKeyConfigSuffix) return byDocumentKeyConfigSuffix;
+  }
+
+  const templateId = String(config?.template?.id || config?.template_id || "");
+  if (templateId) {
+    const duplicateCount = allConfigs.filter((row: any) => String(row?.template_id || "") === templateId).length;
+    if (duplicateCount <= 1) {
+      const byTemplate = allDocuments.find((doc: any) => String(doc?.template_id || "") === templateId);
+      if (byTemplate) return byTemplate;
+    }
+  }
+
+  const systemKey = String(config?.template?.system_key || "");
+  const legacyKey = systemKey ? LEGACY_DOCUMENT_KEY_BY_SYSTEM_KEY[systemKey] : "";
+  if (legacyKey) {
+    return allDocuments.find((doc: any) => String(doc?.document_key || "") === legacyKey) || null;
+  }
+
   return null;
 }
 
-function shouldTrackPortalView(req: Request): boolean {
-  if (req.method !== "GET") return false;
-  const userAgent = req.headers.get("user-agent") || "";
-  if (!userAgent) return true;
-  return !BOT_USER_AGENT_PATTERN.test(userAgent);
+async function stampSignatureOnSignedDocument(params: {
+  supabase: any;
+  filePath: string;
+  signatureBytes: Uint8Array;
+  signatureContentType: string;
+  signedAtIso: string;
+}) {
+  const { supabase, filePath, signatureBytes, signatureContentType, signedAtIso } = params;
+  const trimmedPath = String(filePath || "").trim();
+  if (!trimmedPath) return { ok: false, error: "Missing document path for signature stamp." };
+
+  const { data: originalFile, error: downloadError } = await supabase.storage
+    .from("job-documents")
+    .download(trimmedPath);
+  if (downloadError || !originalFile) {
+    return { ok: false, error: "Failed to load document for signature stamp." };
+  }
+
+  const originalBytes = new Uint8Array(await originalFile.arrayBuffer());
+  const pdfDoc = await PDFDocument.load(originalBytes);
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) return { ok: false, error: "Signed document has no pages." };
+
+  const image =
+    signatureContentType === "image/png"
+      ? await pdfDoc.embedPng(signatureBytes)
+      : await pdfDoc.embedJpg(signatureBytes);
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const targetPage = pages[pages.length - 1];
+  const { width, height } = targetPage.getSize();
+
+  // Unified signature placement: use the same visual pattern as estimate approval docs
+  // and place the signature/date in the document's signature block area.
+  const margin = 36;
+  const signedDateLabel = new Date(signedAtIso).toLocaleDateString("en-US", {
+    dateStyle: "long",
+  });
+
+  const signatureLineY = height - 92;
+  const signatureX = margin;
+  const dateX = Math.min(signatureX + 105, width - 80);
+  const maxSignatureWidth = Math.max(80, Math.min(120, width * 0.22));
+  const scaled = image.scale(maxSignatureWidth / image.width);
+  const signatureWidth = Math.min(maxSignatureWidth, scaled.width);
+  const signatureHeight = scaled.height * (signatureWidth / scaled.width);
+
+  const canUseTopBlock = signatureLineY > 80;
+
+  if (canUseTopBlock) {
+    targetPage.drawImage(image, {
+      x: signatureX,
+      y: signatureLineY - Math.max(18, signatureHeight - 4),
+      width: signatureWidth,
+      height: signatureHeight,
+    });
+    targetPage.drawText(signedDateLabel, {
+      x: dateX,
+      y: signatureLineY - 10,
+      size: 9,
+      font,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+  } else {
+    const fallbackY = margin + 26;
+    targetPage.drawText("Signature", {
+      x: margin,
+      y: fallbackY + 28,
+      size: 12,
+      font,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    targetPage.drawImage(image, {
+      x: margin,
+      y: fallbackY,
+      width: signatureWidth,
+      height: signatureHeight,
+    });
+    targetPage.drawText("Date", {
+      x: dateX,
+      y: fallbackY + 12,
+      size: 10,
+      font,
+      color: rgb(0.35, 0.35, 0.35),
+    });
+    targetPage.drawText(signedDateLabel, {
+      x: dateX,
+      y: fallbackY,
+      size: 9,
+      font,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+  }
+
+  const stampedBytes = await pdfDoc.save();
+  const { error: uploadError } = await supabase.storage
+    .from("job-documents")
+    .upload(trimmedPath, stampedBytes, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    return { ok: false, error: "Failed to save signed document." };
+  }
+
+  return { ok: true };
 }
 
-async function recordCustomerPortalView(supabase: any, customerId: string, req: Request) {
-  if (!shouldTrackPortalView(req) || !customerId) return;
+async function sendSignedManualDocumentEmails(params: {
+  supabase: any;
+  customerId: string | null;
+  accountId: string | null;
+  documentSummaries: Array<{ name: string; url: string; filePath: string; mimeType: string | null }>;
+  signatureUrl: string;
+  portalLink: string;
+}) {
+  const { supabase, customerId, accountId, documentSummaries, signatureUrl, portalLink } = params;
+  if (!customerId || !accountId) return { ok: false, error: "Missing customer/account." };
+  if (!signatureUrl || !portalLink || documentSummaries.length === 0) {
+    return { ok: false, error: "Missing signed-document email fields." };
+  }
 
-  const { data: customer, error: customerError } = await supabase
-    .from("customers")
-    .select("portal_first_viewed_at, portal_last_viewed_at, portal_view_count")
-    .eq("id", customerId)
+  const smtpHost = Deno.env.get("SMTP_HOST") || "smtp.gmail.com";
+  const smtpPort = Number(Deno.env.get("SMTP_PORT") || "465");
+  const smtpSecure = String(Deno.env.get("SMTP_SECURE") || "true").toLowerCase() === "true";
+  const smtpUser = Deno.env.get("SMTP_USER")?.trim();
+  const smtpPass = Deno.env.get("SMTP_PASS")?.replace(/\s+/gu, "");
+  const smtpFrom = Deno.env.get("SMTP_FROM_EMAIL") || smtpUser || "";
+  if (!smtpUser || !smtpPass || !smtpFrom || Number.isNaN(smtpPort)) {
+    return { ok: false, error: "SMTP not configured." };
+  }
+
+  const [{ data: customer }, { data: account }, { data: profiles }] = await Promise.all([
+    supabase.from("customers").select("name, email").eq("id", customerId).maybeSingle(),
+    supabase.from("accounts").select("company_name, company_email").eq("id", accountId).maybeSingle(),
+    supabase.from("profiles").select("email").eq("account_id", accountId),
+  ]);
+
+  const customerEmail = String(customer?.email || "").trim().toLowerCase();
+  const companyEmail = String(account?.company_email || "").trim().toLowerCase();
+  const recipients: Array<{ email: string; name: string; recipientType: "customer" | "user" }> = [];
+  const recipientKeys = new Set<string>();
+  const addRecipient = (emailRaw: string, name: string, recipientType: "customer" | "user") => {
+    const email = String(emailRaw || "").trim().toLowerCase();
+    if (!email) return;
+    const key = `${recipientType}:${email}`;
+    if (recipientKeys.has(key)) return;
+    recipientKeys.add(key);
+    recipients.push({ email, name, recipientType });
+  };
+
+  if (customerEmail) addRecipient(customerEmail, String(customer?.name || "Customer"), "customer");
+  if (companyEmail) addRecipient(companyEmail, String(account?.company_name || "Team"), "user");
+  for (const profile of profiles || []) {
+    addRecipient(String(profile?.email || ""), String(account?.company_name || "Team"), "user");
+  }
+
+  if (recipients.length === 0) return { ok: false, error: "No recipients." };
+
+  const companyName = String(account?.company_name || "LeadSig").trim() || "LeadSig";
+  const customerName = String(customer?.name || "Customer").trim() || "Customer";
+  const subject = `${companyName} | Signed Document Copy`;
+
+  const listHtml = documentSummaries
+    .map((doc) => `<li><a href=\"${escapeHtml(doc.url)}\" style=\"color:#2563eb;\">${escapeHtml(doc.name)}</a></li>`)
+    .join("");
+  const listText = documentSummaries.map((doc) => `- ${doc.name}: ${doc.url}`).join("\n");
+
+  const mailAttachments: Array<{ filename: string; content: Uint8Array; contentType?: string }> = [];
+  for (const doc of documentSummaries) {
+    const filePath = String(doc.filePath || "").trim();
+    if (!filePath) continue;
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from("job-documents")
+      .download(filePath);
+    if (downloadError || !fileData) {
+      console.error("Failed to download signed document attachment:", { filePath, error: downloadError?.message });
+      continue;
+    }
+    const buffer = await fileData.arrayBuffer();
+    if (buffer.byteLength === 0) continue;
+    const safeName = String(doc.name || "signed-document").trim() || "signed-document";
+    const filename = safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
+    mailAttachments.push({
+      filename,
+      content: new Uint8Array(buffer),
+      contentType: doc.mimeType || "application/pdf",
+    });
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+  <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
+      <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <div style="background:#0f172a;padding:18px 22px;">
+          <h1 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">${escapeHtml(companyName)}</h1>
+          <p style="margin:6px 0 0;color:#cbd5e1;font-size:13px;">Signed Document Confirmation</p>
+        </div>
+        <div style="padding:22px;">
+          <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.6;">
+            ${escapeHtml(customerName)} has signed document(s) in the client portal.
+          </p>
+          <p style="margin:0 0 10px;color:#334155;font-size:14px;">Signed document copy:</p>
+          <ul style="margin:0 0 14px 18px;color:#334155;font-size:14px;line-height:1.5;">${listHtml}</ul>
+          <p style="margin:0 0 10px;color:#334155;font-size:14px;">Signature image:</p>
+          <p style="margin:0 0 14px;"><a href="${escapeHtml(signatureUrl)}" style="color:#2563eb;">${escapeHtml(signatureUrl)}</a></p>
+          <p style="margin:0 0 10px;color:#334155;font-size:14px;">Client portal:</p>
+          <p style="margin:0;"><a href="${escapeHtml(portalLink)}" style="color:#2563eb;">${escapeHtml(portalLink)}</a></p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+  const text = [
+    `${companyName} - Signed Document Confirmation`,
+    "",
+    `${customerName} has signed document(s) in the client portal.`,
+    "",
+    "Signed document copy:",
+    listText,
+    "",
+    `Signature image: ${signatureUrl}`,
+    `Client portal: ${portalLink}`,
+  ].join("\n");
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
+    auth: { user: smtpUser, pass: smtpPass },
+  });
+
+  for (const recipient of recipients) {
+    const isCustomer = recipient.recipientType === "customer";
+    const recipientSubject = isCustomer
+      ? `${companyName} | Signed Document Copy`
+      : `${companyName} | Signed Document Copy from ${customerName}`;
+    const recipientText = isCustomer
+      ? [
+        `Hi ${customerName},`,
+        "",
+        "Attached are the signed document copies from your client portal.",
+        "",
+        "Signed document links:",
+        listText,
+        "",
+        `Signature image: ${signatureUrl}`,
+        `Client portal: ${portalLink}`,
+      ].join("\n")
+      : [
+        `Hi ${recipient.name || "Team"},`,
+        "",
+        `${customerName} signed document(s) in the client portal.`,
+        "",
+        "Signed document links:",
+        listText,
+        "",
+        `Signature image: ${signatureUrl}`,
+        `Client portal: ${portalLink}`,
+      ].join("\n");
+
+    const recipientHtml = isCustomer
+      ? html
+      : html.replace(
+        `${escapeHtml(customerName)} has signed document(s) in the client portal.`,
+        `${escapeHtml(customerName)} signed document(s) in the client portal.`,
+      );
+
+    const delivery = await transporter.sendMail({
+      from: smtpFrom,
+      to: [recipient.email],
+      replyTo: String(account?.company_email || "") || undefined,
+      subject: recipientSubject,
+      text: recipientText,
+      html: recipientHtml,
+      attachments: mailAttachments,
+    });
+
+    const rejected = Array.isArray(delivery.rejected) ? delivery.rejected : [];
+    if (rejected.length > 0) {
+      console.error("Signed document email rejected by provider", {
+        rejected,
+        recipient: recipient.email,
+        response: delivery.response,
+      });
+      return { ok: false, error: "Signed document email was rejected by the email provider." };
+    }
+
+    console.log("Signed document email sent", {
+      recipient: recipient.email,
+      messageId: delivery.messageId,
+      response: delivery.response,
+      attachmentCount: mailAttachments.length,
+    });
+  }
+
+  return { ok: true };
+}
+
+async function getEstimateForPortalJob(supabase: any, job: any) {
+  const estimateSelect = `
+    id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status,
+    created_at, updated_at, accepted_at, approved_via, manual_approval_photo_url,
+    original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
+    proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
+    line_items:estimate_line_items(
+      id, name, description, quantity, unit, unit_price, total,
+      sort_order, is_change_order, change_order_type, change_order_approved, changed_at
+    )
+  `;
+
+  const { data: estimate } = await supabase
+    .from("estimates")
+    .select(estimateSelect)
+    .eq("job_id", job.id)
     .maybeSingle();
 
-  if (customerError || !customer) {
-    if (customerError) console.error("Failed to load customer for portal view tracking:", customerError);
-    return;
+  if (estimate) return { estimate, effectiveLeadId: String(job.id) };
+
+  const parentLeadId = String(job?.estimate_job_id || "");
+  if (!parentLeadId) return { estimate: null, effectiveLeadId: String(job.id) };
+
+  const { data: parentEstimate } = await supabase
+    .from("estimates")
+    .select(estimateSelect)
+    .eq("job_id", parentLeadId)
+    .maybeSingle();
+
+  return { estimate: parentEstimate || null, effectiveLeadId: parentLeadId || String(job.id) };
+}
+
+function companyPayload(account: any) {
+  return {
+    company_name: String(account?.company_name || ""),
+    company_email: String(account?.company_email || ""),
+    company_phone: String(account?.company_phone || ""),
+    logo_url: account?.logo_url || null,
+    portal_color: account?.settings?.client_portal_color ?? null,
+    portal_text_color: account?.settings?.client_portal_text_color ?? null,
+    client_portal_color: account?.settings?.client_portal_color ?? null,
+    client_portal_text_color: account?.settings?.client_portal_text_color ?? null,
+    settings: account?.settings ?? null,
+  };
+}
+
+async function handleGetPortalList(supabase: any, customer: any) {
+  const [{ data: jobs }, { data: recurringJobs }, { data: invoices }] = await Promise.all([
+    supabase
+      .from("leads")
+      .select("id, name, address, service_type, status, created_at, updated_at, is_estimate_visit, estimate_job_id, account_id")
+      .eq("customer_id", customer.id)
+      .neq("status", "archived")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("recurring_jobs")
+      .select("id, name, address, service_type, frequency, start_date, end_date, created_at, account_id")
+      .eq("customer_id", customer.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("invoices")
+      .select("id, lead_id, stripe_invoice_url, status, total, created_at, leads!inner(customer_id, name, service_type)")
+      .eq("leads.customer_id", customer.id)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const resolvedAccountId =
+    (typeof customer.account_id === "string" && customer.account_id) ||
+    (jobs || []).map((job: any) => (typeof job?.account_id === "string" ? job.account_id : "")).find(Boolean) ||
+    (recurringJobs || [])
+      .map((recurringJob: any) => (typeof recurringJob?.account_id === "string" ? recurringJob.account_id : ""))
+      .find(Boolean) ||
+    null;
+
+  const { data: account } = resolvedAccountId
+    ? await supabase
+        .from("accounts")
+        .select("company_name, company_email, company_phone, logo_url, settings")
+        .eq("id", resolvedAccountId)
+        .maybeSingle()
+    : { data: null };
+
+  const regularJobs = (jobs || []).filter((j: any) => !j.is_estimate_visit);
+  const estimateVisitJobs = (jobs || []).filter((j: any) => j.is_estimate_visit && !j.estimate_job_id);
+  const displayJobs = regularJobs.length > 0 ? regularJobs : estimateVisitJobs;
+
+  return jsonResponse({
+    customer: {
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+    },
+    company: companyPayload(account),
+    jobs: displayJobs.map((j: any) => ({
+      id: j.id,
+      name: j.name,
+      address: j.address,
+      service_type: j.service_type,
+      status: j.status,
+      created_at: j.created_at,
+    })),
+    recurring_jobs: (recurringJobs || []).map((rj: any) => ({
+      id: rj.id,
+      name: rj.name,
+      address: rj.address,
+      service_type: rj.service_type,
+      frequency: rj.frequency,
+      start_date: rj.start_date,
+      end_date: rj.end_date,
+      created_at: rj.created_at,
+    })),
+    invoices: (invoices || []).map((inv: any) => ({
+      id: inv.id,
+      lead_id: inv.lead_id,
+      job_name: inv.leads?.name,
+      service_type: inv.leads?.service_type,
+      stripe_invoice_url: inv.stripe_invoice_url,
+      status: inv.status,
+      total: inv.total,
+      created_at: inv.created_at,
+    })),
+  });
+}
+
+async function handleGetJobDetail(supabase: any, supabaseUrl: string, customer: any, jobId: string) {
+  const { data: job } = await supabase
+    .from("leads")
+    .select("id, name, address, service_type, status, description, created_at, estimate_job_id, account_id, customer_id")
+    .eq("id", jobId)
+    .eq("customer_id", customer.id)
+    .maybeSingle();
+
+  if (!job) return jsonResponse({ error: "Job not found or access denied" }, 404);
+
+  const resolvedAccountId =
+    (typeof job.account_id === "string" && job.account_id) ||
+    (typeof customer.account_id === "string" && customer.account_id) ||
+    null;
+
+  const [{ data: account }, { data: schedules }, { data: beforePhotos }, { data: afterPhotos }, { data: interactions }, { data: invoice }] = await Promise.all([
+    resolvedAccountId
+      ? supabase
+          .from("accounts")
+          .select("company_name, company_email, company_phone, logo_url, settings")
+          .eq("id", resolvedAccountId)
+          .maybeSingle()
+      : { data: null },
+    supabase
+      .from("job_schedules")
+      .select("id, scheduled_date, scheduled_time_start, scheduled_time_end, is_completed")
+      .eq("lead_id", job.id)
+      .order("scheduled_date", { ascending: true }),
+    supabase
+      .from("lead_photos")
+      .select("id, file_path, created_at")
+      .eq("lead_id", job.id)
+      .eq("photo_type", "before")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("lead_photos")
+      .select("id, file_path, created_at")
+      .eq("lead_id", job.id)
+      .eq("photo_type", "after")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("interactions")
+      .select("id, type, summary, created_at")
+      .eq("lead_id", job.id)
+      .in("type", ["note", "status_change", "call", "email", "sms"])
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("invoices")
+      .select("id, stripe_invoice_url, status")
+      .eq("lead_id", job.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const { estimate, effectiveLeadId } = await getEstimateForPortalJob(supabase, job);
+
+  const baseLeadIds = [
+    typeof job?.id === "string" ? job.id : null,
+    typeof job?.estimate_job_id === "string" ? job.estimate_job_id : null,
+    typeof effectiveLeadId === "string" ? effectiveLeadId : null,
+    typeof estimate?.job_id === "string" ? estimate.job_id : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const portalDocuments = await fetchPortalDocumentsForLeadFamily(supabase, supabaseUrl, baseLeadIds);
+
+  const requiredDocumentConfigIds = (portalDocuments.configs || [])
+    .filter((cfg: any) => {
+      const timing = normalizeTiming(cfg?.email_timing);
+      return cfg?.include_in_job === true && cfg?.requires_signature === true && timing === "on_estimate_approval";
+    })
+    .map((cfg: any) => String(cfg.id || ""))
+    .filter(Boolean);
+
+  const buildPhotoUrls = (rows: any[] | null) =>
+    (rows || []).map((row: any) => ({
+      id: row.id,
+      url: `${supabaseUrl}/storage/v1/object/public/lead-photos/${row.file_path}`,
+      created_at: row.created_at,
+    }));
+
+  let estimateVersions: any[] = [];
+  if (estimate?.id) {
+    const { data: versions } = await supabase
+      .from("estimate_versions")
+      .select("id, name, subtotal, tax_rate, tax, discount, total, profit_margin, notes, line_items, created_at, updated_at")
+      .eq("estimate_id", estimate.id)
+      .order("created_at", { ascending: true });
+    estimateVersions = versions || [];
   }
 
-  const nowIso = new Date().toISOString();
-  const lastViewedMs = customer.portal_last_viewed_at ? new Date(customer.portal_last_viewed_at).getTime() : null;
-  const nowMs = Date.now();
-  const shouldIncrementCount = !lastViewedMs || nowMs - lastViewedMs >= PORTAL_VIEW_COUNT_THROTTLE_MS;
-  const nextViewCount = shouldIncrementCount ? Number(customer.portal_view_count || 0) + 1 : Number(customer.portal_view_count || 0);
-  const viewMeta = {
-    ip: getClientIp(req),
-    user_agent: req.headers.get("user-agent") || null,
-    path: (() => {
-      try {
-        return new URL(req.url).pathname;
-      } catch {
-        return null;
-      }
-    })(),
-  };
+  return jsonResponse({
+    job: {
+      name: job.name,
+      address: job.address,
+      service_type: job.service_type,
+      status: job.status,
+      description: job.description,
+      created_at: job.created_at,
+      customer: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+      },
+    },
+    company: companyPayload(account),
+    schedules: (schedules || []).map((s: any) => ({
+      scheduled_date: s.scheduled_date,
+      scheduled_time_start: s.scheduled_time_start,
+      scheduled_time_end: s.scheduled_time_end,
+      is_completed: s.is_completed,
+    })),
+    estimate_visit_schedules: [],
+    estimate: estimate
+      ? {
+          ...estimate,
+          line_items: ((estimate.line_items || []) as any[])
+            .filter((li: any) => !li.is_change_order || li.change_order_type !== "deleted")
+            .sort((a: any, b: any) => Number(a.sort_order || 0) - Number(b.sort_order || 0)),
+          estimate_versions: estimateVersions,
+          job_document_config_lead_id: portalDocuments.leadId,
+          job_document_configs: portalDocuments.configs,
+          job_documents: portalDocuments.documents,
+          required_document_config_ids: requiredDocumentConfigIds,
+        }
+      : null,
+    invoice: invoice ? { stripe_invoice_url: invoice.stripe_invoice_url, status: invoice.status } : null,
+    photos: {
+      before: buildPhotoUrls(beforePhotos),
+      after: buildPhotoUrls(afterPhotos),
+    },
+    activity: (interactions || []).map((i: any) => ({
+      type: i.type,
+      summary: i.summary,
+      created_at: i.created_at,
+    })),
+    portal_metadata: {
+      customer: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+      },
+      has_portal: true,
+    },
+  });
+}
 
-  const updatePayload: Record<string, unknown> = {
-    portal_last_viewed_at: nowIso,
-    portal_view_count: nextViewCount,
-    portal_last_view_meta: viewMeta,
-  };
+async function handlePostJobAction(supabase: any, supabaseUrl: string, customer: any, jobId: string, req: Request) {
+  const { data: job } = await supabase
+    .from("leads")
+    .select("id, name, estimate_job_id, account_id, customer_id")
+    .eq("id", jobId)
+    .eq("customer_id", customer.id)
+    .maybeSingle();
 
-  if (!customer.portal_first_viewed_at) {
-    updatePayload.portal_first_viewed_at = nowIso;
+  if (!job) return jsonResponse({ error: "Job not found or access denied" }, 404);
+
+  const body = await req.json();
+  const action = String(body?.action || "");
+  const updatedAt = String(body?.updated_at || "").trim();
+  const signatureDataUrl =
+    typeof body?.signature_data_url === "string"
+      ? body.signature_data_url
+      : typeof body?.signatureDataUrl === "string"
+        ? body.signatureDataUrl
+        : null;
+
+  if (!["approve", "decline", "approve_changes", "decline_changes", "sign_document", "sign_documents"].includes(action)) {
+    return jsonResponse({ error: "Invalid action" }, 400);
   }
 
-  const { error: updateError } = await supabase
-    .from("customers")
+  const { estimate, effectiveLeadId } = await getEstimateForPortalJob(supabase, job);
+  if (!estimate) return jsonResponse({ error: "No estimate found for this job" }, 404);
+
+  if (!updatedAt || String(estimate.updated_at || "") !== updatedAt) {
+    return jsonResponse({ error: "This estimate has been updated since you loaded this page. Please refresh and try again." }, 409);
+  }
+
+  if (action === "approve") {
+    if (estimate.status === "accepted") return jsonResponse({ error: "This estimate has already been approved" }, 400);
+    if (estimate.status === "declined") return jsonResponse({ error: "This estimate has already been declined" }, 400);
+
+    const baseLeadIds = [job.id, job.estimate_job_id, effectiveLeadId, estimate.job_id].filter(Boolean) as string[];
+    const portalDocuments = await fetchPortalDocumentsForLeadFamily(supabase, supabaseUrl, baseLeadIds);
+    const requiredConfigIds = (portalDocuments.configs || [])
+      .filter((cfg: any) => cfg?.include_in_job === true && cfg?.requires_signature === true && normalizeTiming(cfg?.email_timing) === "on_estimate_approval")
+      .map((cfg: any) => String(cfg.id || ""))
+      .filter(Boolean);
+
+    const agreementAcceptance = body?.agreement_acceptance && typeof body.agreement_acceptance === "object"
+      ? body.agreement_acceptance as Record<string, unknown>
+      : {};
+
+    const allRequiredAccepted = requiredConfigIds.every((id) => agreementAcceptance[id] === true);
+    if (!allRequiredAccepted) {
+      return jsonResponse({ error: "Please accept all required documents before approval." }, 400);
+    }
+
+    let signaturePublicUrl: string | null = null;
+    if (signatureDataUrl) {
+      const upload = await uploadSignatureDataUrl(supabase, estimate.id, signatureDataUrl);
+      if (!upload.ok) return jsonResponse({ error: upload.error }, upload.statusCode);
+      signaturePublicUrl = upload.publicUrl;
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      status: "accepted",
+      accepted_at: new Date().toISOString(),
+      approved_via: signaturePublicUrl ? "manual_signature" : "customer_link",
+      agreement_acceptance: {
+        ...(agreementAcceptance || {}),
+        accepted_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    };
+
+    if (body?.agreement_templates && typeof body.agreement_templates === "object") {
+      updatePayload.agreement_templates = body.agreement_templates;
+    }
+    if (signaturePublicUrl) {
+      updatePayload.manual_approval_photo_url = signaturePublicUrl;
+    }
+
+    const { error } = await supabase
+      .from("estimates")
+      .update(updatePayload)
+      .eq("id", estimate.id);
+
+    if (error) return jsonResponse({ error: "Failed to approve estimate" }, 500);
+
+    // Intentionally do not send estimate approval SMTP emails from this function.
+    // Existing notification flow handles approval emails; this avoids duplicate sends.
+    return jsonResponse({ success: true, message: "Estimate approved" });
+  }
+
+  if (action === "decline") {
+    if (estimate.status === "accepted") return jsonResponse({ error: "This estimate has already been approved" }, 400);
+    if (estimate.status === "declined") return jsonResponse({ error: "This estimate has already been declined" }, 400);
+
+    const { error } = await supabase
+      .from("estimates")
+      .update({ status: "declined", updated_at: new Date().toISOString() })
+      .eq("id", estimate.id);
+
+    if (error) return jsonResponse({ error: "Failed to decline estimate" }, 500);
+    return jsonResponse({ success: true, message: "Estimate declined" });
+  }
+
+  if (action === "approve_changes") {
+    if (!estimate.has_pending_changes) return jsonResponse({ error: "No pending changes to approve" }, 400);
+
+    let signaturePublicUrl: string | null = null;
+    if (signatureDataUrl) {
+      const upload = await uploadSignatureDataUrl(supabase, estimate.id, signatureDataUrl);
+      if (!upload.ok) return jsonResponse({ error: upload.error }, upload.statusCode);
+      signaturePublicUrl = upload.publicUrl;
+    }
+
+    await supabase
+      .from("estimate_line_items")
+      .update({ change_order_approved: true })
+      .eq("estimate_id", estimate.id)
+      .eq("is_change_order", true)
+      .eq("change_order_approved", false);
+
+    const payload: Record<string, unknown> = {
+      has_pending_changes: false,
+      approved_via: signaturePublicUrl ? "manual_signature" : "customer_link",
+      accepted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (signaturePublicUrl) payload.manual_approval_photo_url = signaturePublicUrl;
+
+    const { error } = await supabase.from("estimates").update(payload).eq("id", estimate.id);
+    if (error) return jsonResponse({ error: "Failed to approve changes" }, 500);
+
+    return jsonResponse({ success: true, message: "Changes approved" });
+  }
+
+  if (action === "decline_changes") {
+    if (!estimate.has_pending_changes) return jsonResponse({ error: "No pending changes to decline" }, 400);
+
+    await supabase
+      .from("estimate_line_items")
+      .delete()
+      .eq("estimate_id", estimate.id)
+      .eq("is_change_order", true)
+      .eq("change_order_approved", false);
+
+    const { error } = await supabase
+      .from("estimates")
+      .update({ has_pending_changes: false, updated_at: new Date().toISOString() })
+      .eq("id", estimate.id);
+
+    if (error) return jsonResponse({ error: "Failed to decline changes" }, 500);
+    return jsonResponse({ success: true, message: "Changes declined" });
+  }
+
+  // Manual document signing
+  const requestedConfigIdsRaw =
+    action === "sign_documents" && Array.isArray(body?.document_config_ids)
+      ? body.document_config_ids
+      : typeof body?.document_config_id === "string"
+        ? [body.document_config_id]
+        : [];
+
+  const requestedConfigIds = requestedConfigIdsRaw
+    .map((value: unknown) => String(value || "").trim())
+    .filter(Boolean);
+
+  if (requestedConfigIds.length === 0) {
+    return jsonResponse({ error: "At least one document config ID is required" }, 400);
+  }
+  if (!signatureDataUrl) {
+    return jsonResponse({ error: "Signature is required to sign this document." }, 400);
+  }
+  const parsedSignatureForStamp = parseSignatureDataUrl(signatureDataUrl);
+  if (!parsedSignatureForStamp) {
+    return jsonResponse({ error: "Invalid signature format. Please sign again." }, 400);
+  }
+  if (parsedSignatureForStamp.contentType === "image/webp") {
+    return jsonResponse({ error: "Please re-sign using PNG or JPEG format." }, 400);
+  }
+
+  const baseLeadIds = [job.id, job.estimate_job_id, effectiveLeadId, estimate.job_id].filter(Boolean) as string[];
+  const portalDocuments = await fetchPortalDocumentsForLeadFamily(supabase, supabaseUrl, baseLeadIds);
+  const allConfigs = portalDocuments.configs || [];
+  const allDocuments = portalDocuments.documents || [];
+
+  const signableDocs: Array<{ config: any; uploadedDocument: any }> = [];
+  for (const configId of requestedConfigIds) {
+    const config = allConfigs.find((row: any) => String(row?.id || "") === configId);
+    if (!config) return jsonResponse({ error: "One or more documents are not available for this job." }, 404);
+
+    const uploadedDocument = resolveUploadedDocumentForConfig(config, allConfigs, allDocuments);
+    const isSignable =
+      config.include_in_job === true
+      && normalizeTiming(config.email_timing) === "manual"
+      && config.requires_signature === true
+      && Boolean(uploadedDocument);
+
+    if (!isSignable) {
+      return jsonResponse({ error: "One or more selected documents are not eligible for manual signing." }, 400);
+    }
+
+    signableDocs.push({ config, uploadedDocument });
+  }
+
+  const upload = await uploadSignatureDataUrl(supabase, estimate.id, signatureDataUrl);
+  if (!upload.ok) return jsonResponse({ error: upload.error }, upload.statusCode);
+
+  const acceptedAt = new Date().toISOString();
+  const currentAcceptance =
+    estimate.agreement_acceptance && typeof estimate.agreement_acceptance === "object"
+      ? estimate.agreement_acceptance
+      : {};
+
+  const updatePayload = {
+    agreement_acceptance: {
+      ...currentAcceptance,
+      ...Object.fromEntries(signableDocs.map(({ config }) => [String(config.id), true])),
+      accepted_at: acceptedAt,
+    },
+    manual_approval_photo_url: upload.publicUrl,
+    updated_at: acceptedAt,
+  };
+
+  const { error: signError } = await supabase
+    .from("estimates")
     .update(updatePayload)
-    .eq("id", customerId);
+    .eq("id", estimate.id);
 
-  if (updateError) {
-    console.error("Failed to update customer portal view tracking:", updateError);
+  if (signError) return jsonResponse({ error: "Failed to sign document" }, 500);
+
+  for (const { uploadedDocument } of signableDocs) {
+    const filePath = String(uploadedDocument?.file_path || "");
+    const mimeType = String(uploadedDocument?.mime_type || "").toLowerCase();
+    if (!filePath) continue;
+    if (mimeType && mimeType !== "application/pdf") continue;
+
+    const stampResult = await stampSignatureOnSignedDocument({
+      supabase,
+      filePath,
+      signatureBytes: parsedSignatureForStamp.bytes,
+      signatureContentType: parsedSignatureForStamp.contentType,
+      signedAtIso: acceptedAt,
+    });
+    if (!stampResult.ok) {
+      return jsonResponse({ error: stampResult.error }, 500);
+    }
   }
+
+  const requestUrl = new URL(req.url);
+  const shareToken = requestUrl.searchParams.get("token");
+  const portalLink = shareToken
+    ? `${requestUrl.origin}/portal?token=${encodeURIComponent(shareToken)}&jobId=${encodeURIComponent(String(job.id))}`
+    : "";
+
+  const documentSummaries = signableDocs.map(({ config, uploadedDocument }) => ({
+    name: String(config?.template?.name || uploadedDocument?.file_name || "Document"),
+    url: String(uploadedDocument?.url || ""),
+    filePath: String(uploadedDocument?.file_path || ""),
+    mimeType: uploadedDocument?.mime_type ? String(uploadedDocument.mime_type) : null,
+  })).filter((doc) => Boolean(doc.url));
+
+  const emailResult = await sendSignedManualDocumentEmails({
+    supabase,
+    customerId: typeof job?.customer_id === "string" ? job.customer_id : null,
+    accountId: typeof job?.account_id === "string" ? job.account_id : null,
+    documentSummaries,
+    signatureUrl: upload.publicUrl,
+    portalLink,
+  });
+
+  if (!emailResult.ok) {
+    console.error("Failed to send signed manual document emails:", emailResult.error);
+    return jsonResponse({ error: "Document signed, but failed to send notification emails." }, 500);
+  }
+
+  return jsonResponse({ success: true, message: signableDocs.length > 1 ? "Documents signed" : "Document signed" });
 }
 
 Deno.serve(async (req: Request) => {
@@ -107,16 +1200,13 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const url = new URL(req.url);
     const token = url.searchParams.get("token");
     const jobId = url.searchParams.get("jobId");
 
-    if (!token) {
-      return jsonResponse({ error: "Missing share token" }, 400);
-    }
+    if (!token) return jsonResponse({ error: "Missing share token" }, 400);
 
     const { data: customer } = await supabase
       .from("customers")
@@ -124,374 +1214,23 @@ Deno.serve(async (req: Request) => {
       .eq("client_portal_token", token)
       .maybeSingle();
 
-    if (customer) {
-      return await handleClientPortal(supabase, supabaseUrl, customer, jobId, req);
-    }
-
-    const { data: recurringJob } = await supabase
-      .from("recurring_jobs")
-      .select("id, name, address, service_type, description, account_id, customer_id, frequency, start_date, end_date, client_share_token, customer:customers!customer_id(id, name, email, phone)")
-      .eq("client_share_token", token)
-      .maybeSingle();
-
-    if (recurringJob) {
-      await recordCustomerPortalView(supabase, recurringJob.customer_id, req);
-      return await handleRecurringJobPortal(supabase, supabaseUrl, recurringJob, req, jsonResponse);
-    }
-
-    const { data: job, error: jobError } = await supabase
-      .from("leads")
-      .select(
-        `
-        id,
-        name,
-        address,
-        service_type,
-        status,
-        description,
-        actual_value,
-        is_estimate_visit,
-        estimate_job_id,
-        account_id,
-        customer_id,
-        created_at,
-        updated_at,
-        customer:customers!customer_id(id, name, email, phone)
-      `
-      )
-      .eq("client_share_token", token)
-      .maybeSingle();
-
-    if (jobError || !job) {
+    if (!customer) {
       return jsonResponse({ error: "Job not found or link is invalid" }, 404);
     }
 
+    if (req.method === "GET") {
+      if (!jobId) return await handleGetPortalList(supabase, customer);
+      return await handleGetJobDetail(supabase, supabaseUrl, customer, jobId);
+    }
+
     if (req.method === "POST") {
-      return await handleSingleJobPost(supabase, job, req);
+      if (!jobId) return jsonResponse({ error: "Job ID required for this action" }, 400);
+      return await handlePostJobAction(supabase, supabaseUrl, customer, jobId, req);
     }
 
-    if (req.method !== "GET") {
-      return jsonResponse({ error: "Method not allowed" }, 405);
-    }
-
-    if (job.customer_id) {
-      await recordCustomerPortalView(supabase, job.customer_id, req);
-    }
-
-    return await handleSingleJobGet(supabase, supabaseUrl, job, jsonResponse);
+    return jsonResponse({ error: "Method not allowed" }, 405);
   } catch (error) {
     console.error("job-client-portal error:", error);
     return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
-
-async function handleClientPortal(supabase: any, supabaseUrl: string, customer: any, jobId: string | null, req: Request) {
-  if (req.method === "POST") {
-    if (!jobId) {
-      return jsonResponse({ error: "Job ID required for this action" }, 400);
-    }
-    const { data: job } = await supabase
-      .from("leads")
-      .select("id, customer_id, account_id")
-      .eq("id", jobId)
-      .eq("customer_id", customer.id)
-      .maybeSingle();
-
-    if (!job) {
-      return jsonResponse({ error: "Job not found or access denied" }, 404);
-    }
-
-    return await handleSingleJobPost(supabase, { ...job, customer }, req);
-  }
-
-  if (req.method !== "GET") {
-    return jsonResponse({ error: "Method not allowed" }, 405);
-  }
-
-  await recordCustomerPortalView(supabase, customer.id, req);
-
-  if (!jobId) {
-    const { data: jobs } = await supabase
-      .from("leads")
-      .select(`
-        id,
-        name,
-        address,
-        service_type,
-        status,
-        created_at,
-        updated_at,
-        is_estimate_visit,
-        estimate_job_id
-      `)
-      .eq("customer_id", customer.id)
-      .neq("status", "archived")
-      .order("created_at", { ascending: false });
-
-    const { data: recurringJobs } = await supabase
-      .from("recurring_jobs")
-      .select(`
-        id,
-        name,
-        address,
-        service_type,
-        frequency,
-        start_date,
-        end_date,
-        created_at
-      `)
-      .eq("customer_id", customer.id)
-      .order("created_at", { ascending: false });
-
-    const { data: account } = await supabase
-      .from("accounts")
-      .select("company_name, company_email, company_phone, logo_url, settings")
-      .eq("id", customer.account_id)
-      .maybeSingle();
-
-    const { data: invoices } = await supabase
-      .from("invoices")
-      .select(`
-        id,
-        lead_id,
-        stripe_invoice_url,
-        status,
-        total,
-        created_at,
-        leads!inner(customer_id, name, service_type)
-      `)
-      .eq("leads.customer_id", customer.id)
-      .order("created_at", { ascending: false });
-
-    const regularJobs = (jobs || []).filter((j: any) => !j.is_estimate_visit);
-    const estimateVisitJobs = (jobs || []).filter((j: any) => j.is_estimate_visit && !j.estimate_job_id);
-
-    const displayJobs = regularJobs.length > 0 ? regularJobs : estimateVisitJobs;
-
-    return jsonResponse({
-      customer: {
-        name: customer.name,
-        email: customer.email,
-        phone: customer.phone,
-      },
-      company: account
-        ? {
-            company_name: account.company_name,
-            company_email: account.company_email,
-            company_phone: account.company_phone,
-            logo_url: account.logo_url,
-            portal_color: account.settings?.client_portal_color ?? null,
-            portal_text_color: account.settings?.client_portal_text_color ?? null,
-            client_portal_color: account.settings?.client_portal_color ?? null,
-            client_portal_text_color: account.settings?.client_portal_text_color ?? null,
-            settings: account.settings ?? null,
-          }
-        : {},
-      jobs: displayJobs.map((j: any) => ({
-        id: j.id,
-        name: j.name,
-        address: j.address,
-        service_type: j.service_type,
-        status: j.status,
-        created_at: j.created_at,
-      })),
-      recurring_jobs: (recurringJobs || []).map((rj: any) => ({
-        id: rj.id,
-        name: rj.name,
-        address: rj.address,
-        service_type: rj.service_type,
-        frequency: rj.frequency,
-        start_date: rj.start_date,
-        end_date: rj.end_date,
-        created_at: rj.created_at,
-      })),
-      invoices: (invoices || []).map((inv: any) => ({
-        id: inv.id,
-        lead_id: inv.lead_id,
-        job_name: inv.leads?.name,
-        service_type: inv.leads?.service_type,
-        stripe_invoice_url: inv.stripe_invoice_url,
-        status: inv.status,
-        total: inv.total,
-        created_at: inv.created_at,
-      })),
-    });
-  }
-
-  const { data: job } = await supabase
-    .from("leads")
-    .select(`
-      id,
-      name,
-      address,
-      service_type,
-      status,
-      description,
-      actual_value,
-      is_estimate_visit,
-      estimate_job_id,
-      account_id,
-      created_at,
-      updated_at
-    `)
-    .eq("id", jobId)
-    .eq("customer_id", customer.id)
-    .maybeSingle();
-
-  if (job) {
-    job.customer = customer;
-    const jobDetails = await handleSingleJobGet(supabase, supabaseUrl, job, jsonResponse);
-    const jobData = await jobDetails.json();
-    return jsonResponse({
-      ...jobData,
-      portal_metadata: {
-        customer: {
-          name: customer.name,
-          email: customer.email,
-          phone: customer.phone,
-        },
-        has_portal: true,
-      }
-    });
-  }
-
-  const { data: recurringJob } = await supabase
-    .from("recurring_jobs")
-    .select("id, name, address, service_type, description, account_id, customer_id, frequency, start_date, end_date")
-    .eq("id", jobId)
-    .eq("customer_id", customer.id)
-    .maybeSingle();
-
-  if (recurringJob) {
-    recurringJob.customer = customer;
-    recurringJob.client_share_token = null;
-    const jobDetails = await handleRecurringJobPortal(supabase, supabaseUrl, recurringJob, req, jsonResponse);
-    const jobData = await jobDetails.json();
-    return jsonResponse({
-      ...jobData,
-      portal_metadata: {
-        customer: {
-          name: customer.name,
-          email: customer.email,
-          phone: customer.phone,
-        },
-        has_portal: true,
-      }
-    });
-  }
-
-  return jsonResponse({ error: "Job not found or access denied" }, 404);
-}
-
-async function handleSingleJobPost(supabase: any, job: any, req: Request) {
-  const body = await req.json();
-  const action = body.action;
-  const clientUpdatedAt = body.updated_at;
-  const estimateVersionId = typeof body.estimate_version_id === "string" ? body.estimate_version_id : null;
-  const signatureDataUrl =
-    typeof body.signature_data_url === "string"
-      ? body.signature_data_url
-      : typeof body.signatureDataUrl === "string"
-        ? body.signatureDataUrl
-        : null;
-  const agreementAcceptance =
-    body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
-      ? body.agreement_acceptance
-      : null;
-  const agreementTemplates =
-    body && typeof body.agreement_templates === "object" && body.agreement_templates
-      ? body.agreement_templates
-      : null;
-  let requiredDocumentConfigIds: string[] = [];
-
-  if (action === "approve") {
-    const baseDocumentLeadIds = [
-      typeof job?.estimate_job_id === "string" ? job.estimate_job_id : null,
-      typeof job?.id === "string" ? job.id : null,
-    ].filter((value): value is string => Boolean(value));
-    const portalDocuments = await fetchPortalDocumentsForLeadFamily(
-      supabase,
-      Deno.env.get("SUPABASE_URL")!,
-      baseDocumentLeadIds,
-      "approval required documents",
-    );
-    requiredDocumentConfigIds = (portalDocuments.configs || [])
-      .filter((config: any) => {
-        const timing = String(config?.email_timing || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-        return config?.include_in_job === true
-          && timing === "on_estimate_approval"
-          && config?.requires_signature === true;
-      })
-      .map((config: any) => String(config.id || ""))
-      .filter(Boolean);
-  }
-
-  if (action === "sign_job_release") {
-    return await signJobRelease(
-      supabase,
-      { id: job.id, account_id: job.account_id, customer_id: job.customer_id },
-      signatureDataUrl,
-      jsonResponse,
-    );
-  }
-
-  if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
-    return jsonResponse({ error: "Invalid action" }, 400);
-  }
-
-  const { data: estimate, error: estError } = await supabase
-    .from("estimates")
-    .select("id, status, expires_at, job_id, updated_at, has_pending_changes, account_id, proposal_settings")
-    .eq("job_id", job.id)
-    .maybeSingle();
-
-  if (estError || !estimate) {
-    const { data: parentLead } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("estimate_job_id", job.id)
-      .maybeSingle();
-
-    if (!parentLead) {
-      return jsonResponse({ error: "No estimate found for this job" }, 404);
-    }
-
-    const { data: parentEstimate, error: peError } = await supabase
-      .from("estimates")
-      .select("id, status, expires_at, job_id, updated_at, has_pending_changes, account_id, proposal_settings")
-      .eq("job_id", parentLead.id)
-      .maybeSingle();
-
-    if (peError || !parentEstimate) {
-      return jsonResponse({ error: "No estimate found for this job" }, 404);
-    }
-
-    return await handleEstimateAction(
-      supabase,
-      parentEstimate,
-      action,
-      job.id,
-      jsonResponse,
-      clientUpdatedAt,
-      estimateVersionId,
-      signatureDataUrl,
-      agreementAcceptance,
-      agreementTemplates,
-      requiredDocumentConfigIds,
-    );
-  }
-
-  return await handleEstimateAction(
-    supabase,
-    estimate,
-    action,
-    job.id,
-    jsonResponse,
-    clientUpdatedAt,
-    estimateVersionId,
-    signatureDataUrl,
-    agreementAcceptance,
-    agreementTemplates,
-    requiredDocumentConfigIds,
-  );
-}

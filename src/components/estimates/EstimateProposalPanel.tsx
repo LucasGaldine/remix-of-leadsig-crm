@@ -120,6 +120,13 @@ interface ProposalJobDocumentRecord {
   created_at: string;
 }
 
+const isJobDocumentsConfigIdMissing = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const code = String((error as { code?: string }).code || "");
+  const message = String((error as { message?: string }).message || "").toLowerCase();
+  return code === "42703" && message.includes("job_documents.config_id");
+};
+
 const normalizeProposalConfigRows = (rows: unknown[]): ProposalJobDocumentConfigRecord[] =>
   rows.map((row) => {
     const record = row as Record<string, any>;
@@ -998,7 +1005,7 @@ $${formatCurrency(contractTotal)}
 
     let cancelled = false;
     const fetchProposalDocuments = async () => {
-      const [configResult, documentResult] = await Promise.all([
+      const [configResult] = await Promise.all([
         supabase
           .from("job_document_configs")
           .select(
@@ -1006,12 +1013,20 @@ $${formatCurrency(contractTotal)}
           )
           .eq("lead_id", leadId)
           .order("sort_order", { ascending: true }),
-        supabase
-          .from("job_documents")
-          .select("id, template_id, config_id, document_key, file_path, created_at")
-          .eq("lead_id", leadId)
-          .order("created_at", { ascending: false }),
       ]);
+      let documentResult = await supabase
+        .from("job_documents")
+        .select("id, template_id, config_id, document_key, file_path, created_at")
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false });
+
+      if (isJobDocumentsConfigIdMissing(documentResult.error)) {
+        documentResult = await supabase
+          .from("job_documents")
+          .select("id, template_id, document_key, file_path, created_at")
+          .eq("lead_id", leadId)
+          .order("created_at", { ascending: false });
+      }
 
       if (cancelled) return;
 

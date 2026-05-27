@@ -837,4 +837,112 @@ describe("ClientPortalEstimate", () => {
     expect(screen.queryByText("No approval or manually sent documents are available yet.")).not.toBeInTheDocument();
   });
 
+  it("numbers duplicate document templates to match job details ordering", () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          id: "estimate_1",
+          total: 1250,
+          subtotal: 1250,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "item_1",
+              name: "Mulch",
+              quantity: 1,
+              unit: "job",
+              unit_price: 1250,
+              total: 1250,
+            },
+          ],
+          job_document_configs: [
+            {
+              id: "cfg_dup_1",
+              lead_id: "lead_1",
+              template_id: "tpl_manual",
+              include_in_job: true,
+              email_timing: "manual",
+              requires_signature: true,
+              sort_order: 1,
+              template: {
+                id: "tpl_manual",
+                name: "Test Manual",
+                system_key: null,
+                body: "Manual body",
+              },
+            },
+            {
+              id: "cfg_hidden",
+              lead_id: "lead_1",
+              template_id: "tpl_manual",
+              include_in_job: true,
+              email_timing: "manual",
+              requires_signature: true,
+              sort_order: 2,
+              template: {
+                id: "tpl_manual",
+                name: "Test Manual",
+                system_key: null,
+                body: "Hidden manual body",
+              },
+            },
+            {
+              id: "cfg_dup_3",
+              lead_id: "lead_1",
+              template_id: "tpl_manual",
+              include_in_job: true,
+              email_timing: "manual",
+              requires_signature: true,
+              sort_order: 3,
+              template: {
+                id: "tpl_manual",
+                name: "Test Manual",
+                system_key: null,
+                body: "Manual body 3",
+              },
+            },
+          ],
+          job_documents: [
+            {
+              id: "doc_manual_1",
+              lead_id: "lead_1",
+              template_id: "tpl_manual",
+              config_id: "cfg_dup_1",
+              document_key: "manual_one",
+              file_name: "manual-one.pdf",
+              file_path: "path/manual-one.pdf",
+              mime_type: "application/pdf",
+              created_at: "2026-03-22T00:00:00.000Z",
+              url: "https://example.com/manual-one.pdf",
+            },
+            {
+              id: "doc_manual_3",
+              lead_id: "lead_1",
+              template_id: "tpl_manual",
+              config_id: "cfg_dup_3",
+              document_key: "manual_three.pdf",
+              file_name: "manual-three.pdf",
+              file_path: "path/manual-three.pdf",
+              mime_type: "application/pdf",
+              created_at: "2026-03-22T00:00:00.000Z",
+              url: "https://example.com/manual-three.pdf",
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Test Manual")).toBeInTheDocument();
+    expect(screen.getByText("Test Manual #3")).toBeInTheDocument();
+    expect(screen.queryByText("Test Manual #2")).not.toBeInTheDocument();
+  });
+
 });

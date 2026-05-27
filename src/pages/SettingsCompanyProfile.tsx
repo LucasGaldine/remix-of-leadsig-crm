@@ -18,6 +18,11 @@ import {
   getCompanyLogoValidationError,
   loadImageDimensions,
 } from "@/lib/companyLogo";
+import {
+  normalizeClientPortalColor,
+  normalizeClientPortalHighlightColor,
+  normalizeClientPortalTextColor,
+} from "@/lib/clientPortalTheme";
 import { toast } from "sonner";
 
 export default function SettingsCompanyProfile() {
@@ -36,6 +41,9 @@ export default function SettingsCompanyProfile() {
   const [companyAddress, setCompanyAddress] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
   const [website, setWebsite] = useState("");
+  const [portalColor, setPortalColor] = useState(normalizeClientPortalColor(undefined));
+  const [portalTextColor, setPortalTextColor] = useState(normalizeClientPortalTextColor(undefined));
+  const [portalHighlightColor, setPortalHighlightColor] = useState(normalizeClientPortalHighlightColor(undefined));
   const [inviteCode, setInviteCode] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
@@ -51,6 +59,11 @@ export default function SettingsCompanyProfile() {
       setCompanyAddress(currentAccount.company_address || "");
       setBillingEmail(currentAccount.billing_email || "");
       setWebsite(currentAccount.website || "");
+      setPortalColor(normalizeClientPortalColor(currentAccount.settings?.client_portal_color));
+      setPortalTextColor(normalizeClientPortalTextColor(currentAccount.settings?.client_portal_text_color));
+      setPortalHighlightColor(
+        normalizeClientPortalHighlightColor(currentAccount.settings?.client_portal_highlight_color),
+      );
       setInviteCode(currentAccount.invite_code || "");
       setLogoUrl(currentAccount.logo_url || "");
       setLogoPreviewUrl(currentAccount.logo_url || "");
@@ -134,6 +147,9 @@ export default function SettingsCompanyProfile() {
         logo_url: uploadedLogoUrl,
         settings: {
           ...(currentAccount.settings || {}),
+          client_portal_color: normalizeClientPortalColor(portalColor),
+          client_portal_text_color: normalizeClientPortalTextColor(portalTextColor),
+          client_portal_highlight_color: normalizeClientPortalHighlightColor(portalHighlightColor),
         },
         updated_at: new Date().toISOString(),
       })
@@ -391,6 +407,81 @@ export default function SettingsCompanyProfile() {
                   placeholder="https://www.company.com"
                   disabled={isSaving}
                 />
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+              <h3 className="text-sm font-semibold text-foreground">Brand Colors</h3>
+              <p className="text-xs text-muted-foreground">
+                These colors are used for your client portal and website branding.
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="portal-color">Brand Color</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="portal-color"
+                      value={portalColor}
+                      onChange={(e) => {
+                        setPortalColor(e.target.value);
+                        setIsDirty(true);
+                      }}
+                      onBlur={() => setPortalColor((value) => normalizeClientPortalColor(value))}
+                      placeholder="#334155"
+                      disabled={isSaving}
+                    />
+                    <span
+                      aria-label="Brand color swatch"
+                      className="h-9 w-9 shrink-0 rounded-md border border-border"
+                      style={{ backgroundColor: normalizeClientPortalColor(portalColor) }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="portal-text-color">Brand Text Color</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="portal-text-color"
+                      value={portalTextColor}
+                      onChange={(e) => {
+                        setPortalTextColor(e.target.value);
+                        setIsDirty(true);
+                      }}
+                      onBlur={() => setPortalTextColor((value) => normalizeClientPortalTextColor(value))}
+                      placeholder="#ffffff"
+                      disabled={isSaving}
+                    />
+                    <span
+                      aria-label="Brand text color swatch"
+                      className="h-9 w-9 shrink-0 rounded-md border border-border"
+                      style={{ backgroundColor: normalizeClientPortalTextColor(portalTextColor) }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="portal-highlight-color">Highlight Color</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="portal-highlight-color"
+                      value={portalHighlightColor}
+                      onChange={(e) => {
+                        setPortalHighlightColor(e.target.value);
+                        setIsDirty(true);
+                      }}
+                      onBlur={() =>
+                        setPortalHighlightColor((value) => normalizeClientPortalHighlightColor(value))
+                      }
+                      placeholder="#f59e0b"
+                      disabled={isSaving}
+                    />
+                    <span
+                      aria-label="Highlight color swatch"
+                      className="h-9 w-9 shrink-0 rounded-md border border-border"
+                      style={{ backgroundColor: normalizeClientPortalHighlightColor(portalHighlightColor) }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>

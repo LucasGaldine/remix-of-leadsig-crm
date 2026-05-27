@@ -263,6 +263,46 @@ export function formatDocumentTemplateToken(key: string) {
   return `[[${key}]]`;
 }
 
+const DOCUMENT_TEMPLATE_TOKEN_PATTERN = /(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/i;
+
+function normalizeTemplateVariableKey(key: unknown) {
+  return String(key || "").trim().toLowerCase();
+}
+
+function hasTemplateMergeFieldValue(value: DocumentTemplateMergeFieldValue) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  return String(value).trim().length > 0;
+}
+
+export function extractDocumentTemplateVariableKeys(templateBody: string) {
+  const normalizedBody = String(templateBody || "");
+  if (!normalizedBody.trim()) return [];
+
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  const matcher = new RegExp(DOCUMENT_TEMPLATE_TOKEN_PATTERN.source, "gi");
+  let match = matcher.exec(normalizedBody);
+  while (match) {
+    const normalizedKey = normalizeTemplateVariableKey(match[1] || match[2]);
+    if (normalizedKey && !seen.has(normalizedKey)) {
+      seen.add(normalizedKey);
+      keys.push(normalizedKey);
+    }
+    match = matcher.exec(normalizedBody);
+  }
+
+  return keys;
+}
+
+export function findMissingDocumentTemplateVariableKeys(
+  templateBody: string,
+  mergeFields?: DocumentTemplateMergeFields | null,
+) {
+  const variableKeys = extractDocumentTemplateVariableKeys(templateBody);
+  return variableKeys.filter((key) => !hasTemplateMergeFieldValue(mergeFields?.[key]));
+}
+
 function formatPhoneTemplateValue(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -292,9 +332,10 @@ export function renderDocumentTemplateText(
 ) {
   if (!templateBody) return "";
 
-  return templateBody.replace(/(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/gi, (fullMatch, rawSquareKey, rawCurlyKey) => {
+  const matcher = new RegExp(DOCUMENT_TEMPLATE_TOKEN_PATTERN.source, "gi");
+  return templateBody.replace(matcher, (fullMatch, rawSquareKey, rawCurlyKey) => {
     const rawKey = rawSquareKey || rawCurlyKey;
-    const normalizedKey = String(rawKey || "").trim().toLowerCase();
+    const normalizedKey = normalizeTemplateVariableKey(rawKey);
     const rawValue = mergeFields?.[normalizedKey];
     if (rawValue === null || rawValue === undefined) return fullMatch;
     const next = maybeFormatTemplateMergeFieldValue(normalizedKey, String(rawValue).trim());
@@ -478,6 +519,42 @@ function readTemplateText(record: Record<string, unknown> | null | undefined, ke
   return typeof value === "string" ? value.trim() : "";
 }
 
+export function getDocumentTemplateSourceText(params: {
+  template:
+    | {
+        system_key: SystemDocumentTemplateKey | null;
+        body?: string | null;
+      }
+    | null
+    | undefined;
+  estimateAgreementTemplates?: Record<string, unknown> | null;
+  jobReleaseText?: string | null;
+}) {
+  const template = params.template;
+  if (!template) return "";
+
+  if (template.system_key === "job_agreement") {
+    return (
+      (template.body || "").trim()
+      || readTemplateText(params.estimateAgreementTemplates, "job_agreement")
+    );
+  }
+
+  if (template.system_key === "warranty_agreement") {
+    return (
+      (template.body || "").trim()
+      || readTemplateText(params.estimateAgreementTemplates, "warranty_agreement")
+    );
+  }
+
+  if (template.system_key === "job_release") {
+    const releaseText = (params.jobReleaseText || "").trim();
+    return (template.body || "").trim() || releaseText;
+  }
+
+  return (template.body || "").trim();
+}
+
 export function getDocumentFallbackText(params: {
   template:
     | {
@@ -490,28 +567,10 @@ export function getDocumentFallbackText(params: {
   jobReleaseText?: string | null;
   templateMergeFields?: DocumentTemplateMergeFields | null;
 }) {
-  const template = params.template;
-  if (!template) return "";
-
-  if (template.system_key === "job_agreement") {
-    const raw =
-      (template.body || "").trim()
-      || readTemplateText(params.estimateAgreementTemplates, "job_agreement");
-    return renderDocumentTemplateText(raw, params.templateMergeFields);
-  }
-
-  if (template.system_key === "warranty_agreement") {
-    const raw =
-      (template.body || "").trim()
-      || readTemplateText(params.estimateAgreementTemplates, "warranty_agreement");
-    return renderDocumentTemplateText(raw, params.templateMergeFields);
-  }
-
-  if (template.system_key === "job_release") {
-    const releaseText = (params.jobReleaseText || "").trim();
-    const raw = (template.body || "").trim() || releaseText;
-    return renderDocumentTemplateText(raw, params.templateMergeFields);
-  }
-
-  return renderDocumentTemplateText((template.body || "").trim(), params.templateMergeFields);
+  const raw = getDocumentTemplateSourceText({
+    template: params.template,
+    estimateAgreementTemplates: params.estimateAgreementTemplates,
+    jobReleaseText: params.jobReleaseText,
+  });
+  return renderDocumentTemplateText(raw, params.templateMergeFields);
 }

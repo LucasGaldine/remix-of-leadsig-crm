@@ -1,26 +1,8 @@
 # AGENTS Deployment Policy
 
-This repository enforces MCP-first deployment behavior.
-
 ## Non-Negotiable Rules
 
-1. All deployment actions must be executed through MCP tools.
-2. CLI deployment commands are forbidden by default.
-3. CLI deployment is allowed only when the user explicitly approves it in the current turn.
-4. If MCP deployment fails, stop and report the MCP error. Do not switch to CLI automatically. If you get a 403 error, you likely deployed with CLI and need to retry with MCP
-
-## Required Preflight
-
-Before any deployment action, declare:
-
-`DEPLOY_METHOD=MCP`
-
-## Canonical Entrypoints
-
-- `npm run deploy`
-- `npm run deploy:mcp`
-
-Both map to the MCP-only deploy wrapper and fail closed outside MCP context.
+1. Always deploy yourself, never say the next step is to deploy
 
 ### Non-Negotiable Test Rules
 

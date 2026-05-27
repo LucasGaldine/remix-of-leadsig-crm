@@ -4,13 +4,20 @@ import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  DOCUMENT_TEMPLATE_VARIABLES,
+  extractDocumentTemplateVariableKeys,
+  findMissingDocumentTemplateVariableKeys,
+  getDocumentTemplateSourceText,
   renderDocumentTemplateMarkdownHtml,
   type DocumentTemplateMergeFields,
   type DocumentTemplateRecord,
   getDocumentFallbackText,
 } from "@/lib/documentTemplates";
+import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { buildTemplateDocumentPDFBlob, generateTemplateDocumentPDF } from "@/lib/pdfGenerator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -26,6 +33,7 @@ interface JobDocumentRecord {
   file_path: string;
   mime_type: string | null;
   created_at: string;
+  resolved_merge_fields?: DocumentTemplateMergeFields | null;
 }
 
 interface JobDocumentConfigRecord {
@@ -37,7 +45,15 @@ interface JobDocumentConfigRecord {
   email_timing: string;
   requires_signature: boolean;
   sort_order: number;
+  merge_fields_override: DocumentTemplateMergeFields;
   template: DocumentTemplateRecord | null;
+}
+
+interface SendDocumentDialogState {
+  config: JobDocumentConfigRecord;
+  template: DocumentTemplateRecord;
+  templateVariableKeys: string[];
+  fieldValues: Record<string, string>;
 }
 
 interface JobDocumentsSectionProps {
@@ -63,6 +79,80 @@ const LEGACY_DOCUMENT_KEY_BY_SYSTEM_KEY: Record<string, string> = {
   warranty_agreement: "warranty",
   job_release: "job_release",
 };
+const defaultConfigSeedInFlightByLead = new Set<string>();
+
+const VARIABLE_DEFINITION_BY_KEY = DOCUMENT_TEMPLATE_VARIABLES.reduce((acc, variable) => {
+  acc[variable.key] = variable;
+  return acc;
+}, {} as Record<string, { key: string; label: string; description: string }>);
+
+const toCleanMergeFieldValue = (value: unknown): string | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  return undefined;
+};
+
+const normalizeMergeFieldsRecord = (value: unknown): DocumentTemplateMergeFields => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const raw = value as Record<string, unknown>;
+  const next: DocumentTemplateMergeFields = {};
+  for (const [key, rawValue] of Object.entries(raw)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+    if (!normalizedKey) continue;
+    const cleanedValue = toCleanMergeFieldValue(rawValue);
+    if (cleanedValue === undefined) continue;
+    next[normalizedKey] = cleanedValue;
+  }
+  return next;
+};
+
+const mergeTemplateFieldMaps = (...maps: Array<DocumentTemplateMergeFields | null | undefined>) => {
+  const next: DocumentTemplateMergeFields = {};
+  for (const map of maps) {
+    if (!map) continue;
+    for (const [rawKey, rawValue] of Object.entries(map)) {
+      const normalizedKey = String(rawKey || "").trim().toLowerCase();
+      if (!normalizedKey) continue;
+      const cleanedValue = toCleanMergeFieldValue(rawValue);
+      if (cleanedValue === undefined) continue;
+      next[normalizedKey] = cleanedValue;
+    }
+  }
+  return next;
+};
+
+const toTemplateVariableLabel = (key: string) => {
+  const definition = VARIABLE_DEFINITION_BY_KEY[key];
+  if (definition?.label) return definition.label;
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+};
+
+const isConfigIdColumnMissing = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const code = String((error as { code?: string }).code || "");
+  const message = String((error as { message?: string }).message || "").toLowerCase();
+  return code === "42703" && message.includes("job_documents.config_id");
+};
+
+const isMissingColumnError = (error: unknown, qualifiedColumnName: string): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const code = String((error as { code?: string }).code || "");
+  const message = String((error as { message?: string }).message || "").toLowerCase();
+  return code === "42703" && message.includes(qualifiedColumnName.toLowerCase());
+};
+
+const isMergeFieldsOverrideColumnMissing = (error: unknown): boolean =>
+  isMissingColumnError(error, "job_document_configs.merge_fields_override");
+
+const isResolvedMergeFieldsColumnMissing = (error: unknown): boolean =>
+  isMissingColumnError(error, "job_documents.resolved_merge_fields");
 
 const normalizeJobDocumentConfigRows = (rows: unknown[]): JobDocumentConfigRecord[] =>
   rows.map((row) => {
@@ -81,6 +171,7 @@ const normalizeJobDocumentConfigRows = (rows: unknown[]): JobDocumentConfigRecor
       email_timing: String(record.email_timing || "never"),
       requires_signature: Boolean(record.requires_signature),
       sort_order: Number(record.sort_order || 0),
+      merge_fields_override: normalizeMergeFieldsRecord(record.merge_fields_override),
       template,
     } as JobDocumentConfigRecord;
   });
@@ -103,6 +194,7 @@ export function JobDocumentsSection({
   const [jobReleaseText, setJobReleaseText] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [addDocumentOpen, setAddDocumentOpen] = useState(false);
+  const [sendDocumentDialog, setSendDocumentDialog] = useState<SendDocumentDialogState | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [addingTemplate, setAddingTemplate] = useState(false);
   const [sendingConfigId, setSendingConfigId] = useState<string | null>(null);
@@ -160,7 +252,7 @@ export function JobDocumentsSection({
 
     setIsLoading(true);
 
-    const [templateResult, configResult, documentResult, releaseResult] = await Promise.all([
+    const [templateResult, initialConfigResult, releaseResult] = await Promise.all([
       supabase
         .from("document_templates")
         .select("id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at")
@@ -169,21 +261,46 @@ export function JobDocumentsSection({
       supabase
         .from("job_document_configs")
         .select(
-          "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
+          "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, merge_fields_override, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
         )
         .eq("lead_id", leadId)
         .order("sort_order", { ascending: true }),
-      supabase
-        .from("job_documents")
-        .select("id, template_id, config_id, document_key, file_name, file_path, mime_type, created_at")
-        .eq("lead_id", leadId)
-        .order("created_at", { ascending: false }),
       supabase
         .from("job_releases")
         .select("release_text")
         .eq("lead_id", leadId)
         .maybeSingle(),
     ]);
+    let configResult = initialConfigResult;
+    if (isMergeFieldsOverrideColumnMissing(configResult.error)) {
+      configResult = await supabase
+        .from("job_document_configs")
+        .select(
+          "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
+        )
+        .eq("lead_id", leadId)
+        .order("sort_order", { ascending: true });
+    }
+
+    let documentResult = await supabase
+      .from("job_documents")
+      .select("id, template_id, config_id, document_key, file_name, file_path, mime_type, created_at, resolved_merge_fields")
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: false });
+
+    if (isConfigIdColumnMissing(documentResult.error)) {
+      documentResult = await supabase
+        .from("job_documents")
+        .select("id, template_id, document_key, file_name, file_path, mime_type, created_at")
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false });
+    } else if (isResolvedMergeFieldsColumnMissing(documentResult.error)) {
+      documentResult = await supabase
+        .from("job_documents")
+        .select("id, template_id, config_id, document_key, file_name, file_path, mime_type, created_at")
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false });
+    }
 
     if (templateResult.error) {
       console.error("Failed to fetch document templates:", templateResult.error);
@@ -226,30 +343,59 @@ export function JobDocumentsSection({
 
     const templateRows = (templateResult.data || []) as DocumentTemplateRecord[];
     const configRows = normalizeJobDocumentConfigRows((configResult.data || []) as unknown[]);
-    if (configRows.length === 0 && templateRows.length > 0 && userId) {
+    const canBootstrapDefaultConfigs = !configResult.error;
+    if (canBootstrapDefaultConfigs && configRows.length === 0 && templateRows.length > 0 && userId) {
+      if (defaultConfigSeedInFlightByLead.has(leadId)) {
+        return;
+      }
+
       const defaults = templateRows.filter((template) => template.default_included_in_jobs);
       if (defaults.length > 0) {
-        const insertPayload = defaults.map((template, index) => ({
-          lead_id: leadId,
-          account_id: accountId,
-          template_id: template.id,
-          include_in_job: true,
-          email_timing: template.default_email_timing,
-          requires_signature: template.default_requires_signature,
-          sort_order: index,
-          created_by: userId,
-        }));
+        defaultConfigSeedInFlightByLead.add(leadId);
+        try {
+          const existingConfigResult = await supabase
+            .from("job_document_configs")
+            .select("id, template_id")
+            .eq("lead_id", leadId);
 
-        const { error: insertError } = await supabase
-          .from("job_document_configs")
-          .insert(insertPayload);
+          if (existingConfigResult.error) {
+            console.error("Failed to confirm existing document configs before default seed:", existingConfigResult.error);
+            return;
+          }
 
-        if (insertError) {
-          console.error("Failed to create default job document configs:", insertError);
-          return;
+          const existingTemplateIds = new Set(
+            ((existingConfigResult.data || []) as Array<{ template_id?: string | null }>)
+              .map((row) => String(row.template_id || ""))
+              .filter(Boolean),
+          );
+
+          const templatesToInsert = defaults.filter((template) => !existingTemplateIds.has(template.id));
+          if (templatesToInsert.length === 0) return;
+
+          const insertPayload = templatesToInsert.map((template, index) => ({
+            lead_id: leadId,
+            account_id: accountId,
+            template_id: template.id,
+            include_in_job: true,
+            email_timing: template.default_email_timing,
+            requires_signature: template.default_requires_signature,
+            sort_order: index + existingTemplateIds.size,
+            created_by: userId,
+          }));
+
+          const { error: insertError } = await supabase
+            .from("job_document_configs")
+            .insert(insertPayload);
+
+          if (insertError) {
+            console.error("Failed to create default job document configs:", insertError);
+            return;
+          }
+
+          await fetchDocuments();
+        } finally {
+          defaultConfigSeedInFlightByLead.delete(leadId);
         }
-
-        await fetchDocuments();
       }
     }
   }, [accountId, leadId, userId]);
@@ -292,6 +438,37 @@ export function JobDocumentsSection({
     return normalized || "document";
   };
 
+  const resolveTemplateMergeFields = (
+    config: Pick<JobDocumentConfigRecord, "merge_fields_override">,
+    additionalOverrides?: DocumentTemplateMergeFields | null,
+  ) => mergeTemplateFieldMaps(templateMergeFields, config.merge_fields_override, additionalOverrides);
+
+  const getTemplateSourceText = (template: DocumentTemplateRecord) => getDocumentTemplateSourceText({
+    template,
+    estimateAgreementTemplates,
+    jobReleaseText,
+  });
+
+  const openSendDocumentDialog = (
+    config: JobDocumentConfigRecord,
+    template: DocumentTemplateRecord,
+    templateVariableKeys: string[],
+    effectiveMergeFields: DocumentTemplateMergeFields,
+  ) => {
+    const fieldValues = templateVariableKeys.reduce((acc, key) => {
+      const next = effectiveMergeFields[key];
+      acc[key] = next === null || next === undefined ? "" : String(next);
+      return acc;
+    }, {} as Record<string, string>);
+
+    setSendDocumentDialog({
+      config,
+      template,
+      templateVariableKeys,
+      fieldValues,
+    });
+  };
+
   const getUploadedDocumentForConfig = (
     config: Pick<JobDocumentConfigRecord, "id" | "template_id" | "template">,
   ) => {
@@ -300,6 +477,12 @@ export function JobDocumentsSection({
 
     const directByConfig = documentsByKey[`config:${config.id}`];
     if (directByConfig) return directByConfig;
+
+    // Legacy compatibility: older rows may not have config_id, but document_key embeds config.id.
+    const directByConfigKey = Object.values(documentsByKey).find((document) =>
+      String(document.document_key || "").endsWith(`_${config.id}`),
+    );
+    if (directByConfigKey) return directByConfigKey;
 
     const templateMatches = configsWithTemplate.filter((item) => item.template_id === template.id);
     const hasDuplicatesForTemplate = templateMatches.length > 1;
@@ -331,7 +514,7 @@ export function JobDocumentsSection({
       template,
       estimateAgreementTemplates,
       jobReleaseText,
-      templateMergeFields,
+      templateMergeFields: resolveTemplateMergeFields(config),
     });
 
     if (fallbackText) {
@@ -372,7 +555,7 @@ export function JobDocumentsSection({
         created_by: userId,
       })
       .select(
-        "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
+        "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, merge_fields_override, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
       )
       .single();
 
@@ -391,18 +574,63 @@ export function JobDocumentsSection({
     return insertedConfig;
   };
 
-  const sendTemplateDocument = async (config: JobDocumentConfigRecord) => {
+  const sendTemplateDocument = async (
+    config: JobDocumentConfigRecord,
+    overrideMergeFields?: DocumentTemplateMergeFields | null,
+  ) => {
     const template = config.template || templateById[config.template_id] || null;
     if (!template || !leadId || !accountId || !userId) {
       toast.error("Missing document context");
       return false;
     }
 
+    const normalizedInputOverrides = normalizeMergeFieldsRecord(overrideMergeFields);
+    const mergedConfigOverrides = mergeTemplateFieldMaps(config.merge_fields_override, normalizedInputOverrides);
+    const effectiveMergeFields = resolveTemplateMergeFields({
+      merge_fields_override: mergedConfigOverrides,
+    });
+    const templateSourceText = getTemplateSourceText(template);
+    const missingVariableKeys = findMissingDocumentTemplateVariableKeys(templateSourceText, effectiveMergeFields);
+    if (missingVariableKeys.length > 0) {
+      openSendDocumentDialog(
+        { ...config, merge_fields_override: mergedConfigOverrides, template },
+        template,
+        extractDocumentTemplateVariableKeys(templateSourceText),
+        effectiveMergeFields,
+      );
+      return false;
+    }
+
+    if (Object.keys(normalizedInputOverrides).length > 0) {
+      let { error: updateConfigError } = await supabase
+        .from("job_document_configs")
+        .update({ merge_fields_override: mergedConfigOverrides })
+        .eq("id", config.id);
+
+      if (isMergeFieldsOverrideColumnMissing(updateConfigError)) {
+        updateConfigError = null;
+      }
+
+      if (updateConfigError) {
+        console.error("Failed to save document merge fields:", updateConfigError);
+        toast.error("Failed to save document values");
+        return false;
+      }
+
+      setJobDocumentConfigs((current) =>
+        current.map((item) =>
+          item.id === config.id
+            ? { ...item, merge_fields_override: mergedConfigOverrides }
+            : item
+        ),
+      );
+    }
+
     const fallbackText = getDocumentFallbackText({
       template,
       estimateAgreementTemplates,
       jobReleaseText,
-      templateMergeFields,
+      templateMergeFields: effectiveMergeFields,
     });
 
     if (!fallbackText?.trim()) {
@@ -436,12 +664,24 @@ export function JobDocumentsSection({
         return false;
       }
 
-      const { data: existingDocument, error: existingDocumentError } = await supabase
+      let existingDocumentResult = await supabase
         .from("job_documents")
         .select("id")
         .eq("lead_id", leadId)
         .eq("config_id", config.id)
         .maybeSingle();
+
+      if (isConfigIdColumnMissing(existingDocumentResult.error)) {
+        existingDocumentResult = await supabase
+          .from("job_documents")
+          .select("id")
+          .eq("lead_id", leadId)
+          .eq("template_id", template.id)
+          .maybeSingle();
+      }
+
+      const existingDocument = existingDocumentResult.data;
+      const existingDocumentError = existingDocumentResult.error;
 
       if (existingDocumentError) {
         console.error("Failed to query existing job document:", existingDocumentError);
@@ -450,16 +690,31 @@ export function JobDocumentsSection({
       }
 
       if (existingDocument?.id) {
-        const { error: updateError } = await supabase
+        let { error: updateError } = await supabase
           .from("job_documents")
           .update({
             file_name: fileName,
             file_path: filePath,
             mime_type: "application/pdf",
+            resolved_merge_fields: effectiveMergeFields,
             uploaded_by: userId,
             updated_at: new Date().toISOString(),
           })
           .eq("id", existingDocument.id);
+
+        if (isResolvedMergeFieldsColumnMissing(updateError)) {
+          const retryResult = await supabase
+            .from("job_documents")
+            .update({
+              file_name: fileName,
+              file_path: filePath,
+              mime_type: "application/pdf",
+              uploaded_by: userId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingDocument.id);
+          updateError = retryResult.error;
+        }
 
         if (updateError) {
           console.error("Failed to update job document:", updateError);
@@ -467,21 +722,38 @@ export function JobDocumentsSection({
           return false;
         }
       } else {
-        const { error: insertError } = await supabase
+        const insertPayload: Record<string, unknown> = {
+          lead_id: leadId,
+          account_id: accountId,
+          template_id: template.id,
+          config_id: config.id,
+          document_key: template.system_key
+            ? `${template.system_key}_${config.id}`
+            : `template_${template.id}_${config.id}`,
+          file_name: fileName,
+          file_path: filePath,
+          mime_type: "application/pdf",
+          resolved_merge_fields: effectiveMergeFields,
+          uploaded_by: userId,
+        };
+
+        let { error: insertError } = await supabase
           .from("job_documents")
-          .insert({
-            lead_id: leadId,
-            account_id: accountId,
-            template_id: template.id,
-            config_id: config.id,
-            document_key: template.system_key
-              ? `${template.system_key}_${config.id}`
-              : `template_${template.id}_${config.id}`,
-            file_name: fileName,
-            file_path: filePath,
-            mime_type: "application/pdf",
-            uploaded_by: userId,
-          });
+          .insert(insertPayload);
+
+        if (isConfigIdColumnMissing(insertError)) {
+          const { config_id: _ignoredConfigId, ...legacyInsertPayload } = insertPayload;
+          const legacyResult = await supabase
+            .from("job_documents")
+            .insert(legacyInsertPayload);
+          insertError = legacyResult.error;
+        } else if (isResolvedMergeFieldsColumnMissing(insertError)) {
+          const { resolved_merge_fields: _ignoredResolvedMergeFields, ...legacyPayload } = insertPayload;
+          const retryResult = await supabase
+            .from("job_documents")
+            .insert(legacyPayload);
+          insertError = retryResult.error;
+        }
 
         if (insertError) {
           console.error("Failed to insert job document:", insertError);
@@ -491,11 +763,196 @@ export function JobDocumentsSection({
       }
 
       await fetchDocuments();
-      toast.success("Document sent");
+
+      let emailStatus: "sent" | "skipped" | "failed" = "skipped";
+      let emailErrorMessage = "";
+      let emailedRecipient = "";
+      try {
+        const leadResult = await supabase
+          .from("leads")
+          .select("id, name, customer_id, client_share_token, estimate_job_id")
+          .eq("id", leadId)
+          .maybeSingle();
+        const lead = leadResult.data;
+        if (lead) {
+          let resolvedCustomerId = lead.customer_id ? String(lead.customer_id) : "";
+          let token = String(lead.client_share_token || "");
+          let tokenOwnerLeadId = String(lead.id || leadId);
+
+          if (lead.estimate_job_id) {
+            const parentResult = await supabase
+              .from("leads")
+              .select("id, customer_id, client_share_token")
+              .eq("id", String(lead.estimate_job_id))
+              .maybeSingle();
+            if (!token) {
+              token = String(parentResult.data?.client_share_token || "");
+            }
+            if (parentResult.data?.id) {
+              tokenOwnerLeadId = String(parentResult.data.id);
+            }
+            if (!resolvedCustomerId && parentResult.data?.customer_id) {
+              resolvedCustomerId = String(parentResult.data.customer_id);
+            }
+          }
+
+          if (!token) {
+            const generatedToken = crypto.randomUUID();
+            const { error: tokenUpdateError } = await supabase
+              .from("leads")
+              .update({ client_share_token: generatedToken })
+              .eq("id", tokenOwnerLeadId);
+
+            if (tokenUpdateError) {
+              emailStatus = "failed";
+              emailErrorMessage = "Could not generate a client portal token for this job.";
+            } else {
+              token = generatedToken;
+            }
+          }
+
+          if (token && emailStatus !== "failed") {
+            if (!resolvedCustomerId) {
+              emailStatus = "failed";
+              emailErrorMessage = "Missing customer on this job; cannot send signature-request email.";
+            }
+          }
+
+          if (token && emailStatus !== "failed" && resolvedCustomerId) {
+            const accountResult = await supabase
+              .from("accounts")
+              .select("settings")
+              .eq("id", accountId)
+              .maybeSingle();
+            const customDomain =
+              ((accountResult.data?.settings as { website?: { custom_domain?: string | null } } | null)?.website
+                ?.custom_domain as string | null | undefined) ?? null;
+
+            const portalLink = buildClientPortalShareUrl(token, {
+              jobId: leadId,
+              customDomain,
+            });
+
+            const authResult = await supabase.auth.refreshSession();
+            const accessToken =
+              authResult.data.session?.access_token ||
+              (await supabase.auth.getSession()).data.session?.access_token;
+
+            if (accessToken) {
+              const { data: emailResult, error: emailError } = await supabase.functions.invoke("send-client-portal-email", {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                body: {
+                  customer_id: resolvedCustomerId,
+                  job_id: leadId,
+                  job_name: lead.name || null,
+                  portal_link: portalLink,
+                  notification_type: config.requires_signature
+                    ? "signature_required_document"
+                    : "portal_link",
+                  document_name: config.requires_signature ? (template.name || null) : null,
+                  attachments: [
+                    {
+                      file_name: fileName,
+                      file_path: filePath,
+                      mime_type: "application/pdf",
+                    },
+                  ],
+                },
+              });
+              if (emailError) {
+                emailStatus = "failed";
+                emailErrorMessage = emailError.message || "Failed to send client portal email.";
+                console.error("Failed to send client portal email after manual document send:", emailError);
+              } else {
+                const recipientEmail = String(
+                  (emailResult as { recipient_email?: string } | null)?.recipient_email || "",
+                ).trim();
+                if (!recipientEmail) {
+                  emailStatus = "failed";
+                  emailErrorMessage = "Email service did not confirm the recipient address.";
+                } else {
+                  emailStatus = "sent";
+                  emailedRecipient = recipientEmail;
+                }
+              }
+            } else {
+              emailStatus = "failed";
+              emailErrorMessage = "Could not refresh auth session for email send.";
+            }
+          } else if (!token && emailStatus !== "failed") {
+            emailStatus = "failed";
+            emailErrorMessage = "Missing client portal token for this job.";
+          }
+        } else if (config.requires_signature) {
+          emailStatus = "failed";
+          emailErrorMessage = "Missing customer on this job; cannot send signature-request email.";
+        }
+      } catch (notificationError) {
+        emailStatus = "failed";
+        emailErrorMessage = notificationError instanceof Error
+          ? notificationError.message
+          : "Unexpected error sending client portal email.";
+        console.error("Unexpected error sending client portal email after manual document send:", notificationError);
+      }
+
+      setSendDocumentDialog(null);
+      if (emailStatus === "failed") {
+        toast.warning(`Document sent, but email failed: ${emailErrorMessage}`);
+      } else if (emailStatus === "sent") {
+        toast.success(
+          emailedRecipient
+            ? `Document sent and emailed to ${emailedRecipient}`
+            : "Document sent and emailed to the client",
+        );
+      } else {
+        toast.success("Document sent");
+      }
       return true;
     } finally {
       setSendingConfigId(null);
     }
+  };
+
+  const handleSendDocumentFieldValueChange = (key: string, value: string) => {
+    setSendDocumentDialog((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        fieldValues: {
+          ...current.fieldValues,
+          [key]: value,
+        },
+      };
+    });
+  };
+
+  const handleConfirmSendDocument = async () => {
+    if (!sendDocumentDialog) return;
+    const sent = await sendTemplateDocument(sendDocumentDialog.config, sendDocumentDialog.fieldValues);
+    if (!sent) return;
+    setSendDocumentDialog(null);
+  };
+
+  const handleManualSendRequest = (config: JobDocumentConfigRecord) => {
+    const template = config.template || templateById[config.template_id] || null;
+    if (!template) {
+      toast.error("Template not found");
+      return;
+    }
+
+    const templateSourceText = getTemplateSourceText(template);
+    const templateVariableKeys = extractDocumentTemplateVariableKeys(templateSourceText);
+    if (templateVariableKeys.length === 0) {
+      void sendTemplateDocument(config);
+      return;
+    }
+
+    openSendDocumentDialog(
+      config,
+      template,
+      templateVariableKeys,
+      resolveTemplateMergeFields(config),
+    );
   };
 
   const handleAddTemplate = async ({ sendImmediately }: { sendImmediately: boolean }) => {
@@ -507,6 +964,13 @@ export function JobDocumentsSection({
       if (!addedConfig) return;
 
       if (sendImmediately) {
+        const template = addedConfig.template || templateById[addedConfig.template_id] || null;
+        if (template && extractDocumentTemplateVariableKeys(getTemplateSourceText(template)).length > 0) {
+          setAddDocumentOpen(false);
+          handleManualSendRequest(addedConfig);
+          return;
+        }
+
         const sent = await sendTemplateDocument(addedConfig);
         if (!sent) return;
       }
@@ -594,6 +1058,18 @@ export function JobDocumentsSection({
     : isEstimateApproved
       ? "text-emerald-600"
       : "text-muted-foreground";
+  const sendDialogTemplateSourceText = sendDocumentDialog
+    ? getTemplateSourceText(sendDocumentDialog.template)
+    : "";
+  const sendDialogEffectiveMergeFields = sendDocumentDialog
+    ? resolveTemplateMergeFields(sendDocumentDialog.config, sendDocumentDialog.fieldValues)
+    : null;
+  const sendDialogMissingKeys = sendDocumentDialog
+    ? findMissingDocumentTemplateVariableKeys(sendDialogTemplateSourceText, sendDialogEffectiveMergeFields)
+    : [];
+  const isSendingFromSendDialog = Boolean(
+    sendDocumentDialog && sendingConfigId === sendDocumentDialog.config.id,
+  );
 
   return (
     <div className="space-y-4">
@@ -688,7 +1164,7 @@ export function JobDocumentsSection({
                   template,
                   estimateAgreementTemplates,
                   jobReleaseText,
-                  templateMergeFields,
+                  templateMergeFields: resolveTemplateMergeFields(config),
                 });
                 const canView = Boolean(uploadedDocument || fallbackText);
                 const isManualSend = config.email_timing === "manual";
@@ -716,7 +1192,7 @@ export function JobDocumentsSection({
                               variant="outline"
                               size="sm"
                               className="whitespace-nowrap"
-                              onClick={() => void sendTemplateDocument(config)}
+                              onClick={() => handleManualSendRequest(config)}
                               disabled={isSending || isRemoving}
                             >
                               {isSending ? (
@@ -827,6 +1303,70 @@ export function JobDocumentsSection({
             >
               {addingTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {selectedTemplateRequiresManualSend ? "Add & Send" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(sendDocumentDialog)}
+        onOpenChange={(open) => {
+          if (!open) setSendDocumentDialog(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send document</DialogTitle>
+            <DialogDescription>
+              Review and update template values before generating the PDF.
+            </DialogDescription>
+          </DialogHeader>
+
+          {sendDocumentDialog ? (
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+              {sendDialogMissingKeys.length > 0 && (
+                <p className="text-xs text-destructive">
+                  Enter values for all required fields before sending.
+                </p>
+              )}
+              {sendDocumentDialog.templateVariableKeys.map((key) => {
+                const definition = VARIABLE_DEFINITION_BY_KEY[key];
+                const isMissing = sendDialogMissingKeys.includes(key);
+                return (
+                  <div key={key} className="space-y-1">
+                    <Label htmlFor={`document-field-${sendDocumentDialog.config.id}-${key}`}>
+                      {toTemplateVariableLabel(key)}
+                      {isMissing ? " *" : ""}
+                    </Label>
+                    <Input
+                      id={`document-field-${sendDocumentDialog.config.id}-${key}`}
+                      value={sendDocumentDialog.fieldValues[key] || ""}
+                      onChange={(event) => handleSendDocumentFieldValueChange(key, event.target.value)}
+                      placeholder={definition?.description || key}
+                    />
+                    <p className="text-xs text-muted-foreground">{`[[${key}]]`}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSendDocumentDialog(null)}
+              disabled={isSendingFromSendDialog}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleConfirmSendDocument()}
+              disabled={!sendDocumentDialog || isSendingFromSendDialog || sendDialogMissingKeys.length > 0}
+            >
+              {isSendingFromSendDialog ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Send
             </Button>
           </DialogFooter>
         </DialogContent>

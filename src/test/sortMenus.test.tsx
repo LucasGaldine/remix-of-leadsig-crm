@@ -84,6 +84,10 @@ vi.mock("@/hooks/useJobs", () => ({
   useJobRevenue: () => ({ data: 0 }),
 }));
 
+vi.mock("@/hooks/useTeamMembers", () => ({
+  useTeamMembers: () => ({ data: [], isLoading: false }),
+}));
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     isManager: () => true,
@@ -159,28 +163,28 @@ describe("List page sort menus", () => {
     expect(searchRow).toContainElement(sortButton);
   });
 
-  it("shows an icon-triggered clients sort menu", () => {
+  it("shows an icon-triggered contacts sort menu", () => {
     render(
       <MemoryRouter>
         <Customers />
       </MemoryRouter>,
     );
 
-    const sortButton = screen.getByRole("button", { name: /sort clients/i });
+    const sortButton = screen.getByRole("button", { name: /sort contacts/i });
     expect(sortButton).toHaveAttribute("aria-haspopup", "menu");
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("renders the clients sort button next to the search input", () => {
+  it("renders the contacts sort button next to the search input", () => {
     render(
       <MemoryRouter>
         <Customers />
       </MemoryRouter>,
     );
 
-    const searchInput = screen.getByPlaceholderText("Search clients...");
+    const searchInput = screen.getByPlaceholderText("Search contacts...");
     const searchRow = searchInput.closest("div")?.parentElement;
-    const sortButton = screen.getByRole("button", { name: /sort clients/i });
+    const sortButton = screen.getByRole("button", { name: /sort contacts/i });
 
     expect(searchRow).not.toBeNull();
     expect(searchRow).toContainElement(sortButton);

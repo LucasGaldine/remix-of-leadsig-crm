@@ -19,6 +19,7 @@ import {
   DOCUMENT_EMAIL_TIMINGS,
   type DocumentEmailTiming,
   type DocumentTemplateRecord,
+  extractDocumentTemplateVariableKeys,
   formatDocumentTemplateToken,
   normalizeDocumentTemplateSlug,
 } from "@/lib/documentTemplates";
@@ -40,6 +41,10 @@ const EMPTY_DRAFT: TemplateDraft = {
   default_requires_signature: false,
 };
 
+const ALLOWED_TEMPLATE_VARIABLE_KEYS = new Set(
+  DOCUMENT_TEMPLATE_VARIABLES.map((variable) => variable.key),
+);
+
 export default function SettingsDocumentTemplates() {
   const { currentAccount, user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +53,7 @@ export default function SettingsDocumentTemplates() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft>(EMPTY_DRAFT);
+  const [customVariableKey, setCustomVariableKey] = useState("");
   const templateBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const editingTemplate = useMemo(
@@ -115,6 +121,18 @@ export default function SettingsDocumentTemplates() {
     }
 
     const slug = normalizeDocumentTemplateSlug(name);
+    const usedTemplateVariableKeys = extractDocumentTemplateVariableKeys(draft.body || "");
+    const customVariableKeys = usedTemplateVariableKeys.filter(
+      (key) => !ALLOWED_TEMPLATE_VARIABLE_KEYS.has(key),
+    );
+
+    if (draft.default_email_timing !== "manual" && customVariableKeys.length > 0) {
+      toast.error(
+        `Custom variables are only allowed for manual documents. Remove: ${customVariableKeys.map((key) => `[[${key}]]`).join(", ")}`,
+      );
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -185,6 +203,24 @@ export default function SettingsDocumentTemplates() {
       const nextPosition = start + token.length;
       templateBodyRef.current.setSelectionRange(nextPosition, nextPosition);
     });
+  };
+
+  const normalizeCustomVariableKey = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  const insertCustomTemplateVariable = () => {
+    const normalizedKey = normalizeCustomVariableKey(customVariableKey);
+    if (!normalizedKey) {
+      toast.error("Enter a variable key like new_start_date");
+      return;
+    }
+
+    insertTemplateVariable(normalizedKey);
+    setCustomVariableKey("");
   };
 
   const deleteTemplate = async (template: DocumentTemplateRecord) => {
@@ -304,6 +340,23 @@ export default function SettingsDocumentTemplates() {
               <p className="text-xs text-muted-foreground">
                 Click to insert dynamic values like <code>[[scope_of_work]]</code>.
               </p>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <Input
+                  value={customVariableKey}
+                  onChange={(event) => setCustomVariableKey(event.target.value)}
+                  placeholder="Custom variable key (e.g. new_start_date)"
+                  className="h-8 text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8"
+                  onClick={insertCustomTemplateVariable}
+                >
+                  Insert Custom
+                </Button>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {DOCUMENT_TEMPLATE_VARIABLES.map((variable) => (
                   <Button

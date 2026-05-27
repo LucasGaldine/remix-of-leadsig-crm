@@ -6,8 +6,11 @@ import {
   DEFAULT_DOCUMENT_TEMPLATE_DEFINITIONS,
   DOCUMENT_TEMPLATE_VARIABLES,
   DOCUMENT_EMAIL_TIMINGS,
+  extractDocumentTemplateVariableKeys,
+  findMissingDocumentTemplateVariableKeys,
   formatDocumentTemplateToken,
   getDocumentFallbackText,
+  getDocumentTemplateSourceText,
   normalizeDocumentTemplateSlug,
   renderDocumentTemplateMarkdownHtml,
   renderDocumentTemplateText,
@@ -80,6 +83,37 @@ describe("documentTemplates", () => {
         { client_name: "Taylor", job_name: "Kitchen Remodel" },
       ),
     ).toBe("Hi Taylor, your project is Kitchen Remodel.");
+  });
+
+  it("extracts unique variable keys from both token styles", () => {
+    expect(
+      extractDocumentTemplateVariableKeys(
+        "Date: [[current_date]]\nClient: {{ client_name }}\nAgain: [[client_name]]",
+      ),
+    ).toEqual(["current_date", "client_name"]);
+  });
+
+  it("finds missing variable keys when merge values are blank or absent", () => {
+    expect(
+      findMissingDocumentTemplateVariableKeys(
+        "Date: [[current_date]]\nNew Start: [[new_start_date]]\nReason: [[reason]]",
+        {
+          current_date: "2026-05-22",
+          reason: "Weather delay",
+        },
+      ),
+    ).toEqual(["new_start_date"]);
+  });
+
+  it("returns raw template source text before merge-field rendering", () => {
+    expect(
+      getDocumentTemplateSourceText({
+        template: {
+          system_key: null,
+          body: "Start date changed to [[new_start_date]].",
+        },
+      }),
+    ).toBe("Start date changed to [[new_start_date]].");
   });
 
   it("formats phone merge fields as phone numbers", () => {

@@ -358,14 +358,14 @@ describe("EstimateDetail layout", () => {
     ).toBeTruthy();
 
     expect(headerActions).toHaveClass("flex-nowrap");
-    expect(within(headerActions).getByRole("button", { name: /^Approve$/i })).toBeInTheDocument();
-    expect(within(headerActions).getByRole("button", { name: /^Client Portal$/i })).toBeInTheDocument();
+    expect(within(headerActions).getByRole("button", { name: /^Manually Approve$/i })).toBeInTheDocument();
+    expect(within(headerActions).getByRole("button", { name: /^Send Client Portal$/i })).toBeInTheDocument();
     expect(
       within(headerActions).queryByRole("button", { name: /open estimate actions menu/i }),
     ).not.toBeInTheDocument();
 
     expect(within(rightColumn).getByText("Client")).toBeInTheDocument();
-    expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
+    expect(within(rightColumn).getByText("View Job")).toBeInTheDocument();
   });
 
   it("shows scheduled status on the job card when schedules exist for a raw job status", async () => {
@@ -705,7 +705,7 @@ describe("EstimateDetail layout", () => {
     mockEstimate = buildEstimate({
       has_pending_changes: false,
       status: "accepted",
-      approved_via: "manual",
+      approved_via: "manual_signature",
     });
 
     render(
@@ -743,7 +743,7 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^approve$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^manually approve$/i }));
 
     expect(screen.getByText(/signature photo/i)).toBeInTheDocument();
 
@@ -781,7 +781,7 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^approve$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^manually approve$/i }));
 
     const photoInput = screen.getByTestId("manual-approval-upload-input");
     const file = new File(["photo"], "signature.jpg", { type: "image/jpeg" });
@@ -802,7 +802,7 @@ describe("EstimateDetail layout", () => {
       expect(estimateUpdateMock).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "accepted",
-          approved_via: "manual",
+          approved_via: "manual_signature",
           manual_approval_photo_url: "https://example.com/manual-approval-photo.jpg",
         }),
       );
@@ -825,7 +825,7 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^approve$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^manually approve$/i }));
     const photoInput = screen.getByTestId("manual-approval-upload-input");
     const file = new File(["photo"], "signature.jpg", { type: "image/jpeg" });
     fireEvent.change(photoInput, { target: { files: [file] } });
@@ -876,7 +876,7 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^approve$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^manually approve$/i }));
 
     expect(screen.getByRole("heading", { name: /approve changes/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^approve changes$/i }));
@@ -926,7 +926,7 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^approve$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^manually approve$/i }));
     const photoInput = screen.getByTestId("manual-approval-upload-input");
     const file = new File(["photo"], "change-order-signature.jpg", { type: "image/jpeg" });
     fireEvent.change(photoInput, { target: { files: [file] } });
@@ -943,7 +943,7 @@ describe("EstimateDetail layout", () => {
     await waitFor(() => {
       expect(estimateUpdateMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          approved_via: "manual",
+          approved_via: "manual_signature",
           manual_approval_photo_url: "https://example.com/manual-approval-photo.jpg",
         }),
       );
@@ -977,7 +977,7 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^approve$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^manually approve$/i }));
     const photoInput = screen.getByTestId("manual-approval-upload-input");
     const file = new File(["photo"], "signature.jpg", { type: "image/jpeg" });
     fireEvent.change(photoInput, { target: { files: [file] } });
@@ -990,14 +990,14 @@ describe("EstimateDetail layout", () => {
     expect(estimateUpdateMock.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         status: "accepted",
-        approved_via: "manual",
+        approved_via: "manual_signature",
         manual_approval_photo_url: "https://example.com/manual-approval-photo.jpg",
       }),
     );
     expect(estimateUpdateMock.mock.calls[1][0]).toEqual(
       expect.objectContaining({
         status: "accepted",
-        approved_via: "manual",
+        approved_via: "manual_signature",
       }),
     );
     expect(estimateUpdateMock.mock.calls[1][0]).not.toHaveProperty("manual_approval_photo_url");
@@ -1031,7 +1031,7 @@ describe("EstimateDetail layout", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /^approve$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^manually approve$/i }));
     const photoInput = screen.getByTestId("manual-approval-upload-input");
     const file = new File(["photo"], "change-order-signature.jpg", { type: "image/jpeg" });
     fireEvent.change(photoInput, { target: { files: [file] } });
@@ -1051,14 +1051,14 @@ describe("EstimateDetail layout", () => {
 
     expect(estimateUpdateMock.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        approved_via: "manual",
+        approved_via: "manual_signature",
         manual_approval_photo_url: "https://example.com/manual-approval-photo.jpg",
       }),
     );
     expect(estimateUpdateMock.mock.calls[0][0]).not.toHaveProperty("status");
     expect(estimateUpdateMock.mock.calls[1][0]).toEqual(
       expect.objectContaining({
-        approved_via: "manual",
+        approved_via: "manual_signature",
       }),
     );
     expect(estimateUpdateMock.mock.calls[1][0]).not.toHaveProperty("manual_approval_photo_url");

@@ -71,6 +71,24 @@ vi.mock("@/integrations/supabase/client", () => {
         };
       }
 
+      if (table === "account_entitlements") {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    account_id: "old-account",
+                    status: "active",
+                    entitlement_key: "leadsig_growth",
+                  },
+                ],
+              }),
+            })),
+          })),
+        };
+      }
+
       throw new Error(`Unexpected table: ${table}`);
     }),
   };

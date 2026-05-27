@@ -121,6 +121,7 @@ interface ClientPortalEstimateProps {
     scope_of_work_items?: string[] | null;
     project_visualization_image_url?: string | null;
     agreement_templates?: Record<string, unknown> | null;
+    agreement_acceptance?: Record<string, unknown> | null;
     agreement_source_estimate_id?: string | null;
     approved_via?: string | null;
     accepted_at?: string | null;
@@ -278,13 +279,14 @@ export function ClientPortalEstimate({
   const SIGNATURE_CANVAS_WIDTH = 600;
   const SIGNATURE_CANVAS_HEIGHT = 180;
   const versionWindowSize = 3;
-  const [submitting, setSubmitting] = useState<"approve" | "decline" | "approve_changes" | "decline_changes" | null>(null);
+  const [submitting, setSubmitting] = useState<"approve" | "decline" | "approve_changes" | "decline_changes" | "sign_document" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versionWindowStart, setVersionWindowStart] = useState(0);
   const [hasSignature, setHasSignature] = useState(false);
   const [activeDocument, setActiveDocument] = useState<{ title: string; content: string } | null>(null);
   const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
+  const [isSigningOutstandingDocuments, setIsSigningOutstandingDocuments] = useState(false);
   const [approvalAgreementTemplates, setApprovalAgreementTemplates] = useState<Record<string, string> | null>(null);
   const [isVisualizationPortrait, setIsVisualizationPortrait] = useState(false);
   const [agreementChecks, setAgreementChecks] = useState<Record<string, boolean>>({});
@@ -344,8 +346,8 @@ export function ClientPortalEstimate({
     [isWarrantyEnabledForCurrentSelection],
   );
   const hasPortalDocumentPayload = useMemo(
-    () => Array.isArray(estimate.job_document_configs),
-    [estimate.job_document_configs],
+    () => Array.isArray(estimate.job_document_configs) || Array.isArray(estimate.job_documents),
+    [estimate.job_document_configs, estimate.job_documents],
   );
   const normalizeEmailTimingValue = useCallback((value: unknown) => {
     return String(value || "")
@@ -367,6 +369,38 @@ export function ClientPortalEstimate({
         .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
     [estimate.job_documents],
   );
+  const effectivePortalDocumentConfigs = useMemo(() => {
+    if (portalDocumentConfigs.length > 0) return portalDocumentConfigs;
+    if (portalDocuments.length === 0) return [];
+
+    const syntheticConfigs = new Map<string, PortalJobDocumentConfig>();
+    for (let index = 0; index < portalDocuments.length; index += 1) {
+      const document = portalDocuments[index];
+      const templateId = String(document.template_id || "");
+      const dedupeKey = templateId || `legacy:${String(document.document_key || document.id)}`;
+      if (syntheticConfigs.has(dedupeKey)) continue;
+
+      syntheticConfigs.set(dedupeKey, {
+        id: `virtual:${dedupeKey}`,
+        lead_id: String(document.lead_id || estimate.job_document_config_lead_id || ""),
+        template_id: templateId,
+        include_in_job: true,
+        email_timing: "manual",
+        requires_signature: true,
+        sort_order: index,
+        template: {
+          id: templateId,
+          name: String(document.file_name || "Document"),
+          system_key: null,
+          body: null,
+        },
+      });
+    }
+
+    return Array.from(syntheticConfigs.values()).sort(
+      (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0),
+    );
+  }, [estimate.job_document_config_lead_id, portalDocumentConfigs, portalDocuments]);
   const maxVersionWindowStart = Math.max(availableVersions.length - versionWindowSize, 0);
   const visibleVersions = useMemo(
     () => availableVersions.slice(versionWindowStart, versionWindowStart + versionWindowSize),
@@ -588,7 +622,7 @@ export function ClientPortalEstimate({
 
     const templateId = config.template?.id || config.template_id;
     if (!templateId) return null;
-    const hasDuplicateTemplateConfigs = portalDocumentConfigs.filter((row) => row.template_id === templateId).length > 1;
+    const hasDuplicateTemplateConfigs = effectivePortalDocumentConfigs.filter((row) => row.template_id === templateId).length > 1;
     if (!hasDuplicateTemplateConfigs) {
       const directByTemplate = portalDocuments.find((document) => document.template_id === templateId);
       if (directByTemplate) return directByTemplate;
@@ -601,10 +635,10 @@ export function ClientPortalEstimate({
     }
 
     return null;
-  }, [portalDocumentConfigs, portalDocuments]);
+  }, [effectivePortalDocumentConfigs, portalDocuments]);
   const approvalRequiredDocuments = useMemo(
     () =>
-      portalDocumentConfigs.filter(
+      effectivePortalDocumentConfigs.filter(
         (config) => {
           const timing = normalizeEmailTimingValue(config.email_timing);
           return Boolean(config.include_in_job)
@@ -613,11 +647,11 @@ export function ClientPortalEstimate({
             && (config.template?.system_key !== "warranty_agreement" || isWarrantyEnabledForCurrentSelection);
         },
       ),
-    [isWarrantyEnabledForCurrentSelection, normalizeEmailTimingValue, portalDocumentConfigs],
+    [effectivePortalDocumentConfigs, isWarrantyEnabledForCurrentSelection, normalizeEmailTimingValue],
   );
   const manuallySentDocuments = useMemo(
     () =>
-      portalDocumentConfigs.filter(
+      effectivePortalDocumentConfigs.filter(
         (config) => {
           const timing = normalizeEmailTimingValue(config.email_timing);
           return Boolean(config.include_in_job)
@@ -626,7 +660,7 @@ export function ClientPortalEstimate({
             && Boolean(getUploadedDocumentForConfig(config));
         },
       ),
-    [getUploadedDocumentForConfig, normalizeEmailTimingValue, portalDocumentConfigs],
+    [effectivePortalDocumentConfigs, getUploadedDocumentForConfig, normalizeEmailTimingValue],
   );
   const visiblePortalDocuments = useMemo(() => {
     if (approvalRequiredDocuments.length === 0 && manuallySentDocuments.length === 0) return [];
@@ -635,6 +669,53 @@ export function ClientPortalEstimate({
     for (const config of manuallySentDocuments) byId.set(config.id, config);
     return Array.from(byId.values()).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
   }, [approvalRequiredDocuments, manuallySentDocuments]);
+  const manuallySentDocumentConfigIds = useMemo(
+    () => new Set(manuallySentDocuments.map((config) => String(config.id))),
+    [manuallySentDocuments],
+  );
+  const signedDocumentConfigIds = useMemo(() => {
+    const acceptanceRaw =
+      estimate.agreement_acceptance && typeof estimate.agreement_acceptance === "object"
+        ? (estimate.agreement_acceptance as Record<string, unknown>)
+        : {};
+    return new Set(
+      Object.entries(acceptanceRaw)
+        .filter(([key, value]) => key.length > 0 && value === true)
+        .map(([key]) => key),
+    );
+  }, [estimate.agreement_acceptance]);
+  const unsignedManualDocuments = useMemo(
+    () => manuallySentDocuments.filter((config) => !signedDocumentConfigIds.has(String(config.id))),
+    [manuallySentDocuments, signedDocumentConfigIds],
+  );
+  const documentDisplayNameByConfigId = useMemo(() => {
+    const displayNameById = new Map<string, string>();
+    const occurrenceByTemplateId = new Map<string, number>();
+    const orderedConfigs = [...effectivePortalDocumentConfigs].sort(
+      (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0),
+    );
+
+    for (const config of orderedConfigs) {
+      const templateId = String(config.template?.id || config.template_id || "");
+      const baseName = String(config.template?.name || "Document");
+      if (!templateId) {
+        displayNameById.set(config.id, baseName);
+        continue;
+      }
+
+      const nextOccurrence = (occurrenceByTemplateId.get(templateId) || 0) + 1;
+      occurrenceByTemplateId.set(templateId, nextOccurrence);
+      const displayName = nextOccurrence > 1 ? `${baseName} #${nextOccurrence}` : baseName;
+      displayNameById.set(config.id, displayName);
+    }
+
+    return displayNameById;
+  }, [effectivePortalDocumentConfigs]);
+  const getConfigDocumentDisplayName = useCallback(
+    (config: PortalJobDocumentConfig) =>
+      documentDisplayNameByConfigId.get(config.id) || String(config.template?.name || "Document"),
+    [documentDisplayNameByConfigId],
+  );
   const agreementEntries = requiredAgreementKeys.map((key) => ({
     key,
     text: resolveAgreementTextByKey(effectiveAgreementRecord, key),
@@ -845,7 +926,7 @@ export function ClientPortalEstimate({
   }, [effectiveAgreementRecord, mergeFields]);
 
   const openDocumentFromConfig = useCallback((config: PortalJobDocumentConfig) => {
-    const title = String(config.template?.name || "Document");
+    const title = getConfigDocumentDisplayName(config);
     const uploadedDocument = getUploadedDocumentForConfig(config);
     if (uploadedDocument?.url) {
       window.open(uploadedDocument.url, "_blank", "noopener,noreferrer");
@@ -857,7 +938,7 @@ export function ClientPortalEstimate({
       title,
       content: content || "No document text available for this document.",
     });
-  }, [getUploadedDocumentForConfig, resolveConfigDocumentText]);
+  }, [getConfigDocumentDisplayName, getUploadedDocumentForConfig, resolveConfigDocumentText]);
 
   const handleAction = async (action: "approve" | "decline") => {
     if (action === "approve") {
@@ -1001,6 +1082,86 @@ export function ClientPortalEstimate({
         setApprovalAgreementTemplates(null);
         clearSignature();
       }
+    }
+  };
+
+  const handleSignManualDocuments = async () => {
+    if (unsignedManualDocuments.length === 0) return;
+    const signaturePayload = getSignaturePayloadFields();
+    if (!signaturePayload.signature_data_url && !signaturePayload.signatureDataUrl) {
+      setError("Please add your signature before submitting.");
+      return;
+    }
+
+    setSubmitting("sign_document");
+    setError(null);
+    try {
+      const url = jobId
+        ? `${apiUrl}?token=${token}&jobId=${jobId}`
+        : `${apiUrl}?token=${token}`;
+      const documentConfigIds = unsignedManualDocuments.map((config) => config.id);
+      const documentKeys = unsignedManualDocuments
+        .map((config) => getUploadedDocumentForConfig(config)?.document_key)
+        .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: apiHeaders,
+        body: JSON.stringify({
+          action: "sign_documents",
+          document_config_ids: documentConfigIds,
+          document_keys: documentKeys,
+          updated_at: estimate.updated_at,
+          ...signaturePayload,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const errorMessage = String((result as { error?: unknown })?.error || "Failed to sign document");
+        const shouldTryLegacyFallback = response.status === 400 || response.status === 404 || response.status === 405;
+        if (!shouldTryLegacyFallback) {
+          setError(errorMessage);
+          return;
+        }
+
+        // Legacy fallback for older deployed edge functions that only support sign_document.
+        let latestUpdatedAt = estimate.updated_at;
+        for (const config of unsignedManualDocuments) {
+          const legacyDocumentKey = getUploadedDocumentForConfig(config)?.document_key;
+          const legacyResponse = await fetch(url, {
+            method: "POST",
+            headers: apiHeaders,
+            body: JSON.stringify({
+              action: "sign_document",
+              document_config_id: config.id,
+              ...(legacyDocumentKey ? { document_key: legacyDocumentKey } : {}),
+              updated_at: latestUpdatedAt,
+              ...signaturePayload,
+            }),
+          });
+          const legacyResult = await legacyResponse.json().catch(() => ({}));
+          if (!legacyResponse.ok) {
+            setError(String((legacyResult as { error?: unknown })?.error || "Failed to sign document"));
+            return;
+          }
+
+          // Refresh updated_at between legacy calls to avoid optimistic-lock conflicts.
+          const latestPortalResponse = await fetch(url, {
+            method: "GET",
+            headers: apiHeaders,
+          });
+          const latestPortalPayload = await latestPortalResponse.json().catch(() => ({}));
+          const nextUpdatedAt = String((latestPortalPayload as { estimate?: { updated_at?: unknown } })?.estimate?.updated_at || "");
+          if (nextUpdatedAt) latestUpdatedAt = nextUpdatedAt;
+        }
+      }
+      setIsSigningOutstandingDocuments(false);
+      clearSignature();
+      onRefresh();
+    } catch {
+      setError("Unable to connect. Please try again.");
+    } finally {
+      setSubmitting(null);
     }
   };
 
@@ -1630,6 +1791,45 @@ export function ClientPortalEstimate({
         </>
       )}
 
+      {hasPortalDocumentPayload && unsignedManualDocuments.length > 0 && (
+        <div className="px-6 sm:px-8 py-5 border-t border-amber-200 bg-amber-50/70">
+          <p className="text-xs font-medium text-amber-700 uppercase tracking-wider mb-2">
+            Outstanding Documents
+          </p>
+          <div className="space-y-2">
+            {unsignedManualDocuments.map((config, index) => (
+              <div
+                key={`outstanding-document-${config.id || "missing"}-${index}`}
+                className="rounded-md border border-amber-200 bg-white px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-sm text-slate-800">{getConfigDocumentDisplayName(config)}</span>
+                  <button
+                    type="button"
+                    onClick={() => openDocumentFromConfig(config)}
+                    className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    View Document
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              clearSignature();
+              setIsSigningOutstandingDocuments(true);
+            }}
+            className="mt-3 w-full rounded-md px-3 py-2 text-sm font-medium"
+            style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
+          >
+            Sign Outstanding Documents ({unsignedManualDocuments.length})
+          </button>
+        </div>
+      )}
+
       <div className="px-6 sm:px-8 py-5 border-t border-slate-100">
         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
           Documents
@@ -1646,15 +1846,28 @@ export function ClientPortalEstimate({
               className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-3"
             >
               <p className="text-sm font-semibold text-slate-900">
-                {config.template?.name || "Document"}
+                {getConfigDocumentDisplayName(config)}
               </p>
-              <button
-                type="button"
-                onClick={() => openDocumentFromConfig(config)}
-                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-              >
-                View Document
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openDocumentFromConfig(config)}
+                  className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  View Document
+                </button>
+                {manuallySentDocumentConfigIds.has(String(config.id)) && (
+                  signedDocumentConfigIds.has(String(config.id)) ? (
+                    <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      Signed
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                      Signature Needed
+                    </span>
+                  )
+                )}
+              </div>
             </div>
           ))}
           {hasPortalDocumentPayload && visiblePortalDocuments.length === 0 && (
@@ -1842,6 +2055,74 @@ export function ClientPortalEstimate({
                 <Check className="h-4 w-4" />
               )}
               {submitting === "approve" || submitting === "approve_changes" ? "Submitting..." : "Submit Approval"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isSigningOutstandingDocuments}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsSigningOutstandingDocuments(false);
+            clearSignature();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign Outstanding Documents</DialogTitle>
+            <DialogDescription>
+              Review each outstanding document, then add your signature and submit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-medium text-slate-900">Outstanding documents</p>
+            {unsignedManualDocuments.map((config, index) => (
+              <div key={`manual-outstanding-${config.id || "missing"}-${index}`} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-sm text-slate-700">{getConfigDocumentDisplayName(config)}</span>
+                  <button
+                    type="button"
+                    onClick={() => openDocumentFromConfig(config)}
+                    className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    View Document
+                  </button>
+                </div>
+              </div>
+            ))}
+            {unsignedManualDocuments.length === 0 && (
+              <p className="text-xs text-slate-600">No outstanding documents need signature.</p>
+            )}
+          </div>
+          {signaturePad}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <DialogFooter className="gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSigningOutstandingDocuments(false);
+                clearSignature();
+              }}
+              disabled={submitting !== null}
+              className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSignManualDocuments}
+              disabled={submitting !== null || !hasSignature || unsignedManualDocuments.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: normalizedPortalColor, color: normalizedPortalTextColor }}
+            >
+              {submitting !== null ? (
+                <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              {submitting !== null ? "Submitting..." : "Submit Signature"}
             </button>
           </DialogFooter>
         </DialogContent>

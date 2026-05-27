@@ -19,7 +19,7 @@ export function StickyActionBar({
   contentClassName: _contentClassName,
 }: StickyActionBarProps) {
   return (
-    <div className="fixed !right-3 !bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-40 sm:!bottom-6 sm:!right-6">
+    <div className="fixed !right-[calc(0.75rem+env(safe-area-inset-right))] !bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-40 sm:!bottom-6 sm:!right-6">
       <Button
         onClick={onSave}
         size="icon"
