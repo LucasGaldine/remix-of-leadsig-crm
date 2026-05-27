@@ -1,6 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@6.10.1";
-import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import {
+  buildSignedCopyRecipients,
+  buildSignedTemplatePdf,
+  normalizeText,
+  renderTemplate,
+  sendSignedCopyEmails,
+} from "../_shared/signed-copy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,15 +34,6 @@ function jsonResponse(body: unknown, status = 200) {
 
 function normalizeTiming(value: unknown): string {
   return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function decodeBase64(base64: string): Uint8Array {
@@ -344,305 +340,142 @@ function resolveUploadedDocumentForConfig(config: any, allConfigs: any[], allDoc
   return null;
 }
 
-async function stampSignatureOnSignedDocument(params: {
-  supabase: any;
-  filePath: string;
-  signatureBytes: Uint8Array;
-  signatureContentType: string;
-  signedAtIso: string;
+function resolveTemplateBody(
+  template: { system_key?: string | null; body?: string | null } | null | undefined,
+  agreementTemplates: Record<string, unknown>,
+) {
+  const body = normalizeText(template?.body);
+  if (body) return body;
+
+  const key = normalizeText(template?.system_key);
+  if (key === "job_agreement") return normalizeText(agreementTemplates.job_agreement);
+  if (key === "warranty_agreement") return normalizeText(agreementTemplates.warranty_agreement);
+  if (key === "job_release") return normalizeText(agreementTemplates.job_release);
+  return "";
+}
+
+function buildManualSignMergeFields(params: {
+  estimate: any;
+  job: any;
+  customer: any;
+  account: any;
+  customerName: string;
+  companyName: string;
 }) {
-  const { supabase, filePath, signatureBytes, signatureContentType, signedAtIso } = params;
-  const trimmedPath = String(filePath || "").trim();
-  if (!trimmedPath) return { ok: false, error: "Missing document path for signature stamp." };
+  const { estimate, job, customer, account, customerName, companyName } = params;
+  return {
+    current_date: new Date().toISOString().slice(0, 10),
+    job_name: normalizeText(job?.name),
+    job_address: normalizeText(job?.address),
+    service_type: normalizeText(job?.service_type),
+    client_name: customerName,
+    client_email: normalizeText(customer?.email),
+    client_phone: normalizeText(customer?.phone),
+    company_name: companyName,
+    company_email: normalizeText(account?.company_email),
+    estimate_total: `$${Number(estimate?.total || 0).toFixed(2)}`,
+    estimate_subtotal: `$${Number(estimate?.subtotal || 0).toFixed(2)}`,
+    estimate_tax: `$${Number(estimate?.tax || 0).toFixed(2)}`,
+    estimate_discount: `$${Number(estimate?.discount || 0).toFixed(2)}`,
+  };
+}
 
-  const { data: originalFile, error: downloadError } = await supabase.storage
-    .from("job-documents")
-    .download(trimmedPath);
-  if (downloadError || !originalFile) {
-    return { ok: false, error: "Failed to load document for signature stamp." };
-  }
+async function buildManualSignedDocumentAttachments(params: {
+  signableDocs: Array<{ config: any; uploadedDocument: any }>;
+  estimate: any;
+  job: any;
+  customer: any;
+  account: any;
+  acceptedAt: string;
+  signaturePublicUrl: string;
+}) {
+  const { signableDocs, estimate, job, customer, account, acceptedAt, signaturePublicUrl } = params;
+  const companyName = normalizeText(account?.company_name) || "LeadSig";
+  const customerName = normalizeText(customer?.name) || "Customer";
+  const mergeFields = buildManualSignMergeFields({ estimate, job, customer, account, customerName, companyName });
+  const agreementTemplates = estimate?.agreement_templates && typeof estimate.agreement_templates === "object"
+    ? estimate.agreement_templates as Record<string, unknown>
+    : {};
 
-  const originalBytes = new Uint8Array(await originalFile.arrayBuffer());
-  const pdfDoc = await PDFDocument.load(originalBytes);
-  const pages = pdfDoc.getPages();
-  if (pages.length === 0) return { ok: false, error: "Signed document has no pages." };
+  const attachments: Array<{ filename: string; content: Uint8Array; contentType?: string }> = [];
+  const documentSummaries: Array<{ name: string; url: string }> = [];
 
-  const image =
-    signatureContentType === "image/png"
-      ? await pdfDoc.embedPng(signatureBytes)
-      : await pdfDoc.embedJpg(signatureBytes);
+  for (const { config, uploadedDocument } of signableDocs) {
+    const title = normalizeText(config?.template?.name || uploadedDocument?.file_name) || "Document";
+    const templateBody = renderTemplate(resolveTemplateBody(config?.template, agreementTemplates), mergeFields);
+    const fallbackBody =
+      `${title}\n\nSigned electronically by ${customerName} on ${new Date(acceptedAt).toLocaleDateString("en-US", { dateStyle: "long" })}.`;
 
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const targetPage = pages[pages.length - 1];
-  const { width, height } = targetPage.getSize();
-
-  // Unified signature placement: use the same visual pattern as estimate approval docs
-  // and place the signature/date in the document's signature block area.
-  const margin = 36;
-  const signedDateLabel = new Date(signedAtIso).toLocaleDateString("en-US", {
-    dateStyle: "long",
-  });
-
-  const signatureLineY = height - 92;
-  const signatureX = margin;
-  const dateX = Math.min(signatureX + 105, width - 80);
-  const maxSignatureWidth = Math.max(80, Math.min(120, width * 0.22));
-  const scaled = image.scale(maxSignatureWidth / image.width);
-  const signatureWidth = Math.min(maxSignatureWidth, scaled.width);
-  const signatureHeight = scaled.height * (signatureWidth / scaled.width);
-
-  const canUseTopBlock = signatureLineY > 80;
-
-  if (canUseTopBlock) {
-    targetPage.drawImage(image, {
-      x: signatureX,
-      y: signatureLineY - Math.max(18, signatureHeight - 4),
-      width: signatureWidth,
-      height: signatureHeight,
+    const attachment = await buildSignedTemplatePdf({
+      title,
+      body: templateBody || fallbackBody,
+      customerName,
+      prefix: title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document",
+      includeSignatureSection: true,
+      signatureImageUrl: signaturePublicUrl,
+      signatureDateIso: acceptedAt,
     });
-    targetPage.drawText(signedDateLabel, {
-      x: dateX,
-      y: signatureLineY - 10,
-      size: 9,
-      font,
-      color: rgb(0.2, 0.2, 0.2),
-    });
-  } else {
-    const fallbackY = margin + 26;
-    targetPage.drawText("Signature", {
-      x: margin,
-      y: fallbackY + 28,
-      size: 12,
-      font,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-    targetPage.drawImage(image, {
-      x: margin,
-      y: fallbackY,
-      width: signatureWidth,
-      height: signatureHeight,
-    });
-    targetPage.drawText("Date", {
-      x: dateX,
-      y: fallbackY + 12,
-      size: 10,
-      font,
-      color: rgb(0.35, 0.35, 0.35),
-    });
-    targetPage.drawText(signedDateLabel, {
-      x: dateX,
-      y: fallbackY,
-      size: 9,
-      font,
-      color: rgb(0.2, 0.2, 0.2),
+
+    attachments.push(attachment);
+    documentSummaries.push({
+      name: title,
+      url: normalizeText(uploadedDocument?.url),
     });
   }
 
-  const stampedBytes = await pdfDoc.save();
-  const { error: uploadError } = await supabase.storage
-    .from("job-documents")
-    .upload(trimmedPath, stampedBytes, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-
-  if (uploadError) {
-    return { ok: false, error: "Failed to save signed document." };
-  }
-
-  return { ok: true };
+  return { attachments, documentSummaries };
 }
 
 async function sendSignedManualDocumentEmails(params: {
-  supabase: any;
-  customerId: string | null;
-  accountId: string | null;
-  documentSummaries: Array<{ name: string; url: string; filePath: string; mimeType: string | null }>;
+  customer: any;
+  account: any;
   signatureUrl: string;
   portalLink: string;
+  documentSummaries: Array<{ name: string; url: string }>;
+  attachments: Array<{ filename: string; content: Uint8Array; contentType?: string }>;
 }) {
-  const { supabase, customerId, accountId, documentSummaries, signatureUrl, portalLink } = params;
+  const { customer, account, signatureUrl, portalLink, documentSummaries, attachments } = params;
+  const customerId = normalizeText(customer?.id);
+  const accountId = normalizeText(account?.id);
   if (!customerId || !accountId) return { ok: false, error: "Missing customer/account." };
   if (!signatureUrl || !portalLink || documentSummaries.length === 0) {
     return { ok: false, error: "Missing signed-document email fields." };
   }
 
-  const smtpHost = Deno.env.get("SMTP_HOST") || "smtp.gmail.com";
-  const smtpPort = Number(Deno.env.get("SMTP_PORT") || "465");
-  const smtpSecure = String(Deno.env.get("SMTP_SECURE") || "true").toLowerCase() === "true";
-  const smtpUser = Deno.env.get("SMTP_USER")?.trim();
-  const smtpPass = Deno.env.get("SMTP_PASS")?.replace(/\s+/gu, "");
-  const smtpFrom = Deno.env.get("SMTP_FROM_EMAIL") || smtpUser || "";
-  if (!smtpUser || !smtpPass || !smtpFrom || Number.isNaN(smtpPort)) {
-    return { ok: false, error: "SMTP not configured." };
-  }
-
-  const [{ data: customer }, { data: account }, { data: profiles }] = await Promise.all([
-    supabase.from("customers").select("name, email").eq("id", customerId).maybeSingle(),
-    supabase.from("accounts").select("company_name, company_email").eq("id", accountId).maybeSingle(),
-    supabase.from("profiles").select("email").eq("account_id", accountId),
-  ]);
-
-  const customerEmail = String(customer?.email || "").trim().toLowerCase();
-  const companyEmail = String(account?.company_email || "").trim().toLowerCase();
-  const recipients: Array<{ email: string; name: string; recipientType: "customer" | "user" }> = [];
-  const recipientKeys = new Set<string>();
-  const addRecipient = (emailRaw: string, name: string, recipientType: "customer" | "user") => {
-    const email = String(emailRaw || "").trim().toLowerCase();
-    if (!email) return;
-    const key = `${recipientType}:${email}`;
-    if (recipientKeys.has(key)) return;
-    recipientKeys.add(key);
-    recipients.push({ email, name, recipientType });
-  };
-
-  if (customerEmail) addRecipient(customerEmail, String(customer?.name || "Customer"), "customer");
-  if (companyEmail) addRecipient(companyEmail, String(account?.company_name || "Team"), "user");
-  for (const profile of profiles || []) {
-    addRecipient(String(profile?.email || ""), String(account?.company_name || "Team"), "user");
-  }
+  const customerName = normalizeText(customer?.name) || "Customer";
+  const companyName = normalizeText(account?.company_name) || "LeadSig";
+  const recipients = buildSignedCopyRecipients({
+    customerEmail: normalizeText(customer?.email),
+    customerName,
+    companyEmail: normalizeText(account?.company_email),
+    companyName,
+    profileEmails: [],
+  });
 
   if (recipients.length === 0) return { ok: false, error: "No recipients." };
 
-  const companyName = String(account?.company_name || "LeadSig").trim() || "LeadSig";
-  const customerName = String(customer?.name || "Customer").trim() || "Customer";
-  const subject = `${companyName} | Signed Document Copy`;
-
-  const listHtml = documentSummaries
-    .map((doc) => `<li><a href=\"${escapeHtml(doc.url)}\" style=\"color:#2563eb;\">${escapeHtml(doc.name)}</a></li>`)
-    .join("");
-  const listText = documentSummaries.map((doc) => `- ${doc.name}: ${doc.url}`).join("\n");
-
-  const mailAttachments: Array<{ filename: string; content: Uint8Array; contentType?: string }> = [];
-  for (const doc of documentSummaries) {
-    const filePath = String(doc.filePath || "").trim();
-    if (!filePath) continue;
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from("job-documents")
-      .download(filePath);
-    if (downloadError || !fileData) {
-      console.error("Failed to download signed document attachment:", { filePath, error: downloadError?.message });
-      continue;
-    }
-    const buffer = await fileData.arrayBuffer();
-    if (buffer.byteLength === 0) continue;
-    const safeName = String(doc.name || "signed-document").trim() || "signed-document";
-    const filename = safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
-    mailAttachments.push({
-      filename,
-      content: new Uint8Array(buffer),
-      contentType: doc.mimeType || "application/pdf",
-    });
-  }
-
-  const html = `<!DOCTYPE html>
-<html>
-  <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-    <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
-      <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-        <div style="background:#0f172a;padding:18px 22px;">
-          <h1 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">${escapeHtml(companyName)}</h1>
-          <p style="margin:6px 0 0;color:#cbd5e1;font-size:13px;">Signed Document Confirmation</p>
-        </div>
-        <div style="padding:22px;">
-          <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.6;">
-            ${escapeHtml(customerName)} has signed document(s) in the client portal.
-          </p>
-          <p style="margin:0 0 10px;color:#334155;font-size:14px;">Signed document copy:</p>
-          <ul style="margin:0 0 14px 18px;color:#334155;font-size:14px;line-height:1.5;">${listHtml}</ul>
-          <p style="margin:0 0 10px;color:#334155;font-size:14px;">Signature image:</p>
-          <p style="margin:0 0 14px;"><a href="${escapeHtml(signatureUrl)}" style="color:#2563eb;">${escapeHtml(signatureUrl)}</a></p>
-          <p style="margin:0 0 10px;color:#334155;font-size:14px;">Client portal:</p>
-          <p style="margin:0;"><a href="${escapeHtml(portalLink)}" style="color:#2563eb;">${escapeHtml(portalLink)}</a></p>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>`;
-
-  const text = [
-    `${companyName} - Signed Document Confirmation`,
-    "",
-    `${customerName} has signed document(s) in the client portal.`,
-    "",
-    "Signed document copy:",
-    listText,
-    "",
-    `Signature image: ${signatureUrl}`,
-    `Client portal: ${portalLink}`,
-  ].join("\n");
-
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpSecure,
-    auth: { user: smtpUser, pass: smtpPass },
+  const result = await sendSignedCopyEmails({
+    recipients,
+    attachments,
+    companyName,
+    customerName,
+    portalLink,
+    signatureUrl,
+    documentSummaries,
+    replyTo: normalizeText(account?.company_email) || undefined,
   });
 
-  for (const recipient of recipients) {
-    const isCustomer = recipient.recipientType === "customer";
-    const recipientSubject = isCustomer
-      ? `${companyName} | Signed Document Copy`
-      : `${companyName} | Signed Document Copy from ${customerName}`;
-    const recipientText = isCustomer
-      ? [
-        `Hi ${customerName},`,
-        "",
-        "Attached are the signed document copies from your client portal.",
-        "",
-        "Signed document links:",
-        listText,
-        "",
-        `Signature image: ${signatureUrl}`,
-        `Client portal: ${portalLink}`,
-      ].join("\n")
-      : [
-        `Hi ${recipient.name || "Team"},`,
-        "",
-        `${customerName} signed document(s) in the client portal.`,
-        "",
-        "Signed document links:",
-        listText,
-        "",
-        `Signature image: ${signatureUrl}`,
-        `Client portal: ${portalLink}`,
-      ].join("\n");
-
-    const recipientHtml = isCustomer
-      ? html
-      : html.replace(
-        `${escapeHtml(customerName)} has signed document(s) in the client portal.`,
-        `${escapeHtml(customerName)} signed document(s) in the client portal.`,
-      );
-
-    const delivery = await transporter.sendMail({
-      from: smtpFrom,
-      to: [recipient.email],
-      replyTo: String(account?.company_email || "") || undefined,
-      subject: recipientSubject,
-      text: recipientText,
-      html: recipientHtml,
-      attachments: mailAttachments,
-    });
-
-    const rejected = Array.isArray(delivery.rejected) ? delivery.rejected : [];
-    if (rejected.length > 0) {
-      console.error("Signed document email rejected by provider", {
-        rejected,
-        recipient: recipient.email,
-        response: delivery.response,
-      });
-      return { ok: false, error: "Signed document email was rejected by the email provider." };
-    }
-
-    console.log("Signed document email sent", {
-      recipient: recipient.email,
-      messageId: delivery.messageId,
-      response: delivery.response,
-      attachmentCount: mailAttachments.length,
-    });
+  if (!result.ok) return { ok: false, error: result.error };
+  const normalizedCustomerEmail = normalizeText(customer?.email).toLowerCase();
+  const customerFailed = normalizedCustomerEmail
+    ? result.failed.some((entry) => normalizeText(entry.email).toLowerCase() === normalizedCustomerEmail)
+    : true;
+  if (customerFailed) {
+    return { ok: false, error: "Signed copy could not be delivered to the client email address." };
   }
-
+  if (result.failed.length > 0) {
+    console.error("Some signed-copy recipients failed", { failed: result.failed });
+  }
   return { ok: true };
 }
 
@@ -1145,42 +978,56 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
 
   if (signError) return jsonResponse({ error: "Failed to sign document" }, 500);
 
-  for (const { uploadedDocument } of signableDocs) {
-    const filePath = String(uploadedDocument?.file_path || "");
-    const mimeType = String(uploadedDocument?.mime_type || "").toLowerCase();
-    if (!filePath) continue;
-    if (mimeType && mimeType !== "application/pdf") continue;
-
-    const stampResult = await stampSignatureOnSignedDocument({
-      supabase,
-      filePath,
-      signatureBytes: parsedSignatureForStamp.bytes,
-      signatureContentType: parsedSignatureForStamp.contentType,
-      signedAtIso: acceptedAt,
-    });
-    if (!stampResult.ok) {
-      return jsonResponse({ error: stampResult.error }, 500);
-    }
-  }
-
   const requestUrl = new URL(req.url);
   const shareToken = requestUrl.searchParams.get("token");
   const portalLink = shareToken
     ? `${requestUrl.origin}/portal?token=${encodeURIComponent(shareToken)}&jobId=${encodeURIComponent(String(job.id))}`
     : "";
+  const resolvedAccountId =
+    normalizeText(estimate?.account_id) ||
+    (typeof job?.account_id === "string" && job.account_id) ||
+    (typeof customer?.account_id === "string" && customer.account_id) ||
+    null;
+  const resolvedCustomerId =
+    normalizeText(estimate?.customer_id) ||
+    (typeof customer?.id === "string" ? customer.id : "");
+  const { data: account } = resolvedAccountId
+    ? await supabase
+        .from("accounts")
+        .select("id, company_name, company_email")
+        .eq("id", resolvedAccountId)
+        .maybeSingle()
+    : { data: null };
+  const { data: estimateCustomer } = resolvedCustomerId
+    ? await supabase
+        .from("customers")
+        .select("id, name, email, phone, account_id")
+        .eq("id", resolvedCustomerId)
+        .maybeSingle()
+    : { data: null };
+  if (!account) {
+    return jsonResponse({ error: "Document signed, but company configuration is missing." }, 500);
+  }
+  const customerForEmail = estimateCustomer || customer;
 
-  const documentSummaries = signableDocs.map(({ config, uploadedDocument }) => ({
-    name: String(config?.template?.name || uploadedDocument?.file_name || "Document"),
-    url: String(uploadedDocument?.url || ""),
-    filePath: String(uploadedDocument?.file_path || ""),
-    mimeType: uploadedDocument?.mime_type ? String(uploadedDocument.mime_type) : null,
-  })).filter((doc) => Boolean(doc.url));
+  const { attachments, documentSummaries } = await buildManualSignedDocumentAttachments({
+    signableDocs,
+    estimate,
+    job,
+    customer: customerForEmail,
+    account,
+    acceptedAt,
+    signaturePublicUrl: upload.publicUrl,
+  });
+  if (attachments.length === 0 || documentSummaries.length === 0) {
+    return jsonResponse({ error: "Document signed, but no signed copy could be generated." }, 500);
+  }
 
   const emailResult = await sendSignedManualDocumentEmails({
-    supabase,
-    customerId: typeof job?.customer_id === "string" ? job.customer_id : null,
-    accountId: typeof job?.account_id === "string" ? job.account_id : null,
+    customer: customerForEmail,
+    account,
     documentSummaries,
+    attachments,
     signatureUrl: upload.publicUrl,
     portalLink,
   });

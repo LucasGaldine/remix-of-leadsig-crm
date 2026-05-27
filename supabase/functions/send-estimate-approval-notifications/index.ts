@@ -2,6 +2,12 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6.10.1";
 import { jsPDF as JsPDF } from "npm:jspdf@2.5.2";
 import { format } from "npm:date-fns@3.6.0";
+import {
+  buildSignedTemplatePdf,
+  normalizeText,
+  renderTemplate,
+  sanitizeFilePart,
+} from "../_shared/signed-copy.ts";
 
 type RequestBody = {
   estimate_id?: string;
@@ -84,155 +90,8 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function sanitizeFilePart(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "customer";
-}
-
-function normalizeText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function normalizeTiming(value: unknown) {
   return normalizeText(value).toLowerCase().replace(/[\s-]+/g, "_");
-}
-
-function stripMarkdown(value: string) {
-  return value
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*]\s+/gm, "• ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function renderTemplate(text: string, fields: Record<string, string>) {
-  return text.replace(/(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/gi, (m, a, b) => {
-    const key = String(a || b || "").toLowerCase();
-    const val = fields[key];
-    return typeof val === "string" && val.length > 0 ? val : m;
-  });
-}
-
-async function getImageDataUrl(imageUrl: string) {
-  const response = await fetch(imageUrl);
-  if (!response.ok) {
-    throw new Error("Failed to load image");
-  }
-
-  const blob = await response.blob();
-  const buffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-
-  return `data:${blob.type || "image/png"};base64,${btoa(binary)}`;
-}
-
-async function buildSimplePdf(
-  title: string,
-  body: string,
-  customerName: string,
-  prefix: string,
-  includeSignatureSection = false,
-  signatureImageUrl = "",
-  signatureDateIso = "",
-): Promise<EmailAttachment> {
-  const doc = new JsPDF();
-  const margin = 20;
-  const width = doc.internal.pageSize.getWidth() - margin * 2;
-  let y = 24;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(title, margin, y);
-  y += 8;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${format(new Date(), "MMMM d, yyyy 'at' h:mm a")}`, margin, y);
-  doc.setTextColor(0, 0, 0);
-  y += 9;
-
-  doc.setFontSize(11);
-  const lines = doc.splitTextToSize(stripMarkdown(body), width);
-  for (const line of lines) {
-    if (y > 275) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.text(String(line), margin, y);
-    y += 6;
-  }
-
-  if (includeSignatureSection) {
-    if (y > 235) {
-      doc.addPage();
-      y = 20;
-    }
-
-    y += 8;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("Signature", margin, y);
-    y += 6;
-
-    const pageRight = doc.internal.pageSize.getWidth() - margin;
-    const signatureUrl = normalizeText(signatureImageUrl);
-    const hasCapturedSignature = Boolean(signatureUrl);
-    const signedDateLabel = normalizeText(signatureDateIso)
-      ? format(new Date(signatureDateIso), "MMMM d, yyyy")
-      : format(new Date(), "MMMM d, yyyy");
-
-    if (hasCapturedSignature) {
-      const lineY = y + 10;
-      const dateX = Math.min(margin + 105, pageRight - 35);
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(90, 90, 90);
-      doc.text("Client Signature", margin, lineY + 6);
-      doc.text("Date", dateX, lineY + 6);
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(9);
-      doc.text(signedDateLabel, dateX, lineY + 12);
-
-      const sigY = lineY + 10;
-      try {
-        const signatureDataUrl = await getImageDataUrl(signatureUrl);
-        doc.addImage(signatureDataUrl, "PNG", margin, sigY, 90, 20);
-      } catch {
-        // Leave just labels/date if image cannot be loaded.
-      }
-      y = sigY + 22;
-    } else {
-      const lineY = y + 10;
-      const dateX = Math.min(margin + 105, pageRight - 35);
-      doc.setDrawColor(120, 120, 120);
-      doc.line(margin, lineY, Math.min(margin + 90, pageRight), lineY);
-      doc.line(dateX, lineY, Math.min(dateX + 45, pageRight), lineY);
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(90, 90, 90);
-      doc.text("Client Signature", margin, lineY + 6);
-      doc.text("Date", dateX, lineY + 6);
-      doc.setTextColor(0, 0, 0);
-      y = lineY + 12;
-    }
-  }
-
-  return {
-    filename: `${prefix}-${sanitizeFilePart(customerName)}-${format(new Date(), "yyyy-MM-dd")}.pdf`,
-    content: new Uint8Array(doc.output("arraybuffer")),
-    contentType: "application/pdf",
-  };
 }
 
 function resolveTemplateBody(
@@ -589,15 +448,15 @@ Deno.serve(async (req: Request) => {
               const bodyText = renderTemplate(resolveTemplateBody(t, agreementTemplates), mergeFields);
               if (!bodyText) continue;
               attachments.push(
-                await buildSimplePdf(
+                await buildSignedTemplatePdf({
                   title,
-                  bodyText,
+                  body: bodyText,
                   customerName,
-                  title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document",
-                  row.requires_signature === true,
-                  approvalSignatureUrl,
-                  normalizeText((estimate as any)?.accepted_at),
-                ),
+                  prefix: title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document",
+                  includeSignatureSection: row.requires_signature === true,
+                  signatureImageUrl: approvalSignatureUrl,
+                  signatureDateIso: normalizeText((estimate as any)?.accepted_at),
+                }),
               );
             }
           }
