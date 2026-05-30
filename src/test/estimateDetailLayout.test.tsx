@@ -313,7 +313,7 @@ describe("EstimateDetail layout", () => {
     expect(within(summaryRow).getByText("$1,284")).toBeInTheDocument();
 
     expect(within(leftColumn).getByRole("heading", { name: /line items/i })).toBeInTheDocument();
-    expect(within(leftColumn).getByRole("heading", { name: /notes/i })).toBeInTheDocument();
+    expect(within(leftColumn).queryByRole("heading", { name: /notes/i })).not.toBeInTheDocument();
     expect(within(leftColumn).getByText("Compactor rental")).toBeInTheDocument();
     expect(within(leftColumn).getByText("Paver materials")).toBeInTheDocument();
     expect(within(leftColumn).getByText("Jointing sand")).toBeInTheDocument();

@@ -1910,12 +1910,6 @@ export default function EstimateDetail() {
                     </div>
                   </div>
 
-                  {displayNotes && (
-                    <div className="p-4 border-t border-border">
-                      <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Notes</h3>
-                      <p className="text-sm text-muted-foreground mt-2">{displayNotes}</p>
-                    </div>
-                  )}
                 </>
               )}
             </div>
