@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowRightLeft, User, Calendar, Hammer, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, CheckCheck, CreditCard, Download, Check, FileText, Camera, Upload, X, Plus, EllipsisVertical, DollarSign } from "lucide-react";
+import { ArrowRightLeft, User, Calendar, Hammer, ChevronRight, CircleAlert as AlertCircle, History, Pencil as Edit2, Link2, CheckCheck, CreditCard, Download, Check, Camera, Upload, X, Plus, EllipsisVertical, DollarSign } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { FloatingActionButton } from "@/components/layout/FloatingActionButton";
@@ -1459,11 +1459,11 @@ export default function EstimateDetail() {
         </div>
       </div>
 
-      <div className="p-4 max-w-[var(--content-max-width)] m-auto">
+      <div className="max-w-[var(--content-max-width)] m-auto px-4 pb-4 pt-2 md:pt-3">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-start">
           <div className="space-y-4" data-testid="estimate-details-left-column">
             <div className="card-elevated -mx-4 overflow-hidden rounded-none md:mx-0 md:rounded-lg">
-              <div className={cn("p-4", isMobile && "pt-0")}>
+              <div className={cn("p-5", isMobile && "pt-0")}>
                 {canManageEstimateVersions && (
                   <div className={cn("space-y-3", isMobile ? "mb-2 space-y-2" : "mb-4")}>
                     {loadingVersions ? (
@@ -1700,34 +1700,38 @@ export default function EstimateDetail() {
                   </div>
                 )}
                 {showApprovedCard && (
-                  <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
-                    <button
-                      type="button"
-                      className="mb-1 flex w-full items-center justify-between gap-2 text-left"
-                      onClick={() => setShowApprovedDetails((current) => !current)}
-                      aria-expanded={showApprovedDetails}
-                    >
-                      <div className="flex items-center gap-2">
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-700"
+                        onClick={() => setShowApprovedDetails((current) => !current)}
+                        aria-expanded={showApprovedDetails}
+                      >
                         <Check className="h-4 w-4 text-emerald-600" />
-                        <h4 className="font-semibold text-emerald-700">Approved</h4>
-                      </div>
-                      <ChevronRight
-                        className={cn(
-                          "h-4 w-4 text-emerald-700 transition-transform",
-                          showApprovedDetails ? "rotate-90" : "",
-                        )}
-                      />
-                    </button>
+                        <span className="text-sm font-semibold">Approved</span>
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 text-emerald-700 transition-transform",
+                            showApprovedDetails ? "rotate-90" : "",
+                          )}
+                        />
+                      </button>
+                      <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
+                        <Edit2 className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </div>
                     {showApprovedDetails && (
-                      <>
+                      <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
                         <p className="text-sm text-muted-foreground">
                           {(estimate as any).approved_via === "customer_link"
                             ? "Approved by customer via approval link"
                             : (estimate as any).approved_via === "manual_signature"
                               ? "Manually approved with signature"
-                            : (estimate as any).approved_via === "manual"
-                              ? "Manually marked as approved"
-                              : "This estimate has been approved"}
+                              : (estimate as any).approved_via === "manual"
+                                ? "Manually marked as approved"
+                                : "This estimate has been approved"}
                           {estimate.accepted_at && (
                             <> on {format(new Date(estimate.accepted_at), "MMM d, yyyy 'at' h:mm a")}</>
                           )}
@@ -1744,7 +1748,7 @@ export default function EstimateDetail() {
                             />
                           </div>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1765,20 +1769,7 @@ export default function EstimateDetail() {
                       {creatingVersion ? "Creating..." : "Create Version"}
                     </Button>
                   </div>
-                ) : (
-                  <div data-testid="line-items-header-row" className="mt-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3 md:gap-2">
-                      <FileText className="h-5 w-5 md:h-3.5 md:w-3.5 shrink-0 text-muted-foreground" />
-                      <h4 className="text-base uppercase tracking-wide leading-none text-muted-foreground">Line Items</h4>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
-                        <Edit2 className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                ) : null}
               </div>
 
               {!showNoVersionFullState && (
@@ -1787,7 +1778,7 @@ export default function EstimateDetail() {
                     groupedLineItems.map((group, groupIndex) => (
                       <div key={group.category}>
                         <div
-                          className="px-4 py-2 text-muted-foreground"
+                          className="px-5 py-2 text-muted-foreground"
                         >
                           <p
                             className="estimate-category-heading"
@@ -1799,7 +1790,7 @@ export default function EstimateDetail() {
                         {group.items.map((item, itemIndex) => (
                           <div
                             key={item.id || `${group.category}-${itemIndex}-${item.name}`}
-                            className="px-4 py-2"
+                            className="px-5 py-2"
                           >
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
@@ -1880,7 +1871,7 @@ export default function EstimateDetail() {
                     </div>
                   )}
 
-                  <div className="mx-4 my-4 rounded-lg bg-secondary p-4 space-y-2">
+                  <div className="mx-5 my-4 rounded-lg bg-secondary p-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subtotal</span>
                       <span className="text-foreground">${Number(displaySubtotal).toLocaleString()}</span>
