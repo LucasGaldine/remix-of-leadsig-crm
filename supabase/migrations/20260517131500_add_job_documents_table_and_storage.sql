@@ -30,7 +30,19 @@ CREATE TABLE IF NOT EXISTS public.job_documents (
 
 CREATE INDEX IF NOT EXISTS idx_job_documents_account_id ON public.job_documents (account_id);
 CREATE INDEX IF NOT EXISTS idx_job_documents_lead_id ON public.job_documents (lead_id);
-CREATE INDEX IF NOT EXISTS idx_job_documents_document_type ON public.job_documents (document_type);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'job_documents'
+      AND column_name = 'document_type'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_job_documents_document_type ON public.job_documents (document_type);
+  END IF;
+END
+$$;
 
 ALTER TABLE public.job_documents ENABLE ROW LEVEL SECURITY;
 

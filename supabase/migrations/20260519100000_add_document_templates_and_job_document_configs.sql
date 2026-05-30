@@ -159,31 +159,72 @@ CROSS JOIN (
 ON CONFLICT (account_id, slug)
 DO NOTHING;
 
-INSERT INTO public.job_document_configs (
-  lead_id,
-  account_id,
-  template_id,
-  include_in_job,
-  email_timing,
-  requires_signature,
-  sort_order,
-  created_by
-)
-SELECT
-  leads.id,
-  leads.account_id,
-  templates.id,
-  templates.default_included_in_jobs,
-  templates.default_email_timing,
-  templates.default_requires_signature,
-  row_number() OVER (PARTITION BY leads.id ORDER BY templates.name) - 1,
-  NULL
-FROM public.leads
-JOIN public.document_templates AS templates
-  ON templates.account_id = leads.account_id
-  AND templates.default_included_in_jobs = true
-ON CONFLICT (lead_id, template_id)
-DO NOTHING;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'job_document_configs_lead_template_key'
+      AND conrelid = 'public.job_document_configs'::regclass
+  ) THEN
+    INSERT INTO public.job_document_configs (
+      lead_id,
+      account_id,
+      template_id,
+      include_in_job,
+      email_timing,
+      requires_signature,
+      sort_order,
+      created_by
+    )
+    SELECT
+      leads.id,
+      leads.account_id,
+      templates.id,
+      templates.default_included_in_jobs,
+      templates.default_email_timing,
+      templates.default_requires_signature,
+      row_number() OVER (PARTITION BY leads.id ORDER BY templates.name) - 1,
+      NULL
+    FROM public.leads
+    JOIN public.document_templates AS templates
+      ON templates.account_id = leads.account_id
+      AND templates.default_included_in_jobs = true
+    ON CONFLICT (lead_id, template_id)
+    DO NOTHING;
+  ELSE
+    INSERT INTO public.job_document_configs (
+      lead_id,
+      account_id,
+      template_id,
+      include_in_job,
+      email_timing,
+      requires_signature,
+      sort_order,
+      created_by
+    )
+    SELECT
+      leads.id,
+      leads.account_id,
+      templates.id,
+      templates.default_included_in_jobs,
+      templates.default_email_timing,
+      templates.default_requires_signature,
+      row_number() OVER (PARTITION BY leads.id ORDER BY templates.name) - 1,
+      NULL
+    FROM public.leads
+    JOIN public.document_templates AS templates
+      ON templates.account_id = leads.account_id
+      AND templates.default_included_in_jobs = true
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM public.job_document_configs cfg
+      WHERE cfg.lead_id = leads.id
+        AND cfg.template_id = templates.id
+    );
+  END IF;
+END
+$$;
 
 DO $$
 BEGIN
@@ -215,6 +256,23 @@ ALTER TABLE public.job_documents
 
 ALTER TABLE public.job_documents
   DROP CONSTRAINT IF EXISTS job_documents_lead_document_key_key;
+
+-- Backfill safety: if duplicate (lead_id, template_id) rows already exist,
+-- keep the newest row and remove older duplicates before adding unique index.
+WITH ranked_template_docs AS (
+  SELECT
+    id,
+    row_number() OVER (
+      PARTITION BY lead_id, template_id
+      ORDER BY created_at DESC NULLS LAST, id DESC
+    ) AS rn
+  FROM public.job_documents
+  WHERE template_id IS NOT NULL
+)
+DELETE FROM public.job_documents jd
+USING ranked_template_docs ranked
+WHERE jd.id = ranked.id
+  AND ranked.rn > 1;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_job_documents_lead_template_unique
   ON public.job_documents (lead_id, template_id)
