@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { ChevronRight, DollarSign } from "lucide-react";
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 import type { ClientPortalListViewProps } from "./internalTypes";
@@ -9,13 +11,14 @@ import {
   resolveClientPortalPalette,
   resolveCompanyContactDisplay,
 } from "./presentation";
-import { formatPhoneNumber, formatServiceType, formatWebsiteUrl, getStatusColor, getStatusLabel } from "./utils";
+import { formatPhoneNumber, formatPortalJobTitle, formatWebsiteUrl, getStatusColor, getStatusLabel } from "./utils";
 
 export function ClientPortalListView({
   customerData,
   customerJobs,
   customerRecurringJobs,
   customerInvoices,
+  requiredDocuments,
   currentProjects,
   pastProjects,
   headingFontOption,
@@ -30,6 +33,52 @@ export function ClientPortalListView({
     headingFontCss: headingFontOption?.css,
     bodyFontCss: bodyFontOption?.css,
   });
+
+  const unpaidInvoices = customerInvoices.filter((invoice) => invoice.status !== "paid");
+  const jobById = new Map(customerJobs.map((job) => [job.id, job]));
+
+  const titledJobById = useMemo(() => {
+    const counts = new Map<string, number>();
+    const titled = new Map<string, string>();
+
+    for (const job of customerJobs) {
+      const baseTitle = formatPortalJobTitle({
+        serviceType: job.service_type,
+        startDate: job.schedule_start_date,
+        endDate: job.schedule_end_date,
+        fallbackDate: job.created_at,
+      });
+      counts.set(baseTitle, (counts.get(baseTitle) || 0) + 1);
+      titled.set(job.id, baseTitle);
+    }
+
+    const withIndex = new Map<string, string>();
+    const jobsByTitle = new Map<string, typeof customerJobs>();
+
+    for (const job of customerJobs) {
+      const baseTitle = titled.get(job.id) || "Job";
+      const existing = jobsByTitle.get(baseTitle) || [];
+      existing.push(job);
+      jobsByTitle.set(baseTitle, existing);
+    }
+
+    for (const [baseTitle, jobs] of jobsByTitle.entries()) {
+      if (jobs.length <= 1) {
+        withIndex.set(jobs[0].id, baseTitle);
+        continue;
+      }
+
+      const ordered = [...jobs].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+
+      ordered.forEach((job, index) => {
+        withIndex.set(job.id, `${baseTitle} #${index + 1}`);
+      });
+    }
+
+    return withIndex;
+  }, [customerJobs]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
@@ -99,56 +148,17 @@ export function ClientPortalListView({
           </div>
         </div>
 
-        {customerInvoices.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-900">Invoices</h2>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {customerInvoices.map((invoice) => (
-                <div key={invoice.id} className="px-6 sm:px-8 py-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-slate-900 truncate">
-                        {invoice.service_type ? formatServiceType(invoice.service_type) : invoice.job_name}
-                      </h3>
-                      <div className="flex items-center gap-3 mt-2">
-                        <span className="text-sm text-slate-600">${Number(invoice.total).toFixed(2)}</span>
-                        <span
-                          className={cn(
-                            "text-xs px-2 py-0.5 rounded-full font-medium",
-                            invoice.status === "paid"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-amber-100 text-amber-800",
-                          )}
-                        >
-                          {invoice.status === "paid" ? "Paid" : "Payment Due"}
-                        </span>
-                      </div>
-                    </div>
-                    <a
-                      href={invoice.stripe_invoice_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex flex-shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
-                      style={{ backgroundColor: palette.portalColor, color: palette.portalTextColor }}
-                    >
-                      <DollarSign className="h-4 w-4" />
-                      {invoice.status === "paid" ? "View" : "Pay"}
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <Tabs defaultValue="home" className="space-y-4">
+          <TabsList className="bg-white border border-slate-200 shadow-sm">
+            <TabsTrigger value="home">Home</TabsTrigger>
+            <TabsTrigger value="jobs">Jobs</TabsTrigger>
+          </TabsList>
 
-        {customerJobs.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            {currentProjects.length > 0 && (
-              <div>
+          <TabsContent value="home" className="space-y-6">
+            {currentProjects.length > 0 ? (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
                 <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
-                  <h2 className="text-lg font-semibold text-slate-900">Current Projects</h2>
+                  <h2 className="text-lg font-semibold text-slate-900">Current Jobs</h2>
                 </div>
                 <div className="divide-y divide-slate-100">
                   {currentProjects.map((job) => (
@@ -159,17 +169,11 @@ export function ClientPortalListView({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-slate-900 truncate">{job.name}</h3>
+                          <h3 className="font-semibold text-slate-900 truncate">
+                            {titledJobById.get(job.id) || "Job"}
+                          </h3>
                           <div className="flex items-center gap-3 mt-2">
-                            {job.service_type && (
-                              <span className="text-sm text-slate-600">{formatServiceType(job.service_type)}</span>
-                            )}
-                            <span
-                              className={cn(
-                                "text-xs px-2 py-0.5 rounded-full font-medium",
-                                getStatusColor(job.status, []),
-                              )}
-                            >
+                            <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", getStatusColor(job.status, []))}>
                               {getStatusLabel(job.status, [])}
                             </span>
                           </div>
@@ -180,33 +184,183 @@ export function ClientPortalListView({
                   ))}
                 </div>
               </div>
+            ) : (
+              <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+                <p className="text-slate-600">No current jobs</p>
+              </div>
             )}
-            {pastProjects.length > 0 && (
-              <div>
-                <div className="px-6 sm:px-8 py-5 border-y border-slate-100">
-                  <h2 className="text-lg font-semibold text-slate-900">Your Past Projects</h2>
+
+            {requiredDocuments.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                  <h2 className="text-lg font-semibold text-slate-900">Documents Requiring Signature</h2>
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {pastProjects.map((job) => (
+                  {requiredDocuments.map((doc) => (
                     <button
-                      key={job.id}
-                      onClick={() => onSelectJob(job.id)}
+                      key={doc.id}
+                      onClick={() => onSelectJob(doc.job_id)}
+                      className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-slate-900 truncate">{doc.title}</h3>
+                          <p className="text-sm text-slate-600 truncate mt-1">
+                            {titledJobById.get(doc.job_id)
+                              || formatPortalJobTitle({
+                                serviceType: jobById.get(doc.job_id)?.service_type,
+                                startDate: jobById.get(doc.job_id)?.schedule_start_date,
+                                endDate: jobById.get(doc.job_id)?.schedule_end_date,
+                                fallbackDate: jobById.get(doc.job_id)?.created_at,
+                              })}
+                          </p>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {unpaidInvoices.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                  <h2 className="text-lg font-semibold text-slate-900">Unpaid Invoices</h2>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {unpaidInvoices.map((invoice) => (
+                    <div key={invoice.id} className="px-6 sm:px-8 py-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-slate-900 truncate">
+                            {formatPortalJobTitle({
+                              serviceType: invoice.service_type,
+                              fallbackDate: invoice.created_at,
+                            })}
+                          </h3>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="text-sm text-slate-600">${Number(invoice.total).toFixed(2)}</span>
+                            <span
+                              className={cn(
+                                "text-xs px-2 py-0.5 rounded-full font-medium",
+                                invoice.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800",
+                              )}
+                            >
+                              {invoice.status === "paid" ? "Paid" : "Payment Due"}
+                            </span>
+                          </div>
+                        </div>
+                        <a
+                          href={invoice.stripe_invoice_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex flex-shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
+                          style={{ backgroundColor: palette.portalColor, color: palette.portalTextColor }}
+                        >
+                          <DollarSign className="h-4 w-4" />
+                          {invoice.status === "paid" ? "View" : "Pay"}
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="jobs" className="space-y-6">
+            {customerJobs.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                {currentProjects.length > 0 && (
+                  <div>
+                    <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                      <h2 className="text-lg font-semibold text-slate-900">Current Projects</h2>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {currentProjects.map((job) => (
+                        <button
+                          key={job.id}
+                          onClick={() => onSelectJob(job.id)}
+                          className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-slate-900 truncate">
+                                {titledJobById.get(job.id) || "Job"}
+                              </h3>
+                              <div className="flex items-center gap-3 mt-2">
+                                <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", getStatusColor(job.status, []))}>
+                                  {getStatusLabel(job.status, [])}
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {pastProjects.length > 0 && (
+                  <div>
+                    <div className="px-6 sm:px-8 py-5 border-y border-slate-100">
+                      <h2 className="text-lg font-semibold text-slate-900">Your Past Projects</h2>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {pastProjects.map((job) => (
+                        <button
+                          key={job.id}
+                          onClick={() => onSelectJob(job.id)}
+                          className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-slate-900 truncate">
+                                {titledJobById.get(job.id) || "Job"}
+                              </h3>
+                              <div className="flex items-center gap-3 mt-2">
+                                <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", getStatusColor(job.status, []))}>
+                                  {getStatusLabel(job.status, [])}
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {customerRecurringJobs.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
+                  <h2 className="text-lg font-semibold text-slate-900">Recurring Services</h2>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {customerRecurringJobs.map((rj) => (
+                    <button
+                      key={rj.id}
+                      onClick={() => onSelectJob(rj.id)}
                       className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-slate-900 truncate">{job.name}</h3>
+                          <h3 className="font-semibold text-slate-900 truncate">
+                            {formatPortalJobTitle({
+                              serviceType: rj.service_type,
+                              startDate: rj.start_date,
+                              endDate: rj.end_date,
+                              fallbackDate: rj.created_at,
+                            })}
+                          </h3>
                           <div className="flex items-center gap-3 mt-2">
-                            {job.service_type && (
-                              <span className="text-sm text-slate-600">{formatServiceType(job.service_type)}</span>
-                            )}
-                            <span
-                              className={cn(
-                                "text-xs px-2 py-0.5 rounded-full font-medium",
-                                getStatusColor(job.status, []),
-                              )}
-                            >
-                              {getStatusLabel(job.status, [])}
+                            <span className="text-xs text-slate-500 capitalize">{rj.frequency}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-sky-100 text-sky-800">
+                              Recurring
                             </span>
                           </div>
                         </div>
@@ -217,47 +371,14 @@ export function ClientPortalListView({
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {customerRecurringJobs.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="px-6 sm:px-8 py-5 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-900">Recurring Services</h2>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {customerRecurringJobs.map((rj) => (
-                <button
-                  key={rj.id}
-                  onClick={() => onSelectJob(rj.id)}
-                  className="w-full px-6 sm:px-8 py-5 text-left hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-slate-900 truncate">
-                        {rj.service_type ? formatServiceType(rj.service_type) : rj.name}
-                      </h3>
-                      <div className="flex items-center gap-3 mt-2">
-                        <span className="text-sm text-slate-600">{rj.name}</span>
-                        <span className="text-xs text-slate-500 capitalize">{rj.frequency}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-sky-100 text-sky-800">
-                          Recurring
-                        </span>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0 ml-4" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {customerJobs.length === 0 && customerRecurringJobs.length === 0 && (
-          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-            <p className="text-slate-600">No jobs found</p>
-          </div>
-        )}
+            {customerJobs.length === 0 && customerRecurringJobs.length === 0 && (
+              <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+                <p className="text-slate-600">No jobs found</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

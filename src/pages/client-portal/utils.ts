@@ -8,8 +8,8 @@ export function formatServiceType(serviceType: string): string {
 }
 
 export function getStatusLabel(status: string, schedules: ScheduleItem[]): string {
-  if (status === "paid") return "Paid";
-  if (status === "completed") return "Completed";
+  if (status === "paid") return "Complete";
+  if (status === "completed") return "Needs Payment";
   if (status === "job" && schedules.length > 0) {
     const now = new Date();
     const sorted = [...schedules].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
@@ -18,24 +18,27 @@ export function getStatusLabel(status: string, schedules: ScheduleItem[]): strin
     const first = sorted[0];
     const firstStart = new Date(`${first.scheduled_date}T${first.scheduled_time_start || "00:00:00"}`);
 
-    if (now > lastEnd) return "Completed";
+    if (now > lastEnd) return "Needs Payment";
     if (now >= firstStart) return "In Progress";
-    return "Scheduled";
+    return "Approved";
   }
-  return "Pending";
+  if (status === "job") return "Approved";
+  return "Review estimate";
 }
 
 export function getStatusColor(status: string, schedules: ScheduleItem[]): string {
   const label = getStatusLabel(status, schedules);
   switch (label) {
-    case "Paid":
+    case "Complete":
       return "bg-emerald-100 text-emerald-800";
-    case "Completed":
-      return "bg-blue-100 text-blue-800";
+    case "Needs Payment":
+      return "bg-rose-100 text-rose-800";
     case "In Progress":
       return "bg-amber-100 text-amber-800";
-    case "Scheduled":
+    case "Approved":
       return "bg-sky-100 text-sky-800";
+    case "Review estimate":
+      return "bg-violet-100 text-violet-800";
     default:
       return "bg-slate-100 text-slate-800";
   }
@@ -83,4 +86,37 @@ export function formatPhoneNumber(phone: string): string {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   return phone;
+}
+
+function formatMonthYear(value: string): string | null {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(date);
+}
+
+export function formatPortalJobTitle(input: {
+  serviceType?: string;
+  startDate?: string;
+  endDate?: string;
+  fallbackDate?: string;
+}): string {
+  const serviceType = input.serviceType ? formatServiceType(input.serviceType) : "";
+  const startLabel = formatMonthYear(input.startDate || input.fallbackDate || "");
+  const endLabel = formatMonthYear(input.endDate || input.startDate || input.fallbackDate || "");
+
+  if (!startLabel && !endLabel) {
+    return serviceType || "Job";
+  }
+
+  const resolvedStart = startLabel || endLabel || "";
+  const resolvedEnd = endLabel || resolvedStart;
+  const sameMonth = resolvedStart === resolvedEnd;
+
+  if (serviceType) {
+    return sameMonth
+      ? `${serviceType} ${resolvedStart}`
+      : `${serviceType} ${resolvedStart} - ${resolvedEnd}`;
+  }
+
+  return sameMonth ? resolvedStart : `${resolvedStart} - ${resolvedEnd}`;
 }

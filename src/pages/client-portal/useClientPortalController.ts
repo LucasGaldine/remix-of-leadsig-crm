@@ -144,6 +144,9 @@ export function useClientPortalController(): ClientPortalController {
     ? customerData.recurring_jobs
     : [];
   const customerInvoices = Array.isArray(customerData?.invoices) ? customerData.invoices : [];
+  const requiredDocuments = Array.isArray(customerData?.required_documents)
+    ? customerData.required_documents
+    : [];
 
   const headingFontOption = getBrandFontOption(websiteThemeConfig.font);
   const bodyFontOption = getBrandFontOption(websiteThemeConfig.body_font);
@@ -165,6 +168,7 @@ export function useClientPortalController(): ClientPortalController {
     customerJobs,
     customerRecurringJobs,
     customerInvoices,
+    requiredDocuments,
     currentProjects,
     pastProjects,
     headingFontOption,

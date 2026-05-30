@@ -299,14 +299,40 @@ async function expandLeadFamilyIds(supabase: any, seedLeadIds: string[]) {
   return Array.from(relatedLeadFamilyIds);
 }
 
-function buildCustomerHtml(companyName: string, customerName: string, total: number, jobName: string, eventType: "estimate_approved" | "change_order_approved") {
+function buildApprovalCopyHtml(params: {
+  companyName: string;
+  customerName: string;
+  recipientName: string;
+  total: number;
+  jobName: string;
+  eventType: "estimate_approved" | "change_order_approved";
+  isCustomer: boolean;
+}) {
+  const { companyName, customerName, recipientName, total, jobName, eventType, isCustomer } = params;
   const label = eventType === "change_order_approved" ? "change order" : "estimate";
-  return `<!doctype html><html><body style="font-family:Arial,sans-serif"><p>Hi ${escapeHtml(customerName)},</p><p>Thanks for approving your ${label} for <strong>${escapeHtml(jobName)}</strong>.</p><p>Approved total: <strong>$${Number(total || 0).toFixed(2)}</strong></p><p>${escapeHtml(companyName)} will follow up with next steps.</p></body></html>`;
-}
+  const intro = isCustomer
+    ? `Thanks for approving your ${label} for ${escapeHtml(jobName)}.`
+    : `${escapeHtml(customerName)} approved the ${label} for ${escapeHtml(jobName)}.`;
+  const greeting = isCustomer ? `Hi ${escapeHtml(customerName)},` : `Hi ${escapeHtml(recipientName || "Team")},`;
 
-function buildUserHtml(companyName: string, userName: string, customerName: string, total: number, jobName: string, eventType: "estimate_approved" | "change_order_approved") {
-  const label = eventType === "change_order_approved" ? "change order" : "estimate";
-  return `<!doctype html><html><body style="font-family:Arial,sans-serif"><p>Hi ${escapeHtml(userName || "there")},</p><p>${escapeHtml(customerName)} approved the ${label} for <strong>${escapeHtml(jobName)}</strong>.</p><p>Approved total: <strong>$${Number(total || 0).toFixed(2)}</strong></p><p>${escapeHtml(companyName)}</p></body></html>`;
+  return `<!DOCTYPE html>
+<html>
+  <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
+      <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <div style="background:#0f172a;padding:18px 22px;">
+          <h1 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">${escapeHtml(companyName)}</h1>
+          <p style="margin:6px 0 0;color:#cbd5e1;font-size:13px;">Signed Document Copy</p>
+        </div>
+        <div style="padding:22px;">
+          <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.6;">${greeting}</p>
+          <p style="margin:0 0 12px;color:#0f172a;font-size:15px;line-height:1.6;">${intro}</p>
+          <p style="margin:0;color:#334155;font-size:14px;">Approved total: <strong>$${Number(total || 0).toFixed(2)}</strong></p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -343,7 +369,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: account } = await supabase
       .from("accounts")
-      .select("company_name,company_email,settings,pricing_plan")
+      .select("company_name,company_email,company_phone,settings,pricing_plan")
       .eq("id", estimate.account_id)
       .maybeSingle();
 
@@ -536,11 +562,32 @@ Deno.serve(async (req: Request) => {
         ? `${companyName} | ${eventType === "change_order_approved" ? "Change Order Approved" : "Estimate Approved"}`
         : `${companyName} | ${eventType === "change_order_approved" ? "Change Order Approved" : "Estimate Approved"} by ${customerName}`;
 
-      const html = recipient.recipientType === "customer"
-        ? buildCustomerHtml(companyName, customerName, Number((estimate as any)?.total || 0), jobName, eventType)
-        : buildUserHtml(companyName, recipient.name, customerName, Number((estimate as any)?.total || 0), jobName, eventType);
+      const isCustomer = recipient.recipientType === "customer";
+      const html = buildApprovalCopyHtml({
+        companyName,
+        customerName,
+        recipientName: recipient.name,
+        total: Number((estimate as any)?.total || 0),
+        jobName,
+        eventType,
+        isCustomer,
+      });
 
-      const text = `${recipient.recipientType === "customer" ? `Hi ${customerName}` : `Hi ${recipient.name}`},\n\n${customerName} approved the ${eventType === "change_order_approved" ? "change order" : "estimate"} for ${jobName}.\nApproved total: $${Number((estimate as any)?.total || 0).toFixed(2)}`;
+      const text = isCustomer
+        ? [
+          `Hi ${customerName},`,
+          "",
+          `Thanks for approving your ${eventType === "change_order_approved" ? "change order" : "estimate"} for ${jobName}.`,
+          "",
+          `Approved total: $${Number((estimate as any)?.total || 0).toFixed(2)}`,
+        ].join("\n")
+        : [
+          `Hi ${recipient.name || "Team"},`,
+          "",
+          `${customerName} approved the ${eventType === "change_order_approved" ? "change order" : "estimate"} for ${jobName}.`,
+          "",
+          `Approved total: $${Number((estimate as any)?.total || 0).toFixed(2)}`,
+        ].join("\n");
 
       try {
         await transporter.sendMail({

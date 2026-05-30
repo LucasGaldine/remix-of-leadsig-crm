@@ -15,6 +15,8 @@ export interface JobListItem {
   service_type?: string;
   status: string;
   created_at: string;
+  schedule_start_date?: string;
+  schedule_end_date?: string;
 }
 
 export interface RecurringJobListItem {
@@ -37,6 +39,13 @@ export interface InvoiceListItem {
   status: string;
   total: number;
   created_at: string;
+}
+
+export interface RequiredDocumentListItem {
+  id: string;
+  job_id: string;
+  job_name: string;
+  title: string;
 }
 
 export interface CustomerData {
@@ -216,4 +225,5 @@ export interface ClientPortalData {
   jobs: JobListItem[];
   recurring_jobs: RecurringJobListItem[];
   invoices: InvoiceListItem[];
+  required_documents?: RequiredDocumentListItem[];
 }

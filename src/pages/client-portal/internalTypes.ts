@@ -4,6 +4,7 @@ import type {
   ClientPortalData,
   InvoiceListItem,
   JobListItem,
+  RequiredDocumentListItem,
   PortalData,
   RecurringJobListItem,
 } from "./types";
@@ -30,6 +31,7 @@ export interface ClientPortalController {
   customerJobs: JobListItem[];
   customerRecurringJobs: RecurringJobListItem[];
   customerInvoices: InvoiceListItem[];
+  requiredDocuments: RequiredDocumentListItem[];
   currentProjects: JobListItem[];
   pastProjects: JobListItem[];
   headingFontOption: BrandFontOption | undefined;
@@ -47,6 +49,7 @@ export interface ClientPortalListViewProps {
   customerJobs: JobListItem[];
   customerRecurringJobs: RecurringJobListItem[];
   customerInvoices: InvoiceListItem[];
+  requiredDocuments: RequiredDocumentListItem[];
   currentProjects: JobListItem[];
   pastProjects: JobListItem[];
   headingFontOption: BrandFontOption | undefined;

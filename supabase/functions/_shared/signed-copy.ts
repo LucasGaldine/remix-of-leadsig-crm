@@ -35,11 +35,71 @@ export function stripMarkdown(value: string) {
     .trim();
 }
 
+const BUILT_IN_TEMPLATE_VARIABLE_KEYS = new Set([
+  "scope_of_work",
+  "job_name",
+  "job_address",
+  "service_type",
+  "client_name",
+  "client_email",
+  "client_phone",
+  "company_name",
+  "company_email",
+  "company_phone",
+  "estimate_total",
+  "estimate_subtotal",
+  "estimate_tax",
+  "estimate_discount",
+  "default_payment_schedule",
+  "default_payment_deposit_percentage",
+  "default_payment_midpoint_percentage",
+  "default_payment_final_percentage",
+  "current_date",
+]);
+const DEFAULT_BUILT_IN_TEMPLATE_FALLBACK = "Not provided";
+
+function resolveTemplateVariableFallbackValue(key: string) {
+  const normalizedKey = normalizeText(key).toLowerCase();
+  if (!normalizedKey) return "";
+  if (normalizedKey === "current_date") {
+    return new Date().toISOString().slice(0, 10);
+  }
+  if (BUILT_IN_TEMPLATE_VARIABLE_KEYS.has(normalizedKey)) {
+    return DEFAULT_BUILT_IN_TEMPLATE_FALLBACK;
+  }
+  return "";
+}
+
+function formatPhoneTemplateValue(value: string) {
+  const trimmed = normalizeText(value);
+  if (!trimmed) return "";
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return trimmed;
+}
+
+function maybeFormatTemplateMergeFieldValue(key: string, value: string) {
+  if (/(^|_)phone$/.test(key)) {
+    return formatPhoneTemplateValue(value);
+  }
+  return value;
+}
+
 export function renderTemplate(text: string, fields: Record<string, string>) {
-  return text.replace(/(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/gi, (m, a, b) => {
-    const key = String(a || b || "").toLowerCase();
-    const val = fields[key];
-    return typeof val === "string" && val.length > 0 ? val : m;
+  return text.replace(/(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/gi, (_, a, b) => {
+    const key = normalizeText(String(a || b || "")).toLowerCase();
+    const rawValue = fields[key];
+    const normalizedValue = normalizeText(rawValue);
+    if (!normalizedValue) return resolveTemplateVariableFallbackValue(key);
+    const formattedValue = maybeFormatTemplateMergeFieldValue(key, normalizedValue);
+    if (formattedValue) return formattedValue;
+    return resolveTemplateVariableFallbackValue(key);
   });
 }
 

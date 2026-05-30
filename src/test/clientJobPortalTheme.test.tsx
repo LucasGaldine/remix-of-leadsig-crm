@@ -190,6 +190,119 @@ describe("ClientJobPortal theming", () => {
     expect(document.title).toBe("Client Portal");
   });
 
+  it("shows Home and Jobs tabs with current jobs, pending signatures, and unpaid invoices", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        customer: {
+          name: "Another import",
+        },
+        company: {
+          company_name: "LG Contracting",
+        },
+        jobs: [
+          {
+            id: "job_old",
+            name: "Old Job",
+            status: "completed",
+            created_at: "2026-03-01T00:00:00.000Z",
+          },
+          {
+            id: "job_new",
+            name: "New Job",
+            status: "job",
+            created_at: "2026-04-01T00:00:00.000Z",
+          },
+        ],
+        recurring_jobs: [],
+        invoices: [
+          {
+            id: "inv_unpaid",
+            lead_id: "job_new",
+            job_name: "New Job",
+            stripe_invoice_url: "https://example.com/invoice",
+            status: "open",
+            total: 200,
+            created_at: "2026-04-02T00:00:00.000Z",
+          },
+          {
+            id: "inv_paid",
+            lead_id: "job_old",
+            job_name: "Old Job",
+            stripe_invoice_url: "https://example.com/invoice-paid",
+            status: "paid",
+            total: 100,
+            created_at: "2026-03-02T00:00:00.000Z",
+          },
+        ],
+        required_documents: [
+          {
+            id: "doc_1",
+            job_id: "job_new",
+            job_name: "New Job",
+            title: "Service Agreement",
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/portal?token=token_123"]}>
+        <ClientJobPortal />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("tab", { name: /Home/i });
+    await screen.findByRole("tab", { name: /Jobs/i });
+
+    expect(screen.getByRole("heading", { name: /Current Jobs/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Mar 2026/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Documents Requiring Signature/i })).toBeInTheDocument();
+    expect(screen.getByText(/Service Agreement/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Unpaid Invoices/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Pay/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^View$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Current Projects/i })).not.toBeInTheDocument();
+  });
+
+  it("hides Documents Requiring Signature section when no required documents exist", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        customer: {
+          name: "Another import",
+        },
+        company: {
+          company_name: "LG Contracting",
+        },
+        jobs: [
+          {
+            id: "job_new",
+            name: "New Job",
+            status: "job",
+            created_at: "2026-04-01T00:00:00.000Z",
+          },
+        ],
+        recurring_jobs: [],
+        invoices: [],
+        required_documents: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/portal?token=token_123"]}>
+        <ClientJobPortal />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("tab", { name: /Home/i });
+
+    expect(screen.queryByRole("heading", { name: /Documents Requiring Signature/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/No documents currently require signature/i)).not.toBeInTheDocument();
+  });
+
   it("uses company logo as portal favicon when logo_url is present", async () => {
     const logoUrl = "https://cdn.example.com/company-logo.png";
     const fetchMock = vi.fn().mockResolvedValue({

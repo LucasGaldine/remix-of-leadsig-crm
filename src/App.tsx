@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { createBrowserRouter, RouterProvider, Outlet, useLocation, Navigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Outlet, useLocation, Navigate, useRouteError, isRouteErrorResponse } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppKeyboardShortcuts } from "@/components/layout/AppKeyboardShortcuts";
@@ -144,6 +144,45 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
   );
 }
 
+function AppErrorBoundary() {
+  const error = useRouteError();
+  const errorTitle = isRouteErrorResponse(error)
+    ? `${error.status} ${error.statusText || "Request failed"}`
+    : "Something went wrong";
+  const errorMessage = isRouteErrorResponse(error)
+    ? (typeof error.data === "string" ? error.data : "The page could not be loaded.")
+    : (error instanceof Error ? error.message : "An unexpected error occurred.");
+
+  return (
+    <div className="min-h-screen bg-slate-950 px-6 py-12 text-slate-100">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 rounded-2xl border border-slate-800 bg-slate-900/80 p-8 shadow-2xl shadow-black/40 backdrop-blur">
+        <div className="inline-flex w-fit items-center rounded-full border border-red-400/50 bg-red-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-200">
+          Application Error
+        </div>
+        <div>
+          <h1 className="text-2xl font-semibold leading-tight">{errorTitle}</h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-300">{errorMessage}</p>
+        </div>
+        <div className="flex flex-wrap gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-md bg-slate-100 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-white"
+          >
+            Reload page
+          </button>
+          <a
+            href="/"
+            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-800"
+          >
+            Return home
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, currentAccount, hasActiveEloEntitlement, requiresEloEntitlementGate } = useAuth();
   const location = useLocation();
@@ -270,6 +309,7 @@ function MainPageTransition({ children }: { children: React.ReactNode }) {
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
+    errorElement: <AppErrorBoundary />,
     children: [
       { path: "/auth", element: <Auth /> },
       { path: "/signup/elo", element: <Auth signupVariant="elo" /> },

@@ -52,6 +52,7 @@ export default function ClientJobPortal() {
         customerJobs={controller.customerJobs}
         customerRecurringJobs={controller.customerRecurringJobs}
         customerInvoices={controller.customerInvoices}
+        requiredDocuments={controller.requiredDocuments}
         currentProjects={controller.currentProjects}
         pastProjects={controller.pastProjects}
         headingFontOption={controller.headingFontOption}

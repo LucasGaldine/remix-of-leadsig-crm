@@ -565,6 +565,97 @@ async function handleGetPortalList(supabase: any, customer: any) {
   const estimateVisitJobs = (jobs || []).filter((j: any) => j.is_estimate_visit && !j.estimate_job_id);
   const displayJobs = regularJobs.length > 0 ? regularJobs : estimateVisitJobs;
 
+  const displayJobIds = displayJobs.map((job: any) => String(job?.id || "")).filter(Boolean);
+  const jobScheduleBounds = new Map<string, { startDate: string; endDate: string }>();
+  if (displayJobIds.length > 0) {
+    const { data: schedules } = await supabase
+      .from("job_schedules")
+      .select("lead_id, scheduled_date")
+      .in("lead_id", displayJobIds);
+
+    for (const schedule of schedules || []) {
+      const leadId = String((schedule as any)?.lead_id || "");
+      const date = String((schedule as any)?.scheduled_date || "");
+      if (!leadId || !date) continue;
+      const existing = jobScheduleBounds.get(leadId);
+      if (!existing) {
+        jobScheduleBounds.set(leadId, { startDate: date, endDate: date });
+        continue;
+      }
+      if (date < existing.startDate) existing.startDate = date;
+      if (date > existing.endDate) existing.endDate = date;
+    }
+  }
+
+  const leadFamilyIds = Array.from(
+    new Set(
+      displayJobs.flatMap((job: any) => [String(job?.id || ""), String(job?.estimate_job_id || "")].filter(Boolean)),
+    ),
+  );
+
+  let requiredDocuments: Array<{ id: string; job_id: string; job_name: string; title: string }> = [];
+  if (leadFamilyIds.length > 0) {
+    const [{ data: estimates }, { data: configRows }] = await Promise.all([
+      supabase
+        .from("estimates")
+        .select("job_id, agreement_acceptance")
+        .in("job_id", leadFamilyIds),
+      supabase
+        .from("job_document_configs")
+        .select("id, lead_id, include_in_job, requires_signature, template:document_templates(name)")
+        .in("lead_id", leadFamilyIds)
+        .eq("include_in_job", true)
+        .eq("requires_signature", true),
+    ]);
+
+    const estimateByLeadId = new Map<string, any>();
+    for (const estimate of estimates || []) {
+      const leadId = String((estimate as any)?.job_id || "");
+      if (!leadId || estimateByLeadId.has(leadId)) continue;
+      estimateByLeadId.set(leadId, estimate);
+    }
+
+    const relatedDisplayJobByLeadId = new Map<string, any>();
+    for (const job of displayJobs) {
+      const childId = String(job?.id || "");
+      const parentId = String(job?.estimate_job_id || "");
+      if (childId && !relatedDisplayJobByLeadId.has(childId)) relatedDisplayJobByLeadId.set(childId, job);
+      if (parentId && !relatedDisplayJobByLeadId.has(parentId)) relatedDisplayJobByLeadId.set(parentId, job);
+    }
+
+    const pendingDocs: Array<{ id: string; job_id: string; job_name: string; title: string }> = [];
+    for (const config of configRows || []) {
+      const configId = String((config as any)?.id || "");
+      const leadId = String((config as any)?.lead_id || "");
+      if (!configId || !leadId) continue;
+
+      const estimate = estimateByLeadId.get(leadId);
+      if (!estimate) continue;
+
+      const acceptance =
+        estimate?.agreement_acceptance && typeof estimate.agreement_acceptance === "object"
+          ? estimate.agreement_acceptance
+          : {};
+      const alreadyAccepted = acceptance?.[configId] === true;
+      if (alreadyAccepted) continue;
+
+      const relatedJob = relatedDisplayJobByLeadId.get(leadId);
+      if (!relatedJob) continue;
+
+      const templateRaw = (config as any)?.template;
+      const template = Array.isArray(templateRaw) ? templateRaw[0] : templateRaw;
+
+      pendingDocs.push({
+        id: configId,
+        job_id: String(relatedJob.id || ""),
+        job_name: String(relatedJob.name || "Job"),
+        title: String(template?.name || "Document"),
+      });
+    }
+
+    requiredDocuments = Array.from(new Map(pendingDocs.map((doc) => [doc.id, doc])).values());
+  }
+
   return jsonResponse({
     customer: {
       name: customer.name,
@@ -579,6 +670,8 @@ async function handleGetPortalList(supabase: any, customer: any) {
       service_type: j.service_type,
       status: j.status,
       created_at: j.created_at,
+      schedule_start_date: jobScheduleBounds.get(String(j.id || ""))?.startDate,
+      schedule_end_date: jobScheduleBounds.get(String(j.id || ""))?.endDate,
     })),
     recurring_jobs: (recurringJobs || []).map((rj: any) => ({
       id: rj.id,
@@ -600,6 +693,7 @@ async function handleGetPortalList(supabase: any, customer: any) {
       total: inv.total,
       created_at: inv.created_at,
     })),
+    required_documents: requiredDocuments,
   });
 }
 
