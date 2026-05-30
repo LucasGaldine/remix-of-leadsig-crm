@@ -1,9 +1,91 @@
-/*\n  # Update Field Mappings RLS for Account-Based Access\n\n  ## Overview\n  Updates RLS policies on lead_source_field_mappings to use account-based access control\n  instead of user-based, matching the pattern used for lead_source_connections.\n\n  ## Changes\n  1. Drop old user-based RLS policies\n  2. Create new account-based RLS policies\n  \n  ## Security Model\n  - Account members can manage field mappings for their account's connections\n*/\n\n-- Drop existing policies\nDROP POLICY IF EXISTS "Users can read own field mappings" ON public.lead_source_field_mappings;
-\nDROP POLICY IF EXISTS "Users can insert own field mappings" ON public.lead_source_field_mappings;
-\nDROP POLICY IF EXISTS "Users can update own field mappings" ON public.lead_source_field_mappings;
-\nDROP POLICY IF EXISTS "Users can delete own field mappings" ON public.lead_source_field_mappings;
-\n\n-- Create account-based policies\nCREATE POLICY "Account members can view field mappings"\n  ON public.lead_source_field_mappings FOR SELECT\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM lead_source_connections lsc\n      INNER JOIN account_members am ON am.account_id = lsc.account_id\n      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id\n        AND am.user_id = auth.uid()\n        AND am.is_active = true\n    )\n  );
-\n\nCREATE POLICY "Account members can create field mappings"\n  ON public.lead_source_field_mappings FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    EXISTS (\n      SELECT 1 FROM lead_source_connections lsc\n      INNER JOIN account_members am ON am.account_id = lsc.account_id\n      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id\n        AND am.user_id = auth.uid()\n        AND am.is_active = true\n    )\n  );
-\n\nCREATE POLICY "Account members can update field mappings"\n  ON public.lead_source_field_mappings FOR UPDATE\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM lead_source_connections lsc\n      INNER JOIN account_members am ON am.account_id = lsc.account_id\n      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id\n        AND am.user_id = auth.uid()\n        AND am.is_active = true\n    )\n  )\n  WITH CHECK (\n    EXISTS (\n      SELECT 1 FROM lead_source_connections lsc\n      INNER JOIN account_members am ON am.account_id = lsc.account_id\n      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id\n        AND am.user_id = auth.uid()\n        AND am.is_active = true\n    )\n  );
-\n\nCREATE POLICY "Account members can delete field mappings"\n  ON public.lead_source_field_mappings FOR DELETE\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM lead_source_connections lsc\n      INNER JOIN account_members am ON am.account_id = lsc.account_id\n      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id\n        AND am.user_id = auth.uid()\n        AND am.is_active = true\n    )\n  );
-\n;
+/*
+  # Update Field Mappings RLS for Account-Based Access
+
+  ## Overview
+  Updates RLS policies on lead_source_field_mappings to use account-based access control
+  instead of user-based, matching the pattern used for lead_source_connections.
+
+  ## Changes
+  1. Drop old user-based RLS policies
+  2. Create new account-based RLS policies
+  
+  ## Security Model
+  - Account members can manage field mappings for their account's connections
+*/
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Users can read own field mappings" ON public.lead_source_field_mappings;
+
+DROP POLICY IF EXISTS "Users can insert own field mappings" ON public.lead_source_field_mappings;
+
+DROP POLICY IF EXISTS "Users can update own field mappings" ON public.lead_source_field_mappings;
+
+DROP POLICY IF EXISTS "Users can delete own field mappings" ON public.lead_source_field_mappings;
+
+
+-- Create account-based policies
+CREATE POLICY "Account members can view field mappings"
+  ON public.lead_source_field_mappings FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM lead_source_connections lsc
+      INNER JOIN account_members am ON am.account_id = lsc.account_id
+      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id
+        AND am.user_id = auth.uid()
+        AND am.is_active = true
+    )
+  );
+
+
+CREATE POLICY "Account members can create field mappings"
+  ON public.lead_source_field_mappings FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM lead_source_connections lsc
+      INNER JOIN account_members am ON am.account_id = lsc.account_id
+      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id
+        AND am.user_id = auth.uid()
+        AND am.is_active = true
+    )
+  );
+
+
+CREATE POLICY "Account members can update field mappings"
+  ON public.lead_source_field_mappings FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM lead_source_connections lsc
+      INNER JOIN account_members am ON am.account_id = lsc.account_id
+      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id
+        AND am.user_id = auth.uid()
+        AND am.is_active = true
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM lead_source_connections lsc
+      INNER JOIN account_members am ON am.account_id = lsc.account_id
+      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id
+        AND am.user_id = auth.uid()
+        AND am.is_active = true
+    )
+  );
+
+
+CREATE POLICY "Account members can delete field mappings"
+  ON public.lead_source_field_mappings FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM lead_source_connections lsc
+      INNER JOIN account_members am ON am.account_id = lsc.account_id
+      WHERE lsc.id = lead_source_field_mappings.lead_source_connection_id
+        AND am.user_id = auth.uid()
+        AND am.is_active = true
+    )
+  );
+
+;

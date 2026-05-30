@@ -1,30 +1,142 @@
-/*\n  # Auto-convert lead to job when both estimate approved and photos exist\n\n  1. New Functions\n    - `try_convert_lead_to_job(lead_id uuid)` - checks if a lead has both an\n      approved estimate and at least one photo;
- if so, updates status to 'job'\n      and logs an interaction\n\n  2. New Triggers\n    - `trigger_convert_on_estimate_approved` on `estimates` - fires when an\n      estimate's status changes to 'accepted'\n    - `trigger_convert_on_photo_added` on `lead_photos` - fires when a new\n      photo is inserted\n\n  3. Important Notes\n    - Only converts leads that are not already a job or paid\n    - Both conditions (approved estimate + photos) must be met\n    - Works for all approval paths: manual, customer link, and photo upload\n*/\n\nCREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)\nRETURNS void\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  _lead_status text;
-\n  _has_accepted_estimate boolean;
-\n  _has_photos boolean;
-\nBEGIN\n  SELECT status INTO _lead_status\n  FROM leads\n  WHERE id = p_lead_id;
-\n\n  IF _lead_status IS NULL OR _lead_status IN ('job', 'paid') THEN\n    RETURN;
-\n  END IF;
-\n\n  SELECT EXISTS (\n    SELECT 1 FROM estimates\n    WHERE job_id = p_lead_id AND status = 'accepted'\n  ) INTO _has_accepted_estimate;
-\n\n  SELECT EXISTS (\n    SELECT 1 FROM lead_photos\n    WHERE lead_id = p_lead_id\n  ) INTO _has_photos;
-\n\n  IF _has_accepted_estimate AND _has_photos THEN\n    UPDATE leads SET status = 'job' WHERE id = p_lead_id;
-\n\n    INSERT INTO interactions (lead_id, type, direction, summary)\n    VALUES (\n      p_lead_id,\n      'status_change',\n      'na',\n      'Converted to job (estimate approved + photos uploaded)'\n    );
-\n  END IF;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION handle_estimate_approved()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nBEGIN\n  IF NEW.status = 'accepted' AND (OLD.status IS NULL OR OLD.status != 'accepted') AND NEW.job_id IS NOT NULL THEN\n    PERFORM try_convert_lead_to_job(NEW.job_id);
-\n  END IF;
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION handle_photo_added()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nBEGIN\n  PERFORM try_convert_lead_to_job(NEW.lead_id);
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_convert_on_estimate_approved'\n  ) THEN\n    CREATE TRIGGER trigger_convert_on_estimate_approved\n      AFTER UPDATE ON estimates\n      FOR EACH ROW\n      EXECUTE FUNCTION handle_estimate_approved();
-\n  END IF;
-\nEND $$;
-\n\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_convert_on_photo_added'\n  ) THEN\n    CREATE TRIGGER trigger_convert_on_photo_added\n      AFTER INSERT ON lead_photos\n      FOR EACH ROW\n      EXECUTE FUNCTION handle_photo_added();
-\n  END IF;
-\nEND $$;
-\n;
+/*
+  # Auto-convert lead to job when both estimate approved and photos exist
+
+  1. New Functions
+    - `try_convert_lead_to_job(lead_id uuid)` - checks if a lead has both an
+      approved estimate and at least one photo;
+ if so, updates status to 'job'
+      and logs an interaction
+
+  2. New Triggers
+    - `trigger_convert_on_estimate_approved` on `estimates` - fires when an
+      estimate's status changes to 'accepted'
+    - `trigger_convert_on_photo_added` on `lead_photos` - fires when a new
+      photo is inserted
+
+  3. Important Notes
+    - Only converts leads that are not already a job or paid
+    - Both conditions (approved estimate + photos) must be met
+    - Works for all approval paths: manual, customer link, and photo upload
+*/
+
+CREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _lead_status text;
+
+  _has_accepted_estimate boolean;
+
+  _has_photos boolean;
+
+BEGIN
+  SELECT status INTO _lead_status
+  FROM leads
+  WHERE id = p_lead_id;
+
+
+  IF _lead_status IS NULL OR _lead_status IN ('job', 'paid') THEN
+    RETURN;
+
+  END IF;
+
+
+  SELECT EXISTS (
+    SELECT 1 FROM estimates
+    WHERE job_id = p_lead_id AND status = 'accepted'
+  ) INTO _has_accepted_estimate;
+
+
+  SELECT EXISTS (
+    SELECT 1 FROM lead_photos
+    WHERE lead_id = p_lead_id
+  ) INTO _has_photos;
+
+
+  IF _has_accepted_estimate AND _has_photos THEN
+    UPDATE leads SET status = 'job' WHERE id = p_lead_id;
+
+
+    INSERT INTO interactions (lead_id, type, direction, summary)
+    VALUES (
+      p_lead_id,
+      'status_change',
+      'na',
+      'Converted to job (estimate approved + photos uploaded)'
+    );
+
+  END IF;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION handle_estimate_approved()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status = 'accepted' AND (OLD.status IS NULL OR OLD.status != 'accepted') AND NEW.job_id IS NOT NULL THEN
+    PERFORM try_convert_lead_to_job(NEW.job_id);
+
+  END IF;
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION handle_photo_added()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM try_convert_lead_to_job(NEW.lead_id);
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_convert_on_estimate_approved'
+  ) THEN
+    CREATE TRIGGER trigger_convert_on_estimate_approved
+      AFTER UPDATE ON estimates
+      FOR EACH ROW
+      EXECUTE FUNCTION handle_estimate_approved();
+
+  END IF;
+
+END $$;
+
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_convert_on_photo_added'
+  ) THEN
+    CREATE TRIGGER trigger_convert_on_photo_added
+      AFTER INSERT ON lead_photos
+      FOR EACH ROW
+      EXECUTE FUNCTION handle_photo_added();
+
+  END IF;
+
+END $$;
+
+;

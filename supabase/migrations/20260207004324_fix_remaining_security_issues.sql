@@ -1,39 +1,157 @@
-/*\n  # Fix Remaining Security and Performance Issues\n\n  ## 1. Add Foreign Key Indexes (25)\n    - Re-add indexes for foreign keys that were previously dropped as unused\n    - These are needed for join performance even if not directly queried\n\n  ## 2. Drop Unused Indexes (6)\n    - Remove indexes created in previous migration that are not being used\n\n  ## 3. Fix Duplicate Function Overloads\n    - Drop old get_user_roles() (no args) that lacks search_path\n    - Drop old has_role(uuid, app_role) that lacks search_path\n\n  ## 4. Consolidate Multiple Permissive UPDATE Policies\n    - Merge two UPDATE policies on lead_source_connections into one\n\n  ## 5. Fix Security Definer View\n    - Recreate account_members_with_profiles with SECURITY INVOKER\n*/\n\n-- ============================================================================\n-- 1. Add Missing Foreign Key Indexes\n-- ============================================================================\n\nCREATE INDEX IF NOT EXISTS idx_account_members_invited_by ON account_members(invited_by);
-\nCREATE INDEX IF NOT EXISTS idx_api_keys_account_id ON api_keys(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_customers_account_id ON customers(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_customers_lead_id ON customers(lead_id);
-\nCREATE INDEX IF NOT EXISTS idx_estimate_change_orders_account_id ON estimate_change_orders(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_estimate_line_items_account_id ON estimate_line_items(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_estimates_created_by ON estimates(created_by);
-\nCREATE INDEX IF NOT EXISTS idx_interactions_account_id ON interactions(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_invoice_line_items_account_id ON invoice_line_items(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_invoice_line_items_invoice_id ON invoice_line_items(invoice_id);
-\nCREATE INDEX IF NOT EXISTS idx_job_assignments_account_id ON job_assignments(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_lead_qualifications_account_id ON lead_qualifications(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_leads_customer_id ON leads(customer_id);
-\nCREATE INDEX IF NOT EXISTS idx_material_items_account_id ON material_items(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_material_items_material_list_id ON material_items(material_list_id);
-\nCREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id);
-\nCREATE INDEX IF NOT EXISTS idx_pricing_rules_account_id ON pricing_rules(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_quick_estimates_account_id ON quick_estimates(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_stripe_connect_accounts_account_id ON stripe_connect_accounts(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_supply_order_items_account_id ON supply_order_items(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_supply_order_items_material_item_id ON supply_order_items(material_item_id);
-\nCREATE INDEX IF NOT EXISTS idx_supply_order_items_supply_order_id ON supply_order_items(supply_order_id);
-\nCREATE INDEX IF NOT EXISTS idx_supply_orders_material_list_id ON supply_orders(material_list_id);
-\nCREATE INDEX IF NOT EXISTS idx_webhook_events_invoice_id ON webhook_events(invoice_id);
-\nCREATE INDEX IF NOT EXISTS idx_webhook_events_payment_id ON webhook_events(payment_id);
-\n\n-- ============================================================================\n-- 2. Drop Unused Indexes\n-- ============================================================================\n\nDROP INDEX IF EXISTS idx_days_off_created_by;
-\nDROP INDEX IF EXISTS idx_job_assignments_schedule;
-\nDROP INDEX IF EXISTS idx_estimate_change_orders_changed_by;
-\nDROP INDEX IF EXISTS idx_estimate_line_items_original_line_item_id;
-\nDROP INDEX IF EXISTS idx_job_assignments_assigned_by;
-\nDROP INDEX IF EXISTS idx_job_schedules_created_by;
-\n\n-- ============================================================================\n-- 3. Drop Old Function Overloads Without search_path\n-- ============================================================================\n\nDROP FUNCTION IF EXISTS get_user_roles() CASCADE;
-\nDROP FUNCTION IF EXISTS has_role(uuid, app_role) CASCADE;
-\n\n-- ============================================================================\n-- 4. Consolidate Multiple Permissive UPDATE Policies on lead_source_connections\n-- ============================================================================\n\nDROP POLICY IF EXISTS "Account owners and admins can update lead source connections" ON lead_source_connections;
-\nDROP POLICY IF EXISTS "Users can update their own connections" ON lead_source_connections;
-\n\nCREATE POLICY "Account owners and admins can update lead source connections"\n  ON lead_source_connections FOR UPDATE\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = lead_source_connections.account_id\n      AND account_members.user_id = (select auth.uid())\n      AND account_members.role IN ('owner', 'admin')\n    )\n  )\n  WITH CHECK (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = lead_source_connections.account_id\n      AND account_members.user_id = (select auth.uid())\n      AND account_members.role IN ('owner', 'admin')\n    )\n  );
-\n\n-- ============================================================================\n-- 5. Fix Security Definer View\n-- ============================================================================\n\nDROP VIEW IF EXISTS account_members_with_profiles;
-\nCREATE VIEW account_members_with_profiles\nWITH (security_invoker = true)\nAS\nSELECT \n  am.account_id,\n  am.user_id,\n  am.role,\n  am.invited_by,\n  am.invited_at,\n  am.joined_at,\n  p.full_name,\n  p.email,\n  p.phone,\n  p.avatar_url\nFROM account_members am\nLEFT JOIN profiles p ON am.user_id = p.id;
+/*
+  # Fix Remaining Security and Performance Issues
+
+  ## 1. Add Foreign Key Indexes (25)
+    - Re-add indexes for foreign keys that were previously dropped as unused
+    - These are needed for join performance even if not directly queried
+
+  ## 2. Drop Unused Indexes (6)
+    - Remove indexes created in previous migration that are not being used
+
+  ## 3. Fix Duplicate Function Overloads
+    - Drop old get_user_roles() (no args) that lacks search_path
+    - Drop old has_role(uuid, app_role) that lacks search_path
+
+  ## 4. Consolidate Multiple Permissive UPDATE Policies
+    - Merge two UPDATE policies on lead_source_connections into one
+
+  ## 5. Fix Security Definer View
+    - Recreate account_members_with_profiles with SECURITY INVOKER
+*/
+
+-- ============================================================================
+-- 1. Add Missing Foreign Key Indexes
+-- ============================================================================
+
+DO $$
+DECLARE
+  idx record;
+BEGIN
+  FOR idx IN
+    SELECT * FROM (
+      VALUES
+        ('idx_account_members_invited_by', 'account_members', 'invited_by'),
+        ('idx_api_keys_account_id', 'api_keys', 'account_id'),
+        ('idx_customers_account_id', 'customers', 'account_id'),
+        ('idx_customers_lead_id', 'customers', 'lead_id'),
+        ('idx_estimate_change_orders_account_id', 'estimate_change_orders', 'account_id'),
+        ('idx_estimate_line_items_account_id', 'estimate_line_items', 'account_id'),
+        ('idx_estimates_created_by', 'estimates', 'created_by'),
+        ('idx_interactions_account_id', 'interactions', 'account_id'),
+        ('idx_invoice_line_items_account_id', 'invoice_line_items', 'account_id'),
+        ('idx_invoice_line_items_invoice_id', 'invoice_line_items', 'invoice_id'),
+        ('idx_job_assignments_account_id', 'job_assignments', 'account_id'),
+        ('idx_lead_qualifications_account_id', 'lead_qualifications', 'account_id'),
+        ('idx_leads_customer_id', 'leads', 'customer_id'),
+        ('idx_material_items_account_id', 'material_items', 'account_id'),
+        ('idx_material_items_material_list_id', 'material_items', 'material_list_id'),
+        ('idx_payments_invoice_id', 'payments', 'invoice_id'),
+        ('idx_pricing_rules_account_id', 'pricing_rules', 'account_id'),
+        ('idx_quick_estimates_account_id', 'quick_estimates', 'account_id'),
+        ('idx_stripe_connect_accounts_account_id', 'stripe_connect_accounts', 'account_id'),
+        ('idx_supply_order_items_account_id', 'supply_order_items', 'account_id'),
+        ('idx_supply_order_items_material_item_id', 'supply_order_items', 'material_item_id'),
+        ('idx_supply_order_items_supply_order_id', 'supply_order_items', 'supply_order_id'),
+        ('idx_supply_orders_material_list_id', 'supply_orders', 'material_list_id'),
+        ('idx_webhook_events_invoice_id', 'webhook_events', 'invoice_id'),
+        ('idx_webhook_events_payment_id', 'webhook_events', 'payment_id')
+    ) AS t(index_name, table_name, column_name)
+  LOOP
+    IF to_regclass(format('public.%I', idx.table_name)) IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = idx.table_name
+          AND column_name = idx.column_name
+      ) THEN
+      EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON public.%I(%I)',
+        idx.index_name,
+        idx.table_name,
+        idx.column_name
+      );
+    END IF;
+  END LOOP;
+END $$;
+
+
+-- ============================================================================
+-- 2. Drop Unused Indexes
+-- ============================================================================
+
+DROP INDEX IF EXISTS idx_days_off_created_by;
+
+DROP INDEX IF EXISTS idx_job_assignments_schedule;
+
+DROP INDEX IF EXISTS idx_estimate_change_orders_changed_by;
+
+DROP INDEX IF EXISTS idx_estimate_line_items_original_line_item_id;
+
+DROP INDEX IF EXISTS idx_job_assignments_assigned_by;
+
+DROP INDEX IF EXISTS idx_job_schedules_created_by;
+
+
+-- ============================================================================
+-- 3. Drop Old Function Overloads Without search_path
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS get_user_roles() CASCADE;
+
+DROP FUNCTION IF EXISTS has_role(uuid, app_role) CASCADE;
+
+
+-- ============================================================================
+-- 4. Consolidate Multiple Permissive UPDATE Policies on lead_source_connections
+-- ============================================================================
+
+DROP POLICY IF EXISTS "Account owners and admins can update lead source connections" ON lead_source_connections;
+
+DROP POLICY IF EXISTS "Users can update their own connections" ON lead_source_connections;
+
+
+CREATE POLICY "Account owners and admins can update lead source connections"
+  ON lead_source_connections FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = lead_source_connections.account_id
+      AND account_members.user_id = (select auth.uid())
+      AND account_members.role IN ('owner', 'admin')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = lead_source_connections.account_id
+      AND account_members.user_id = (select auth.uid())
+      AND account_members.role IN ('owner', 'admin')
+    )
+  );
+
+
+-- ============================================================================
+-- 5. Fix Security Definer View
+-- ============================================================================
+
+DROP VIEW IF EXISTS account_members_with_profiles;
+
+CREATE VIEW account_members_with_profiles
+WITH (security_invoker = true)
+AS
+SELECT 
+  am.account_id,
+  am.user_id,
+  am.role,
+  am.invited_by,
+  am.invited_at,
+  am.joined_at,
+  p.full_name,
+  p.email,
+  p.phone,
+  p.avatar_url
+FROM account_members am
+LEFT JOIN profiles p ON am.user_id = p.id;
 ;

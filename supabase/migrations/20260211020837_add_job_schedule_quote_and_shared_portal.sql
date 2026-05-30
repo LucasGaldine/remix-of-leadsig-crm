@@ -1,23 +1,151 @@
-/*\n  # Add master quote and shared client portal to recurring jobs (Job Schedules)\n\n  1. Modified Tables\n    - `recurring_jobs`\n      - `client_share_token` (uuid, unique, nullable) - Shared client portal token for all instances\n    - `estimates`\n      - `recurring_job_id` (uuid, FK to recurring_jobs, nullable) - Links master quote to job schedule\n      - `job_id` made nullable to allow master quotes without a specific job\n      - Unique constraint on job_id converted to partial unique index (WHERE job_id IS NOT NULL)\n      - Check constraint: every estimate must belong to either a job OR a recurring job\n\n  2. Trigger Changes\n    - `auto_create_estimate_for_job` updated to skip auto-creating estimates for recurring job instances\n      (they share the master quote on the job schedule instead)\n\n  3. Security\n    - Index on estimates.recurring_job_id for query performance\n    - Index on recurring_jobs.client_share_token for portal lookups\n    - RLS policies updated for estimates to allow crew members to view recurring job quotes\n\n  4. Notes\n    - Non-recurring jobs are unaffected\n    - Existing estimates remain unchanged\n    - The "master quote" for a recurring job is an estimate with recurring_job_id set and job_id NULL\n*/\n\n-- 1. Add client_share_token to recurring_jobs\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'recurring_jobs' AND column_name = 'client_share_token'\n  ) THEN\n    ALTER TABLE recurring_jobs ADD COLUMN client_share_token uuid UNIQUE;
-\n  END IF;
-\nEND $$;
-\n\nCREATE INDEX IF NOT EXISTS idx_recurring_jobs_client_share_token\n  ON recurring_jobs(client_share_token) WHERE client_share_token IS NOT NULL;
-\n\n-- 2. Add recurring_job_id to estimates\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'estimates' AND column_name = 'recurring_job_id'\n  ) THEN\n    ALTER TABLE estimates ADD COLUMN recurring_job_id uuid REFERENCES recurring_jobs(id) ON DELETE SET NULL;
-\n  END IF;
-\nEND $$;
-\n\nCREATE INDEX IF NOT EXISTS idx_estimates_recurring_job_id\n  ON estimates(recurring_job_id) WHERE recurring_job_id IS NOT NULL;
-\n\n-- 3. Make estimates.job_id nullable (for master quotes that belong to a job schedule, not a specific job)\nALTER TABLE estimates ALTER COLUMN job_id DROP NOT NULL;
-\n\n-- 4. Replace the UNIQUE constraint on estimates.job_id with a partial unique index\n-- Drop the existing unique constraint first\nALTER TABLE estimates DROP CONSTRAINT IF EXISTS estimates_job_id_unique;
-\n\nCREATE UNIQUE INDEX IF NOT EXISTS estimates_job_id_unique_partial\n  ON estimates(job_id) WHERE job_id IS NOT NULL;
-\n\n-- 5. Add check constraint: every estimate must belong to either a job or a recurring job\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_constraint WHERE conname = 'estimates_must_have_parent'\n  ) THEN\n    ALTER TABLE estimates ADD CONSTRAINT estimates_must_have_parent\n      CHECK (job_id IS NOT NULL OR recurring_job_id IS NOT NULL);
-\n  END IF;
-\nEND $$;
-\n\n-- 6. Update the auto_create_estimate_for_job trigger to skip recurring instances\nCREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $function$\nBEGIN\n  IF NEW.status IN ('job', 'paid')\n  AND NEW.approval_status = 'approved'\n  AND NEW.is_estimate_visit = false\n  AND NEW.recurring_job_id IS NULL\n  THEN\n    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN\n      INSERT INTO public.estimates (job_id, customer_id, account_id, status, created_by)\n      VALUES (NEW.id, NEW.customer_id, NEW.account_id, 'draft', NEW.created_by);
-\n    END IF;
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$function$;
-\n\n-- 7. Update the SELECT RLS policy on estimates to also allow viewing recurring job quotes\nDROP POLICY IF EXISTS "Account members can view estimates" ON estimates;
-\n\nCREATE POLICY "Account members can view estimates"\n  ON estimates FOR SELECT\n  TO authenticated\n  USING (\n    (account_id IN (\n      SELECT am.account_id FROM account_members am\n      WHERE am.user_id = auth.uid() AND am.is_active = true\n      AND am.role IN ('owner', 'admin', 'sales', 'crew_lead')\n    ))\n    OR\n    (EXISTS (\n      SELECT 1 FROM account_members am\n      WHERE am.user_id = auth.uid() AND am.is_active = true AND am.role = 'crew_member'\n    ) AND (\n      job_id IN (\n        SELECT ja.lead_id FROM job_assignments ja\n        WHERE ja.user_id = auth.uid() AND ja.lead_id IS NOT NULL\n      )\n      OR\n      recurring_job_id IN (\n        SELECT l.recurring_job_id FROM leads l\n        JOIN job_assignments ja ON ja.lead_id = l.id\n        WHERE ja.user_id = auth.uid() AND l.recurring_job_id IS NOT NULL\n      )\n    ))\n  );
-\n;
+/*
+  # Add master quote and shared client portal to recurring jobs (Job Schedules)
+
+  1. Modified Tables
+    - `recurring_jobs`
+      - `client_share_token` (uuid, unique, nullable) - Shared client portal token for all instances
+    - `estimates`
+      - `recurring_job_id` (uuid, FK to recurring_jobs, nullable) - Links master quote to job schedule
+      - `job_id` made nullable to allow master quotes without a specific job
+      - Unique constraint on job_id converted to partial unique index (WHERE job_id IS NOT NULL)
+      - Check constraint: every estimate must belong to either a job OR a recurring job
+
+  2. Trigger Changes
+    - `auto_create_estimate_for_job` updated to skip auto-creating estimates for recurring job instances
+      (they share the master quote on the job schedule instead)
+
+  3. Security
+    - Index on estimates.recurring_job_id for query performance
+    - Index on recurring_jobs.client_share_token for portal lookups
+    - RLS policies updated for estimates to allow crew members to view recurring job quotes
+
+  4. Notes
+    - Non-recurring jobs are unaffected
+    - Existing estimates remain unchanged
+    - The "master quote" for a recurring job is an estimate with recurring_job_id set and job_id NULL
+*/
+
+-- 1. Add client_share_token to recurring_jobs
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'recurring_jobs' AND column_name = 'client_share_token'
+  ) THEN
+    ALTER TABLE recurring_jobs ADD COLUMN client_share_token uuid UNIQUE;
+
+  END IF;
+
+END $$;
+
+
+CREATE INDEX IF NOT EXISTS idx_recurring_jobs_client_share_token
+  ON recurring_jobs(client_share_token) WHERE client_share_token IS NOT NULL;
+
+
+-- 2. Add recurring_job_id to estimates
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'estimates' AND column_name = 'recurring_job_id'
+  ) THEN
+    ALTER TABLE estimates ADD COLUMN recurring_job_id uuid REFERENCES recurring_jobs(id) ON DELETE SET NULL;
+
+  END IF;
+
+END $$;
+
+
+CREATE INDEX IF NOT EXISTS idx_estimates_recurring_job_id
+  ON estimates(recurring_job_id) WHERE recurring_job_id IS NOT NULL;
+
+
+-- 3. Make estimates.job_id nullable (for master quotes that belong to a job schedule, not a specific job)
+ALTER TABLE estimates ALTER COLUMN job_id DROP NOT NULL;
+
+
+-- 4. Replace the UNIQUE constraint on estimates.job_id with a partial unique index
+-- Drop the existing unique constraint first
+ALTER TABLE estimates DROP CONSTRAINT IF EXISTS estimates_job_id_unique;
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS estimates_job_id_unique_partial
+  ON estimates(job_id) WHERE job_id IS NOT NULL;
+
+
+-- 5. Add check constraint: every estimate must belong to either a job or a recurring job
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'estimates_must_have_parent'
+  ) THEN
+    ALTER TABLE estimates ADD CONSTRAINT estimates_must_have_parent
+      CHECK (job_id IS NOT NULL OR recurring_job_id IS NOT NULL);
+
+  END IF;
+
+END $$;
+
+
+-- 6. Update the auto_create_estimate_for_job trigger to skip recurring instances
+CREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.status IN ('job', 'paid')
+  AND NEW.approval_status = 'approved'
+  AND NEW.is_estimate_visit = false
+  AND NEW.recurring_job_id IS NULL
+  THEN
+    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN
+      INSERT INTO public.estimates (job_id, customer_id, account_id, status, created_by)
+      VALUES (NEW.id, NEW.customer_id, NEW.account_id, 'draft', NEW.created_by);
+
+    END IF;
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$function$;
+
+
+-- 7. Update the SELECT RLS policy on estimates to also allow viewing recurring job quotes
+DROP POLICY IF EXISTS "Account members can view estimates" ON estimates;
+
+
+CREATE POLICY "Account members can view estimates"
+  ON estimates FOR SELECT
+  TO authenticated
+  USING (
+    (account_id IN (
+      SELECT am.account_id FROM account_members am
+      WHERE am.user_id = auth.uid() AND am.is_active = true
+      AND am.role IN ('owner', 'admin', 'sales', 'crew_lead')
+    ))
+    OR
+    (EXISTS (
+      SELECT 1 FROM account_members am
+      WHERE am.user_id = auth.uid() AND am.is_active = true AND am.role = 'crew_member'
+    ) AND (
+      job_id IN (
+        SELECT ja.lead_id FROM job_assignments ja
+        WHERE ja.user_id = auth.uid() AND ja.lead_id IS NOT NULL
+      )
+      OR
+      recurring_job_id IN (
+        SELECT l.recurring_job_id FROM leads l
+        JOIN job_assignments ja ON ja.lead_id = l.id
+        WHERE ja.user_id = auth.uid() AND l.recurring_job_id IS NOT NULL
+      )
+    ))
+  );
+
+;

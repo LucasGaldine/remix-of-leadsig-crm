@@ -1,43 +1,214 @@
-/*\n  # Fix SMS notification triggers to use pg_net correctly\n\n  1. Changes\n    - Update all trigger functions to use net.http_post() from pg_net extension\n    - pg_net uses jsonb for headers and body, making calls async and non-blocking\n    - Triggers no longer block the original transaction\n\n  2. Notes\n    - net.http_post is async - it queues the HTTP request and returns immediately\n    - This is better for triggers as it does not slow down the original INSERT/UPDATE\n*/\n\nCREATE OR REPLACE FUNCTION notify_sms_new_lead()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _supabase_url text;
-\n  _service_key text;
-\nBEGIN\n  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
-\n  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
-\n\n  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN\n    PERFORM net.http_post(\n      url := _supabase_url || '/functions/v1/send-sms',\n      headers := jsonb_build_object(\n        'Content-Type', 'application/json',\n        'Authorization', 'Bearer ' || _service_key\n      ),\n      body := jsonb_build_object(\n        'event_type', 'new_leads',\n        'account_id', NEW.account_id::text,\n        'data', jsonb_build_object(\n          'lead_id', NEW.id::text,\n          'name', COALESCE(NEW.name, 'Unknown'),\n          'phone', COALESCE(NEW.phone, ''),\n          'email', COALESCE(NEW.email, ''),\n          'service_type', COALESCE(NEW.service_type, ''),\n          'source', COALESCE(NEW.source, '')\n        )\n      )\n    );
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION notify_sms_lead_update()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _supabase_url text;
-\n  _service_key text;
-\nBEGIN\n  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN\n    RETURN NEW;
-\n  END IF;
-\n\n  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
-\n  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
-\n\n  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN\n    PERFORM net.http_post(\n      url := _supabase_url || '/functions/v1/send-sms',\n      headers := jsonb_build_object(\n        'Content-Type', 'application/json',\n        'Authorization', 'Bearer ' || _service_key\n      ),\n      body := jsonb_build_object(\n        'event_type', 'lead_updates',\n        'account_id', NEW.account_id::text,\n        'data', jsonb_build_object(\n          'lead_id', NEW.id::text,\n          'name', COALESCE(NEW.name, 'Unknown'),\n          'status', NEW.status::text,\n          'old_status', OLD.status::text\n        )\n      )\n    );
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION notify_sms_payment()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _supabase_url text;
-\n  _service_key text;
-\n  _customer_name text;
-\nBEGIN\n  SELECT name INTO _customer_name FROM customers WHERE id = NEW.customer_id;
-\n\n  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
-\n  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
-\n\n  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN\n    PERFORM net.http_post(\n      url := _supabase_url || '/functions/v1/send-sms',\n      headers := jsonb_build_object(\n        'Content-Type', 'application/json',\n        'Authorization', 'Bearer ' || _service_key\n      ),\n      body := jsonb_build_object(\n        'event_type', 'payments',\n        'account_id', NEW.account_id::text,\n        'data', jsonb_build_object(\n          'payment_id', NEW.id::text,\n          'amount', NEW.amount::text,\n          'customer_name', COALESCE(_customer_name, 'Unknown'),\n          'method', NEW.method::text,\n          'status', NEW.status::text\n        )\n      )\n    );
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION notify_sms_schedule_change()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _supabase_url text;
-\n  _service_key text;
-\n  _lead_name text;
-\nBEGIN\n  SELECT name INTO _lead_name FROM leads WHERE id = NEW.lead_id;
-\n\n  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
-\n  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
-\n\n  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN\n    PERFORM net.http_post(\n      url := _supabase_url || '/functions/v1/send-sms',\n      headers := jsonb_build_object(\n        'Content-Type', 'application/json',\n        'Authorization', 'Bearer ' || _service_key\n      ),\n      body := jsonb_build_object(\n        'event_type', 'schedule_changes',\n        'account_id', NEW.account_id::text,\n        'data', jsonb_build_object(\n          'schedule_id', NEW.id::text,\n          'lead_id', NEW.lead_id::text,\n          'lead_name', COALESCE(_lead_name, 'Job'),\n          'scheduled_date', NEW.scheduled_date::text,\n          'scheduled_time_start', COALESCE(NEW.scheduled_time_start::text, ''),\n          'scheduled_time_end', COALESCE(NEW.scheduled_time_end::text, '')\n        )\n      )\n    );
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$$;
-\n;
+/*
+  # Fix SMS notification triggers to use pg_net correctly
+
+  1. Changes
+    - Update all trigger functions to use net.http_post() from pg_net extension
+    - pg_net uses jsonb for headers and body, making calls async and non-blocking
+    - Triggers no longer block the original transaction
+
+  2. Notes
+    - net.http_post is async - it queues the HTTP request and returns immediately
+    - This is better for triggers as it does not slow down the original INSERT/UPDATE
+*/
+
+CREATE OR REPLACE FUNCTION notify_sms_new_lead()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _supabase_url text;
+
+  _service_key text;
+
+BEGIN
+  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
+
+  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
+
+
+  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN
+    PERFORM net.http_post(
+      url := _supabase_url || '/functions/v1/send-sms',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || _service_key
+      ),
+      body := jsonb_build_object(
+        'event_type', 'new_leads',
+        'account_id', NEW.account_id::text,
+        'data', jsonb_build_object(
+          'lead_id', NEW.id::text,
+          'name', COALESCE(NEW.name, 'Unknown'),
+          'phone', COALESCE(NEW.phone, ''),
+          'email', COALESCE(NEW.email, ''),
+          'service_type', COALESCE(NEW.service_type, ''),
+          'source', COALESCE(NEW.source, '')
+        )
+      )
+    );
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION notify_sms_lead_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _supabase_url text;
+
+  _service_key text;
+
+BEGIN
+  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+
+  END IF;
+
+
+  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
+
+  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
+
+
+  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN
+    PERFORM net.http_post(
+      url := _supabase_url || '/functions/v1/send-sms',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || _service_key
+      ),
+      body := jsonb_build_object(
+        'event_type', 'lead_updates',
+        'account_id', NEW.account_id::text,
+        'data', jsonb_build_object(
+          'lead_id', NEW.id::text,
+          'name', COALESCE(NEW.name, 'Unknown'),
+          'status', NEW.status::text,
+          'old_status', OLD.status::text
+        )
+      )
+    );
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION notify_sms_payment()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _supabase_url text;
+
+  _service_key text;
+
+  _customer_name text;
+
+BEGIN
+  SELECT name INTO _customer_name FROM customers WHERE id = NEW.customer_id;
+
+
+  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
+
+  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
+
+
+  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN
+    PERFORM net.http_post(
+      url := _supabase_url || '/functions/v1/send-sms',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || _service_key
+      ),
+      body := jsonb_build_object(
+        'event_type', 'payments',
+        'account_id', NEW.account_id::text,
+        'data', jsonb_build_object(
+          'payment_id', NEW.id::text,
+          'amount', NEW.amount::text,
+          'customer_name', COALESCE(_customer_name, 'Unknown'),
+          'method', NEW.method::text,
+          'status', NEW.status::text
+        )
+      )
+    );
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION notify_sms_schedule_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _supabase_url text;
+
+  _service_key text;
+
+  _lead_name text;
+
+BEGIN
+  SELECT name INTO _lead_name FROM leads WHERE id = NEW.lead_id;
+
+
+  SELECT decrypted_secret INTO _supabase_url FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
+
+  SELECT decrypted_secret INTO _service_key FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
+
+
+  IF _supabase_url IS NOT NULL AND _service_key IS NOT NULL THEN
+    PERFORM net.http_post(
+      url := _supabase_url || '/functions/v1/send-sms',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || _service_key
+      ),
+      body := jsonb_build_object(
+        'event_type', 'schedule_changes',
+        'account_id', NEW.account_id::text,
+        'data', jsonb_build_object(
+          'schedule_id', NEW.id::text,
+          'lead_id', NEW.lead_id::text,
+          'lead_name', COALESCE(_lead_name, 'Job'),
+          'scheduled_date', NEW.scheduled_date::text,
+          'scheduled_time_start', COALESCE(NEW.scheduled_time_start::text, ''),
+          'scheduled_time_end', COALESCE(NEW.scheduled_time_end::text, '')
+        )
+      )
+    );
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+;

@@ -88,7 +88,8 @@ BEGIN
   FROM public.accounts
   WHERE id = _lead.account_id;
 
-  SELECT string_agg((ROW_NUMBER() OVER (ORDER BY sort_order, created_at))::text || '. ' || label, E'\n')
+  SELECT string_agg((ROW_NUMBER() OVER (ORDER BY sort_order, created_at))::text || '. ' || label, E'
+')
   INTO _scope
   FROM public.job_checklist_items
   WHERE job_id = _lead.id;
@@ -101,41 +102,91 @@ BEGIN
   RETURN
 'JOB RELEASE AGREEMENT
 
-Date: ' || to_char(now()::date, 'YYYY-MM-DD') || E'\n\n' ||
+Date: ' || to_char(now()::date, 'YYYY-MM-DD') || E'
+
+' ||
 'PARTIES
 
 ' ||
-'Contractor: ' || COALESCE(_account.company_name, 'Contractor') || E'\n' ||
-'Address: Address on file\n' ||
-'Phone: ' || COALESCE(_account.company_phone, 'N/A') || E'\n' ||
-'Email: ' || COALESCE(_account.company_email, 'N/A') || E'\n\n' ||
-'Client: ' || COALESCE(_customer.name, 'Client') || E'\n' ||
-'Project Name: ' || COALESCE(_lead.name, 'Project') || E'\n' ||
-'Project Address: ' || COALESCE(_lead.address, '') || CASE WHEN COALESCE(_lead.city, '') <> '' THEN ', ' || _lead.city ELSE '' END || E'\n\n' ||
+'Contractor: ' || COALESCE(_account.company_name, 'Contractor') || E'
+' ||
+'Address: Address on file
+' ||
+'Phone: ' || COALESCE(_account.company_phone, 'N/A') || E'
+' ||
+'Email: ' || COALESCE(_account.company_email, 'N/A') || E'
+
+' ||
+'Client: ' || COALESCE(_customer.name, 'Client') || E'
+' ||
+'Project Name: ' || COALESCE(_lead.name, 'Project') || E'
+' ||
+'Project Address: ' || COALESCE(_lead.address, '') || CASE WHEN COALESCE(_lead.city, '') <> '' THEN ', ' || _lead.city ELSE '' END || E'
+
+' ||
 'FINAL JOB RELEASE
 
 ' ||
-'This Job Release Agreement is being issued after completion of the project listed above.\n\n' ||
-'By signing this agreement, the Client confirms that ' || COALESCE(_account.company_name, 'the Contractor') || ' has completed the agreed-upon work, that the completed work has been reviewed, and that the Client accepts the project as complete.\n\n' ||
-'The purpose of this agreement is to confirm that the Contractor has fulfilled the agreed scope of work and that no further work, corrections, changes, or claims are being requested by the Client at this time, except for any written warranty obligations separately provided by the Contractor.\n\n' ||
-'COMPLETED PROJECT SCOPE\n\n' ||
-'The following scope of work was completed:\n\n' || COALESCE(_scope, '1. Scope details to be finalized in writing.') || E'\n\n' ||
-'The Contractor confirms that the work was completed in a professional and workmanlike manner.\n\n' ||
-'The Client confirms that they have had the opportunity to inspect the completed work and that the work has been completed to their satisfaction.\n\n' ||
-'PAYMENT CONFIRMATION\n\n' ||
-'Total Project Cost: $' || to_char(COALESCE(_total, 0), 'FM999,999,999,990.00') || E'\n\n' ||
-'The Client confirms that all payments due for the project have been received by the Contractor.\n\n' ||
-'No remaining balance is due unless otherwise agreed to in writing by both parties.\n\n' ||
-'CLIENT ACCEPTANCE\n\n' ||
-'By signing this agreement, the Client acknowledges and agrees that:\n\n' ||
-'The agreed scope of work has been completed.\n' ||
-'The Client has reviewed the completed work.\n' ||
-'The completed work is accepted as satisfactory.\n' ||
-'All project payments have been made.\n' ||
-'No additional work, corrections, or changes are being requested at this time.\n' ||
-'This agreement does not waive any written warranty provided by the Contractor.\n\n' ||
-'RELEASE OF PROJECT\n\n' ||
-'The Client releases ' || COALESCE(_account.company_name, 'the Contractor') || ' from any further obligation related to the completed project, except for obligations specifically covered under a written warranty or separate written agreement.\n\n' ||
+'This Job Release Agreement is being issued after completion of the project listed above.
+
+' ||
+'By signing this agreement, the Client confirms that ' || COALESCE(_account.company_name, 'the Contractor') || ' has completed the agreed-upon work, that the completed work has been reviewed, and that the Client accepts the project as complete.
+
+' ||
+'The purpose of this agreement is to confirm that the Contractor has fulfilled the agreed scope of work and that no further work, corrections, changes, or claims are being requested by the Client at this time, except for any written warranty obligations separately provided by the Contractor.
+
+' ||
+'COMPLETED PROJECT SCOPE
+
+' ||
+'The following scope of work was completed:
+
+' || COALESCE(_scope, '1. Scope details to be finalized in writing.') || E'
+
+' ||
+'The Contractor confirms that the work was completed in a professional and workmanlike manner.
+
+' ||
+'The Client confirms that they have had the opportunity to inspect the completed work and that the work has been completed to their satisfaction.
+
+' ||
+'PAYMENT CONFIRMATION
+
+' ||
+'Total Project Cost: $' || to_char(COALESCE(_total, 0), 'FM999,999,999,990.00') || E'
+
+' ||
+'The Client confirms that all payments due for the project have been received by the Contractor.
+
+' ||
+'No remaining balance is due unless otherwise agreed to in writing by both parties.
+
+' ||
+'CLIENT ACCEPTANCE
+
+' ||
+'By signing this agreement, the Client acknowledges and agrees that:
+
+' ||
+'The agreed scope of work has been completed.
+' ||
+'The Client has reviewed the completed work.
+' ||
+'The completed work is accepted as satisfactory.
+' ||
+'All project payments have been made.
+' ||
+'No additional work, corrections, or changes are being requested at this time.
+' ||
+'This agreement does not waive any written warranty provided by the Contractor.
+
+' ||
+'RELEASE OF PROJECT
+
+' ||
+'The Client releases ' || COALESCE(_account.company_name, 'the Contractor') || ' from any further obligation related to the completed project, except for obligations specifically covered under a written warranty or separate written agreement.
+
+' ||
 'This release confirms that the project is considered complete and closed as of the date signed below.';
 END;
 $$;

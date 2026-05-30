@@ -1,23 +1,120 @@
-/*\n  # Fix Job Status Logic for Multi-Day Scheduling\n\n  ## Summary\n  Updates the automatic job status logic to properly handle multi-day scheduling:\n  - Status is "in_progress" if current date/time is between first and last scheduled date/time\n  - Status is "completed" if current date/time is after the last scheduled date/time\n  - Status remains "scheduled" if current date/time is before the first scheduled date/time\n\n  ## Changes\n  - Replace `update_job_completion_status()` function with improved logic\n  - Properly calculates first and last scheduled datetime\n  - Sets appropriate status based on current time relative to schedule range\n*/\n\n-- Drop existing trigger and function\nDROP TRIGGER IF EXISTS trigger_update_job_completion ON job_schedules;
-\nDROP FUNCTION IF EXISTS update_job_completion_status();
-\n\n-- Create improved function to update job status based on schedule\nCREATE OR REPLACE FUNCTION update_job_completion_status()\nRETURNS trigger AS $$\nDECLARE\n  first_schedule_datetime timestamptz;
-\n  last_schedule_datetime timestamptz;
-\n  current_status text;
-\n  new_status text;
-\nBEGIN\n  -- Get the first scheduled datetime for this job\n  SELECT \n    CASE \n      WHEN scheduled_time_start IS NOT NULL THEN\n        (scheduled_date || ' ' || scheduled_time_start)::timestamptz\n      ELSE\n        (scheduled_date || ' 00:00:00')::timestamptz\n    END INTO first_schedule_datetime\n  FROM job_schedules\n  WHERE lead_id = COALESCE(NEW.lead_id, OLD.lead_id)\n  ORDER BY scheduled_date ASC, scheduled_time_start ASC NULLS FIRST\n  LIMIT 1;
-\n\n  -- Get the last scheduled datetime for this job\n  SELECT \n    CASE \n      WHEN scheduled_time_end IS NOT NULL THEN\n        (scheduled_date || ' ' || scheduled_time_end)::timestamptz\n      ELSE\n        (scheduled_date || ' 23:59:59')::timestamptz\n    END INTO last_schedule_datetime\n  FROM job_schedules\n  WHERE lead_id = COALESCE(NEW.lead_id, OLD.lead_id)\n  ORDER BY scheduled_date DESC, scheduled_time_end DESC NULLS LAST\n  LIMIT 1;
-\n\n  -- Get current job status\n  SELECT status INTO current_status\n  FROM leads\n  WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
-\n\n  -- Determine new status based on schedule\n  IF first_schedule_datetime IS NULL THEN\n    -- No schedules exist, don't change status\n    RETURN COALESCE(NEW, OLD);
-\n  ELSIF now() >= last_schedule_datetime THEN\n    -- Current time is after the last scheduled datetime\n    new_status := 'completed';
-\n  ELSIF now() >= first_schedule_datetime AND now() < last_schedule_datetime THEN\n    -- Current time is between first and last scheduled datetime\n    new_status := 'in_progress';
-\n  ELSIF now() < first_schedule_datetime THEN\n    -- Current time is before the first scheduled datetime\n    IF current_status IN ('new', 'contacted', 'qualified') THEN\n      new_status := 'scheduled';
-\n    ELSE\n      -- Keep current status if it's already something else\n      new_status := current_status;
-\n    END IF;
-\n  END IF;
-\n\n  -- Only update if status needs to change and isn't already in a final state\n  IF new_status IS NOT NULL \n     AND new_status != current_status \n     AND current_status NOT IN ('completed', 'won', 'lost', 'invoiced', 'paid') THEN\n    UPDATE leads\n    SET status = new_status, updated_at = now()\n    WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
-\n  END IF;
-\n\n  RETURN COALESCE(NEW, OLD);
-\nEND;
-\n$$ LANGUAGE plpgsql SECURITY DEFINER;
-\n\n-- Recreate trigger\nCREATE TRIGGER trigger_update_job_completion\n  AFTER INSERT OR UPDATE OR DELETE ON job_schedules\n  FOR EACH ROW\n  EXECUTE FUNCTION update_job_completion_status();
-\n;
+/*
+  # Fix Job Status Logic for Multi-Day Scheduling
+
+  ## Summary
+  Updates the automatic job status logic to properly handle multi-day scheduling:
+  - Status is "in_progress" if current date/time is between first and last scheduled date/time
+  - Status is "completed" if current date/time is after the last scheduled date/time
+  - Status remains "scheduled" if current date/time is before the first scheduled date/time
+
+  ## Changes
+  - Replace `update_job_completion_status()` function with improved logic
+  - Properly calculates first and last scheduled datetime
+  - Sets appropriate status based on current time relative to schedule range
+*/
+
+-- Drop existing trigger and function
+DROP TRIGGER IF EXISTS trigger_update_job_completion ON job_schedules;
+
+DROP FUNCTION IF EXISTS update_job_completion_status();
+
+
+-- Create improved function to update job status based on schedule
+CREATE OR REPLACE FUNCTION update_job_completion_status()
+RETURNS trigger AS $$
+DECLARE
+  first_schedule_datetime timestamptz;
+
+  last_schedule_datetime timestamptz;
+
+  current_status text;
+
+  new_status text;
+
+BEGIN
+  -- Get the first scheduled datetime for this job
+  SELECT 
+    CASE 
+      WHEN scheduled_time_start IS NOT NULL THEN
+        (scheduled_date || ' ' || scheduled_time_start)::timestamptz
+      ELSE
+        (scheduled_date || ' 00:00:00')::timestamptz
+    END INTO first_schedule_datetime
+  FROM job_schedules
+  WHERE lead_id = COALESCE(NEW.lead_id, OLD.lead_id)
+  ORDER BY scheduled_date ASC, scheduled_time_start ASC NULLS FIRST
+  LIMIT 1;
+
+
+  -- Get the last scheduled datetime for this job
+  SELECT 
+    CASE 
+      WHEN scheduled_time_end IS NOT NULL THEN
+        (scheduled_date || ' ' || scheduled_time_end)::timestamptz
+      ELSE
+        (scheduled_date || ' 23:59:59')::timestamptz
+    END INTO last_schedule_datetime
+  FROM job_schedules
+  WHERE lead_id = COALESCE(NEW.lead_id, OLD.lead_id)
+  ORDER BY scheduled_date DESC, scheduled_time_end DESC NULLS LAST
+  LIMIT 1;
+
+
+  -- Get current job status
+  SELECT status INTO current_status
+  FROM leads
+  WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
+
+
+  -- Determine new status based on schedule
+  IF first_schedule_datetime IS NULL THEN
+    -- No schedules exist, don't change status
+    RETURN COALESCE(NEW, OLD);
+
+  ELSIF now() >= last_schedule_datetime THEN
+    -- Current time is after the last scheduled datetime
+    new_status := 'completed';
+
+  ELSIF now() >= first_schedule_datetime AND now() < last_schedule_datetime THEN
+    -- Current time is between first and last scheduled datetime
+    new_status := 'in_progress';
+
+  ELSIF now() < first_schedule_datetime THEN
+    -- Current time is before the first scheduled datetime
+    IF current_status IN ('new', 'contacted', 'qualified') THEN
+      new_status := 'scheduled';
+
+    ELSE
+      -- Keep current status if it's already something else
+      new_status := current_status;
+
+    END IF;
+
+  END IF;
+
+
+  -- Only update if status needs to change and isn't already in a final state
+  IF new_status IS NOT NULL 
+     AND new_status != current_status 
+     AND current_status NOT IN ('completed', 'won', 'lost', 'invoiced', 'paid') THEN
+    UPDATE leads
+    SET status = new_status, updated_at = now()
+    WHERE id = COALESCE(NEW.lead_id, OLD.lead_id);
+
+  END IF;
+
+
+  RETURN COALESCE(NEW, OLD);
+
+END;
+
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- Recreate trigger
+CREATE TRIGGER trigger_update_job_completion
+  AFTER INSERT OR UPDATE OR DELETE ON job_schedules
+  FOR EACH ROW
+  EXECUTE FUNCTION update_job_completion_status();
+
+;

@@ -1,3 +1,36 @@
-/*\n  # Allow Sales Users to Create Job Assignments\n\n  ## Overview\n  This migration updates the RLS policy for job_assignments to allow users with the 'sales' role\n  to create job assignments when scheduling jobs and estimate visits.\n\n  ## Changes Made\n  \n  1. Update is_user_account_manager Function\n    - Add 'sales' to the list of roles that can create job assignments\n    - This allows sales users to assign crew members when scheduling estimate visits and jobs\n\n  ## Security\n  - Maintains existing checks for account membership and active status\n  - Only allows sales users to assign crew within their own account\n*/\n\nCREATE OR REPLACE FUNCTION is_user_account_manager(p_account_id uuid, p_user_id uuid)\nRETURNS boolean\nLANGUAGE sql\nSECURITY DEFINER\nSTABLE\nAS $$\n  SELECT EXISTS (\n    SELECT 1 \n    FROM account_members \n    WHERE account_id = p_account_id \n    AND user_id = p_user_id\n    AND is_active = true \n    AND role IN ('owner', 'admin', 'crew_lead', 'sales')\n  );
-\n$$;
-\n;
+/*
+  # Allow Sales Users to Create Job Assignments
+
+  ## Overview
+  This migration updates the RLS policy for job_assignments to allow users with the 'sales' role
+  to create job assignments when scheduling jobs and estimate visits.
+
+  ## Changes Made
+  
+  1. Update is_user_account_manager Function
+    - Add 'sales' to the list of roles that can create job assignments
+    - This allows sales users to assign crew members when scheduling estimate visits and jobs
+
+  ## Security
+  - Maintains existing checks for account membership and active status
+  - Only allows sales users to assign crew within their own account
+*/
+
+CREATE OR REPLACE FUNCTION is_user_account_manager(p_account_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 
+    FROM account_members 
+    WHERE account_id = p_account_id 
+    AND user_id = p_user_id
+    AND is_active = true 
+    AND role IN ('owner', 'admin', 'crew_lead', 'sales')
+  );
+
+$$;
+
+;

@@ -1,48 +1,275 @@
-/*\n  # Create notifications table and auto-insert triggers\n\n  1. New Tables\n    - `notifications`\n      - `id` (uuid, primary key)\n      - `account_id` (uuid, FK to accounts) - the account this notification belongs to\n      - `title` (text) - short notification title\n      - `body` (text) - notification description/detail\n      - `event_type` (text) - category: new_lead, lead_status_change, payment_received, schedule_change, estimate_approved\n      - `reference_id` (uuid, nullable) - ID of the related record (lead, payment, etc.)\n      - `reference_type` (text, nullable) - the type of related record (lead, payment, estimate, job_schedule)\n      - `is_read` (boolean) - whether the notification has been read\n      - `created_at` (timestamptz)\n\n  2. Triggers\n    - On leads INSERT: creates "New lead" notification\n    - On leads UPDATE (status change): creates "Lead status changed" notification\n    - On payments INSERT: creates "Payment received" notification\n    - On job_schedules INSERT: creates "Job scheduled" notification\n    - On estimates UPDATE (status to accepted): creates "Estimate approved" notification\n\n  3. Security\n    - Enable RLS on notifications\n    - Account members can view their account's notifications\n    - Account members can update (mark as read) their account's notifications\n*/\n\nCREATE TABLE IF NOT EXISTS notifications (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  account_id uuid NOT NULL REFERENCES accounts(id),\n  title text NOT NULL DEFAULT '',\n  body text NOT NULL DEFAULT '',\n  event_type text NOT NULL DEFAULT '',\n  reference_id uuid,\n  reference_type text,\n  is_read boolean NOT NULL DEFAULT false,\n  created_at timestamptz NOT NULL DEFAULT now()\n);
-\n\nALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-\n\nCREATE POLICY "Account members can view notifications"\n  ON notifications FOR SELECT\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = notifications.account_id\n      AND account_members.user_id = (SELECT auth.uid())\n      AND account_members.is_active = true\n    )\n  );
-\n\nCREATE POLICY "Account members can update notifications"\n  ON notifications FOR UPDATE\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = notifications.account_id\n      AND account_members.user_id = (SELECT auth.uid())\n      AND account_members.is_active = true\n    )\n  )\n  WITH CHECK (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = notifications.account_id\n      AND account_members.user_id = (SELECT auth.uid())\n      AND account_members.is_active = true\n    )\n  );
-\n\nCREATE INDEX IF NOT EXISTS idx_notifications_account_id ON notifications(account_id);
-\nCREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
-\nCREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(account_id, is_read);
-\n\n-- Trigger: new lead notification\nCREATE OR REPLACE FUNCTION notify_new_lead()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nBEGIN\n  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)\n  VALUES (\n    NEW.account_id,\n    'New Lead',\n    'New lead from ' || COALESCE(NEW.name, 'Unknown') || COALESCE(' - ' || NEW.service_type, ''),\n    'new_lead',\n    NEW.id,\n    'lead'\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nDROP TRIGGER IF EXISTS trigger_notify_new_lead ON leads;
-\nCREATE TRIGGER trigger_notify_new_lead\n  AFTER INSERT ON leads\n  FOR EACH ROW\n  EXECUTE FUNCTION notify_new_lead();
-\n\n-- Trigger: lead status change notification\nCREATE OR REPLACE FUNCTION notify_lead_status_change()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nBEGIN\n  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN\n    RETURN NEW;
-\n  END IF;
-\n\n  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)\n  VALUES (\n    NEW.account_id,\n    'Lead Status Updated',\n    COALESCE(NEW.name, 'Lead') || ' moved to ' || NEW.status::text,\n    'lead_status_change',\n    NEW.id,\n    'lead'\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nDROP TRIGGER IF EXISTS trigger_notify_lead_status_change ON leads;
-\nCREATE TRIGGER trigger_notify_lead_status_change\n  AFTER UPDATE ON leads\n  FOR EACH ROW\n  EXECUTE FUNCTION notify_lead_status_change();
-\n\n-- Trigger: payment received notification\nCREATE OR REPLACE FUNCTION notify_payment_received()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _customer_name text;
-\nBEGIN\n  SELECT name INTO _customer_name FROM customers WHERE id = NEW.customer_id;
-\n\n  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)\n  VALUES (\n    NEW.account_id,\n    'Payment Received',\n    '$' || COALESCE(NEW.amount::text, '0') || ' from ' || COALESCE(_customer_name, 'customer'),\n    'payment_received',\n    NEW.id,\n    'payment'\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nDROP TRIGGER IF EXISTS trigger_notify_payment_received ON payments;
-\nCREATE TRIGGER trigger_notify_payment_received\n  AFTER INSERT ON payments\n  FOR EACH ROW\n  EXECUTE FUNCTION notify_payment_received();
-\n\n-- Trigger: job scheduled notification\nCREATE OR REPLACE FUNCTION notify_job_scheduled()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _lead_name text;
-\nBEGIN\n  SELECT name INTO _lead_name FROM leads WHERE id = NEW.lead_id;
-\n\n  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)\n  VALUES (\n    NEW.account_id,\n    'Job Scheduled',\n    COALESCE(_lead_name, 'Job') || ' scheduled for ' || NEW.scheduled_date::text,\n    'schedule_change',\n    NEW.lead_id,\n    'job_schedule'\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nDROP TRIGGER IF EXISTS trigger_notify_job_scheduled ON job_schedules;
-\nCREATE TRIGGER trigger_notify_job_scheduled\n  AFTER INSERT ON job_schedules\n  FOR EACH ROW\n  EXECUTE FUNCTION notify_job_scheduled();
-\n\n-- Trigger: estimate approved notification\nCREATE OR REPLACE FUNCTION notify_estimate_approved()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _customer_name text;
-\nBEGIN\n  IF NEW.status::text != 'accepted' OR OLD.status::text = 'accepted' THEN\n    RETURN NEW;
-\n  END IF;
-\n\n  SELECT c.name INTO _customer_name FROM customers c WHERE c.id = NEW.customer_id;
-\n\n  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)\n  VALUES (\n    NEW.account_id,\n    'Estimate Approved',\n    COALESCE(_customer_name, 'Customer') || ' approved estimate for $' || COALESCE(NEW.total::text, '0'),\n    'estimate_approved',\n    NEW.id,\n    'estimate'\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nDROP TRIGGER IF EXISTS trigger_notify_estimate_approved ON estimates;
-\nCREATE TRIGGER trigger_notify_estimate_approved\n  AFTER UPDATE ON estimates\n  FOR EACH ROW\n  EXECUTE FUNCTION notify_estimate_approved();
-\n;
+/*
+  # Create notifications table and auto-insert triggers
+
+  1. New Tables
+    - `notifications`
+      - `id` (uuid, primary key)
+      - `account_id` (uuid, FK to accounts) - the account this notification belongs to
+      - `title` (text) - short notification title
+      - `body` (text) - notification description/detail
+      - `event_type` (text) - category: new_lead, lead_status_change, payment_received, schedule_change, estimate_approved
+      - `reference_id` (uuid, nullable) - ID of the related record (lead, payment, etc.)
+      - `reference_type` (text, nullable) - the type of related record (lead, payment, estimate, job_schedule)
+      - `is_read` (boolean) - whether the notification has been read
+      - `created_at` (timestamptz)
+
+  2. Triggers
+    - On leads INSERT: creates "New lead" notification
+    - On leads UPDATE (status change): creates "Lead status changed" notification
+    - On payments INSERT: creates "Payment received" notification
+    - On job_schedules INSERT: creates "Job scheduled" notification
+    - On estimates UPDATE (status to accepted): creates "Estimate approved" notification
+
+  3. Security
+    - Enable RLS on notifications
+    - Account members can view their account's notifications
+    - Account members can update (mark as read) their account's notifications
+*/
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES accounts(id),
+  title text NOT NULL DEFAULT '',
+  body text NOT NULL DEFAULT '',
+  event_type text NOT NULL DEFAULT '',
+  reference_id uuid,
+  reference_type text,
+  is_read boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "Account members can view notifications"
+  ON notifications FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = notifications.account_id
+      AND account_members.user_id = (SELECT auth.uid())
+      AND account_members.is_active = true
+    )
+  );
+
+
+CREATE POLICY "Account members can update notifications"
+  ON notifications FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = notifications.account_id
+      AND account_members.user_id = (SELECT auth.uid())
+      AND account_members.is_active = true
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = notifications.account_id
+      AND account_members.user_id = (SELECT auth.uid())
+      AND account_members.is_active = true
+    )
+  );
+
+
+CREATE INDEX IF NOT EXISTS idx_notifications_account_id ON notifications(account_id);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(account_id, is_read);
+
+
+-- Trigger: new lead notification
+CREATE OR REPLACE FUNCTION notify_new_lead()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)
+  VALUES (
+    NEW.account_id,
+    'New Lead',
+    'New lead from ' || COALESCE(NEW.name, 'Unknown') || COALESCE(' - ' || NEW.service_type, ''),
+    'new_lead',
+    NEW.id,
+    'lead'
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+DROP TRIGGER IF EXISTS trigger_notify_new_lead ON leads;
+
+CREATE TRIGGER trigger_notify_new_lead
+  AFTER INSERT ON leads
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_new_lead();
+
+
+-- Trigger: lead status change notification
+CREATE OR REPLACE FUNCTION notify_lead_status_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+
+  END IF;
+
+
+  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)
+  VALUES (
+    NEW.account_id,
+    'Lead Status Updated',
+    COALESCE(NEW.name, 'Lead') || ' moved to ' || NEW.status::text,
+    'lead_status_change',
+    NEW.id,
+    'lead'
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+DROP TRIGGER IF EXISTS trigger_notify_lead_status_change ON leads;
+
+CREATE TRIGGER trigger_notify_lead_status_change
+  AFTER UPDATE ON leads
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_lead_status_change();
+
+
+-- Trigger: payment received notification
+CREATE OR REPLACE FUNCTION notify_payment_received()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _customer_name text;
+
+BEGIN
+  SELECT name INTO _customer_name FROM customers WHERE id = NEW.customer_id;
+
+
+  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)
+  VALUES (
+    NEW.account_id,
+    'Payment Received',
+    '$' || COALESCE(NEW.amount::text, '0') || ' from ' || COALESCE(_customer_name, 'customer'),
+    'payment_received',
+    NEW.id,
+    'payment'
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+DROP TRIGGER IF EXISTS trigger_notify_payment_received ON payments;
+
+CREATE TRIGGER trigger_notify_payment_received
+  AFTER INSERT ON payments
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_payment_received();
+
+
+-- Trigger: job scheduled notification
+CREATE OR REPLACE FUNCTION notify_job_scheduled()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _lead_name text;
+
+BEGIN
+  SELECT name INTO _lead_name FROM leads WHERE id = NEW.lead_id;
+
+
+  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)
+  VALUES (
+    NEW.account_id,
+    'Job Scheduled',
+    COALESCE(_lead_name, 'Job') || ' scheduled for ' || NEW.scheduled_date::text,
+    'schedule_change',
+    NEW.lead_id,
+    'job_schedule'
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+DROP TRIGGER IF EXISTS trigger_notify_job_scheduled ON job_schedules;
+
+CREATE TRIGGER trigger_notify_job_scheduled
+  AFTER INSERT ON job_schedules
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_job_scheduled();
+
+
+-- Trigger: estimate approved notification
+CREATE OR REPLACE FUNCTION notify_estimate_approved()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _customer_name text;
+
+BEGIN
+  IF NEW.status::text != 'accepted' OR OLD.status::text = 'accepted' THEN
+    RETURN NEW;
+
+  END IF;
+
+
+  SELECT c.name INTO _customer_name FROM customers c WHERE c.id = NEW.customer_id;
+
+
+  INSERT INTO notifications (account_id, title, body, event_type, reference_id, reference_type)
+  VALUES (
+    NEW.account_id,
+    'Estimate Approved',
+    COALESCE(_customer_name, 'Customer') || ' approved estimate for $' || COALESCE(NEW.total::text, '0'),
+    'estimate_approved',
+    NEW.id,
+    'estimate'
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+DROP TRIGGER IF EXISTS trigger_notify_estimate_approved ON estimates;
+
+CREATE TRIGGER trigger_notify_estimate_approved
+  AFTER UPDATE ON estimates
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_estimate_approved();
+
+;

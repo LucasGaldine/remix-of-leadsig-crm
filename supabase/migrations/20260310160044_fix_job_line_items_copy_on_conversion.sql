@@ -1,38 +1,216 @@
-/*\n  # Fix job line items copy when estimate visit converts to regular job\n\n  1. Problem\n    - When a regular job is created from an estimate visit, the job line items aren't copied\n    - The trigger fires when the job is inserted, but the estimate still points to the old job\n    - By the time the estimate is updated to point to the new job, the trigger has already run\n\n  2. Solution\n    - Update `try_convert_lead_to_job` to manually copy job line items after creating the new job\n    - This ensures line items are copied at the right time in the conversion process\n\n  3. Important\n    - This only affects estimate visit to regular job conversion\n    - Normal estimate approval still works via existing triggers\n*/\n\nCREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)\nRETURNS void\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  _lead record;
-\n  _has_accepted_estimate boolean;
-\n  _has_before_photos boolean;
-\n  _all_checklist_complete boolean;
-\n  _new_job_id uuid;
-\n  _estimate_id uuid;
-\n  _account_id uuid;
-\nBEGIN\n  SELECT * INTO _lead FROM leads WHERE id = p_lead_id;
-\n\n  IF _lead IS NULL THEN\n    RETURN;
-\n  END IF;
-\n\n  SELECT EXISTS (\n    SELECT 1 FROM estimates WHERE job_id = p_lead_id AND status = 'accepted'\n  ) INTO _has_accepted_estimate;
-\n\n  SELECT EXISTS (\n    SELECT 1 FROM lead_photos WHERE lead_id = p_lead_id AND photo_type = 'before'\n  ) INTO _has_before_photos;
-\n\n  IF NOT (_has_accepted_estimate AND _has_before_photos) THEN\n    RETURN;
-\n  END IF;
-\n\n  -- For estimate visit jobs, also check that all checklist items are complete\n  IF _lead.is_estimate_visit = true AND _lead.status = 'job' THEN\n    -- Check if all checklist items are completed\n    SELECT CASE \n      WHEN count(*) = 0 THEN false\n      WHEN count(*) FILTER (WHERE is_completed = false) > 0 THEN false\n      ELSE true\n    END INTO _all_checklist_complete\n    FROM job_checklist_items\n    WHERE job_id = p_lead_id;
-\n\n    -- Only proceed if all checklist items are complete\n    IF NOT _all_checklist_complete THEN\n      RETURN;
-\n    END IF;
-\n\n    -- Create new regular job from estimate visit\n    INSERT INTO leads (\n      name, status, service_type, address, city, state,\n      customer_id, account_id, created_by,\n      approval_status, is_estimate_visit, estimate_job_id,\n      estimated_value, phone, email, source\n    )\n    VALUES (\n      REPLACE(_lead.name, ', Estimate', ''),\n      'job',\n      _lead.service_type,\n      _lead.address,\n      _lead.city,\n      _lead.state,\n      _lead.customer_id,\n      _lead.account_id,\n      _lead.created_by,\n      'pending',\n      false,\n      p_lead_id,\n      _lead.estimated_value,\n      _lead.phone,\n      _lead.email,\n      _lead.source\n    )\n    RETURNING id INTO _new_job_id;
-\n\n    -- Get the estimate ID and account ID for copying line items\n    SELECT id, account_id INTO _estimate_id, _account_id\n    FROM estimates\n    WHERE job_id = p_lead_id AND status = 'accepted'\n    LIMIT 1;
-\n\n    -- Copy job line items from estimate to new job\n    IF _estimate_id IS NOT NULL THEN\n      INSERT INTO job_line_items (\n        lead_id,\n        name,\n        description,\n        quantity,\n        unit,\n        unit_price,\n        total,\n        sort_order,\n        account_id,\n        estimate_line_item_id\n      )\n      SELECT\n        _new_job_id,\n        name,\n        description,\n        quantity,\n        unit,\n        unit_price,\n        total,\n        sort_order,\n        _account_id,\n        id\n      FROM estimate_line_items\n      WHERE estimate_id = _estimate_id\n      AND is_change_order = false\n      ORDER BY sort_order;
-\n    END IF;
-\n\n    -- Update estimate to point to new job\n    UPDATE estimates SET job_id = _new_job_id WHERE job_id = p_lead_id;
-\n\n    -- Transfer photos to new job\n    UPDATE lead_photos SET lead_id = _new_job_id WHERE lead_id = p_lead_id;
-\n\n    -- Approve the new job\n    UPDATE leads SET approval_status = 'approved' WHERE id = _new_job_id;
-\n\n    -- Mark old estimate visit schedules as complete\n    UPDATE job_schedules\n    SET is_completed = true, completed_at = now()\n    WHERE lead_id = p_lead_id;
-\n\n    -- Mark estimate visit as completed\n    UPDATE leads SET status = 'completed' WHERE id = p_lead_id;
-\n\n    -- Add interaction log\n    INSERT INTO interactions (lead_id, type, direction, summary)\n    VALUES (\n      _new_job_id,\n      'status_change',\n      'na',\n      'Job created from completed estimate visit'\n    );
-\n\n    RETURN;
-\n  END IF;
-\n\n  -- Regular lead conversion (non-estimate visit)\n  IF _lead.status IN ('job', 'paid', 'completed') THEN\n    RETURN;
-\n  END IF;
-\n\n  UPDATE leads SET status = 'job' WHERE id = p_lead_id;
-\n\n  IF _lead.estimate_job_id IS NOT NULL THEN\n    UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
-\n  END IF;
-\n\n  INSERT INTO interactions (lead_id, type, direction, summary)\n  VALUES (\n    p_lead_id,\n    'status_change',\n    'na',\n    'Converted to job (estimate approved + photos uploaded)'\n  );
-\nEND;
-\n$$;
+/*
+  # Fix job line items copy when estimate visit converts to regular job
+
+  1. Problem
+    - When a regular job is created from an estimate visit, the job line items aren't copied
+    - The trigger fires when the job is inserted, but the estimate still points to the old job
+    - By the time the estimate is updated to point to the new job, the trigger has already run
+
+  2. Solution
+    - Update `try_convert_lead_to_job` to manually copy job line items after creating the new job
+    - This ensures line items are copied at the right time in the conversion process
+
+  3. Important
+    - This only affects estimate visit to regular job conversion
+    - Normal estimate approval still works via existing triggers
+*/
+
+CREATE OR REPLACE FUNCTION try_convert_lead_to_job(p_lead_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _lead record;
+
+  _has_accepted_estimate boolean;
+
+  _has_before_photos boolean;
+
+  _all_checklist_complete boolean;
+
+  _new_job_id uuid;
+
+  _estimate_id uuid;
+
+  _account_id uuid;
+
+BEGIN
+  SELECT * INTO _lead FROM leads WHERE id = p_lead_id;
+
+
+  IF _lead IS NULL THEN
+    RETURN;
+
+  END IF;
+
+
+  SELECT EXISTS (
+    SELECT 1 FROM estimates WHERE job_id = p_lead_id AND status = 'accepted'
+  ) INTO _has_accepted_estimate;
+
+
+  SELECT EXISTS (
+    SELECT 1 FROM lead_photos WHERE lead_id = p_lead_id AND photo_type = 'before'
+  ) INTO _has_before_photos;
+
+
+  IF NOT (_has_accepted_estimate AND _has_before_photos) THEN
+    RETURN;
+
+  END IF;
+
+
+  -- For estimate visit jobs, also check that all checklist items are complete
+  IF _lead.is_estimate_visit = true AND _lead.status = 'job' THEN
+    -- Check if all checklist items are completed
+    SELECT CASE 
+      WHEN count(*) = 0 THEN false
+      WHEN count(*) FILTER (WHERE is_completed = false) > 0 THEN false
+      ELSE true
+    END INTO _all_checklist_complete
+    FROM job_checklist_items
+    WHERE job_id = p_lead_id;
+
+
+    -- Only proceed if all checklist items are complete
+    IF NOT _all_checklist_complete THEN
+      RETURN;
+
+    END IF;
+
+
+    -- Create new regular job from estimate visit
+    INSERT INTO leads (
+      name, status, service_type, address, city, state,
+      customer_id, account_id, created_by,
+      approval_status, is_estimate_visit, estimate_job_id,
+      estimated_value, phone, email, source
+    )
+    VALUES (
+      REPLACE(_lead.name, ', Estimate', ''),
+      'job',
+      _lead.service_type,
+      _lead.address,
+      _lead.city,
+      _lead.state,
+      _lead.customer_id,
+      _lead.account_id,
+      _lead.created_by,
+      'pending',
+      false,
+      p_lead_id,
+      _lead.estimated_value,
+      _lead.phone,
+      _lead.email,
+      _lead.source
+    )
+    RETURNING id INTO _new_job_id;
+
+
+    -- Get the estimate ID and account ID for copying line items
+    SELECT id, account_id INTO _estimate_id, _account_id
+    FROM estimates
+    WHERE job_id = p_lead_id AND status = 'accepted'
+    LIMIT 1;
+
+
+    -- Copy job line items from estimate to new job
+    IF _estimate_id IS NOT NULL THEN
+      INSERT INTO job_line_items (
+        lead_id,
+        name,
+        description,
+        quantity,
+        unit,
+        unit_price,
+        total,
+        sort_order,
+        account_id,
+        estimate_line_item_id
+      )
+      SELECT
+        _new_job_id,
+        name,
+        description,
+        quantity,
+        unit,
+        unit_price,
+        total,
+        sort_order,
+        _account_id,
+        id
+      FROM estimate_line_items
+      WHERE estimate_id = _estimate_id
+      AND is_change_order = false
+      ORDER BY sort_order;
+
+    END IF;
+
+
+    -- Update estimate to point to new job
+    UPDATE estimates SET job_id = _new_job_id WHERE job_id = p_lead_id;
+
+
+    -- Transfer photos to new job
+    UPDATE lead_photos SET lead_id = _new_job_id WHERE lead_id = p_lead_id;
+
+
+    -- Approve the new job
+    UPDATE leads SET approval_status = 'approved' WHERE id = _new_job_id;
+
+
+    -- Mark old estimate visit schedules as complete
+    UPDATE job_schedules
+    SET is_completed = true, completed_at = now()
+    WHERE lead_id = p_lead_id;
+
+
+    -- Mark estimate visit as completed
+    UPDATE leads SET status = 'completed' WHERE id = p_lead_id;
+
+
+    -- Add interaction log
+    INSERT INTO interactions (lead_id, type, direction, summary)
+    VALUES (
+      _new_job_id,
+      'status_change',
+      'na',
+      'Job created from completed estimate visit'
+    );
+
+
+    RETURN;
+
+  END IF;
+
+
+  -- Regular lead conversion (non-estimate visit)
+  IF _lead.status IN ('job', 'paid', 'completed') THEN
+    RETURN;
+
+  END IF;
+
+
+  UPDATE leads SET status = 'job' WHERE id = p_lead_id;
+
+
+  IF _lead.estimate_job_id IS NOT NULL THEN
+    UPDATE leads SET status = 'paid' WHERE id = _lead.estimate_job_id;
+
+  END IF;
+
+
+  INSERT INTO interactions (lead_id, type, direction, summary)
+  VALUES (
+    p_lead_id,
+    'status_change',
+    'na',
+    'Converted to job (estimate approved + photos uploaded)'
+  );
+
+END;
+
+$$;
 ;

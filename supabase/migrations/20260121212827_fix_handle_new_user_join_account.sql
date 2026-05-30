@@ -1,22 +1,103 @@
-/*\n  # Fix handle_new_user to Add User to Target Account\n  \n  ## Overview\n  Updates the handle_new_user trigger function to properly add users to existing accounts\n  when they sign up with a company code.\n  \n  ## Problem\n  When a user signs up with a company code, the function sets target_account_id in metadata\n  but the trigger doesn't add the user to that account. This causes the frontend to try\n  to manually insert, which fails.\n  \n  ## Changes\n  - Add logic to insert user into account_members when target_account_id is provided\n  - Use the role from metadata when joining an existing account\n  \n  ## Security\n  - Function remains SECURITY DEFINER\n  - Maintains existing logic for account creation\n*/\n\nCREATE OR REPLACE FUNCTION public.handle_new_user()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $$\nDECLARE\n  v_account_id uuid;
-\n  v_target_account_id text;
-\n  v_company_name text;
-\n  v_company_phone text;
-\n  v_company_address text;
-\n  v_phone text;
-\n  v_role text;
-\nBEGIN\n  -- Get phone from metadata\n  v_phone := NEW.raw_user_meta_data ->> 'phone';
-\n  \n  -- Create profile with phone\n  INSERT INTO public.profiles (user_id, full_name, email, phone)\n  VALUES (\n    NEW.id,\n    COALESCE(NEW.raw_user_meta_data ->> 'full_name', NEW.raw_user_meta_data ->> 'name'),\n    NEW.email,\n    v_phone\n  );
-\n  \n  -- Check if user is joining an existing account\n  v_target_account_id := NEW.raw_user_meta_data ->> 'target_account_id';
-\n  v_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'sales');
-\n  \n  IF v_target_account_id IS NOT NULL THEN\n    -- User is joining an existing account\n    INSERT INTO public.account_members (account_id, user_id, role, is_active)\n    VALUES (v_target_account_id::uuid, NEW.id, v_role::text, true);
-\n  ELSE\n    -- Create new account for user\n    v_company_name := COALESCE(\n      NEW.raw_user_meta_data ->> 'company_name',\n      NEW.raw_user_meta_data ->> 'full_name',\n      NEW.raw_user_meta_data ->> 'name',\n      NEW.email,\n      'My Company'\n    );
-\n    \n    v_company_phone := NEW.raw_user_meta_data ->> 'company_phone';
-\n    v_company_address := NEW.raw_user_meta_data ->> 'company_address';
-\n    \n    -- Create default account for new user with company details\n    INSERT INTO public.accounts (company_name, company_email, company_phone, company_address)\n    VALUES (v_company_name, NEW.email, v_company_phone, v_company_address)\n    RETURNING id INTO v_account_id;
-\n    \n    -- Add user as owner of their new account\n    INSERT INTO public.account_members (account_id, user_id, role, is_active)\n    VALUES (v_account_id, NEW.id, 'owner', true);
-\n  END IF;
-\n  \n  RETURN NEW;
-\nEND;
-\n$$;
+/*
+  # Fix handle_new_user to Add User to Target Account
+  
+  ## Overview
+  Updates the handle_new_user trigger function to properly add users to existing accounts
+  when they sign up with a company code.
+  
+  ## Problem
+  When a user signs up with a company code, the function sets target_account_id in metadata
+  but the trigger doesn't add the user to that account. This causes the frontend to try
+  to manually insert, which fails.
+  
+  ## Changes
+  - Add logic to insert user into account_members when target_account_id is provided
+  - Use the role from metadata when joining an existing account
+  
+  ## Security
+  - Function remains SECURITY DEFINER
+  - Maintains existing logic for account creation
+*/
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_account_id uuid;
+
+  v_target_account_id text;
+
+  v_company_name text;
+
+  v_company_phone text;
+
+  v_company_address text;
+
+  v_phone text;
+
+  v_role text;
+
+BEGIN
+  -- Get phone from metadata
+  v_phone := NEW.raw_user_meta_data ->> 'phone';
+
+  
+  -- Create profile with phone
+  INSERT INTO public.profiles (user_id, full_name, email, phone)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data ->> 'full_name', NEW.raw_user_meta_data ->> 'name'),
+    NEW.email,
+    v_phone
+  );
+
+  
+  -- Check if user is joining an existing account
+  v_target_account_id := NEW.raw_user_meta_data ->> 'target_account_id';
+
+  v_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'sales');
+
+  
+  IF v_target_account_id IS NOT NULL THEN
+    -- User is joining an existing account
+    INSERT INTO public.account_members (account_id, user_id, role, is_active)
+    VALUES (v_target_account_id::uuid, NEW.id, v_role::text, true);
+
+  ELSE
+    -- Create new account for user
+    v_company_name := COALESCE(
+      NEW.raw_user_meta_data ->> 'company_name',
+      NEW.raw_user_meta_data ->> 'full_name',
+      NEW.raw_user_meta_data ->> 'name',
+      NEW.email,
+      'My Company'
+    );
+
+    
+    v_company_phone := NEW.raw_user_meta_data ->> 'company_phone';
+
+    v_company_address := NEW.raw_user_meta_data ->> 'company_address';
+
+    
+    -- Create default account for new user with company details
+    INSERT INTO public.accounts (company_name, company_email, company_phone, company_address)
+    VALUES (v_company_name, NEW.email, v_company_phone, v_company_address)
+    RETURNING id INTO v_account_id;
+
+    
+    -- Add user as owner of their new account
+    INSERT INTO public.account_members (account_id, user_id, role, is_active)
+    VALUES (v_account_id, NEW.id, 'owner', true);
+
+  END IF;
+
+  
+  RETURN NEW;
+
+END;
+
+$$;
 ;

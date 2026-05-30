@@ -1,3 +1,30 @@
-/*\n  # Fix Account Members Infinite Recursion\n\n  1. Problem\n    - The RLS policy for account_members is querying account_members in its USING clause\n    - This creates infinite recursion when trying to access the table\n    \n  2. Solution\n    - Use the existing security definer function `is_account_member()` \n    - This function bypasses RLS to safely check membership without recursion\n    \n  3. Security\n    - Users can only view members from accounts they belong to\n    - Maintains proper isolation between accounts\n*/\n\n-- Drop the problematic policy\nDROP POLICY IF EXISTS "Users can view own or account memberships" ON account_members;
-\n\n-- Create the correct policy using the security definer function\nCREATE POLICY "Users can view members in their accounts"\n  ON account_members\n  FOR SELECT\n  TO authenticated\n  USING (\n    is_account_member(account_id, (select auth.uid()))\n  );
-\n;
+/*
+  # Fix Account Members Infinite Recursion
+
+  1. Problem
+    - The RLS policy for account_members is querying account_members in its USING clause
+    - This creates infinite recursion when trying to access the table
+    
+  2. Solution
+    - Use the existing security definer function `is_account_member()` 
+    - This function bypasses RLS to safely check membership without recursion
+    
+  3. Security
+    - Users can only view members from accounts they belong to
+    - Maintains proper isolation between accounts
+*/
+
+-- Drop the problematic policy
+DROP POLICY IF EXISTS "Users can view own or account memberships" ON account_members;
+
+
+-- Create the correct policy using the security definer function
+CREATE POLICY "Users can view members in their accounts"
+  ON account_members
+  FOR SELECT
+  TO authenticated
+  USING (
+    is_account_member(account_id, (select auth.uid()))
+  );
+
+;

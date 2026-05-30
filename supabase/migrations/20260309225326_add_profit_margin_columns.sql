@@ -1,3 +1,27 @@
-/*\n  # Add Profit Margin Support\n\n  1. Changes to `accounts` table\n    - Add `default_profit_margin` column (numeric, default 0)\n      - Represents the default profit margin percentage to apply to estimates\n      - Works the same as default_tax_rate\n\n  2. Changes to `estimates` table\n    - Add `profit_margin` column (numeric, default 0)\n      - Allows per-estimate profit margin override\n      - Editable on each estimate\n\n  3. Security\n    - No RLS changes needed (inherits existing policies)\n*/\n\n-- Add default profit margin to accounts\nALTER TABLE accounts \nADD COLUMN IF NOT EXISTS default_profit_margin numeric DEFAULT 0 CHECK (default_profit_margin >= 0 AND default_profit_margin <= 100);
-\n\n-- Add profit margin to estimates (can be edited per estimate)\nALTER TABLE estimates \nADD COLUMN IF NOT EXISTS profit_margin numeric DEFAULT 0 CHECK (profit_margin >= 0 AND profit_margin <= 100);
-\n;
+/*
+  # Add Profit Margin Support
+
+  1. Changes to `accounts` table
+    - Add `default_profit_margin` column (numeric, default 0)
+      - Represents the default profit margin percentage to apply to estimates
+      - Works the same as default_tax_rate
+
+  2. Changes to `estimates` table
+    - Add `profit_margin` column (numeric, default 0)
+      - Allows per-estimate profit margin override
+      - Editable on each estimate
+
+  3. Security
+    - No RLS changes needed (inherits existing policies)
+*/
+
+-- Add default profit margin to accounts
+ALTER TABLE accounts 
+ADD COLUMN IF NOT EXISTS default_profit_margin numeric DEFAULT 0 CHECK (default_profit_margin >= 0 AND default_profit_margin <= 100);
+
+
+-- Add profit margin to estimates (can be edited per estimate)
+ALTER TABLE estimates 
+ADD COLUMN IF NOT EXISTS profit_margin numeric DEFAULT 0 CHECK (profit_margin >= 0 AND profit_margin <= 100);
+
+;

@@ -1,23 +1,149 @@
-/*\n  # Fix SMS triggers to use project URL directly\n\n  1. Changes\n    - Hard-code the Supabase project URL in trigger functions\n    - The URL is public information (same as VITE_SUPABASE_URL in frontend)\n    - No vault access needed, avoiding permission issues\n\n  2. Notes\n    - send-sms edge function has verify_jwt=false\n    - Trigger functions use SECURITY DEFINER for proper access\n    - pg_net makes async HTTP calls that don't block transactions\n*/\n\nCREATE OR REPLACE FUNCTION notify_sms_new_lead()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nBEGIN\n  PERFORM net.http_post(\n    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',\n    headers := '{"Content-Type": "application/json"}'::jsonb,\n    body := jsonb_build_object(\n      'event_type', 'new_leads',\n      'account_id', NEW.account_id::text,\n      'data', jsonb_build_object(\n        'lead_id', NEW.id::text,\n        'name', COALESCE(NEW.name, 'Unknown'),\n        'phone', COALESCE(NEW.phone, ''),\n        'email', COALESCE(NEW.email, ''),\n        'service_type', COALESCE(NEW.service_type, ''),\n        'source', COALESCE(NEW.source, '')\n      )\n    )\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION notify_sms_lead_update()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nBEGIN\n  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN\n    RETURN NEW;
-\n  END IF;
-\n\n  PERFORM net.http_post(\n    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',\n    headers := '{"Content-Type": "application/json"}'::jsonb,\n    body := jsonb_build_object(\n      'event_type', 'lead_updates',\n      'account_id', NEW.account_id::text,\n      'data', jsonb_build_object(\n        'lead_id', NEW.id::text,\n        'name', COALESCE(NEW.name, 'Unknown'),\n        'status', NEW.status::text,\n        'old_status', OLD.status::text\n      )\n    )\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION notify_sms_payment()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _customer_name text;
-\nBEGIN\n  SELECT name INTO _customer_name FROM customers WHERE id = NEW.customer_id;
-\n\n  PERFORM net.http_post(\n    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',\n    headers := '{"Content-Type": "application/json"}'::jsonb,\n    body := jsonb_build_object(\n      'event_type', 'payments',\n      'account_id', NEW.account_id::text,\n      'data', jsonb_build_object(\n        'payment_id', NEW.id::text,\n        'amount', NEW.amount::text,\n        'customer_name', COALESCE(_customer_name, 'Unknown'),\n        'method', NEW.method::text,\n        'status', NEW.status::text\n      )\n    )\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION notify_sms_schedule_change()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nDECLARE\n  _lead_name text;
-\nBEGIN\n  SELECT name INTO _lead_name FROM leads WHERE id = NEW.lead_id;
-\n\n  PERFORM net.http_post(\n    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',\n    headers := '{"Content-Type": "application/json"}'::jsonb,\n    body := jsonb_build_object(\n      'event_type', 'schedule_changes',\n      'account_id', NEW.account_id::text,\n      'data', jsonb_build_object(\n        'schedule_id', NEW.id::text,\n        'lead_id', NEW.lead_id::text,\n        'lead_name', COALESCE(_lead_name, 'Job'),\n        'scheduled_date', NEW.scheduled_date::text,\n        'scheduled_time_start', COALESCE(NEW.scheduled_time_start::text, ''),\n        'scheduled_time_end', COALESCE(NEW.scheduled_time_end::text, '')\n      )\n    )\n  );
-\n  RETURN NEW;
-\nEND;
-\n$$;
-\n;
+/*
+  # Fix SMS triggers to use project URL directly
+
+  1. Changes
+    - Hard-code the Supabase project URL in trigger functions
+    - The URL is public information (same as VITE_SUPABASE_URL in frontend)
+    - No vault access needed, avoiding permission issues
+
+  2. Notes
+    - send-sms edge function has verify_jwt=false
+    - Trigger functions use SECURITY DEFINER for proper access
+    - pg_net makes async HTTP calls that don't block transactions
+*/
+
+CREATE OR REPLACE FUNCTION notify_sms_new_lead()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  PERFORM net.http_post(
+    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := jsonb_build_object(
+      'event_type', 'new_leads',
+      'account_id', NEW.account_id::text,
+      'data', jsonb_build_object(
+        'lead_id', NEW.id::text,
+        'name', COALESCE(NEW.name, 'Unknown'),
+        'phone', COALESCE(NEW.phone, ''),
+        'email', COALESCE(NEW.email, ''),
+        'service_type', COALESCE(NEW.service_type, ''),
+        'source', COALESCE(NEW.source, '')
+      )
+    )
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION notify_sms_lead_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+
+  END IF;
+
+
+  PERFORM net.http_post(
+    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := jsonb_build_object(
+      'event_type', 'lead_updates',
+      'account_id', NEW.account_id::text,
+      'data', jsonb_build_object(
+        'lead_id', NEW.id::text,
+        'name', COALESCE(NEW.name, 'Unknown'),
+        'status', NEW.status::text,
+        'old_status', OLD.status::text
+      )
+    )
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION notify_sms_payment()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _customer_name text;
+
+BEGIN
+  SELECT name INTO _customer_name FROM customers WHERE id = NEW.customer_id;
+
+
+  PERFORM net.http_post(
+    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := jsonb_build_object(
+      'event_type', 'payments',
+      'account_id', NEW.account_id::text,
+      'data', jsonb_build_object(
+        'payment_id', NEW.id::text,
+        'amount', NEW.amount::text,
+        'customer_name', COALESCE(_customer_name, 'Unknown'),
+        'method', NEW.method::text,
+        'status', NEW.status::text
+      )
+    )
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION notify_sms_schedule_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  _lead_name text;
+
+BEGIN
+  SELECT name INTO _lead_name FROM leads WHERE id = NEW.lead_id;
+
+
+  PERFORM net.http_post(
+    url := 'https://knjbakdhjspftwqrzzcl.supabase.co/functions/v1/send-sms',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := jsonb_build_object(
+      'event_type', 'schedule_changes',
+      'account_id', NEW.account_id::text,
+      'data', jsonb_build_object(
+        'schedule_id', NEW.id::text,
+        'lead_id', NEW.lead_id::text,
+        'lead_name', COALESCE(_lead_name, 'Job'),
+        'scheduled_date', NEW.scheduled_date::text,
+        'scheduled_time_start', COALESCE(NEW.scheduled_time_start::text, ''),
+        'scheduled_time_end', COALESCE(NEW.scheduled_time_end::text, '')
+      )
+    )
+  );
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+;

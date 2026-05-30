@@ -52,6 +52,7 @@ import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallb
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 import { applyCustomerContactToJob } from "@/lib/jobCustomerCache";
+import { getSupabaseErrorMessage, isPermissionDeniedError } from "@/lib/supabaseErrors";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
@@ -1106,12 +1107,24 @@ export default function JobDetail() {
 
       for (const userId of usersToAdd) {
         const parsed = parseCrewAssigneeId(userId);
-        const hasOverlap = await checkAssignmentOverlapSecure({
-          accountId: currentAccount.id,
-          scheduleId: editingCrewScheduleId,
-          userId: parsed.type === "user" ? parsed.userId : null,
-          mockProfileId: parsed.type === "mock" ? parsed.mockProfileId : null,
-        });
+        let hasOverlap = false;
+
+        try {
+          hasOverlap = await checkAssignmentOverlapSecure({
+            accountId: currentAccount.id,
+            scheduleId: editingCrewScheduleId,
+            userId: parsed.type === "user" ? parsed.userId : null,
+            mockProfileId: parsed.type === "mock" ? parsed.mockProfileId : null,
+          });
+        } catch (overlapError) {
+          if (!isPermissionDeniedError(overlapError)) {
+            throw new Error(getSupabaseErrorMessage(overlapError, "Failed to validate crew availability"));
+          }
+
+          // Fall through to INSERT; database constraints still enforce overlap and account rules.
+          console.warn("secure-assignment-overlap check was denied; continuing with database-enforced validation");
+        }
+
         if (hasOverlap) {
           const crewName = teamMembers.find((member) => member.user_id === userId)?.full_name || "This crew member";
           toast.error(`${crewName} is already assigned to another job at this time.`);
@@ -1145,7 +1158,14 @@ export default function JobDetail() {
             }),
           );
 
-        if (addError) throw addError;
+        if (addError) {
+          if (isPermissionDeniedError(addError)) {
+            throw new Error(
+              "Unable to assign this crew member. They may already be booked at this time or your role may not allow this assignment.",
+            );
+          }
+          throw addError;
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["job-assignments", id] });
@@ -1177,7 +1197,7 @@ export default function JobDetail() {
       setEditCrewDialogOpen(false);
     } catch (error) {
       console.error("Error updating crew assignments:", error);
-      const message = error instanceof Error ? error.message : "Failed to update crew assignments";
+      const message = getSupabaseErrorMessage(error, "Failed to update crew assignments");
       toast.error(message || "Failed to update crew assignments");
     } finally {
       setSavingCrewAssignments(false);

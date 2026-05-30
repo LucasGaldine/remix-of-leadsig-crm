@@ -1,2 +1,24 @@
-/*\n  # Add DELETE policy for notifications\n\n  1. Security Changes\n    - Add DELETE policy on `notifications` table for authenticated account members\n    - Users can only delete notifications belonging to their own account\n\n  2. Notes\n    - Previously only SELECT and UPDATE policies existed, preventing notification deletion\n*/\n\nCREATE POLICY "Account members can delete notifications"\n  ON notifications\n  FOR DELETE\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = notifications.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  );
+/*
+  # Add DELETE policy for notifications
+
+  1. Security Changes
+    - Add DELETE policy on `notifications` table for authenticated account members
+    - Users can only delete notifications belonging to their own account
+
+  2. Notes
+    - Previously only SELECT and UPDATE policies existed, preventing notification deletion
+*/
+
+CREATE POLICY "Account members can delete notifications"
+  ON notifications
+  FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = notifications.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  );
 ;

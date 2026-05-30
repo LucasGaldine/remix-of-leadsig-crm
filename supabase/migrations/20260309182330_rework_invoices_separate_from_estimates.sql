@@ -1,34 +1,170 @@
-/*\n  # Rework Invoices as Separate from Estimates\n\n  1. Changes to Tables\n    - `estimates`\n      - Drop `is_finalized` column (no longer needed since estimates don't convert to invoices)\n\n    - `invoices`\n      - Make `estimate_id` NOT NULL (all invoices must be tied to an estimate)\n      - Add `invoice_number` column for tracking invoice numbering\n      - Add index on `estimate_id` for better query performance\n\n  2. New Functions\n    - `validate_invoice_total()` - Ensures sum of invoices for an estimate doesn't exceed estimate total\n\n  3. New Triggers\n    - Trigger to validate invoice total before insert/update\n\n  4. Important Notes\n    - Estimates remain editable and never get "finalized"\n    - Multiple invoices can be created for a single estimate\n    - Invoice totals cannot exceed the estimate total\n    - Invoice numbering is sequential per account\n*/\n\n-- Drop the is_finalized column from estimates\nDO $$\nBEGIN\n  IF EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'estimates' AND column_name = 'is_finalized'\n  ) THEN\n    ALTER TABLE estimates DROP COLUMN is_finalized;
-\n  END IF;
-\nEND $$;
-\n\n-- Make estimate_id NOT NULL on invoices (all invoices must reference an estimate)\nDO $$\nBEGIN\n  -- First update any NULL values to a valid estimate_id if they exist\n  -- We'll skip this as invoices without estimates should not exist in the new flow\n\n  -- Make the column NOT NULL\n  IF EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'invoices' AND column_name = 'estimate_id'\n  ) THEN\n    ALTER TABLE invoices ALTER COLUMN estimate_id SET NOT NULL;
-\n  END IF;
-\nEND $$;
-\n\n-- Add invoice_number column for tracking\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'invoices' AND column_name = 'invoice_number'\n  ) THEN\n    ALTER TABLE invoices ADD COLUMN invoice_number integer;
-\n  END IF;
-\nEND $$;
-\n\n-- Add index on estimate_id for better query performance\nCREATE INDEX IF NOT EXISTS idx_invoices_estimate_id ON invoices(estimate_id);
-\n\n-- Function to validate that invoice totals don't exceed estimate total\nCREATE OR REPLACE FUNCTION validate_invoice_total()\nRETURNS TRIGGER\nSECURITY DEFINER\nSET search_path = public\nLANGUAGE plpgsql\nAS $$\nDECLARE\n  v_estimate_total numeric(12,2);
-\n  v_existing_invoices_total numeric(12,2);
-\n  v_new_total numeric(12,2);
-\nBEGIN\n  -- Get the estimate total\n  SELECT total INTO v_estimate_total\n  FROM estimates\n  WHERE id = NEW.estimate_id;
-\n\n  IF v_estimate_total IS NULL THEN\n    RAISE EXCEPTION 'Estimate not found';
-\n  END IF;
-\n\n  -- Get the sum of existing invoices for this estimate (excluding current invoice if updating)\n  SELECT COALESCE(SUM(total), 0) INTO v_existing_invoices_total\n  FROM invoices\n  WHERE estimate_id = NEW.estimate_id\n    AND (TG_OP = 'INSERT' OR id != NEW.id);
-\n\n  -- Calculate new total\n  v_new_total := v_existing_invoices_total + NEW.total;
-\n\n  -- Check if new total exceeds estimate total\n  IF v_new_total > v_estimate_total THEN\n    RAISE EXCEPTION 'Invoice total ($%) would exceed estimate total ($%). Remaining: $%',\n      v_new_total,\n      v_estimate_total,\n      v_estimate_total - v_existing_invoices_total;
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\n-- Create trigger to validate invoice totals\nDROP TRIGGER IF EXISTS validate_invoice_total_trigger ON invoices;
-\nCREATE TRIGGER validate_invoice_total_trigger\n  BEFORE INSERT OR UPDATE OF total ON invoices\n  FOR EACH ROW\n  EXECUTE FUNCTION validate_invoice_total();
-\n\n-- Function to generate next invoice number for an account\nCREATE OR REPLACE FUNCTION get_next_invoice_number(p_account_id uuid)\nRETURNS integer\nSECURITY DEFINER\nSET search_path = public\nLANGUAGE plpgsql\nAS $$\nDECLARE\n  v_next_number integer;
-\nBEGIN\n  SELECT COALESCE(MAX(invoice_number), 0) + 1 INTO v_next_number\n  FROM invoices\n  WHERE account_id = p_account_id;
-\n\n  RETURN v_next_number;
-\nEND;
-\n$$;
-\n\n-- Add comment explaining the new workflow\nCOMMENT ON TABLE invoices IS 'Invoices are separate from estimates. Multiple invoices can be created for a single estimate, but their total cannot exceed the estimate total.';
-\nCOMMENT ON COLUMN invoices.estimate_id IS 'Required reference to the estimate this invoice is based on';
-\nCOMMENT ON COLUMN invoices.invoice_number IS 'Sequential invoice number per account for tracking';
-\n;
+/*
+  # Rework Invoices as Separate from Estimates
+
+  1. Changes to Tables
+    - `estimates`
+      - Drop `is_finalized` column (no longer needed since estimates don't convert to invoices)
+
+    - `invoices`
+      - Make `estimate_id` NOT NULL (all invoices must be tied to an estimate)
+      - Add `invoice_number` column for tracking invoice numbering
+      - Add index on `estimate_id` for better query performance
+
+  2. New Functions
+    - `validate_invoice_total()` - Ensures sum of invoices for an estimate doesn't exceed estimate total
+
+  3. New Triggers
+    - Trigger to validate invoice total before insert/update
+
+  4. Important Notes
+    - Estimates remain editable and never get "finalized"
+    - Multiple invoices can be created for a single estimate
+    - Invoice totals cannot exceed the estimate total
+    - Invoice numbering is sequential per account
+*/
+
+-- Drop the is_finalized column from estimates
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'estimates' AND column_name = 'is_finalized'
+  ) THEN
+    ALTER TABLE estimates DROP COLUMN is_finalized;
+
+  END IF;
+
+END $$;
+
+
+-- Make estimate_id NOT NULL on invoices (all invoices must reference an estimate)
+DO $$
+BEGIN
+  -- First update any NULL values to a valid estimate_id if they exist
+  -- We'll skip this as invoices without estimates should not exist in the new flow
+
+  -- Make the column NOT NULL
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'invoices' AND column_name = 'estimate_id'
+  ) THEN
+    ALTER TABLE invoices ALTER COLUMN estimate_id SET NOT NULL;
+
+  END IF;
+
+END $$;
+
+
+-- Add invoice_number column for tracking
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'invoices' AND column_name = 'invoice_number'
+  ) THEN
+    ALTER TABLE invoices ADD COLUMN invoice_number integer;
+
+  END IF;
+
+END $$;
+
+
+-- Add index on estimate_id for better query performance
+CREATE INDEX IF NOT EXISTS idx_invoices_estimate_id ON invoices(estimate_id);
+
+
+-- Function to validate that invoice totals don't exceed estimate total
+CREATE OR REPLACE FUNCTION validate_invoice_total()
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_estimate_total numeric(12,2);
+
+  v_existing_invoices_total numeric(12,2);
+
+  v_new_total numeric(12,2);
+
+BEGIN
+  -- Get the estimate total
+  SELECT total INTO v_estimate_total
+  FROM estimates
+  WHERE id = NEW.estimate_id;
+
+
+  IF v_estimate_total IS NULL THEN
+    RAISE EXCEPTION 'Estimate not found';
+
+  END IF;
+
+
+  -- Get the sum of existing invoices for this estimate (excluding current invoice if updating)
+  SELECT COALESCE(SUM(total), 0) INTO v_existing_invoices_total
+  FROM invoices
+  WHERE estimate_id = NEW.estimate_id
+    AND (TG_OP = 'INSERT' OR id != NEW.id);
+
+
+  -- Calculate new total
+  v_new_total := v_existing_invoices_total + NEW.total;
+
+
+  -- Check if new total exceeds estimate total
+  IF v_new_total > v_estimate_total THEN
+    RAISE EXCEPTION 'Invoice total ($%) would exceed estimate total ($%). Remaining: $%',
+      v_new_total,
+      v_estimate_total,
+      v_estimate_total - v_existing_invoices_total;
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+-- Create trigger to validate invoice totals
+DROP TRIGGER IF EXISTS validate_invoice_total_trigger ON invoices;
+
+CREATE TRIGGER validate_invoice_total_trigger
+  BEFORE INSERT OR UPDATE OF total ON invoices
+  FOR EACH ROW
+  EXECUTE FUNCTION validate_invoice_total();
+
+
+-- Function to generate next invoice number for an account
+CREATE OR REPLACE FUNCTION get_next_invoice_number(p_account_id uuid)
+RETURNS integer
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_next_number integer;
+
+BEGIN
+  SELECT COALESCE(MAX(invoice_number), 0) + 1 INTO v_next_number
+  FROM invoices
+  WHERE account_id = p_account_id;
+
+
+  RETURN v_next_number;
+
+END;
+
+$$;
+
+
+-- Add comment explaining the new workflow
+COMMENT ON TABLE invoices IS 'Invoices are separate from estimates. Multiple invoices can be created for a single estimate, but their total cannot exceed the estimate total.';
+
+COMMENT ON COLUMN invoices.estimate_id IS 'Required reference to the estimate this invoice is based on';
+
+COMMENT ON COLUMN invoices.invoice_number IS 'Sequential invoice number per account for tracking';
+
+;

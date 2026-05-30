@@ -1,7 +1,65 @@
-/*\n  # Fix auto_create_estimate to skip estimate visit jobs\n\n  ## Overview\n  The auto_create_estimate_for_job trigger was creating duplicate estimates\n  when scheduling an estimate visit. The trigger fires for any lead inserted\n  with status='job' and approval_status='approved', which includes estimate\n  visit placeholder jobs.\n\n  ## Changes\n  - Updated auto_create_estimate_for_job function to skip leads whose name\n    ends with ', Estimate' (the naming convention for estimate visit jobs)\n  - This prevents duplicate estimates from being created\n*/\n\nCREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $function$\nBEGIN\n  IF NEW.status IN ('job', 'paid') \n  AND NEW.approval_status = 'approved'\n  AND NEW.name NOT LIKE '%, Estimate' THEN\n    \n    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN\n      INSERT INTO public.estimates (\n        customer_id,\n        job_id,\n        account_id,\n        subtotal,\n        tax_rate,\n        tax,\n        discount,\n        total,\n        status,\n        created_by,\n        notes\n      ) VALUES (\n        NEW.customer_id,\n        NEW.id,\n        NEW.account_id,\n        0,\n        0.08,\n        0,\n        0,\n        0,\n        'draft',\n        NEW.created_by,\n        'Auto-generated estimate for ' || NEW.name\n      );
-\n    END IF;
-\n  END IF;
-\n  \n  RETURN NEW;
-\nEND;
-\n$function$;
-\n;
+/*
+  # Fix auto_create_estimate to skip estimate visit jobs
+
+  ## Overview
+  The auto_create_estimate_for_job trigger was creating duplicate estimates
+  when scheduling an estimate visit. The trigger fires for any lead inserted
+  with status='job' and approval_status='approved', which includes estimate
+  visit placeholder jobs.
+
+  ## Changes
+  - Updated auto_create_estimate_for_job function to skip leads whose name
+    ends with ', Estimate' (the naming convention for estimate visit jobs)
+  - This prevents duplicate estimates from being created
+*/
+
+CREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.status IN ('job', 'paid') 
+  AND NEW.approval_status = 'approved'
+  AND NEW.name NOT LIKE '%, Estimate' THEN
+    
+    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN
+      INSERT INTO public.estimates (
+        customer_id,
+        job_id,
+        account_id,
+        subtotal,
+        tax_rate,
+        tax,
+        discount,
+        total,
+        status,
+        created_by,
+        notes
+      ) VALUES (
+        NEW.customer_id,
+        NEW.id,
+        NEW.account_id,
+        0,
+        0.08,
+        0,
+        0,
+        0,
+        'draft',
+        NEW.created_by,
+        'Auto-generated estimate for ' || NEW.name
+      );
+
+    END IF;
+
+  END IF;
+
+  
+  RETURN NEW;
+
+END;
+
+$function$;
+
+;

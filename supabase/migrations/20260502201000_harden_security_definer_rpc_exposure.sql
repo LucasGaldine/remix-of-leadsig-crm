@@ -31,7 +31,29 @@ $$;
 -- Keep only intentional public RPC entrypoints.
 GRANT EXECUTE ON FUNCTION public.get_public_site(uuid) TO anon;
 GRANT EXECUTE ON FUNCTION public.get_account_by_invite_code(text) TO anon;
-GRANT EXECUTE ON FUNCTION public.upsert_affiliate_signup(text, text, text, text) TO anon;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'upsert_affiliate_signup'
+      AND pg_get_function_identity_arguments(p.oid) = 'text, text, text, text'
+  ) THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.upsert_affiliate_signup(text, text, text, text) TO anon';
+  ELSIF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'upsert_affiliate_signup'
+      AND pg_get_function_identity_arguments(p.oid) = 'text, text, text'
+  ) THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.upsert_affiliate_signup(text, text, text) TO anon';
+  END IF;
+END;
+$$;
 
 -- Explicitly ensure trigger/internal and admin helpers are not RPC-executable.
 REVOKE EXECUTE ON FUNCTION public.enforce_website_lead_pending_approval() FROM anon, authenticated, PUBLIC;

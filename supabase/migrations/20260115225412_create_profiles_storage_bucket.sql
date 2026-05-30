@@ -1,10 +1,81 @@
-/*\n  # Create Profiles Storage Bucket\n\n  ## Overview\n  Creates a storage bucket for user profile photos with appropriate security policies.\n\n  ## Changes Made\n  \n  ### 1. Storage Bucket\n  - Create "profiles" bucket for storing profile photos and avatars\n  - Set to public for easy access to profile images\n  \n  ### 2. Security Policies\n  - Users can upload their own profile photos\n  - Users can update their own profile photos\n  - Users can delete their own profile photos\n  - Everyone can view profile photos (public read access)\n  \n  ### 3. Notes\n  - File size limits should be enforced at the application level\n  - Image validation should be done before upload\n  - Old avatars should be cleaned up when new ones are uploaded\n*/\n\n-- Create the profiles storage bucket if it doesn't exist\nINSERT INTO storage.buckets (id, name, public)\nVALUES ('profiles', 'profiles', true)\nON CONFLICT (id) DO NOTHING;
-\n\n-- Drop existing policies if they exist to recreate them\nDROP POLICY IF EXISTS "Users can upload own profile photos" ON storage.objects;
-\nDROP POLICY IF EXISTS "Users can update own profile photos" ON storage.objects;
-\nDROP POLICY IF EXISTS "Users can delete own profile photos" ON storage.objects;
-\nDROP POLICY IF EXISTS "Anyone can view profile photos" ON storage.objects;
-\n\n-- Allow authenticated users to upload their own profile photos\nCREATE POLICY "Users can upload own profile photos"\nON storage.objects FOR INSERT\nTO authenticated\nWITH CHECK (\n  bucket_id = 'profiles' \n  AND (storage.foldername(name))[1] = 'avatars'\n);
-\n\n-- Allow authenticated users to update their own profile photos\nCREATE POLICY "Users can update own profile photos"\nON storage.objects FOR UPDATE\nTO authenticated\nUSING (\n  bucket_id = 'profiles'\n  AND (storage.foldername(name))[1] = 'avatars'\n)\nWITH CHECK (\n  bucket_id = 'profiles'\n  AND (storage.foldername(name))[1] = 'avatars'\n);
-\n\n-- Allow authenticated users to delete their own profile photos\nCREATE POLICY "Users can delete own profile photos"\nON storage.objects FOR DELETE\nTO authenticated\nUSING (\n  bucket_id = 'profiles'\n  AND (storage.foldername(name))[1] = 'avatars'\n);
-\n\n-- Allow everyone to view profile photos (public bucket)\nCREATE POLICY "Anyone can view profile photos"\nON storage.objects FOR SELECT\nTO public\nUSING (bucket_id = 'profiles');
-\n;
+/*
+  # Create Profiles Storage Bucket
+
+  ## Overview
+  Creates a storage bucket for user profile photos with appropriate security policies.
+
+  ## Changes Made
+  
+  ### 1. Storage Bucket
+  - Create "profiles" bucket for storing profile photos and avatars
+  - Set to public for easy access to profile images
+  
+  ### 2. Security Policies
+  - Users can upload their own profile photos
+  - Users can update their own profile photos
+  - Users can delete their own profile photos
+  - Everyone can view profile photos (public read access)
+  
+  ### 3. Notes
+  - File size limits should be enforced at the application level
+  - Image validation should be done before upload
+  - Old avatars should be cleaned up when new ones are uploaded
+*/
+
+-- Create the profiles storage bucket if it doesn't exist
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('profiles', 'profiles', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- Drop existing policies if they exist to recreate them
+DROP POLICY IF EXISTS "Users can upload own profile photos" ON storage.objects;
+
+DROP POLICY IF EXISTS "Users can update own profile photos" ON storage.objects;
+
+DROP POLICY IF EXISTS "Users can delete own profile photos" ON storage.objects;
+
+DROP POLICY IF EXISTS "Anyone can view profile photos" ON storage.objects;
+
+
+-- Allow authenticated users to upload their own profile photos
+CREATE POLICY "Users can upload own profile photos"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'profiles' 
+  AND (storage.foldername(name))[1] = 'avatars'
+);
+
+
+-- Allow authenticated users to update their own profile photos
+CREATE POLICY "Users can update own profile photos"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (
+  bucket_id = 'profiles'
+  AND (storage.foldername(name))[1] = 'avatars'
+)
+WITH CHECK (
+  bucket_id = 'profiles'
+  AND (storage.foldername(name))[1] = 'avatars'
+);
+
+
+-- Allow authenticated users to delete their own profile photos
+CREATE POLICY "Users can delete own profile photos"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (
+  bucket_id = 'profiles'
+  AND (storage.foldername(name))[1] = 'avatars'
+);
+
+
+-- Allow everyone to view profile photos (public bucket)
+CREATE POLICY "Anyone can view profile photos"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'profiles');
+
+;

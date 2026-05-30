@@ -1,14 +1,84 @@
-/*\n  # Fix Leads Account Access for Multi-User Support\n\n  ## Overview\n  Fixes an issue where leads without account_id are not visible to account members.\n  Also removes old conflicting RLS policies that were checking created_by instead of account_id.\n\n  ## Changes\n\n  1. **Data Migration**\n     - Updates all existing leads to set account_id based on the creator's account\n     - Ensures no leads are left with null account_id\n\n  2. **RLS Policy Cleanup**\n     - Removes old user-based policies that conflict with account-based policies:\n       - "Users can view their own leads"\n       - "Users can create leads for themselves"\n       - "Users can update their own leads"\n       - "Users can delete their own leads"\n       - "Users can view leads in their account"\n       - "Users can create leads in their account"\n       - "Users can update leads in their account"\n       - "Users can delete leads in their account"\n     - These policies were using `created_by = auth.uid()` and `get_user_account_id()`\n     - Only keeps the account-based policies that properly support multi-user access\n\n  3. **Constraint Addition**\n     - Makes account_id NOT NULL to prevent future issues\n     - Ensures all new leads must have an account_id\n\n  ## Result\n  After this migration:\n  - All leads are properly associated with an account\n  - All users within an account can see and manage the account's leads\n  - No conflicts between old and new RLS policies\n*/\n\n-- First, update all leads to have the correct account_id\n-- This sets account_id based on the creator's primary account\nUPDATE leads l\nSET account_id = (\n  SELECT am.account_id \n  FROM account_members am\n  WHERE am.user_id = l.created_by\n  AND am.is_active = true\n  ORDER BY am.created_at ASC\n  LIMIT 1\n)\nWHERE l.account_id IS NULL;
-\n\n-- Drop the old conflicting policies that check created_by or use get_user_account_id\nDROP POLICY IF EXISTS "Users can view their own leads" ON public.leads;
-\nDROP POLICY IF EXISTS "Users can create leads for themselves" ON public.leads;
-\nDROP POLICY IF EXISTS "Users can update their own leads" ON public.leads;
-\nDROP POLICY IF EXISTS "Users can delete their own leads" ON public.leads;
-\nDROP POLICY IF EXISTS "Users can view leads in their account" ON public.leads;
-\nDROP POLICY IF EXISTS "Users can create leads in their account" ON public.leads;
-\nDROP POLICY IF EXISTS "Users can update leads in their account" ON public.leads;
-\nDROP POLICY IF EXISTS "Users can delete leads in their account" ON public.leads;
-\n\n-- Make account_id NOT NULL to prevent this issue in the future\n-- Only do this if all leads now have an account_id\nDO $$\nBEGIN\n  IF NOT EXISTS (SELECT 1 FROM leads WHERE account_id IS NULL) THEN\n    ALTER TABLE leads ALTER COLUMN account_id SET NOT NULL;
-\n  ELSE\n    RAISE NOTICE 'Cannot make account_id NOT NULL because some leads still have NULL account_id';
-\n  END IF;
-\nEND $$;
-\n;
+/*
+  # Fix Leads Account Access for Multi-User Support
+
+  ## Overview
+  Fixes an issue where leads without account_id are not visible to account members.
+  Also removes old conflicting RLS policies that were checking created_by instead of account_id.
+
+  ## Changes
+
+  1. **Data Migration**
+     - Updates all existing leads to set account_id based on the creator's account
+     - Ensures no leads are left with null account_id
+
+  2. **RLS Policy Cleanup**
+     - Removes old user-based policies that conflict with account-based policies:
+       - "Users can view their own leads"
+       - "Users can create leads for themselves"
+       - "Users can update their own leads"
+       - "Users can delete their own leads"
+       - "Users can view leads in their account"
+       - "Users can create leads in their account"
+       - "Users can update leads in their account"
+       - "Users can delete leads in their account"
+     - These policies were using `created_by = auth.uid()` and `get_user_account_id()`
+     - Only keeps the account-based policies that properly support multi-user access
+
+  3. **Constraint Addition**
+     - Makes account_id NOT NULL to prevent future issues
+     - Ensures all new leads must have an account_id
+
+  ## Result
+  After this migration:
+  - All leads are properly associated with an account
+  - All users within an account can see and manage the account's leads
+  - No conflicts between old and new RLS policies
+*/
+
+-- First, update all leads to have the correct account_id
+-- This sets account_id based on the creator's primary account
+UPDATE leads l
+SET account_id = (
+  SELECT am.account_id 
+  FROM account_members am
+  WHERE am.user_id = l.created_by
+  AND am.is_active = true
+  ORDER BY am.created_at ASC
+  LIMIT 1
+)
+WHERE l.account_id IS NULL;
+
+
+-- Drop the old conflicting policies that check created_by or use get_user_account_id
+DROP POLICY IF EXISTS "Users can view their own leads" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can create leads for themselves" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can update their own leads" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can delete their own leads" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can view leads in their account" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can create leads in their account" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can update leads in their account" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can delete leads in their account" ON public.leads;
+
+
+-- Make account_id NOT NULL to prevent this issue in the future
+-- Only do this if all leads now have an account_id
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM leads WHERE account_id IS NULL) THEN
+    ALTER TABLE leads ALTER COLUMN account_id SET NOT NULL;
+
+  ELSE
+    RAISE NOTICE 'Cannot make account_id NOT NULL because some leads still have NULL account_id';
+
+  END IF;
+
+END $$;
+
+;

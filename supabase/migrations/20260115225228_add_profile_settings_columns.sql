@@ -1,3 +1,29 @@
-/*\n  # Add Profile Settings Columns\n\n  ## Overview\n  Adds timezone and notification preferences columns to the profiles table to support comprehensive profile management.\n\n  ## Changes Made\n  \n  ### 1. New Columns\n  - `timezone` (text) - User's preferred timezone (e.g., 'America/New_York')\n  - `notification_preferences` (jsonb) - Stores notification settings as JSON\n    - Structure: { "email": boolean, "sms": boolean, "push": boolean, "newLeads": boolean, "jobUpdates": boolean }\n  \n  ### 2. Notes\n  - Both columns are nullable to support existing users\n  - Default notification preferences favor all notifications enabled\n  - Common timezones include: America/New_York, America/Chicago, America/Denver, America/Los_Angeles, etc.\n*/\n\n-- Add timezone column\nALTER TABLE public.profiles \n  ADD COLUMN IF NOT EXISTS timezone text DEFAULT 'America/New_York';
-\n\n-- Add notification preferences column\nALTER TABLE public.profiles \n  ADD COLUMN IF NOT EXISTS notification_preferences jsonb DEFAULT '{"email": true, "sms": true, "push": true, "newLeads": true, "jobUpdates": true}'::jsonb;
-\n;
+/*
+  # Add Profile Settings Columns
+
+  ## Overview
+  Adds timezone and notification preferences columns to the profiles table to support comprehensive profile management.
+
+  ## Changes Made
+  
+  ### 1. New Columns
+  - `timezone` (text) - User's preferred timezone (e.g., 'America/New_York')
+  - `notification_preferences` (jsonb) - Stores notification settings as JSON
+    - Structure: { "email": boolean, "sms": boolean, "push": boolean, "newLeads": boolean, "jobUpdates": boolean }
+  
+  ### 2. Notes
+  - Both columns are nullable to support existing users
+  - Default notification preferences favor all notifications enabled
+  - Common timezones include: America/New_York, America/Chicago, America/Denver, America/Los_Angeles, etc.
+*/
+
+-- Add timezone column
+ALTER TABLE public.profiles 
+  ADD COLUMN IF NOT EXISTS timezone text DEFAULT 'America/New_York';
+
+
+-- Add notification preferences column
+ALTER TABLE public.profiles 
+  ADD COLUMN IF NOT EXISTS notification_preferences jsonb DEFAULT '{"email": true, "sms": true, "push": true, "newLeads": true, "jobUpdates": true}'::jsonb;
+
+;

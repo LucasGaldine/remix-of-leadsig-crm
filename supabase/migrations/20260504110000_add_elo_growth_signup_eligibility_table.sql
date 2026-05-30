@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS public.elo_growth_signups (
   CONSTRAINT elo_growth_signups_expected_tier_check CHECK (expected_tier IN ('solo', 'team', 'growth'))
 );
 
+ALTER TABLE public.elo_growth_signups
+  ADD COLUMN IF NOT EXISTS normalized_email text;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_elo_growth_signups_normalized_email
   ON public.elo_growth_signups (normalized_email);
 

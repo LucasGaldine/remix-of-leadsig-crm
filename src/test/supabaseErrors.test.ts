@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { isMissingColumnError, isMissingRelationError } from "@/lib/supabaseErrors";
+import {
+  getSupabaseErrorMessage,
+  isMissingColumnError,
+  isMissingRelationError,
+  isPermissionDeniedError,
+} from "@/lib/supabaseErrors";
 
 describe("isMissingRelationError", () => {
   it("matches Postgres missing relation code for a specific table", () => {
@@ -85,5 +90,35 @@ describe("isMissingColumnError", () => {
         "account_members",
       ),
     ).toBe(false);
+  });
+});
+
+describe("getSupabaseErrorMessage", () => {
+  it("returns message from plain object errors", () => {
+    expect(
+      getSupabaseErrorMessage({
+        message: "new row violates row-level security policy for table job_assignments",
+      }),
+    ).toBe("new row violates row-level security policy for table job_assignments");
+  });
+
+  it("falls back when message is unavailable", () => {
+    expect(getSupabaseErrorMessage({ code: "42501" }, "Fallback message")).toBe("Fallback message");
+  });
+});
+
+describe("isPermissionDeniedError", () => {
+  it("matches by postgres permission code", () => {
+    expect(isPermissionDeniedError({ code: "42501", message: "permission denied for table job_assignments" })).toBe(
+      true,
+    );
+  });
+
+  it("matches by 403 status", () => {
+    expect(isPermissionDeniedError({ status: 403, message: "Forbidden" })).toBe(true);
+  });
+
+  it("does not match unrelated errors", () => {
+    expect(isPermissionDeniedError({ message: "network error" })).toBe(false);
   });
 });

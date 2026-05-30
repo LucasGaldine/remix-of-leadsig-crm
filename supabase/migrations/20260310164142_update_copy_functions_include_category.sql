@@ -1,36 +1,210 @@
-/*\n  # Update Copy Functions to Include Category\n\n  ## Overview\n  Update the functions that copy estimate line items to job line items to include\n  the new category field.\n\n  ## Changes\n  - Update `copy_estimate_line_items_to_job()` to include category\n  - Update `copy_estimate_items_on_job_creation()` to include category\n\n  ## Important Notes\n  - Category is preserved when copying from estimate to job costs\n  - This allows tracking cost breakdown by category\n*/\n\n-- Update the function to copy estimate line items to job (on estimate approval)\nCREATE OR REPLACE FUNCTION copy_estimate_line_items_to_job()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  v_estimate_job_id uuid;
-\n  v_target_job_id uuid;
-\n  v_account_id uuid;
-\n  v_is_estimate_visit boolean;
-\nBEGIN\n  -- Check if estimate status changed to 'accepted'\n  IF NEW.status = 'accepted' AND (OLD.status IS NULL OR OLD.status != 'accepted') THEN\n    v_estimate_job_id := NEW.job_id;
-\n    v_account_id := NEW.account_id;
-\n    \n    -- Only proceed if estimate has a linked job\n    IF v_estimate_job_id IS NOT NULL THEN\n      -- Check if this is an estimate visit job\n      SELECT is_estimate_visit INTO v_is_estimate_visit\n      FROM leads\n      WHERE id = v_estimate_job_id;
-\n      \n      IF v_is_estimate_visit THEN\n        -- This is an estimate visit, find the parent/regular job\n        SELECT id INTO v_target_job_id\n        FROM leads\n        WHERE estimate_job_id = v_estimate_job_id\n        LIMIT 1;
-\n        \n        -- If no parent job found, something is wrong, skip\n        IF v_target_job_id IS NULL THEN\n          RETURN NEW;
-\n        END IF;
-\n      ELSE\n        -- This is a direct job, use it as target\n        v_target_job_id := v_estimate_job_id;
-\n      END IF;
-\n      \n      -- Check if job line items already exist for this job\n      -- (to avoid duplicates if estimate is re-approved)\n      IF NOT EXISTS (\n        SELECT 1 FROM job_line_items \n        WHERE lead_id = v_target_job_id\n      ) THEN\n        -- Copy all estimate line items to job line items\n        INSERT INTO job_line_items (\n          lead_id,\n          name,\n          description,\n          quantity,\n          unit,\n          unit_price,\n          total,\n          sort_order,\n          account_id,\n          estimate_line_item_id,\n          category\n        )\n        SELECT\n          v_target_job_id,\n          name,\n          description,\n          quantity,\n          unit,\n          unit_price,\n          total,\n          sort_order,\n          v_account_id,\n          id,\n          category\n        FROM estimate_line_items\n        WHERE estimate_id = NEW.id\n        AND is_change_order = false\n        ORDER BY sort_order;
-\n      END IF;
-\n    END IF;
-\n  END IF;
-\n  \n  RETURN NEW;
-\nEND;
-\n$$;
-\n\n-- Update the function for copying on job creation\nCREATE OR REPLACE FUNCTION copy_estimate_items_on_job_creation()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  v_estimate_id uuid;
-\n  v_estimate_status text;
-\n  v_account_id uuid;
-\n  v_estimate_job_id uuid;
-\n  v_target_job_id uuid;
-\n  v_is_estimate_visit boolean;
-\nBEGIN\n  -- Check if this is an estimate visit job being created\n  IF NEW.is_estimate_visit THEN\n    -- Don't copy anything for estimate visit jobs\n    RETURN NEW;
-\n  END IF;
-\n  \n  -- Get the estimate for this job (if any)\n  SELECT id, status, account_id, job_id\n  INTO v_estimate_id, v_estimate_status, v_account_id, v_estimate_job_id\n  FROM estimates\n  WHERE job_id = NEW.id\n  LIMIT 1;
-\n  \n  -- If there's an approved estimate, copy its line items\n  IF v_estimate_id IS NOT NULL AND v_estimate_status = 'accepted' THEN\n    -- The target is this newly created job\n    v_target_job_id := NEW.id;
-\n    \n    -- Check if line items don't already exist\n    IF NOT EXISTS (\n      SELECT 1 FROM job_line_items \n      WHERE lead_id = v_target_job_id\n    ) THEN\n      -- Copy line items\n      INSERT INTO job_line_items (\n        lead_id,\n        name,\n        description,\n        quantity,\n        unit,\n        unit_price,\n        total,\n        sort_order,\n        account_id,\n        estimate_line_item_id,\n        category\n      )\n      SELECT\n        v_target_job_id,\n        name,\n        description,\n        quantity,\n        unit,\n        unit_price,\n        total,\n        sort_order,\n        v_account_id,\n        id,\n        category\n      FROM estimate_line_items\n      WHERE estimate_id = v_estimate_id\n      AND is_change_order = false\n      ORDER BY sort_order;
-\n    END IF;
-\n  END IF;
-\n  \n  RETURN NEW;
-\nEND;
-\n$$;
+/*
+  # Update Copy Functions to Include Category
+
+  ## Overview
+  Update the functions that copy estimate line items to job line items to include
+  the new category field.
+
+  ## Changes
+  - Update `copy_estimate_line_items_to_job()` to include category
+  - Update `copy_estimate_items_on_job_creation()` to include category
+
+  ## Important Notes
+  - Category is preserved when copying from estimate to job costs
+  - This allows tracking cost breakdown by category
+*/
+
+-- Update the function to copy estimate line items to job (on estimate approval)
+CREATE OR REPLACE FUNCTION copy_estimate_line_items_to_job()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_estimate_job_id uuid;
+
+  v_target_job_id uuid;
+
+  v_account_id uuid;
+
+  v_is_estimate_visit boolean;
+
+BEGIN
+  -- Check if estimate status changed to 'accepted'
+  IF NEW.status = 'accepted' AND (OLD.status IS NULL OR OLD.status != 'accepted') THEN
+    v_estimate_job_id := NEW.job_id;
+
+    v_account_id := NEW.account_id;
+
+    
+    -- Only proceed if estimate has a linked job
+    IF v_estimate_job_id IS NOT NULL THEN
+      -- Check if this is an estimate visit job
+      SELECT is_estimate_visit INTO v_is_estimate_visit
+      FROM leads
+      WHERE id = v_estimate_job_id;
+
+      
+      IF v_is_estimate_visit THEN
+        -- This is an estimate visit, find the parent/regular job
+        SELECT id INTO v_target_job_id
+        FROM leads
+        WHERE estimate_job_id = v_estimate_job_id
+        LIMIT 1;
+
+        
+        -- If no parent job found, something is wrong, skip
+        IF v_target_job_id IS NULL THEN
+          RETURN NEW;
+
+        END IF;
+
+      ELSE
+        -- This is a direct job, use it as target
+        v_target_job_id := v_estimate_job_id;
+
+      END IF;
+
+      
+      -- Check if job line items already exist for this job
+      -- (to avoid duplicates if estimate is re-approved)
+      IF NOT EXISTS (
+        SELECT 1 FROM job_line_items 
+        WHERE lead_id = v_target_job_id
+      ) THEN
+        -- Copy all estimate line items to job line items
+        INSERT INTO job_line_items (
+          lead_id,
+          name,
+          description,
+          quantity,
+          unit,
+          unit_price,
+          total,
+          sort_order,
+          account_id,
+          estimate_line_item_id,
+          category
+        )
+        SELECT
+          v_target_job_id,
+          name,
+          description,
+          quantity,
+          unit,
+          unit_price,
+          total,
+          sort_order,
+          v_account_id,
+          id,
+          category
+        FROM estimate_line_items
+        WHERE estimate_id = NEW.id
+        AND is_change_order = false
+        ORDER BY sort_order;
+
+      END IF;
+
+    END IF;
+
+  END IF;
+
+  
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+-- Update the function for copying on job creation
+CREATE OR REPLACE FUNCTION copy_estimate_items_on_job_creation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_estimate_id uuid;
+
+  v_estimate_status text;
+
+  v_account_id uuid;
+
+  v_estimate_job_id uuid;
+
+  v_target_job_id uuid;
+
+  v_is_estimate_visit boolean;
+
+BEGIN
+  -- Check if this is an estimate visit job being created
+  IF NEW.is_estimate_visit THEN
+    -- Don't copy anything for estimate visit jobs
+    RETURN NEW;
+
+  END IF;
+
+  
+  -- Get the estimate for this job (if any)
+  SELECT id, status, account_id, job_id
+  INTO v_estimate_id, v_estimate_status, v_account_id, v_estimate_job_id
+  FROM estimates
+  WHERE job_id = NEW.id
+  LIMIT 1;
+
+  
+  -- If there's an approved estimate, copy its line items
+  IF v_estimate_id IS NOT NULL AND v_estimate_status = 'accepted' THEN
+    -- The target is this newly created job
+    v_target_job_id := NEW.id;
+
+    
+    -- Check if line items don't already exist
+    IF NOT EXISTS (
+      SELECT 1 FROM job_line_items 
+      WHERE lead_id = v_target_job_id
+    ) THEN
+      -- Copy line items
+      INSERT INTO job_line_items (
+        lead_id,
+        name,
+        description,
+        quantity,
+        unit,
+        unit_price,
+        total,
+        sort_order,
+        account_id,
+        estimate_line_item_id,
+        category
+      )
+      SELECT
+        v_target_job_id,
+        name,
+        description,
+        quantity,
+        unit,
+        unit_price,
+        total,
+        sort_order,
+        v_account_id,
+        id,
+        category
+      FROM estimate_line_items
+      WHERE estimate_id = v_estimate_id
+      AND is_change_order = false
+      ORDER BY sort_order;
+
+    END IF;
+
+  END IF;
+
+  
+  RETURN NEW;
+
+END;
+
+$$;
 ;

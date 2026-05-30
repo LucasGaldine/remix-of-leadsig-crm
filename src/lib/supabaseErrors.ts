@@ -1,6 +1,66 @@
 export interface SupabaseLikeError {
   message?: string | null;
   code?: string | null;
+  status?: number | null;
+  details?: string | null;
+  hint?: string | null;
+  error_description?: string | null;
+}
+
+export function getSupabaseErrorMessage(error: unknown, fallback = "Unexpected error"): string {
+  if (error instanceof Error) {
+    const message = String(error.message || "").trim();
+    return message || fallback;
+  }
+
+  if (!error || typeof error !== "object") {
+    return fallback;
+  }
+
+  const maybeError = error as SupabaseLikeError;
+  const message = String(maybeError.message || "").trim();
+  if (message) {
+    return message;
+  }
+
+  const description = String(maybeError.error_description || "").trim();
+  if (description) {
+    return description;
+  }
+
+  const details = String(maybeError.details || "").trim();
+  if (details) {
+    return details;
+  }
+
+  const hint = String(maybeError.hint || "").trim();
+  if (hint) {
+    return hint;
+  }
+
+  return fallback;
+}
+
+export function isPermissionDeniedError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as SupabaseLikeError;
+  const code = String(maybeError.code || "").trim();
+  const status = Number(maybeError.status || 0);
+  const message = String(getSupabaseErrorMessage(error, "")).toLowerCase();
+
+  if (code === "42501" || status === 403) {
+    return true;
+  }
+
+  return (
+    message.includes("forbidden") ||
+    message.includes("permission denied") ||
+    message.includes("row-level security") ||
+    message.includes("policy")
+  );
 }
 
 export function isMissingRelationError(error: SupabaseLikeError | null | undefined, relationName?: string): boolean {

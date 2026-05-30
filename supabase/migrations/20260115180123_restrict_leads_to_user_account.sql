@@ -1,6 +1,50 @@
-/*\n  # Restrict Leads to User Account\n\n  1. Changes\n    - Drop the permissive "all access" policy\n    - Create new policies that restrict leads to the user who created them\n    - Users can only see, update, and delete their own leads\n    - When inserting, created_by must match the authenticated user\n  \n  2. Security\n    - SELECT: Users can only view leads they created (created_by = auth.uid())\n    - INSERT: Users can create leads, and created_by must be their user ID\n    - UPDATE: Users can only update their own leads\n    - DELETE: Users can only delete their own leads\n*/\n\n-- Drop the existing permissive policy\nDROP POLICY IF EXISTS "Authenticated users have full access to leads" ON leads;
-\n\n-- Create restrictive policies for each operation\nCREATE POLICY "Users can view their own leads"\n  ON leads\n  FOR SELECT\n  TO authenticated\n  USING (created_by = auth.uid());
-\n\nCREATE POLICY "Users can create leads for themselves"\n  ON leads\n  FOR INSERT\n  TO authenticated\n  WITH CHECK (created_by = auth.uid());
-\n\nCREATE POLICY "Users can update their own leads"\n  ON leads\n  FOR UPDATE\n  TO authenticated\n  USING (created_by = auth.uid())\n  WITH CHECK (created_by = auth.uid());
-\n\nCREATE POLICY "Users can delete their own leads"\n  ON leads\n  FOR DELETE\n  TO authenticated\n  USING (created_by = auth.uid());
-\n;
+/*
+  # Restrict Leads to User Account
+
+  1. Changes
+    - Drop the permissive "all access" policy
+    - Create new policies that restrict leads to the user who created them
+    - Users can only see, update, and delete their own leads
+    - When inserting, created_by must match the authenticated user
+  
+  2. Security
+    - SELECT: Users can only view leads they created (created_by = auth.uid())
+    - INSERT: Users can create leads, and created_by must be their user ID
+    - UPDATE: Users can only update their own leads
+    - DELETE: Users can only delete their own leads
+*/
+
+-- Drop the existing permissive policy
+DROP POLICY IF EXISTS "Authenticated users have full access to leads" ON leads;
+
+
+-- Create restrictive policies for each operation
+CREATE POLICY "Users can view their own leads"
+  ON leads
+  FOR SELECT
+  TO authenticated
+  USING (created_by = auth.uid());
+
+
+CREATE POLICY "Users can create leads for themselves"
+  ON leads
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (created_by = auth.uid());
+
+
+CREATE POLICY "Users can update their own leads"
+  ON leads
+  FOR UPDATE
+  TO authenticated
+  USING (created_by = auth.uid())
+  WITH CHECK (created_by = auth.uid());
+
+
+CREATE POLICY "Users can delete their own leads"
+  ON leads
+  FOR DELETE
+  TO authenticated
+  USING (created_by = auth.uid());
+
+;

@@ -1,12 +1,93 @@
-/*\n  # Add Lead Source Setup Sessions\n\n  1. New Tables\n    - `lead_source_setup_sessions`\n      - `id` (uuid, primary key) - The setup session token\n      - `account_id` (uuid, foreign key to accounts)\n      - `user_id` (uuid, foreign key to auth.users)\n      - `platform` (text) - The platform being configured (e.g., "google")\n      - `test_payload` (jsonb) - The test data received from the platform\n      - `received_at` (timestamptz) - When test data was received\n      - `expires_at` (timestamptz) - When this session expires (10 minutes)\n      - `created_at` (timestamptz)\n      \n  2. Changes\n    - Add index on expires_at for cleanup queries\n    - Add index on account_id and user_id for lookups\n    \n  3. Security\n    - Enable RLS on `lead_source_setup_sessions` table\n    - Add policy for users to read their own setup sessions\n    - Add policy for users to insert their own setup sessions\n    - Add policy for service role to update sessions (for webhook handler)\n*/\n\n-- Create lead_source_setup_sessions table\nCREATE TABLE IF NOT EXISTS lead_source_setup_sessions (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,\n  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,\n  platform text NOT NULL,\n  test_payload jsonb,\n  received_at timestamptz,\n  expires_at timestamptz NOT NULL DEFAULT (now() + interval '10 minutes'),\n  created_at timestamptz DEFAULT now() NOT NULL\n);
-\n\n-- Add indexes for faster lookups\nCREATE INDEX IF NOT EXISTS idx_setup_sessions_expires \n  ON lead_source_setup_sessions(expires_at);
-\n  \nCREATE INDEX IF NOT EXISTS idx_setup_sessions_account \n  ON lead_source_setup_sessions(account_id);
-\n  \nCREATE INDEX IF NOT EXISTS idx_setup_sessions_user \n  ON lead_source_setup_sessions(user_id);
-\n\n-- Enable RLS\nALTER TABLE lead_source_setup_sessions ENABLE ROW LEVEL SECURITY;
-\n\n-- Policy: Users can read their own setup sessions\nCREATE POLICY "Users can read own setup sessions"\n  ON lead_source_setup_sessions\n  FOR SELECT\n  TO authenticated\n  USING (user_id = auth.uid());
-\n\n-- Policy: Users can insert their own setup sessions\nCREATE POLICY "Users can insert own setup sessions"\n  ON lead_source_setup_sessions\n  FOR INSERT\n  TO authenticated\n  WITH CHECK (user_id = auth.uid());
-\n\n-- Policy: Users can delete their own setup sessions\nCREATE POLICY "Users can delete own setup sessions"\n  ON lead_source_setup_sessions\n  FOR DELETE\n  TO authenticated\n  USING (user_id = auth.uid());
-\n\n-- Function to clean up expired setup sessions (runs periodically)\nCREATE OR REPLACE FUNCTION cleanup_expired_setup_sessions()\nRETURNS void\nLANGUAGE plpgsql\nSECURITY DEFINER\nAS $$\nBEGIN\n  DELETE FROM lead_source_setup_sessions\n  WHERE expires_at < now();
-\nEND;
-\n$$;
+/*
+  # Add Lead Source Setup Sessions
+
+  1. New Tables
+    - `lead_source_setup_sessions`
+      - `id` (uuid, primary key) - The setup session token
+      - `account_id` (uuid, foreign key to accounts)
+      - `user_id` (uuid, foreign key to auth.users)
+      - `platform` (text) - The platform being configured (e.g., "google")
+      - `test_payload` (jsonb) - The test data received from the platform
+      - `received_at` (timestamptz) - When test data was received
+      - `expires_at` (timestamptz) - When this session expires (10 minutes)
+      - `created_at` (timestamptz)
+      
+  2. Changes
+    - Add index on expires_at for cleanup queries
+    - Add index on account_id and user_id for lookups
+    
+  3. Security
+    - Enable RLS on `lead_source_setup_sessions` table
+    - Add policy for users to read their own setup sessions
+    - Add policy for users to insert their own setup sessions
+    - Add policy for service role to update sessions (for webhook handler)
+*/
+
+-- Create lead_source_setup_sessions table
+CREATE TABLE IF NOT EXISTS lead_source_setup_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  platform text NOT NULL,
+  test_payload jsonb,
+  received_at timestamptz,
+  expires_at timestamptz NOT NULL DEFAULT (now() + interval '10 minutes'),
+  created_at timestamptz DEFAULT now() NOT NULL
+);
+
+
+-- Add indexes for faster lookups
+CREATE INDEX IF NOT EXISTS idx_setup_sessions_expires 
+  ON lead_source_setup_sessions(expires_at);
+
+  
+CREATE INDEX IF NOT EXISTS idx_setup_sessions_account 
+  ON lead_source_setup_sessions(account_id);
+
+  
+CREATE INDEX IF NOT EXISTS idx_setup_sessions_user 
+  ON lead_source_setup_sessions(user_id);
+
+
+-- Enable RLS
+ALTER TABLE lead_source_setup_sessions ENABLE ROW LEVEL SECURITY;
+
+
+-- Policy: Users can read their own setup sessions
+CREATE POLICY "Users can read own setup sessions"
+  ON lead_source_setup_sessions
+  FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
+
+
+-- Policy: Users can insert their own setup sessions
+CREATE POLICY "Users can insert own setup sessions"
+  ON lead_source_setup_sessions
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+
+-- Policy: Users can delete their own setup sessions
+CREATE POLICY "Users can delete own setup sessions"
+  ON lead_source_setup_sessions
+  FOR DELETE
+  TO authenticated
+  USING (user_id = auth.uid());
+
+
+-- Function to clean up expired setup sessions (runs periodically)
+CREATE OR REPLACE FUNCTION cleanup_expired_setup_sessions()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  DELETE FROM lead_source_setup_sessions
+  WHERE expires_at < now();
+
+END;
+
+$$;
 ;

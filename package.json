@@ -9,6 +9,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "local:bootstrap-user": "node scripts/bootstrap-local-user.mjs",
+    "local:reset": "supabase db reset && npm run local:bootstrap-user",
     "guard:deploy-policy": "node scripts/security/check-no-cli-deploy.js",
     "deploy:mcp": "npm run guard:deploy-policy && node scripts/deploy/mcp-only-deploy.js",
     "deploy": "npm run deploy:mcp",

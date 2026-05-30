@@ -4,7 +4,7 @@
   Website hero/service images are stored in:
     profiles/website/{account_id}/...
 
-  Existing policies only allow writes under profiles/avatars/*, which blocks
+  Existing policies only allow writes under profiles/avatars/(any path), which blocks
   website image uploads with RLS violations.
 */
 

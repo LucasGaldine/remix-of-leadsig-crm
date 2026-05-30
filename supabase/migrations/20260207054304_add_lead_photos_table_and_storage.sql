@@ -1,15 +1,125 @@
-/*\n  # Add Lead Photos Table and Storage Bucket\n\n  1. New Tables\n    - `lead_photos`\n      - `id` (uuid, primary key)\n      - `lead_id` (uuid, foreign key to leads)\n      - `account_id` (uuid, foreign key to accounts)\n      - `file_path` (text, storage path)\n      - `uploaded_by` (uuid, the user who uploaded)\n      - `created_at` (timestamptz, default now())\n\n  2. Storage\n    - Create `lead-photos` public bucket for before-photos\n\n  3. Security\n    - Enable RLS on `lead_photos` table\n    - Members of the same account can view photos\n    - Authenticated users in the same account can insert photos\n    - Only the uploader can delete their own photos\n    - Storage policies for authenticated upload, public read, owner delete\n\n  4. Notes\n    - Max 4 photos per lead is enforced at the application level\n    - Photos are stored under lead-photos/{account_id}/{lead_id}/{filename}\n*/\n\n-- Create lead_photos table\nCREATE TABLE IF NOT EXISTS lead_photos (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,\n  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,\n  file_path text NOT NULL,\n  uploaded_by uuid NOT NULL REFERENCES auth.users(id),\n  created_at timestamptz NOT NULL DEFAULT now()\n);
-\n\n-- Add index for querying photos by lead\nCREATE INDEX IF NOT EXISTS idx_lead_photos_lead_id ON lead_photos(lead_id);
-\nCREATE INDEX IF NOT EXISTS idx_lead_photos_account_id ON lead_photos(account_id);
-\n\n-- Enable RLS\nALTER TABLE lead_photos ENABLE ROW LEVEL SECURITY;
-\n\n-- Account members can view photos for their account\nCREATE POLICY "Account members can view lead photos"\n  ON lead_photos FOR SELECT\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = lead_photos.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  );
-\n\n-- Account members can insert photos for their account\nCREATE POLICY "Account members can insert lead photos"\n  ON lead_photos FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    uploaded_by = auth.uid()\n    AND EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = lead_photos.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  );
-\n\n-- Only the uploader can delete their photos\nCREATE POLICY "Uploaders can delete own lead photos"\n  ON lead_photos FOR DELETE\n  TO authenticated\n  USING (\n    uploaded_by = auth.uid()\n  );
-\n\n-- Create lead-photos storage bucket\nINSERT INTO storage.buckets (id, name, public)\nVALUES ('lead-photos', 'lead-photos', true)\nON CONFLICT (id) DO NOTHING;
-\n\n-- Storage policies for lead-photos bucket\nDROP POLICY IF EXISTS "Account members can upload lead photos" ON storage.objects;
-\nDROP POLICY IF EXISTS "Anyone can view lead photos" ON storage.objects;
-\nDROP POLICY IF EXISTS "Uploaders can delete lead photos" ON storage.objects;
-\n\n-- Allow authenticated users to upload lead photos\nCREATE POLICY "Account members can upload lead photos"\nON storage.objects FOR INSERT\nTO authenticated\nWITH CHECK (\n  bucket_id = 'lead-photos'\n);
-\n\n-- Allow public read access to lead photos\nCREATE POLICY "Anyone can view lead photos"\nON storage.objects FOR SELECT\nTO public\nUSING (bucket_id = 'lead-photos');
-\n\n-- Allow authenticated users to delete their own lead photos\nCREATE POLICY "Uploaders can delete lead photos"\nON storage.objects FOR DELETE\nTO authenticated\nUSING (\n  bucket_id = 'lead-photos'\n);
-\n;
+/*
+  # Add Lead Photos Table and Storage Bucket
+
+  1. New Tables
+    - `lead_photos`
+      - `id` (uuid, primary key)
+      - `lead_id` (uuid, foreign key to leads)
+      - `account_id` (uuid, foreign key to accounts)
+      - `file_path` (text, storage path)
+      - `uploaded_by` (uuid, the user who uploaded)
+      - `created_at` (timestamptz, default now())
+
+  2. Storage
+    - Create `lead-photos` public bucket for before-photos
+
+  3. Security
+    - Enable RLS on `lead_photos` table
+    - Members of the same account can view photos
+    - Authenticated users in the same account can insert photos
+    - Only the uploader can delete their own photos
+    - Storage policies for authenticated upload, public read, owner delete
+
+  4. Notes
+    - Max 4 photos per lead is enforced at the application level
+    - Photos are stored under lead-photos/{account_id}/{lead_id}/{filename}
+*/
+
+-- Create lead_photos table
+CREATE TABLE IF NOT EXISTS lead_photos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  file_path text NOT NULL,
+  uploaded_by uuid NOT NULL REFERENCES auth.users(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+
+-- Add index for querying photos by lead
+CREATE INDEX IF NOT EXISTS idx_lead_photos_lead_id ON lead_photos(lead_id);
+
+CREATE INDEX IF NOT EXISTS idx_lead_photos_account_id ON lead_photos(account_id);
+
+
+-- Enable RLS
+ALTER TABLE lead_photos ENABLE ROW LEVEL SECURITY;
+
+
+-- Account members can view photos for their account
+CREATE POLICY "Account members can view lead photos"
+  ON lead_photos FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = lead_photos.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  );
+
+
+-- Account members can insert photos for their account
+CREATE POLICY "Account members can insert lead photos"
+  ON lead_photos FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    uploaded_by = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = lead_photos.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  );
+
+
+-- Only the uploader can delete their photos
+CREATE POLICY "Uploaders can delete own lead photos"
+  ON lead_photos FOR DELETE
+  TO authenticated
+  USING (
+    uploaded_by = auth.uid()
+  );
+
+
+-- Create lead-photos storage bucket
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('lead-photos', 'lead-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- Storage policies for lead-photos bucket
+DROP POLICY IF EXISTS "Account members can upload lead photos" ON storage.objects;
+
+DROP POLICY IF EXISTS "Anyone can view lead photos" ON storage.objects;
+
+DROP POLICY IF EXISTS "Uploaders can delete lead photos" ON storage.objects;
+
+
+-- Allow authenticated users to upload lead photos
+CREATE POLICY "Account members can upload lead photos"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'lead-photos'
+);
+
+
+-- Allow public read access to lead photos
+CREATE POLICY "Anyone can view lead photos"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'lead-photos');
+
+
+-- Allow authenticated users to delete their own lead photos
+CREATE POLICY "Uploaders can delete lead photos"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (
+  bucket_id = 'lead-photos'
+);
+
+;

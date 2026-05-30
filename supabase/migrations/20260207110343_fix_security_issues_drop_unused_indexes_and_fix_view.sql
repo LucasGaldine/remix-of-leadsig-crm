@@ -1,41 +1,179 @@
-/*\n  # Fix Security Issues: Drop Unused Indexes and Fix Security Definer View\n\n  1. Dropped Indexes\n    - Removes 39 unused indexes across multiple tables to reduce storage overhead and improve write performance\n    - Tables affected: email_digest_log, lead_photos, sms_notification_log, notifications, account_members, \n      api_keys, customers, days_off, estimate_change_orders, estimate_line_items, stripe_connect_accounts,\n      supply_order_items, estimates, interactions, invoice_line_items, job_assignments, job_schedules,\n      lead_qualifications, leads, material_items, payments, pricing_rules, quick_estimates, supply_orders,\n      webhook_events\n\n  2. Security Definer View Fix\n    - Recreates `account_members_with_profiles` view with `security_invoker = true`\n    - This ensures the view executes with the privileges of the calling user, not the view creator\n    - Improves security by preventing privilege escalation through the view\n    - Uses correct join on `profiles.user_id` column\n\n  3. Important Notes\n    - **Leaked Password Protection**: This must be enabled manually in the Supabase Dashboard\n      - Navigate to: Authentication > Providers > Email > Advanced Settings\n      - Enable "Leaked Password Protection" to check passwords against HaveIBeenPwned.org\n      - This cannot be configured via SQL migration\n*/\n\n-- ============================================================================\n-- 1. Drop Unused Indexes\n-- ============================================================================\n\n-- Email Digest Log indexes\nDROP INDEX IF EXISTS idx_email_digest_log_account_id;
-\nDROP INDEX IF EXISTS idx_email_digest_log_user_id;
-\nDROP INDEX IF EXISTS idx_email_digest_log_created_at;
-\n\n-- Lead Photos indexes\nDROP INDEX IF EXISTS idx_lead_photos_account_id;
-\nDROP INDEX IF EXISTS idx_lead_photos_uploaded_by;
-\n\n-- SMS Notification Log indexes\nDROP INDEX IF EXISTS idx_sms_notification_log_user_id;
-\n\n-- Notifications indexes\nDROP INDEX IF EXISTS idx_notifications_user_id;
-\n\n-- Account Members indexes\nDROP INDEX IF EXISTS idx_account_members_invited_by;
-\n\n-- API Keys indexes\nDROP INDEX IF EXISTS idx_api_keys_account_id;
-\n\n-- Customers indexes\nDROP INDEX IF EXISTS idx_customers_account_id;
-\nDROP INDEX IF EXISTS idx_customers_lead_id;
-\n\n-- Days Off indexes\nDROP INDEX IF EXISTS idx_days_off_created_by;
-\n\n-- Estimate Change Orders indexes\nDROP INDEX IF EXISTS idx_estimate_change_orders_account_id;
-\nDROP INDEX IF EXISTS idx_estimate_change_orders_changed_by;
-\n\n-- Estimate Line Items indexes\nDROP INDEX IF EXISTS idx_estimate_line_items_account_id;
-\nDROP INDEX IF EXISTS idx_estimate_line_items_original_line_item_id;
-\n\n-- Estimates indexes\nDROP INDEX IF EXISTS idx_estimates_created_by;
-\n\n-- Interactions indexes\nDROP INDEX IF EXISTS idx_interactions_account_id;
-\n\n-- Invoice Line Items indexes\nDROP INDEX IF EXISTS idx_invoice_line_items_account_id;
-\nDROP INDEX IF EXISTS idx_invoice_line_items_invoice_id;
-\n\n-- Job Assignments indexes\nDROP INDEX IF EXISTS idx_job_assignments_account_id;
-\nDROP INDEX IF EXISTS idx_job_assignments_assigned_by;
-\n\n-- Job Schedules indexes\nDROP INDEX IF EXISTS idx_job_schedules_created_by;
-\n\n-- Lead Qualifications indexes\nDROP INDEX IF EXISTS idx_lead_qualifications_account_id;
-\n\n-- Leads indexes\nDROP INDEX IF EXISTS idx_leads_customer_id;
-\nDROP INDEX IF EXISTS idx_leads_client_share_token;
-\n\n-- Material Items indexes\nDROP INDEX IF EXISTS idx_material_items_account_id;
-\nDROP INDEX IF EXISTS idx_material_items_material_list_id;
-\n\n-- Payments indexes\nDROP INDEX IF EXISTS idx_payments_invoice_id;
-\n\n-- Pricing Rules indexes\nDROP INDEX IF EXISTS idx_pricing_rules_account_id;
-\n\n-- Quick Estimates indexes\nDROP INDEX IF EXISTS idx_quick_estimates_account_id;
-\n\n-- Stripe Connect Accounts indexes\nDROP INDEX IF EXISTS idx_stripe_connect_accounts_account_id;
-\n\n-- Supply Order Items indexes\nDROP INDEX IF EXISTS idx_supply_order_items_account_id;
-\nDROP INDEX IF EXISTS idx_supply_order_items_material_item_id;
-\nDROP INDEX IF EXISTS idx_supply_order_items_supply_order_id;
-\n\n-- Supply Orders indexes\nDROP INDEX IF EXISTS idx_supply_orders_material_list_id;
-\n\n-- Webhook Events indexes\nDROP INDEX IF EXISTS idx_webhook_events_invoice_id;
-\nDROP INDEX IF EXISTS idx_webhook_events_payment_id;
-\n\n-- ============================================================================\n-- 2. Fix Security Definer View\n-- ============================================================================\n\nDROP VIEW IF EXISTS account_members_with_profiles;
-\n\nCREATE VIEW account_members_with_profiles\nWITH (security_invoker = true)\nAS\nSELECT\n  am.account_id,\n  am.user_id,\n  am.role,\n  am.invited_by,\n  am.invited_at,\n  am.joined_at,\n  am.is_active,\n  p.full_name,\n  p.email,\n  p.phone,\n  p.avatar_url\nFROM account_members am\nLEFT JOIN profiles p ON am.user_id = p.user_id;
+/*
+  # Fix Security Issues: Drop Unused Indexes and Fix Security Definer View
+
+  1. Dropped Indexes
+    - Removes 39 unused indexes across multiple tables to reduce storage overhead and improve write performance
+    - Tables affected: email_digest_log, lead_photos, sms_notification_log, notifications, account_members, 
+      api_keys, customers, days_off, estimate_change_orders, estimate_line_items, stripe_connect_accounts,
+      supply_order_items, estimates, interactions, invoice_line_items, job_assignments, job_schedules,
+      lead_qualifications, leads, material_items, payments, pricing_rules, quick_estimates, supply_orders,
+      webhook_events
+
+  2. Security Definer View Fix
+    - Recreates `account_members_with_profiles` view with `security_invoker = true`
+    - This ensures the view executes with the privileges of the calling user, not the view creator
+    - Improves security by preventing privilege escalation through the view
+    - Uses correct join on `profiles.user_id` column
+
+  3. Important Notes
+    - **Leaked Password Protection**: This must be enabled manually in the Supabase Dashboard
+      - Navigate to: Authentication > Providers > Email > Advanced Settings
+      - Enable "Leaked Password Protection" to check passwords against HaveIBeenPwned.org
+      - This cannot be configured via SQL migration
+*/
+
+-- ============================================================================
+-- 1. Drop Unused Indexes
+-- ============================================================================
+
+-- Email Digest Log indexes
+DROP INDEX IF EXISTS idx_email_digest_log_account_id;
+
+DROP INDEX IF EXISTS idx_email_digest_log_user_id;
+
+DROP INDEX IF EXISTS idx_email_digest_log_created_at;
+
+
+-- Lead Photos indexes
+DROP INDEX IF EXISTS idx_lead_photos_account_id;
+
+DROP INDEX IF EXISTS idx_lead_photos_uploaded_by;
+
+
+-- SMS Notification Log indexes
+DROP INDEX IF EXISTS idx_sms_notification_log_user_id;
+
+
+-- Notifications indexes
+DROP INDEX IF EXISTS idx_notifications_user_id;
+
+
+-- Account Members indexes
+DROP INDEX IF EXISTS idx_account_members_invited_by;
+
+
+-- API Keys indexes
+DROP INDEX IF EXISTS idx_api_keys_account_id;
+
+
+-- Customers indexes
+DROP INDEX IF EXISTS idx_customers_account_id;
+
+DROP INDEX IF EXISTS idx_customers_lead_id;
+
+
+-- Days Off indexes
+DROP INDEX IF EXISTS idx_days_off_created_by;
+
+
+-- Estimate Change Orders indexes
+DROP INDEX IF EXISTS idx_estimate_change_orders_account_id;
+
+DROP INDEX IF EXISTS idx_estimate_change_orders_changed_by;
+
+
+-- Estimate Line Items indexes
+DROP INDEX IF EXISTS idx_estimate_line_items_account_id;
+
+DROP INDEX IF EXISTS idx_estimate_line_items_original_line_item_id;
+
+
+-- Estimates indexes
+DROP INDEX IF EXISTS idx_estimates_created_by;
+
+
+-- Interactions indexes
+DROP INDEX IF EXISTS idx_interactions_account_id;
+
+
+-- Invoice Line Items indexes
+DROP INDEX IF EXISTS idx_invoice_line_items_account_id;
+
+DROP INDEX IF EXISTS idx_invoice_line_items_invoice_id;
+
+
+-- Job Assignments indexes
+DROP INDEX IF EXISTS idx_job_assignments_account_id;
+
+DROP INDEX IF EXISTS idx_job_assignments_assigned_by;
+
+
+-- Job Schedules indexes
+DROP INDEX IF EXISTS idx_job_schedules_created_by;
+
+
+-- Lead Qualifications indexes
+DROP INDEX IF EXISTS idx_lead_qualifications_account_id;
+
+
+-- Leads indexes
+DROP INDEX IF EXISTS idx_leads_customer_id;
+
+DROP INDEX IF EXISTS idx_leads_client_share_token;
+
+
+-- Material Items indexes
+DROP INDEX IF EXISTS idx_material_items_account_id;
+
+DROP INDEX IF EXISTS idx_material_items_material_list_id;
+
+
+-- Payments indexes
+DROP INDEX IF EXISTS idx_payments_invoice_id;
+
+
+-- Pricing Rules indexes
+DROP INDEX IF EXISTS idx_pricing_rules_account_id;
+
+
+-- Quick Estimates indexes
+DROP INDEX IF EXISTS idx_quick_estimates_account_id;
+
+
+-- Stripe Connect Accounts indexes
+DROP INDEX IF EXISTS idx_stripe_connect_accounts_account_id;
+
+
+-- Supply Order Items indexes
+DROP INDEX IF EXISTS idx_supply_order_items_account_id;
+
+DROP INDEX IF EXISTS idx_supply_order_items_material_item_id;
+
+DROP INDEX IF EXISTS idx_supply_order_items_supply_order_id;
+
+
+-- Supply Orders indexes
+DROP INDEX IF EXISTS idx_supply_orders_material_list_id;
+
+
+-- Webhook Events indexes
+DROP INDEX IF EXISTS idx_webhook_events_invoice_id;
+
+DROP INDEX IF EXISTS idx_webhook_events_payment_id;
+
+
+-- ============================================================================
+-- 2. Fix Security Definer View
+-- ============================================================================
+
+DROP VIEW IF EXISTS account_members_with_profiles;
+
+
+CREATE VIEW account_members_with_profiles
+WITH (security_invoker = true)
+AS
+SELECT
+  am.account_id,
+  am.user_id,
+  am.role,
+  am.invited_by,
+  am.invited_at,
+  am.joined_at,
+  am.is_active,
+  p.full_name,
+  p.email,
+  p.phone,
+  p.avatar_url
+FROM account_members am
+LEFT JOIN profiles p ON am.user_id = p.user_id;
 ;

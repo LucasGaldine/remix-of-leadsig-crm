@@ -1,30 +1,197 @@
-/*\n  # Add Job Checklist Items\n\n  1. New Tables\n    - `job_checklist_items`\n      - `id` (uuid, primary key)\n      - `job_id` (uuid, references leads.id with cascade delete)\n      - `account_id` (uuid, references accounts.id)\n      - `label` (text, the checklist item text)\n      - `is_completed` (boolean, default false)\n      - `sort_order` (integer, for ordering items)\n      - `created_at` (timestamptz)\n      - `updated_at` (timestamptz)\n\n  2. Security\n    - Enable RLS on `job_checklist_items` table\n    - Add policies for account members to select, insert, update, delete\n\n  3. Triggers\n    - Auto-create default checklist items when a job is created\n      - "Navigate to address" for all jobs\n      - "Send client portal" for estimate visit jobs\n    - Auto-complete job when all checklist items are marked completed\n\n  4. Indexes\n    - Index on job_id for fast lookups\n    - Index on account_id for RLS performance\n*/\n\nCREATE TABLE IF NOT EXISTS job_checklist_items (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  job_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,\n  account_id uuid NOT NULL REFERENCES accounts(id),\n  label text NOT NULL,\n  is_completed boolean NOT NULL DEFAULT false,\n  sort_order integer NOT NULL DEFAULT 0,\n  created_at timestamptz NOT NULL DEFAULT now(),\n  updated_at timestamptz NOT NULL DEFAULT now()\n);
-\n\nALTER TABLE job_checklist_items ENABLE ROW LEVEL SECURITY;
-\n\nCREATE INDEX IF NOT EXISTS idx_job_checklist_items_job_id ON job_checklist_items(job_id);
-\nCREATE INDEX IF NOT EXISTS idx_job_checklist_items_account_id ON job_checklist_items(account_id);
-\n\nCREATE POLICY "Account members can view checklist items"\n  ON job_checklist_items\n  FOR SELECT\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = job_checklist_items.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  );
-\n\nCREATE POLICY "Account members can insert checklist items"\n  ON job_checklist_items\n  FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = job_checklist_items.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  );
-\n\nCREATE POLICY "Account members can update checklist items"\n  ON job_checklist_items\n  FOR UPDATE\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = job_checklist_items.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  )\n  WITH CHECK (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = job_checklist_items.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  );
-\n\nCREATE POLICY "Account members can delete checklist items"\n  ON job_checklist_items\n  FOR DELETE\n  TO authenticated\n  USING (\n    EXISTS (\n      SELECT 1 FROM account_members\n      WHERE account_members.account_id = job_checklist_items.account_id\n      AND account_members.user_id = auth.uid()\n      AND account_members.is_active = true\n    )\n  );
-\n\n-- Trigger function: create default checklist items when a job is created\nCREATE OR REPLACE FUNCTION create_default_checklist_items()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nBEGIN\n  IF NEW.status = 'job' AND (TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.status != 'job')) THEN\n    INSERT INTO job_checklist_items (job_id, account_id, label, sort_order)\n    VALUES (NEW.id, NEW.account_id, 'Navigate to address', 0);
-\n\n    IF NEW.is_estimate_visit = true THEN\n      INSERT INTO job_checklist_items (job_id, account_id, label, sort_order)\n      VALUES (NEW.id, NEW.account_id, 'Send client portal', 1);
-\n    END IF;
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE TRIGGER trg_create_default_checklist_items\n  AFTER INSERT OR UPDATE OF status ON leads\n  FOR EACH ROW\n  EXECUTE FUNCTION create_default_checklist_items();
-\n\n-- Trigger function: auto-complete job when all checklist items are completed\nCREATE OR REPLACE FUNCTION auto_complete_job_on_checklist()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path = public\nAS $$\nDECLARE\n  total_count integer;
-\n  completed_count integer;
-\n  current_status unified_status;
-\nBEGIN\n  IF NEW.is_completed = true AND (OLD.is_completed = false OR OLD.is_completed IS NULL) THEN\n    SELECT count(*), count(*) FILTER (WHERE is_completed = true)\n    INTO total_count, completed_count\n    FROM job_checklist_items\n    WHERE job_id = NEW.job_id;
-\n\n    IF total_count > 0 AND total_count = completed_count THEN\n      SELECT status INTO current_status FROM leads WHERE id = NEW.job_id;
-\n\n      IF current_status = 'job' THEN\n        UPDATE leads SET status = 'completed' WHERE id = NEW.job_id;
-\n      END IF;
-\n    END IF;
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$$;
-\n\nCREATE TRIGGER trg_auto_complete_job_on_checklist\n  AFTER UPDATE OF is_completed ON job_checklist_items\n  FOR EACH ROW\n  EXECUTE FUNCTION auto_complete_job_on_checklist();
-\n;
+/*
+  # Add Job Checklist Items
+
+  1. New Tables
+    - `job_checklist_items`
+      - `id` (uuid, primary key)
+      - `job_id` (uuid, references leads.id with cascade delete)
+      - `account_id` (uuid, references accounts.id)
+      - `label` (text, the checklist item text)
+      - `is_completed` (boolean, default false)
+      - `sort_order` (integer, for ordering items)
+      - `created_at` (timestamptz)
+      - `updated_at` (timestamptz)
+
+  2. Security
+    - Enable RLS on `job_checklist_items` table
+    - Add policies for account members to select, insert, update, delete
+
+  3. Triggers
+    - Auto-create default checklist items when a job is created
+      - "Navigate to address" for all jobs
+      - "Send client portal" for estimate visit jobs
+    - Auto-complete job when all checklist items are marked completed
+
+  4. Indexes
+    - Index on job_id for fast lookups
+    - Index on account_id for RLS performance
+*/
+
+CREATE TABLE IF NOT EXISTS job_checklist_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  account_id uuid NOT NULL REFERENCES accounts(id),
+  label text NOT NULL,
+  is_completed boolean NOT NULL DEFAULT false,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+
+ALTER TABLE job_checklist_items ENABLE ROW LEVEL SECURITY;
+
+
+CREATE INDEX IF NOT EXISTS idx_job_checklist_items_job_id ON job_checklist_items(job_id);
+
+CREATE INDEX IF NOT EXISTS idx_job_checklist_items_account_id ON job_checklist_items(account_id);
+
+
+CREATE POLICY "Account members can view checklist items"
+  ON job_checklist_items
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = job_checklist_items.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  );
+
+
+CREATE POLICY "Account members can insert checklist items"
+  ON job_checklist_items
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = job_checklist_items.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  );
+
+
+CREATE POLICY "Account members can update checklist items"
+  ON job_checklist_items
+  FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = job_checklist_items.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = job_checklist_items.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  );
+
+
+CREATE POLICY "Account members can delete checklist items"
+  ON job_checklist_items
+  FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM account_members
+      WHERE account_members.account_id = job_checklist_items.account_id
+      AND account_members.user_id = auth.uid()
+      AND account_members.is_active = true
+    )
+  );
+
+
+-- Trigger function: create default checklist items when a job is created
+CREATE OR REPLACE FUNCTION create_default_checklist_items()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status = 'job' AND (TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.status != 'job')) THEN
+    INSERT INTO job_checklist_items (job_id, account_id, label, sort_order)
+    VALUES (NEW.id, NEW.account_id, 'Navigate to address', 0);
+
+
+    IF NEW.is_estimate_visit = true THEN
+      INSERT INTO job_checklist_items (job_id, account_id, label, sort_order)
+      VALUES (NEW.id, NEW.account_id, 'Send client portal', 1);
+
+    END IF;
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE TRIGGER trg_create_default_checklist_items
+  AFTER INSERT OR UPDATE OF status ON leads
+  FOR EACH ROW
+  EXECUTE FUNCTION create_default_checklist_items();
+
+
+-- Trigger function: auto-complete job when all checklist items are completed
+CREATE OR REPLACE FUNCTION auto_complete_job_on_checklist()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  total_count integer;
+
+  completed_count integer;
+
+  current_status unified_status;
+
+BEGIN
+  IF NEW.is_completed = true AND (OLD.is_completed = false OR OLD.is_completed IS NULL) THEN
+    SELECT count(*), count(*) FILTER (WHERE is_completed = true)
+    INTO total_count, completed_count
+    FROM job_checklist_items
+    WHERE job_id = NEW.job_id;
+
+
+    IF total_count > 0 AND total_count = completed_count THEN
+      SELECT status INTO current_status FROM leads WHERE id = NEW.job_id;
+
+
+      IF current_status = 'job' THEN
+        UPDATE leads SET status = 'completed' WHERE id = NEW.job_id;
+
+      END IF;
+
+    END IF;
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$$;
+
+
+CREATE TRIGGER trg_auto_complete_job_on_checklist
+  AFTER UPDATE OF is_completed ON job_checklist_items
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_complete_job_on_checklist();
+
+;

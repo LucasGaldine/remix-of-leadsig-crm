@@ -1,2 +1,20 @@
-/*\n  # Backfill tax data for existing jobs\n\n  1. Updates\n    - Copy tax information from estimates to existing jobs that have accepted estimates\n    - This ensures all jobs display correct tax information in the Job Costs view\n*/\n\n-- Backfill tax data for jobs that have accepted estimates\nUPDATE leads\nSET \n  tax_rate = COALESCE(e.tax_rate, 0),\n  tax = COALESCE(e.tax, 0),\n  subtotal = COALESCE(e.subtotal, 0),\n  total_with_tax = COALESCE(e.total, 0)\nFROM estimates e\nWHERE leads.id = e.job_id\n  AND e.status = 'accepted'\n  AND (leads.tax = 0 OR leads.subtotal = 0 OR leads.total_with_tax = 0);
+/*
+  # Backfill tax data for existing jobs
+
+  1. Updates
+    - Copy tax information from estimates to existing jobs that have accepted estimates
+    - This ensures all jobs display correct tax information in the Job Costs view
+*/
+
+-- Backfill tax data for jobs that have accepted estimates
+UPDATE leads
+SET 
+  tax_rate = COALESCE(e.tax_rate, 0),
+  tax = COALESCE(e.tax, 0),
+  subtotal = COALESCE(e.subtotal, 0),
+  total_with_tax = COALESCE(e.total, 0)
+FROM estimates e
+WHERE leads.id = e.job_id
+  AND e.status = 'accepted'
+  AND (leads.tax = 0 OR leads.subtotal = 0 OR leads.total_with_tax = 0);
 ;

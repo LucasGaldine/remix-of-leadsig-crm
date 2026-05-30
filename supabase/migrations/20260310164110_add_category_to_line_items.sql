@@ -1,10 +1,63 @@
-/*\n  # Add Category to Line Items\n\n  ## Overview\n  Add a category field to both estimate_line_items and job_line_items to classify costs\n  as equipment, materials, labor, or other.\n\n  ## Changes\n\n  ### 1. New Type\n  - Create `line_item_category` enum with values: equipment, materials, labor, other\n\n  ### 2. Modified Tables\n  \n  #### `estimate_line_items`\n  - Add `category` column (line_item_category, default 'other')\n\n  #### `job_line_items`\n  - Add `category` column (line_item_category, default 'other')\n\n  ## Important Notes\n  - Category defaults to 'other' for backward compatibility with existing line items\n  - Category is preserved when estimate line items are copied to job line items\n  - Category helps track cost breakdown by type\n*/\n\n-- Create line item category enum\nDO $$ BEGIN\n  CREATE TYPE line_item_category AS ENUM ('equipment', 'materials', 'labor', 'other');
-\nEXCEPTION\n  WHEN duplicate_object THEN null;
-\nEND $$;
-\n\n-- Add category column to estimate_line_items\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'estimate_line_items' AND column_name = 'category'\n  ) THEN\n    ALTER TABLE estimate_line_items ADD COLUMN category line_item_category DEFAULT 'other' NOT NULL;
-\n  END IF;
-\nEND $$;
-\n\n-- Add category column to job_line_items\nDO $$\nBEGIN\n  IF NOT EXISTS (\n    SELECT 1 FROM information_schema.columns\n    WHERE table_name = 'job_line_items' AND column_name = 'category'\n  ) THEN\n    ALTER TABLE job_line_items ADD COLUMN category line_item_category DEFAULT 'other' NOT NULL;
-\n  END IF;
-\nEND $$;
+/*
+  # Add Category to Line Items
+
+  ## Overview
+  Add a category field to both estimate_line_items and job_line_items to classify costs
+  as equipment, materials, labor, or other.
+
+  ## Changes
+
+  ### 1. New Type
+  - Create `line_item_category` enum with values: equipment, materials, labor, other
+
+  ### 2. Modified Tables
+  
+  #### `estimate_line_items`
+  - Add `category` column (line_item_category, default 'other')
+
+  #### `job_line_items`
+  - Add `category` column (line_item_category, default 'other')
+
+  ## Important Notes
+  - Category defaults to 'other' for backward compatibility with existing line items
+  - Category is preserved when estimate line items are copied to job line items
+  - Category helps track cost breakdown by type
+*/
+
+-- Create line item category enum
+DO $$ BEGIN
+  CREATE TYPE line_item_category AS ENUM ('equipment', 'materials', 'labor', 'other');
+
+EXCEPTION
+  WHEN duplicate_object THEN null;
+
+END $$;
+
+
+-- Add category column to estimate_line_items
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'estimate_line_items' AND column_name = 'category'
+  ) THEN
+    ALTER TABLE estimate_line_items ADD COLUMN category line_item_category DEFAULT 'other' NOT NULL;
+
+  END IF;
+
+END $$;
+
+
+-- Add category column to job_line_items
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'job_line_items' AND column_name = 'category'
+  ) THEN
+    ALTER TABLE job_line_items ADD COLUMN category line_item_category DEFAULT 'other' NOT NULL;
+
+  END IF;
+
+END $$;
 ;

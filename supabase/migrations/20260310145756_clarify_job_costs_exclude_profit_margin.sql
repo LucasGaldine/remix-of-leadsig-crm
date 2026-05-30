@@ -1,7 +1,63 @@
-/*\n  # Clarify Job Costs Behavior - Exclude Profit Margin\n\n  ## Overview\n  This migration adds documentation and ensures that job costs properly represent\n  actual costs without profit margin markup.\n\n  ## Cost Structure Explanation\n  \n  ### Estimate Line Items (estimate_line_items)\n  - Represent base costs for materials and labor\n  - Do NOT include profit margin (margin is applied at estimate level)\n  - Do NOT include tax (tax is calculated at estimate level)\n  - Fields: unit_price, total (quantity × unit_price)\n  \n  ### Estimates Table\n  - subtotal: Sum of all line item totals\n  - profit_margin: Percentage markup (e.g., 20 = 20%)\n  - tax_rate: Sales tax rate applied to final price\n  - tax: Calculated tax amount\n  - total: Final price to customer (subtotal + profit + tax - discount)\n  \n  ### Job Line Items (job_line_items)\n  - Copied from estimate_line_items when estimate is approved\n  - Represent actual costs for the job\n  - Do NOT include profit margin (profit is pricing markup, not cost)\n  - Do NOT include sales tax (tax is charged to customer, not a job cost)\n  - Purpose: Track actual costs to calculate profit margins and job profitability\n  \n  ## Important Notes\n  - Job costs = base costs only (materials + labor rates)\n  - Profit margin is applied in estimates for customer pricing\n  - Tax is applied in estimates/invoices for customer billing\n  - This allows accurate profit tracking: (Revenue - Job Costs = Actual Profit)\n*/\n\n-- No structural changes needed - this migration is for documentation\n-- The current implementation already correctly excludes profit margin from job costs\n\n-- Verify the copy functions are working as intended\nDO $$\nBEGIN\n  -- Check that copy functions exist\n  IF NOT EXISTS (\n    SELECT 1 FROM pg_proc WHERE proname = 'copy_estimate_line_items_to_job'\n  ) THEN\n    RAISE EXCEPTION 'copy_estimate_line_items_to_job function does not exist';
-\n  END IF;
-\n  \n  IF NOT EXISTS (\n    SELECT 1 FROM pg_proc WHERE proname = 'copy_estimate_items_on_job_creation'\n  ) THEN\n    RAISE EXCEPTION 'copy_estimate_items_on_job_creation function does not exist';
-\n  END IF;
-\n  \n  RAISE NOTICE 'Job cost tracking functions verified - profit margin excluded, base costs only';
-\nEND $$;
+/*
+  # Clarify Job Costs Behavior - Exclude Profit Margin
+
+  ## Overview
+  This migration adds documentation and ensures that job costs properly represent
+  actual costs without profit margin markup.
+
+  ## Cost Structure Explanation
+  
+  ### Estimate Line Items (estimate_line_items)
+  - Represent base costs for materials and labor
+  - Do NOT include profit margin (margin is applied at estimate level)
+  - Do NOT include tax (tax is calculated at estimate level)
+  - Fields: unit_price, total (quantity × unit_price)
+  
+  ### Estimates Table
+  - subtotal: Sum of all line item totals
+  - profit_margin: Percentage markup (e.g., 20 = 20%)
+  - tax_rate: Sales tax rate applied to final price
+  - tax: Calculated tax amount
+  - total: Final price to customer (subtotal + profit + tax - discount)
+  
+  ### Job Line Items (job_line_items)
+  - Copied from estimate_line_items when estimate is approved
+  - Represent actual costs for the job
+  - Do NOT include profit margin (profit is pricing markup, not cost)
+  - Do NOT include sales tax (tax is charged to customer, not a job cost)
+  - Purpose: Track actual costs to calculate profit margins and job profitability
+  
+  ## Important Notes
+  - Job costs = base costs only (materials + labor rates)
+  - Profit margin is applied in estimates for customer pricing
+  - Tax is applied in estimates/invoices for customer billing
+  - This allows accurate profit tracking: (Revenue - Job Costs = Actual Profit)
+*/
+
+-- No structural changes needed - this migration is for documentation
+-- The current implementation already correctly excludes profit margin from job costs
+
+-- Verify the copy functions are working as intended
+DO $$
+BEGIN
+  -- Check that copy functions exist
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc WHERE proname = 'copy_estimate_line_items_to_job'
+  ) THEN
+    RAISE EXCEPTION 'copy_estimate_line_items_to_job function does not exist';
+
+  END IF;
+
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc WHERE proname = 'copy_estimate_items_on_job_creation'
+  ) THEN
+    RAISE EXCEPTION 'copy_estimate_items_on_job_creation function does not exist';
+
+  END IF;
+
+  
+  RAISE NOTICE 'Job cost tracking functions verified - profit margin excluded, base costs only';
+
+END $$;
 ;

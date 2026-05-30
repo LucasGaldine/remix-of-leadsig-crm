@@ -1,9 +1,81 @@
-/*\n  # Fix Job Assignments Infinite Recursion\n  \n  ## Overview\n  Fixes infinite recursion error in job_assignments INSERT policy by using\n  security definer functions to validate relationships without creating\n  circular dependencies.\n  \n  ## Changes\n  - Create helper functions with SECURITY DEFINER to check relationships\n  - Update INSERT policy to use these functions instead of inline subqueries\n  \n  ## Security\n  - Functions use SECURITY DEFINER to avoid RLS recursion\n  - Still maintain proper access control by checking account membership\n*/\n\nCREATE OR REPLACE FUNCTION is_user_account_manager(p_account_id uuid, p_user_id uuid)\nRETURNS boolean\nLANGUAGE sql\nSECURITY DEFINER\nSTABLE\nAS $$\n  SELECT EXISTS (\n    SELECT 1 \n    FROM account_members \n    WHERE account_id = p_account_id \n    AND user_id = p_user_id\n    AND is_active = true \n    AND role IN ('owner', 'admin', 'crew_lead')\n  );
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION is_lead_in_account(p_lead_id uuid, p_account_id uuid)\nRETURNS boolean\nLANGUAGE sql\nSECURITY DEFINER\nSTABLE\nAS $$\n  SELECT EXISTS (\n    SELECT 1 \n    FROM leads \n    WHERE id = p_lead_id \n    AND account_id = p_account_id\n  );
-\n$$;
-\n\nCREATE OR REPLACE FUNCTION is_user_in_account(p_user_id uuid, p_account_id uuid)\nRETURNS boolean\nLANGUAGE sql\nSECURITY DEFINER\nSTABLE\nAS $$\n  SELECT EXISTS (\n    SELECT 1 \n    FROM account_members \n    WHERE user_id = p_user_id \n    AND account_id = p_account_id \n    AND is_active = true\n  );
-\n$$;
-\n\nDROP POLICY IF EXISTS "Managers can create job assignments" ON job_assignments;
-\n\nCREATE POLICY "Managers can create job assignments"\n  ON job_assignments\n  FOR INSERT\n  TO authenticated\n  WITH CHECK (\n    is_user_account_manager(account_id, auth.uid())\n    AND is_lead_in_account(lead_id, account_id)\n    AND is_user_in_account(user_id, account_id)\n  );
+/*
+  # Fix Job Assignments Infinite Recursion
+  
+  ## Overview
+  Fixes infinite recursion error in job_assignments INSERT policy by using
+  security definer functions to validate relationships without creating
+  circular dependencies.
+  
+  ## Changes
+  - Create helper functions with SECURITY DEFINER to check relationships
+  - Update INSERT policy to use these functions instead of inline subqueries
+  
+  ## Security
+  - Functions use SECURITY DEFINER to avoid RLS recursion
+  - Still maintain proper access control by checking account membership
+*/
+
+CREATE OR REPLACE FUNCTION is_user_account_manager(p_account_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 
+    FROM account_members 
+    WHERE account_id = p_account_id 
+    AND user_id = p_user_id
+    AND is_active = true 
+    AND role IN ('owner', 'admin', 'crew_lead')
+  );
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION is_lead_in_account(p_lead_id uuid, p_account_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 
+    FROM leads 
+    WHERE id = p_lead_id 
+    AND account_id = p_account_id
+  );
+
+$$;
+
+
+CREATE OR REPLACE FUNCTION is_user_in_account(p_user_id uuid, p_account_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 
+    FROM account_members 
+    WHERE user_id = p_user_id 
+    AND account_id = p_account_id 
+    AND is_active = true
+  );
+
+$$;
+
+
+DROP POLICY IF EXISTS "Managers can create job assignments" ON job_assignments;
+
+
+CREATE POLICY "Managers can create job assignments"
+  ON job_assignments
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    is_user_account_manager(account_id, auth.uid())
+    AND is_lead_in_account(lead_id, account_id)
+    AND is_user_in_account(user_id, account_id)
+  );
 ;

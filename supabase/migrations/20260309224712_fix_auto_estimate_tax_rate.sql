@@ -1,10 +1,78 @@
-/*\n  # Fix auto_create_estimate_for_job to use account's default tax rate\n\n  ## Overview\n  Update the auto_create_estimate_for_job function to fetch and use the account's default_tax_rate\n  instead of hardcoding it to 0.08 (8%).\n\n  ## Changes\n  - Fetch the account's default_tax_rate from the accounts table\n  - Use the fetched tax rate (converted from percentage to decimal) when creating estimates\n  - If no tax rate is found, default to 0 instead of 8% for safety\n*/\n\nCREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()\nRETURNS trigger\nLANGUAGE plpgsql\nSECURITY DEFINER\nSET search_path TO 'public'\nAS $function$\nDECLARE\n  v_tax_rate numeric(5,4);
-\nBEGIN\n  -- Only create estimate for actual jobs (not leads)\n  IF NEW.status IN ('job', 'paid')\n  AND NEW.approval_status = 'approved' THEN\n\n    -- Check if estimate already exists for this job\n    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN\n\n      -- Fetch the account's default tax rate (stored as percentage, e.g., 8.00)\n      SELECT COALESCE(default_tax_rate / 100, 0)\n      INTO v_tax_rate\n      FROM public.accounts\n      WHERE id = NEW.account_id;
-\n\n      -- Create a draft estimate linked to the job\n      INSERT INTO public.estimates (\n        customer_id,\n        job_id,\n        account_id,\n        subtotal,\n        tax_rate,\n        tax,\n        discount,\n        total,\n        status,\n        created_by,\n        notes\n      ) VALUES (\n        NEW.customer_id,\n        NEW.id,\n        NEW.account_id,\n        0,\n        v_tax_rate,\n        0,\n        0,\n        0,\n        'draft',\n        NEW.created_by,\n        'Auto-generated estimate for ' || NEW.name\n      );
-\n\n      RAISE NOTICE 'Auto-created estimate for job % with tax rate %', NEW.id, v_tax_rate;
-\n    END IF;
-\n  END IF;
-\n\n  RETURN NEW;
-\nEND;
-\n$function$;
+/*
+  # Fix auto_create_estimate_for_job to use account's default tax rate
+
+  ## Overview
+  Update the auto_create_estimate_for_job function to fetch and use the account's default_tax_rate
+  instead of hardcoding it to 0.08 (8%).
+
+  ## Changes
+  - Fetch the account's default_tax_rate from the accounts table
+  - Use the fetched tax rate (converted from percentage to decimal) when creating estimates
+  - If no tax rate is found, default to 0 instead of 8% for safety
+*/
+
+CREATE OR REPLACE FUNCTION public.auto_create_estimate_for_job()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tax_rate numeric(5,4);
+
+BEGIN
+  -- Only create estimate for actual jobs (not leads)
+  IF NEW.status IN ('job', 'paid')
+  AND NEW.approval_status = 'approved' THEN
+
+    -- Check if estimate already exists for this job
+    IF NOT EXISTS (SELECT 1 FROM public.estimates WHERE job_id = NEW.id) THEN
+
+      -- Fetch the account's default tax rate (stored as percentage, e.g., 8.00)
+      SELECT COALESCE(default_tax_rate / 100, 0)
+      INTO v_tax_rate
+      FROM public.accounts
+      WHERE id = NEW.account_id;
+
+
+      -- Create a draft estimate linked to the job
+      INSERT INTO public.estimates (
+        customer_id,
+        job_id,
+        account_id,
+        subtotal,
+        tax_rate,
+        tax,
+        discount,
+        total,
+        status,
+        created_by,
+        notes
+      ) VALUES (
+        NEW.customer_id,
+        NEW.id,
+        NEW.account_id,
+        0,
+        v_tax_rate,
+        0,
+        0,
+        0,
+        'draft',
+        NEW.created_by,
+        'Auto-generated estimate for ' || NEW.name
+      );
+
+
+      RAISE NOTICE 'Auto-created estimate for job % with tax rate %', NEW.id, v_tax_rate;
+
+    END IF;
+
+  END IF;
+
+
+  RETURN NEW;
+
+END;
+
+$function$;
 ;
