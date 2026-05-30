@@ -63,6 +63,45 @@ export function isPermissionDeniedError(error: unknown): boolean {
   );
 }
 
+export function getJobAssignmentInsertErrorMessage(error: unknown): string {
+  const fallback =
+    "Unable to assign this crew member. Check your role permissions, account access, and schedule conflicts.";
+  const message = getSupabaseErrorMessage(error, "").toLowerCase();
+
+  if (!error || typeof error !== "object") {
+    return fallback;
+  }
+
+  const maybeError = error as SupabaseLikeError;
+  const code = String(maybeError.code || "").trim();
+  const details = String(maybeError.details || "").toLowerCase();
+
+  if (code === "23505") {
+    return "This crew member is already assigned to this schedule.";
+  }
+
+  if (code === "23503") {
+    return "Assignment failed because a referenced record was not found. Refresh and try again.";
+  }
+
+  if (code === "23514") {
+    return "Assignment failed validation. Choose exactly one assignee and make sure they belong to this account.";
+  }
+
+  if (isPermissionDeniedError(error)) {
+    if (message.includes("row-level security") || message.includes("policy")) {
+      return "Assignment blocked by permissions or schedule rules. Your role may not allow assignments, the assignee may be outside this account, or they may be double-booked.";
+    }
+    return "You do not have permission to assign this crew member.";
+  }
+
+  if (details.includes("job_assignments_schedule_user_unique") || details.includes("job_assignments_schedule_mock_unique")) {
+    return "This crew member is already assigned to this schedule.";
+  }
+
+  return fallback;
+}
+
 export function isMissingRelationError(error: SupabaseLikeError | null | undefined, relationName?: string): boolean {
   if (!error) {
     return false;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getJobAssignmentInsertErrorMessage,
   getSupabaseErrorMessage,
   isMissingColumnError,
   isMissingRelationError,
@@ -120,5 +121,27 @@ describe("isPermissionDeniedError", () => {
 
   it("does not match unrelated errors", () => {
     expect(isPermissionDeniedError({ message: "network error" })).toBe(false);
+  });
+});
+
+describe("getJobAssignmentInsertErrorMessage", () => {
+  it("maps duplicate assignment to a specific message", () => {
+    expect(
+      getJobAssignmentInsertErrorMessage({
+        code: "23505",
+        message: "duplicate key value violates unique constraint",
+      }),
+    ).toBe("This crew member is already assigned to this schedule.");
+  });
+
+  it("maps RLS policy violations to a descriptive permission/conflict message", () => {
+    expect(
+      getJobAssignmentInsertErrorMessage({
+        code: "42501",
+        message: "new row violates row-level security policy for table job_assignments",
+      }),
+    ).toBe(
+      "Assignment blocked by permissions or schedule rules. Your role may not allow assignments, the assignee may be outside this account, or they may be double-booked.",
+    );
   });
 });

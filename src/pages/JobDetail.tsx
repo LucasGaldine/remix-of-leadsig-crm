@@ -52,7 +52,7 @@ import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallb
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 import { applyCustomerContactToJob } from "@/lib/jobCustomerCache";
-import { getSupabaseErrorMessage, isPermissionDeniedError } from "@/lib/supabaseErrors";
+import { getJobAssignmentInsertErrorMessage, getSupabaseErrorMessage, isPermissionDeniedError } from "@/lib/supabaseErrors";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
@@ -1159,12 +1159,7 @@ export default function JobDetail() {
           );
 
         if (addError) {
-          if (isPermissionDeniedError(addError)) {
-            throw new Error(
-              "Unable to assign this crew member. They may already be booked at this time or your role may not allow this assignment.",
-            );
-          }
-          throw addError;
+          throw new Error(getJobAssignmentInsertErrorMessage(addError));
         }
       }
 
