@@ -235,6 +235,10 @@ input[type="number"] {
     @apply text-sm font-semibold;
   }
 
+  .estimate-category-heading {
+    @apply text-sm md:text-xs uppercase tracking-wide leading-none;
+  }
+
   .client-portal-themed {
     font-family: var(--client-portal-body-font, 'Public Sans', sans-serif);
   }

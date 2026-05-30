@@ -1790,7 +1790,7 @@ export default function EstimateDetail() {
                           className="px-4 py-2 text-muted-foreground"
                         >
                           <p
-                            className="text-xs uppercase tracking-wide"
+                            className="estimate-category-heading"
                             data-testid="line-item-category-heading"
                           >
                             {CATEGORY_LABELS[group.category]}
@@ -1804,7 +1804,7 @@ export default function EstimateDetail() {
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                  <p className="font-medium text-foreground">{item.name}</p>
+                                  <p className="font-medium text-foreground text-xl md:text-sm">{item.name}</p>
                                   {item.is_change_order && item.change_order_approved === false && (
                                     <Badge
                                       variant="outline"
