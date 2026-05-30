@@ -65,7 +65,7 @@ export function isPermissionDeniedError(error: unknown): boolean {
 
 export function getJobAssignmentInsertErrorMessage(error: unknown): string {
   const fallback =
-    "Unable to assign this crew member. Check your role permissions, account access, and schedule conflicts.";
+    "Unable to assign this crew member. Verify your role allows assignments, the assignee belongs to this account, and they are not already booked.";
   const message = getSupabaseErrorMessage(error, "").toLowerCase();
 
   if (!error || typeof error !== "object") {
@@ -92,7 +92,7 @@ export function getJobAssignmentInsertErrorMessage(error: unknown): string {
     if (message.includes("row-level security") || message.includes("policy")) {
       return "Assignment blocked by permissions or schedule rules. Your role may not allow assignments, the assignee may be outside this account, or they may be double-booked.";
     }
-    return "You do not have permission to assign this crew member.";
+    return "Assignment was forbidden by the database. Your role may not allow assigning crew for this account, or this assignment violates account/schedule rules.";
   }
 
   if (details.includes("job_assignments_schedule_user_unique") || details.includes("job_assignments_schedule_mock_unique")) {
@@ -100,6 +100,24 @@ export function getJobAssignmentInsertErrorMessage(error: unknown): string {
   }
 
   return fallback;
+}
+
+export function formatSupabaseDebugError(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return "unknown error object";
+  }
+
+  const maybeError = error as SupabaseLikeError;
+  const debug = {
+    status: maybeError.status ?? null,
+    code: maybeError.code ?? null,
+    message: maybeError.message ?? null,
+    details: maybeError.details ?? null,
+    hint: maybeError.hint ?? null,
+    error_description: maybeError.error_description ?? null,
+  };
+
+  return JSON.stringify(debug);
 }
 
 export function isMissingRelationError(error: SupabaseLikeError | null | undefined, relationName?: string): boolean {

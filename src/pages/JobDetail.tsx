@@ -52,7 +52,7 @@ import { isMissingSuppressUnassignedColumn } from "@/lib/suppressUnassignedFallb
 import { buildMockCrewAssigneeId, parseCrewAssigneeId } from "@/lib/crewIdentifiers";
 import { isSinglePersonCompany as isSinglePersonCompanyByMembers } from "@/lib/teamMembers";
 import { applyCustomerContactToJob } from "@/lib/jobCustomerCache";
-import { getJobAssignmentInsertErrorMessage, getSupabaseErrorMessage, isPermissionDeniedError } from "@/lib/supabaseErrors";
+import { formatSupabaseDebugError, getJobAssignmentInsertErrorMessage, getSupabaseErrorMessage, isPermissionDeniedError } from "@/lib/supabaseErrors";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { DetailEstimateCard } from "@/components/shared/DetailEstimateCard";
 import { ClientPortalLinkDialog } from "@/components/shared/ClientPortalLinkDialog";
@@ -1159,6 +1159,9 @@ export default function JobDetail() {
           );
 
         if (addError) {
+          if (import.meta.env.DEV) {
+            console.error("job_assignments insert failed", formatSupabaseDebugError(addError));
+          }
           throw new Error(getJobAssignmentInsertErrorMessage(addError));
         }
       }

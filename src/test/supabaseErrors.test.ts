@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatSupabaseDebugError,
   getJobAssignmentInsertErrorMessage,
   getSupabaseErrorMessage,
   isMissingColumnError,
@@ -142,6 +143,22 @@ describe("getJobAssignmentInsertErrorMessage", () => {
       }),
     ).toBe(
       "Assignment blocked by permissions or schedule rules. Your role may not allow assignments, the assignee may be outside this account, or they may be double-booked.",
+    );
+  });
+});
+
+describe("formatSupabaseDebugError", () => {
+  it("serializes known Supabase error fields", () => {
+    expect(
+      formatSupabaseDebugError({
+        status: 403,
+        code: "42501",
+        message: "Forbidden",
+        details: "new row violates row-level security policy",
+        hint: null,
+      }),
+    ).toBe(
+      '{"status":403,"code":"42501","message":"Forbidden","details":"new row violates row-level security policy","hint":null,"error_description":null}',
     );
   });
 });
