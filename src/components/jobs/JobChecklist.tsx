@@ -906,7 +906,7 @@ export function JobChecklist({
                           <div className="flex-1 min-w-0 space-y-1">
                             <span
                               className={cn(
-                                "block text-xl md:text-sm font-medium",
+                                "block text-base md:text-sm font-medium",
                                 isMaterialCompleted &&
                                   !editMode &&
                                   "line-through text-muted-foreground",
@@ -1158,7 +1158,7 @@ export function JobChecklist({
                   <div className="flex h-10 w-10 md:h-8 md:w-8 shrink-0 items-center justify-center rounded-full border border-muted-foreground/40 text-muted-foreground">
                     <Plus className="h-5 w-5 md:h-4 md:w-4" />
                   </div>
-                  <span className="block text-xl md:text-sm text-muted-foreground">
+                  <span className="block text-base md:text-sm text-muted-foreground">
                     {section.addLabel}
                   </span>
                 </button>
