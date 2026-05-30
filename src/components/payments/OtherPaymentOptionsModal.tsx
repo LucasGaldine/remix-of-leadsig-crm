@@ -17,7 +17,9 @@ interface OtherPaymentOptionsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   totalAmount: number;
-  invoicedAmount?: number;
+  paidAmount?: number;
+  remainingAmount?: number;
+  remainingLabel?: string;
   onSendInvoice?: () => void | Promise<void>;
   sendingInvoice?: boolean;
   sendInvoiceDisabled?: boolean;
@@ -42,7 +44,9 @@ export function OtherPaymentOptionsModal({
   open,
   onOpenChange,
   totalAmount,
-  invoicedAmount = 0,
+  paidAmount = 0,
+  remainingAmount,
+  remainingLabel = "Remaining",
   onSendInvoice,
   sendingInvoice = false,
   sendInvoiceDisabled = false,
@@ -59,14 +63,14 @@ export function OtherPaymentOptionsModal({
   const [selectedMethod, setSelectedMethod] = useState<PaymentOption | null>(null);
   const [amount, setAmount] = useState("");
   const busy = markingAsSent || recordingPayment || sendingInvoice;
-  const remainingAmount = Math.max(Number(totalAmount || 0) - Number(invoicedAmount || 0), 0);
-  const formattedInvoicedAmount = Number(invoicedAmount || 0).toLocaleString("en-US", {
+  const resolvedRemainingAmount = remainingAmount ?? Math.max(Number(totalAmount || 0) - Number(paidAmount || 0), 0);
+  const formattedPaidAmount = Number(paidAmount || 0).toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const formattedRemainingAmount = remainingAmount.toLocaleString("en-US", {
+  const formattedRemainingAmount = resolvedRemainingAmount.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
@@ -82,7 +86,7 @@ export function OtherPaymentOptionsModal({
 
   const handleSelectMethod = (method: PaymentOption) => {
     setSelectedMethod(method);
-    setAmount(remainingAmount.toFixed(2));
+    setAmount(resolvedRemainingAmount.toFixed(2));
   };
 
   const handleBack = () => {
@@ -160,11 +164,11 @@ export function OtherPaymentOptionsModal({
           <div className="px-1 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Invoiced</p>
-                <p className="text-2xl font-semibold leading-tight text-foreground">+{formattedInvoicedAmount}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Paid</p>
+                <p className="text-2xl font-semibold leading-tight text-foreground">{formattedPaidAmount}</p>
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Remaining</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{remainingLabel}</p>
                 <p className="text-2xl font-semibold leading-tight text-foreground">{formattedRemainingAmount}</p>
               </div>
             </div>

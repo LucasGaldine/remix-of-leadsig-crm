@@ -126,6 +126,9 @@ export function JobInvoiceCard({
   }, [dialogOpen, estimateTotal, invoices]);
 
   const totalInvoiced = roundCurrencyAmount(invoices.reduce((sum, inv) => sum + Number(inv.total), 0));
+  const totalPaid = roundCurrencyAmount(
+    invoices.reduce((sum, inv) => sum + Math.max(Number(inv.total || 0) - Number(inv.balance_due || 0), 0), 0),
+  );
   const totalToInvoice = roundCurrencyAmount(estimateTotal ?? 0);
   const remainingAmount = estimateTotal !== null && estimateTotal !== undefined
     ? roundCurrencyAmount(estimateTotal - totalInvoiced)
@@ -783,7 +786,9 @@ export function JobInvoiceCard({
         open={showLogPaymentModal}
         onOpenChange={setShowLogPaymentModal}
         totalAmount={totalToInvoice}
-        invoicedAmount={totalInvoiced}
+        paidAmount={totalPaid}
+        remainingAmount={Math.max(Number(remainingAmount ?? 0), 0)}
+        remainingLabel="To Invoice"
         onSendInvoice={() => {
           setShowLogPaymentModal(false);
           handleOpenDialog();

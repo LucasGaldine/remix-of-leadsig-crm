@@ -393,7 +393,8 @@ export default function InvoiceDetail() {
       <OtherPaymentOptionsModal
         open={showChargeOptions}
         onOpenChange={setShowChargeOptions}
-        totalAmount={balanceDue}
+        totalAmount={total}
+        paidAmount={Math.max(total - balanceDue, 0)}
         onRecordPayment={handleRecordPayment}
         onOpenTapToPay={handleOpenTapToPay}
         recordingPayment={recordingPayment}
