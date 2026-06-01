@@ -556,7 +556,23 @@ Deno.serve(async (req: Request) => {
     const errors: Array<{ email: string; error: string }> = [];
 
     for (const recipient of recipients) {
-      void forceResend;
+      if (!forceResend) {
+        const { data: existingSent } = await supabase
+          .from("estimate_email_notifications_log")
+          .select("id")
+          .eq("estimate_id", estimate.id)
+          .eq("event_type", eventType)
+          .eq("recipient_email", recipient.email)
+          .eq("recipient_type", recipient.recipientType)
+          .eq("status", "sent")
+          .limit(1)
+          .maybeSingle();
+
+        if (existingSent?.id) {
+          skipped += 1;
+          continue;
+        }
+      }
 
       const subject = recipient.recipientType === "customer"
         ? `${companyName} | ${eventType === "change_order_approved" ? "Change Order Approved" : "Estimate Approved"}`

@@ -12,6 +12,25 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+async function dispatchEstimateApprovalNotification(estimateId: string) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    if (!supabaseUrl) return;
+
+    await fetch(`${supabaseUrl}/functions/v1/send-estimate-approval-notifications`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(anonKey ? { Authorization: `Bearer ${anonKey}`, apikey: anonKey } : {}),
+      },
+      body: JSON.stringify({ estimate_id: estimateId, event_type: "estimate_approved" }),
+    });
+  } catch (error) {
+    console.error("Failed to dispatch estimate approval notifications:", error);
+  }
+}
+
 export async function handleEstimateAction(
   supabase: any,
   estimate: {
@@ -244,6 +263,9 @@ export async function handleEstimateAction(
     if (!pruneResult.ok) {
       console.error("Failed to prune estimate versions after approval:", pruneResult.error);
     }
+
+    // Fallback dispatch in case database-triggered dispatch path fails.
+    await dispatchEstimateApprovalNotification(estimate.id);
 
     return jsonResponse({ success: true, message: "Estimate approved" });
   }

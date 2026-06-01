@@ -115,6 +115,16 @@ export async function approveEstimateManuallyById(estimateId: string, signatureD
     }
     throw error;
   }
+
+  try {
+    if (supabase.functions?.invoke) {
+      await supabase.functions.invoke("send-estimate-approval-notifications", {
+        body: { estimate_id: estimateId, event_type: "estimate_approved" },
+      });
+    }
+  } catch (dispatchError) {
+    console.error("Failed to dispatch estimate approval notifications:", dispatchError);
+  }
 }
 
 export async function approveLatestEstimateForJob(jobId: string) {
