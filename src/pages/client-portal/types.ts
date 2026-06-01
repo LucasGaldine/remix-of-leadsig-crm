@@ -174,6 +174,7 @@ export interface EstimateData {
     created_at: string;
     url: string;
   }>;
+  document_template_merge_fields?: Record<string, unknown> | null;
 }
 
 export interface PhotoItem {

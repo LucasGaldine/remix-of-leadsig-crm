@@ -354,45 +354,58 @@ function resolveTemplateBody(
   return "";
 }
 
-function buildManualSignMergeFields(params: {
-  estimate: any;
-  job: any;
-  customer: any;
-  account: any;
-  customerName: string;
-  companyName: string;
-}) {
-  const { estimate, job, customer, account, customerName, companyName } = params;
-  return {
-    current_date: new Date().toISOString().slice(0, 10),
-    job_name: normalizeText(job?.name),
-    job_address: normalizeText(job?.address),
-    service_type: normalizeText(job?.service_type),
-    client_name: customerName,
-    client_email: normalizeText(customer?.email),
-    client_phone: normalizeText(customer?.phone),
-    company_name: companyName,
-    company_email: normalizeText(account?.company_email),
-    estimate_total: `$${Number(estimate?.total || 0).toFixed(2)}`,
-    estimate_subtotal: `$${Number(estimate?.subtotal || 0).toFixed(2)}`,
-    estimate_tax: `$${Number(estimate?.tax || 0).toFixed(2)}`,
-    estimate_discount: `$${Number(estimate?.discount || 0).toFixed(2)}`,
-  };
+function toMergeFieldsRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const next: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    const key = normalizeText(rawKey).toLowerCase();
+    if (!key) continue;
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      next[key] = String(rawValue);
+      continue;
+    }
+    const text = normalizeText(rawValue);
+    if (!text && rawValue !== "") continue;
+    next[key] = text;
+  }
+  return next;
+}
+
+async function resolveDocumentTemplateMergeFields(params: {
+  supabase: any;
+  accountId: string;
+  leadId: string;
+  estimateId?: string | null;
+  scopeOfWorkOverride?: string | null;
+}): Promise<Record<string, string>> {
+  const { supabase, accountId, leadId, estimateId = null, scopeOfWorkOverride = null } = params;
+  if (!accountId || !leadId) return {};
+
+  const { data, error } = await supabase.rpc("resolve_document_template_merge_fields", {
+    p_account_id: accountId,
+    p_lead_id: leadId,
+    p_estimate_id: estimateId,
+    p_scope_of_work_override: scopeOfWorkOverride,
+  });
+  if (error) {
+    console.error("resolve_document_template_merge_fields failed", { accountId, leadId, estimateId, error });
+    return {};
+  }
+
+  return toMergeFieldsRecord(data);
 }
 
 async function buildManualSignedDocumentAttachments(params: {
   signableDocs: Array<{ config: any; uploadedDocument: any }>;
   estimate: any;
-  job: any;
   customer: any;
-  account: any;
   acceptedAt: string;
   signaturePublicUrl: string;
+  mergeFields: Record<string, string>;
 }) {
-  const { signableDocs, estimate, job, customer, account, acceptedAt, signaturePublicUrl } = params;
-  const companyName = normalizeText(account?.company_name) || "LeadSig";
+  const { signableDocs, estimate, customer, acceptedAt, signaturePublicUrl, mergeFields } = params;
   const customerName = normalizeText(customer?.name) || "Customer";
-  const mergeFields = buildManualSignMergeFields({ estimate, job, customer, account, customerName, companyName });
   const agreementTemplates = estimate?.agreement_templates && typeof estimate.agreement_templates === "object"
     ? estimate.agreement_templates as Record<string, unknown>
     : {};
@@ -789,6 +802,17 @@ async function handleGetJobDetail(supabase: any, supabaseUrl: string, customer: 
     estimateVersions = versions || [];
   }
 
+  const mergeFieldLeadId =
+    normalizeText(portalDocuments.leadId) ||
+    normalizeText(effectiveLeadId) ||
+    normalizeText(job.id);
+  const documentTemplateMergeFields = await resolveDocumentTemplateMergeFields({
+    supabase,
+    accountId: normalizeText(resolvedAccountId),
+    leadId: mergeFieldLeadId,
+    estimateId: normalizeText(estimate?.id) || null,
+  });
+
   return jsonResponse({
     job: {
       name: job.name,
@@ -822,6 +846,7 @@ async function handleGetJobDetail(supabase: any, supabaseUrl: string, customer: 
           job_document_configs: portalDocuments.configs,
           job_documents: portalDocuments.documents,
           required_document_config_ids: requiredDocumentConfigIds,
+          document_template_merge_fields: documentTemplateMergeFields,
         }
       : null,
     invoice: invoice ? { stripe_invoice_url: invoice.stripe_invoice_url, status: invoice.status } : null,
@@ -1103,15 +1128,41 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
     return jsonResponse({ error: "Document signed, but company configuration is missing." }, 500);
   }
   const customerForEmail = estimateCustomer || customer;
+  const mergeFieldLeadId =
+    normalizeText(portalDocuments.leadId) ||
+    normalizeText(effectiveLeadId) ||
+    normalizeText(job.id);
+  const resolvedMergeFields = await resolveDocumentTemplateMergeFields({
+    supabase,
+    accountId: normalizeText(resolvedAccountId),
+    leadId: mergeFieldLeadId,
+    estimateId: normalizeText(estimate?.id) || null,
+  });
+  const fallbackMergeFields: Record<string, string> = {
+    current_date: new Date().toISOString().slice(0, 10),
+    job_name: normalizeText(job?.name),
+    job_address: normalizeText(job?.address),
+    service_type: normalizeText(job?.service_type) || "Other",
+    client_name: normalizeText(customerForEmail?.name),
+    client_email: normalizeText(customerForEmail?.email),
+    client_phone: normalizeText(customerForEmail?.phone),
+    company_name: normalizeText(account?.company_name),
+    company_email: normalizeText(account?.company_email),
+    company_phone: "Company phone number not provided",
+    estimate_total: `$${Number(estimate?.total || 0).toFixed(2)}`,
+    estimate_subtotal: `$${Number(estimate?.subtotal || 0).toFixed(2)}`,
+    estimate_tax: `$${Number(estimate?.tax || 0).toFixed(2)}`,
+    estimate_discount: `$${Number(estimate?.discount || 0).toFixed(2)}`,
+  };
+  const documentTemplateMergeFields = { ...fallbackMergeFields, ...resolvedMergeFields };
 
   const { attachments, documentSummaries } = await buildManualSignedDocumentAttachments({
     signableDocs,
     estimate,
-    job,
     customer: customerForEmail,
-    account,
     acceptedAt,
     signaturePublicUrl: upload.publicUrl,
+    mergeFields: documentTemplateMergeFields,
   });
   if (attachments.length === 0 || documentSummaries.length === 0) {
     return jsonResponse({ error: "Document signed, but no signed copy could be generated." }, 500);

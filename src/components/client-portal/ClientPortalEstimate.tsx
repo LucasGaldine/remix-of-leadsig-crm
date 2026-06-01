@@ -9,6 +9,7 @@ import {
   renderDocumentTemplateMarkdownHtml,
   type DocumentTemplateMergeFields,
 } from "@/lib/documentTemplates";
+import { normalizeDocumentTemplateMergeFields } from "@/lib/documentTemplateMergeFields";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface LineItem {
@@ -154,6 +155,7 @@ interface ClientPortalEstimateProps {
       created_at: string;
       url: string;
     }>;
+    document_template_merge_fields?: Record<string, unknown> | null;
   };
   token: string;
   apiUrl: string;
@@ -549,7 +551,7 @@ export function ClientPortalEstimate({
     () => approvalAgreementTemplates || templateRecord,
     [approvalAgreementTemplates, templateRecord],
   );
-  const mergeFields = useMemo((): DocumentTemplateMergeFields => {
+  const fallbackMergeFields = useMemo((): DocumentTemplateMergeFields => {
     const defaultScheduleRaw =
       companyDefaultPaymentSchedule && typeof companyDefaultPaymentSchedule === "object"
         ? companyDefaultPaymentSchedule
@@ -588,7 +590,7 @@ export function ClientPortalEstimate({
       client_phone: "",
       company_name: String(companyName || "").trim(),
       company_email: String(companyEmail || "").trim(),
-      company_phone: String(companyPhone || "").trim(),
+      company_phone: String(companyPhone || "").trim() || "Company phone number not provided",
       estimate_total: `$${Number(displayTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       estimate_subtotal: `$${Number(displaySubtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       estimate_tax: `$${Number(displayTax || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -616,6 +618,13 @@ export function ClientPortalEstimate({
     estimate.scope_of_work_items,
     jobName,
   ]);
+  const mergeFields = useMemo((): DocumentTemplateMergeFields => {
+    const backendMergeFields = normalizeDocumentTemplateMergeFields(estimate.document_template_merge_fields);
+    return {
+      ...fallbackMergeFields,
+      ...backendMergeFields,
+    };
+  }, [estimate.document_template_merge_fields, fallbackMergeFields]);
   const getUploadedDocumentForConfig = useCallback((config: PortalJobDocumentConfig) => {
     const directByConfig = portalDocuments.find((document) => document.config_id === config.id);
     if (directByConfig) return directByConfig;
