@@ -344,7 +344,7 @@ export function JobDocumentsSection({
     const templateRows = (templateResult.data || []) as DocumentTemplateRecord[];
     const configRows = normalizeJobDocumentConfigRows((configResult.data || []) as unknown[]);
     const canBootstrapDefaultConfigs = !configResult.error;
-    if (canBootstrapDefaultConfigs && configRows.length === 0 && templateRows.length > 0 && userId) {
+    if (canBootstrapDefaultConfigs && configRows.length === 0 && templateRows.length > 0) {
       if (defaultConfigSeedInFlightByLead.has(leadId)) {
         return;
       }
@@ -380,7 +380,7 @@ export function JobDocumentsSection({
             email_timing: template.default_email_timing,
             requires_signature: template.default_requires_signature,
             sort_order: index + existingTemplateIds.size,
-            created_by: userId,
+            created_by: userId ?? null,
           }));
 
           const { error: insertError } = await supabase
@@ -770,45 +770,50 @@ export function JobDocumentsSection({
       try {
         const leadResult = await supabase
           .from("leads")
-          .select("id, name, customer_id, client_share_token, estimate_job_id")
+          .select("id, name, customer_id, estimate_job_id")
           .eq("id", leadId)
           .maybeSingle();
         const lead = leadResult.data;
         if (lead) {
           let resolvedCustomerId = lead.customer_id ? String(lead.customer_id) : "";
-          let token = String(lead.client_share_token || "");
-          let tokenOwnerLeadId = String(lead.id || leadId);
+          let token = "";
 
           if (lead.estimate_job_id) {
             const parentResult = await supabase
               .from("leads")
-              .select("id, customer_id, client_share_token")
+              .select("customer_id")
               .eq("id", String(lead.estimate_job_id))
               .maybeSingle();
-            if (!token) {
-              token = String(parentResult.data?.client_share_token || "");
-            }
-            if (parentResult.data?.id) {
-              tokenOwnerLeadId = String(parentResult.data.id);
-            }
             if (!resolvedCustomerId && parentResult.data?.customer_id) {
               resolvedCustomerId = String(parentResult.data.customer_id);
             }
           }
 
-          if (!token) {
-            const generatedToken = crypto.randomUUID();
-            const { error: tokenUpdateError } = await supabase
-              .from("leads")
-              .update({ client_share_token: generatedToken })
-              .eq("id", tokenOwnerLeadId);
+          if (resolvedCustomerId) {
+            const customerResult = await supabase
+              .from("customers")
+              .select("id, client_portal_token")
+              .eq("id", resolvedCustomerId)
+              .maybeSingle();
+            token = String(customerResult.data?.client_portal_token || "");
 
-            if (tokenUpdateError) {
-              emailStatus = "failed";
-              emailErrorMessage = "Could not generate a client portal token for this job.";
-            } else {
-              token = generatedToken;
+            if (!token) {
+              const generatedToken = crypto.randomUUID();
+              const { error: tokenUpdateError } = await supabase
+                .from("customers")
+                .update({ client_portal_token: generatedToken })
+                .eq("id", resolvedCustomerId);
+
+              if (tokenUpdateError) {
+                emailStatus = "failed";
+                emailErrorMessage = "Could not generate a client portal token for this customer.";
+              } else {
+                token = generatedToken;
+              }
             }
+          } else {
+            emailStatus = "failed";
+            emailErrorMessage = "Missing customer on this job; cannot send signature-request email.";
           }
 
           if (token && emailStatus !== "failed") {

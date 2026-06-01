@@ -84,6 +84,21 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
 
   const isCreatingCompany = signupCompanyMode === 'create';
 
+  const normalizeAuthErrorMessage = (error: unknown): string => {
+    if (error instanceof Error && typeof error.message === 'string' && error.message.trim()) {
+      return error.message.trim();
+    }
+
+    if (error && typeof error === 'object' && 'message' in error) {
+      const rawMessage = (error as { message?: unknown }).message;
+      if (typeof rawMessage === 'string' && rawMessage.trim()) {
+        return rawMessage.trim();
+      }
+    }
+
+    return 'Unable to sign in right now. Please try again.';
+  };
+
   useEffect(() => {
     if (user && !authLoading) {
       navigate(getPostAuthRedirectPath({ isNewSignup: false }));
@@ -212,12 +227,15 @@ export default function Auth({ signupVariant = 'default' }: AuthProps) {
     setIsLoading(false);
 
     if (error) {
-      if (error.message.includes('Invalid login credentials')) {
+      const authErrorMessage = normalizeAuthErrorMessage(error);
+      const normalizedAuthErrorMessage = authErrorMessage.toLowerCase();
+
+      if (normalizedAuthErrorMessage.includes('invalid login credentials')) {
         toast.error('Invalid email or password');
-      } else if (error.message.includes('Email not confirmed')) {
+      } else if (normalizedAuthErrorMessage.includes('email not confirmed')) {
         toast.error('Please confirm your email before signing in');
       } else {
-        toast.error(error.message);
+        toast.error(authErrorMessage);
       }
     } else {
       toast.success('Welcome back!');
