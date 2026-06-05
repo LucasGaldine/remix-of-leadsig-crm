@@ -171,9 +171,9 @@ describe("EstimateDetail manual approve actions", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("button", { name: /^approve$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^manually approve$/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^manually approve$/i }));
     expect(await screen.findByRole("heading", { name: /approve changes/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^approve changes$/i }));
@@ -207,7 +207,7 @@ describe("EstimateDetail manual approve actions", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("button", { name: /^approve$/i });
+    await screen.findByRole("button", { name: /^manually approve$/i });
 
     await waitFor(() => {
       expect(estimateVersionsOrder).toHaveBeenCalled();

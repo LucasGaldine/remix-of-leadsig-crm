@@ -312,7 +312,8 @@ describe("EstimateDetail layout", () => {
     expect(within(summaryRow).getByRole("heading", { name: /^Estimate$/i })).toBeInTheDocument();
     expect(within(summaryRow).getByText("$1,284")).toBeInTheDocument();
 
-    expect(within(leftColumn).getByRole("heading", { name: /line items/i })).toBeInTheDocument();
+    expect(within(leftColumn).queryByRole("heading", { name: /line items/i })).not.toBeInTheDocument();
+    expect(within(leftColumn).getByText("Pending Approval")).toBeInTheDocument();
     expect(within(leftColumn).queryByRole("heading", { name: /notes/i })).not.toBeInTheDocument();
     expect(within(leftColumn).getByText("Compactor rental")).toBeInTheDocument();
     expect(within(leftColumn).getByText("Paver materials")).toBeInTheDocument();
@@ -759,6 +760,25 @@ describe("EstimateDetail layout", () => {
     });
 
     expect(storageUploadMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the edit action before an estimate is approved", async () => {
+    mockEstimate = buildEstimate({
+      has_pending_changes: false,
+      status: "sent",
+      original_total: null,
+      original_line_items: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/payments/estimates/est_1"]}>
+        <Routes>
+          <Route path="/payments/estimates/:id" element={<EstimateDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("button", { name: /^edit$/i })).toBeInTheDocument();
   });
 
   it("uploads an optional manual approval photo and saves its URL", async () => {

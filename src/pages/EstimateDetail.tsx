@@ -1717,10 +1717,6 @@ export default function EstimateDetail() {
                           )}
                         />
                       </button>
-                      <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
-                        <Edit2 className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
                     </div>
                     {showApprovedDetails && (
                       <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
@@ -1752,6 +1748,25 @@ export default function EstimateDetail() {
                     )}
                   </div>
                 )}
+                <div
+                  className="mt-4 flex items-center justify-between gap-3"
+                  data-testid="line-items-header-row"
+                >
+                  <div>
+                    {estimate.has_pending_changes && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+                        <AlertCircle className="h-3 w-3 text-amber-700" />
+                        Pending Approval
+                      </span>
+                    )}
+                  </div>
+                  {!showingOriginal && (
+                    <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  )}
+                </div>
                 {showNoVersionFullState ? (
                   <div className="mt-3 flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-6 py-10 text-center">
                     <h4 className="text-lg font-semibold text-foreground">No estimate versions yet</h4>
@@ -1781,7 +1796,7 @@ export default function EstimateDetail() {
                           className="px-5 py-2 text-muted-foreground"
                         >
                           <p
-                            className="estimate-category-heading"
+                            className="estimate-category-heading text-xs uppercase tracking-wide"
                             data-testid="line-item-category-heading"
                           >
                             {CATEGORY_LABELS[group.category]}
