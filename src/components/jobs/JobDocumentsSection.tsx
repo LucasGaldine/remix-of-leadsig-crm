@@ -565,16 +565,17 @@ export function JobDocumentsSection({
     }
 
     const uploadedDocument = getUploadedDocumentForConfig(config);
-    if (uploadedDocument) {
-      openDocumentUrl(getUploadedDocumentUrl(uploadedDocument));
-      return;
-    }
+    const uploadedDocumentMergeFields = uploadedDocument?.resolved_merge_fields
+      ? normalizeMergeFieldsRecord(uploadedDocument.resolved_merge_fields)
+      : null;
 
     const fallbackText = getDocumentFallbackText({
       template,
       estimateAgreementTemplates,
       jobReleaseText,
-      templateMergeFields: resolveTemplateMergeFields(config),
+      templateMergeFields: uploadedDocumentMergeFields
+        ? mergeTemplateFieldMaps(resolveTemplateMergeFields(config), uploadedDocumentMergeFields)
+        : resolveTemplateMergeFields(config),
     });
 
     if (fallbackText) {
@@ -584,6 +585,11 @@ export function JobDocumentsSection({
         fileName: template.name,
         requiresSignature: Boolean(config.requires_signature),
       });
+      return;
+    }
+
+    if (uploadedDocument) {
+      openDocumentUrl(getUploadedDocumentUrl(uploadedDocument));
       return;
     }
 

@@ -306,6 +306,63 @@ describe("JobDocumentsSection", () => {
     expect(screen.getByRole("button", { name: /download pdf/i })).toBeInTheDocument();
   });
 
+  it("previews sent manual template documents instead of opening the stored PDF", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    configRows = [
+      {
+        id: "cfg-3",
+        lead_id: "job_1",
+        account_id: "acct_1",
+        template_id: "tpl-custom",
+        include_in_job: true,
+        email_timing: "manual",
+        requires_signature: false,
+        shared_at: "2026-01-02T00:00:00.000Z",
+        sort_order: 0,
+        created_by: "user_1",
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-02T00:00:00.000Z",
+        template: {
+          ...templateRows[2],
+          name: "Test manual",
+          body: "Manual document for [[client_name]]",
+        },
+      },
+    ];
+    jobDocumentRows = [
+      {
+        id: "doc-manual",
+        template_id: "tpl-custom",
+        config_id: "cfg-3",
+        document_key: "template_tpl-custom_cfg-3",
+        file_name: "test-manual.pdf",
+        file_path: "job_1/test-manual.pdf",
+        mime_type: "application/pdf",
+        created_at: "2026-01-02T00:00:00.000Z",
+        resolved_merge_fields: {
+          client_name: "Taylor Client",
+        },
+      },
+    ];
+
+    renderSection(
+      <JobDocumentsSection
+        leadId="job_1"
+        estimateId="est_1"
+        accountId="acct_1"
+        userId="user_1"
+      />,
+    );
+
+    const viewButtons = await screen.findAllByRole("button", { name: "View" });
+    const manualViewButton = viewButtons.find((button) => !button.hasAttribute("disabled"));
+    expect(manualViewButton).toBeDefined();
+    fireEvent.click(manualViewButton!);
+
+    expect(await screen.findByText("Manual document for Taylor Client")).toBeInTheDocument();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it("renders merged variables with markdown formatting in document preview", async () => {
     renderSection(
       <JobDocumentsSection
