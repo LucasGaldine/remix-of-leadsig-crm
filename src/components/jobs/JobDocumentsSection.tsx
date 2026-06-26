@@ -45,6 +45,7 @@ interface JobDocumentConfigRecord {
   email_timing: string;
   requires_signature: boolean;
   sort_order: number;
+  shared_at: string | null;
   merge_fields_override: DocumentTemplateMergeFields;
   template: DocumentTemplateRecord | null;
 }
@@ -151,8 +152,23 @@ const isMissingColumnError = (error: unknown, qualifiedColumnName: string): bool
 const isMergeFieldsOverrideColumnMissing = (error: unknown): boolean =>
   isMissingColumnError(error, "job_document_configs.merge_fields_override");
 
+const isSharedAtColumnMissing = (error: unknown): boolean =>
+  isMissingColumnError(error, "job_document_configs.shared_at");
+
 const isResolvedMergeFieldsColumnMissing = (error: unknown): boolean =>
   isMissingColumnError(error, "job_documents.resolved_merge_fields");
+
+const normalizeEmailTimingValue = (value: unknown) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+const isEstimateApprovalDocumentConfig = (config: Pick<JobDocumentConfigRecord, "email_timing">) =>
+  normalizeEmailTimingValue(config.email_timing) === "on_estimate_approval";
+
+const isSharedDocumentConfig = (config: Pick<JobDocumentConfigRecord, "email_timing" | "shared_at">) =>
+  isEstimateApprovalDocumentConfig(config) || Boolean(config.shared_at);
 
 const normalizeJobDocumentConfigRows = (rows: unknown[]): JobDocumentConfigRecord[] =>
   rows.map((row) => {
@@ -171,10 +187,38 @@ const normalizeJobDocumentConfigRows = (rows: unknown[]): JobDocumentConfigRecor
       email_timing: String(record.email_timing || "never"),
       requires_signature: Boolean(record.requires_signature),
       sort_order: Number(record.sort_order || 0),
+      shared_at: record.shared_at ? String(record.shared_at) : null,
       merge_fields_override: normalizeMergeFieldsRecord(record.merge_fields_override),
       template,
     } as JobDocumentConfigRecord;
   });
+
+const buildJobDocumentConfigSelect = ({
+  includeMergeFieldsOverride,
+  includeSharedAt,
+}: {
+  includeMergeFieldsOverride: boolean;
+  includeSharedAt: boolean;
+}) => {
+  const columns = [
+    "id",
+    "lead_id",
+    "account_id",
+    "template_id",
+    "include_in_job",
+    "email_timing",
+    "requires_signature",
+    "sort_order",
+    includeSharedAt ? "shared_at" : "",
+    includeMergeFieldsOverride ? "merge_fields_override" : "",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
+  ].filter(Boolean);
+
+  return columns.join(", ");
+};
 
 export function JobDocumentsSection({
   leadId,
@@ -252,19 +296,26 @@ export function JobDocumentsSection({
 
     setIsLoading(true);
 
+    const readJobDocumentConfigs = ({
+      includeMergeFieldsOverride,
+      includeSharedAt,
+    }: {
+      includeMergeFieldsOverride: boolean;
+      includeSharedAt: boolean;
+    }) =>
+      supabase
+        .from("job_document_configs")
+        .select(buildJobDocumentConfigSelect({ includeMergeFieldsOverride, includeSharedAt }))
+        .eq("lead_id", leadId)
+        .order("sort_order", { ascending: true });
+
     const [templateResult, initialConfigResult, releaseResult] = await Promise.all([
       supabase
         .from("document_templates")
         .select("id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at")
         .eq("account_id", accountId)
         .order("created_at", { ascending: true }),
-      supabase
-        .from("job_document_configs")
-        .select(
-          "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, merge_fields_override, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
-        )
-        .eq("lead_id", leadId)
-        .order("sort_order", { ascending: true }),
+      readJobDocumentConfigs({ includeMergeFieldsOverride: true, includeSharedAt: true }),
       supabase
         .from("job_releases")
         .select("release_text")
@@ -272,14 +323,23 @@ export function JobDocumentsSection({
         .maybeSingle(),
     ]);
     let configResult = initialConfigResult;
+    if (isSharedAtColumnMissing(configResult.error)) {
+      configResult = await readJobDocumentConfigs({
+        includeMergeFieldsOverride: true,
+        includeSharedAt: false,
+      });
+    }
     if (isMergeFieldsOverrideColumnMissing(configResult.error)) {
-      configResult = await supabase
-        .from("job_document_configs")
-        .select(
-          "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
-        )
-        .eq("lead_id", leadId)
-        .order("sort_order", { ascending: true });
+      configResult = await readJobDocumentConfigs({
+        includeMergeFieldsOverride: false,
+        includeSharedAt: true,
+      });
+    }
+    if (isSharedAtColumnMissing(configResult.error) || isMergeFieldsOverrideColumnMissing(configResult.error)) {
+      configResult = await readJobDocumentConfigs({
+        includeMergeFieldsOverride: false,
+        includeSharedAt: false,
+      });
     }
 
     let documentResult = await supabase
@@ -555,7 +615,7 @@ export function JobDocumentsSection({
         created_by: userId,
       })
       .select(
-        "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, merge_fields_override, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
+        "id, lead_id, account_id, template_id, include_in_job, email_timing, requires_signature, sort_order, shared_at, merge_fields_override, created_by, created_at, updated_at, template:document_templates(id, account_id, name, slug, system_key, body, default_included_in_jobs, default_email_timing, default_requires_signature, created_by, created_at, updated_at)",
       )
       .single();
 
@@ -761,6 +821,33 @@ export function JobDocumentsSection({
           return false;
         }
       }
+
+      const sharedAt = new Date().toISOString();
+      let { error: updateSharedAtError } = await supabase
+        .from("job_document_configs")
+        .update({
+          shared_at: sharedAt,
+          updated_at: sharedAt,
+        })
+        .eq("id", config.id);
+
+      if (isSharedAtColumnMissing(updateSharedAtError)) {
+        updateSharedAtError = null;
+      }
+
+      if (updateSharedAtError) {
+        console.error("Failed to mark job document as shared:", updateSharedAtError);
+        toast.error("Failed to mark document as shared");
+        return false;
+      }
+
+      setJobDocumentConfigs((current) =>
+        current.map((item) =>
+          item.id === config.id
+            ? { ...item, shared_at: sharedAt }
+            : item
+        ),
+      );
 
       await fetchDocuments();
 
@@ -1174,6 +1261,7 @@ export function JobDocumentsSection({
                 const canView = Boolean(uploadedDocument || fallbackText);
                 const isManualSend = config.email_timing === "manual";
                 const canSendManual = isManualSend && !uploadedDocument;
+                const isShared = isSharedDocumentConfig(config);
                 const isSending = sendingConfigId === config.id;
                 const isRemoving = removingConfigId === config.id;
                 return (
@@ -1185,8 +1273,8 @@ export function JobDocumentsSection({
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="text-base md:text-sm font-medium text-foreground">{templateDisplayName}</p>
-                          <p className={`text-sm ${uploadedDocument ? "text-emerald-600" : "text-muted-foreground"}`}>
-                            {uploadedDocument ? "Sent" : "Unsent"}
+                          <p className={`text-sm ${isShared ? "text-emerald-600" : "text-muted-foreground"}`}>
+                            {isShared ? "Shared" : "Not Shared"}
                           </p>
                         </div>
 
@@ -1386,7 +1474,7 @@ export function JobDocumentsSection({
             </DialogDescription>
           </DialogHeader>
           <div
-            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
+            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
             dangerouslySetInnerHTML={{
               __html: renderDocumentTemplateMarkdownHtml(preview?.content || "No document text available."),
             }}

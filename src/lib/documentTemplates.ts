@@ -1,3 +1,13 @@
+import {
+  DOCUMENT_TEMPLATE_TOKEN_PATTERN_SOURCE,
+  hasDocumentTemplateMergeFieldValue,
+  normalizeDocumentTemplateVariableKey,
+  renderDocumentTemplate,
+  resolveDocumentTemplateVariableFallbackValue,
+  type DocumentTemplateMergeFieldValue,
+  type DocumentTemplateMergeFields,
+} from "../../supabase/functions/_shared/document-template-rendering";
+
 export const DOCUMENT_EMAIL_TIMINGS = [
   "never",
   "on_estimate_approval",
@@ -6,8 +16,7 @@ export const DOCUMENT_EMAIL_TIMINGS = [
 ] as const;
 
 export type DocumentEmailTiming = (typeof DOCUMENT_EMAIL_TIMINGS)[number];
-export type DocumentTemplateMergeFieldValue = string | number | null | undefined;
-export type DocumentTemplateMergeFields = Record<string, DocumentTemplateMergeFieldValue>;
+export type { DocumentTemplateMergeFieldValue, DocumentTemplateMergeFields };
 
 export type SystemDocumentTemplateKey = "job_agreement" | "warranty_agreement" | "job_release";
 
@@ -53,29 +62,29 @@ export interface DocumentTemplateVariableDefinition {
 export const DEFAULT_JOB_AGREEMENT_TEMPLATE_BODY = `**Date:** [[current_date]]
 
 ## Client
-- **Name:** [[client_name]]
-- **Project:** [[job_name]]
-- **Service Type:** [[service_type]]
-- **Project Address:** [[job_address]]
+**Name:** [[client_name]]
+**Project:** [[job_name]]
+**Service Type:** [[service_type]]
+**Project Address:** [[job_address]]
 
 ## Contractor
-- **Company:** [[company_name]]
-- **Contact:** [[company_email]] | [[company_phone]]
+**Company:** [[company_name]]
+**Contact:** [[company_email]] | [[company_phone]]
 
 ## Scope of Work
 [[scope_of_work]]
 
 ## Pricing Summary
-- **Subtotal:** [[estimate_subtotal]]
-- **Tax:** [[estimate_tax]]
-- **Discount:** [[estimate_discount]]
-- **Total:** [[estimate_total]]
+**Subtotal:** [[estimate_subtotal]]
+**Tax:** [[estimate_tax]]
+**Discount:** [[estimate_discount]]
+**Total:** [[estimate_total]]
 
 ## Default Payment Schedule
-- **Schedule:** [[default_payment_schedule]]
-- **Deposit:** [[default_payment_deposit_percentage]]%
-- **Midpoint:** [[default_payment_midpoint_percentage]]%
-- **Final Payment:** [[default_payment_final_percentage]]%
+**Schedule:** [[default_payment_schedule]]
+**Deposit:** [[default_payment_deposit_percentage]]%
+**Midpoint:** [[default_payment_midpoint_percentage]]%
+**Final Payment:** [[default_payment_final_percentage]]%
 
 By signing, the client authorizes **[[company_name]]** to perform the scope of work above according to agreed pricing and schedule terms.
 `;
@@ -263,30 +272,16 @@ export function formatDocumentTemplateToken(key: string) {
   return `[[${key}]]`;
 }
 
-const DOCUMENT_TEMPLATE_TOKEN_PATTERN = /(?:\[\[\s*([a-z0-9_]+)\s*\]\]|\{\{\s*([a-z0-9_]+)\s*\}\})/i;
-const DOCUMENT_TEMPLATE_VARIABLE_KEY_SET = new Set(DOCUMENT_TEMPLATE_VARIABLES.map((variable) => variable.key));
-const DEFAULT_BUILT_IN_TEMPLATE_FALLBACK = "Not provided";
-
-function normalizeTemplateVariableKey(key: unknown) {
-  return String(key || "").trim().toLowerCase();
-}
-
-function hasTemplateMergeFieldValue(value: DocumentTemplateMergeFieldValue) {
-  if (value === null || value === undefined) return false;
-  if (typeof value === "number") return Number.isFinite(value);
-  return String(value).trim().length > 0;
-}
-
 export function extractDocumentTemplateVariableKeys(templateBody: string) {
   const normalizedBody = String(templateBody || "");
   if (!normalizedBody.trim()) return [];
 
   const seen = new Set<string>();
   const keys: string[] = [];
-  const matcher = new RegExp(DOCUMENT_TEMPLATE_TOKEN_PATTERN.source, "gi");
+  const matcher = new RegExp(DOCUMENT_TEMPLATE_TOKEN_PATTERN_SOURCE, "gi");
   let match = matcher.exec(normalizedBody);
   while (match) {
-    const normalizedKey = normalizeTemplateVariableKey(match[1] || match[2]);
+    const normalizedKey = normalizeDocumentTemplateVariableKey(match[1] || match[2]);
     if (normalizedKey && !seen.has(normalizedKey)) {
       seen.add(normalizedKey);
       keys.push(normalizedKey);
@@ -303,68 +298,16 @@ export function findMissingDocumentTemplateVariableKeys(
 ) {
   const variableKeys = extractDocumentTemplateVariableKeys(templateBody);
   return variableKeys.filter((key) => {
-    if (hasTemplateMergeFieldValue(mergeFields?.[key])) return false;
-    return resolveTemplateVariableFallbackValue(key).length === 0;
+    if (hasDocumentTemplateMergeFieldValue(mergeFields?.[key])) return false;
+    return resolveDocumentTemplateVariableFallbackValue(key).length === 0;
   });
-}
-
-function resolveTemplateVariableFallbackValue(key: string) {
-  const normalizedKey = normalizeTemplateVariableKey(key);
-  if (!normalizedKey) return "";
-
-  if (normalizedKey === "current_date") {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  if (DOCUMENT_TEMPLATE_VARIABLE_KEY_SET.has(normalizedKey)) {
-    return DEFAULT_BUILT_IN_TEMPLATE_FALLBACK;
-  }
-
-  return "";
-}
-
-function formatPhoneTemplateValue(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-
-  if (digits.length === 11 && digits.startsWith("1")) {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-  }
-
-  return trimmed;
-}
-
-function maybeFormatTemplateMergeFieldValue(key: string, value: string) {
-  if (/(^|_)phone$/.test(key)) {
-    return formatPhoneTemplateValue(value);
-  }
-  return value;
 }
 
 export function renderDocumentTemplateText(
   templateBody: string,
   mergeFields?: DocumentTemplateMergeFields | null,
 ) {
-  if (!templateBody) return "";
-
-  const matcher = new RegExp(DOCUMENT_TEMPLATE_TOKEN_PATTERN.source, "gi");
-  return templateBody.replace(matcher, (fullMatch, rawSquareKey, rawCurlyKey) => {
-    const rawKey = rawSquareKey || rawCurlyKey;
-    const normalizedKey = normalizeTemplateVariableKey(rawKey);
-    const rawValue = mergeFields?.[normalizedKey];
-    if (rawValue === null || rawValue === undefined) {
-      return resolveTemplateVariableFallbackValue(normalizedKey);
-    }
-
-    const next = maybeFormatTemplateMergeFieldValue(normalizedKey, String(rawValue).trim());
-    if (next) return next;
-    return resolveTemplateVariableFallbackValue(normalizedKey);
-  });
+  return renderDocumentTemplate(templateBody, mergeFields);
 }
 
 function escapeHtml(value: string) {
@@ -389,7 +332,7 @@ function renderInlineMarkdownToHtml(value: string) {
 }
 
 function isBulletLine(line: string) {
-  return /^\s*[-*]\s*/.test(line);
+  return /^\s*[-*]\s+/.test(line);
 }
 
 function isOrderedLine(line: string) {
@@ -461,7 +404,7 @@ export function renderDocumentTemplateMarkdownHtml(value: string) {
     if (isBulletLine(line)) {
       flushParagraph();
       flushOrdered();
-      pendingBullets.push(line.replace(/^\s*[-*]\s*/, ""));
+      pendingBullets.push(line.replace(/^\s*[-*]\s+/, ""));
       continue;
     }
 
@@ -507,34 +450,18 @@ function normalizeScopeLine(value: unknown) {
   return text;
 }
 
-export function buildScopeOfWorkValue(params: {
-  lineItems?: Array<{
-    name?: string | null;
-    description?: string | null;
-    quantity?: number | string | null;
-    unit?: string | null;
-  }> | null;
-  fallbackDescription?: string | null;
-}) {
-  const lineItems = params.lineItems || [];
-  const scopeLines = lineItems
-    .map((lineItem, index) => {
-      const name = normalizeScopeLine(lineItem?.name) || `Line Item ${index + 1}`;
-      const description = normalizeScopeLine(lineItem?.description);
-      const quantityRaw = Number(lineItem?.quantity);
-      const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? String(quantityRaw) : "";
-      const unit = normalizeScopeLine(lineItem?.unit);
-      const quantityLabel = quantity ? `${quantity}${unit ? ` ${unit}` : ""}` : "";
-      const header = quantityLabel ? `${name} (${quantityLabel})` : name;
-      return `${index + 1}. ${header}${description ? `: ${description}` : ""}`;
-    })
-    .filter(Boolean);
-
-  if (scopeLines.length > 0) {
-    return scopeLines.join("\n");
+export function formatScopeOfWorkMarkdownList(value: unknown) {
+  const text = normalizeScopeLine(value);
+  if (!text) {
+    return "";
   }
 
-  return normalizeScopeLine(params.fallbackDescription);
+  return text
+    .split(/\r?\n/u)
+    .map((line) => line.trim().replace(/^([-*]|[0-9]+[.)])\s+/u, "").trim())
+    .filter(Boolean)
+    .map((line) => `- ${line}`)
+    .join("\n");
 }
 
 function readTemplateText(record: Record<string, unknown> | null | undefined, key: string) {

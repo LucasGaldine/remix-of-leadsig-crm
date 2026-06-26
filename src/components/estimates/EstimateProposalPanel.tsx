@@ -719,7 +719,6 @@ This release confirms that the project is considered complete and closed as of t
     const startDate = estimate?.job?.scheduled_date || todayIso;
     const completionDate = estimate?.job?.last_scheduled_date || startDate;
     const permitResponsibilityOverride = `${contractorName} will obtain all required permits unless stated otherwise in writing.`;
-    const arbitrationBody = "American Arbitration Association";
     const jurisdiction = (estimate?.job?.city || estimate?.customer?.city || "Project jurisdiction").trim();
     const terminationNoticePeriod = "7 days";
 
@@ -760,11 +759,7 @@ Total Cost: $${formatCurrency(totalCost)}
 
 4. PAYMENT SCHEDULE
 
-Payment shall be made as follows:
-
-Deposit (${depositPercentage}%): $${formatCurrency(depositAmount)} — due upon signing
-Midpoint Payment (${midpointPercentage}%): $${formatCurrency(midpointAmount)} — due at project midpoint
-Final Payment (${finalPercentage}%): $${formatCurrency(finalAmount)} — due upon substantial completion
+Payment shall be made as follows: deposit of ${depositPercentage}% ($${formatCurrency(depositAmount)}) due upon signing, midpoint payment of ${midpointPercentage}% ($${formatCurrency(midpointAmount)}) due at project midpoint, and final payment of ${finalPercentage}% ($${formatCurrency(finalAmount)}) due upon substantial completion.
 
 Payment Method: ${paymentMethod}
 
@@ -774,8 +769,8 @@ Failure to make payments on time may result in project delays or suspension of w
 
 Any modifications to the scope of work must be documented in a written Change Order signed by both parties prior to execution.
 
-Change Orders may affect cost and timeline
-Verbal agreements are not binding
+Change Orders may affect cost and timeline. Verbal agreements are not binding.
+
 6. PERMITS AND INSPECTIONS
 
 ${contractorName} shall obtain all necessary permits and coordinate required inspections unless otherwise specified:
@@ -784,42 +779,24 @@ ${permitResponsibilityOverride}
 
 7. INSURANCE AND LIABILITY
 
-The Contractor shall maintain:
-
-General Liability Insurance
-Workers’ Compensation Insurance
-
-Coverage applies to all employees and subcontractors throughout the duration of the project.
+The Contractor shall maintain general liability insurance and workers’ compensation insurance for employees and subcontractors throughout the duration of the project.
 
 8. SITE ACCESS
 
-The Client agrees to:
-
-Provide full access to the work site
-Ensure the area is clear of obstacles
+The Client agrees to provide full access to the work site and ensure the area is clear of obstacles.
 
 Work Hours: ${workHours} (e.g., Monday–Friday, 7:00 AM – 6:00 PM)
 
 9. DISPUTE RESOLUTION
 
-Any disputes arising from this Agreement shall be resolved through:
-
-Method: Binding arbitration
-Governing Body: American Arbitration Association (or ${arbitrationBody})
-Location: ${jurisdiction}
+Any disputes arising from this Agreement shall be resolved through binding arbitration administered by the American Arbitration Association at or near ${jurisdiction}.
 
 The arbitrator’s decision shall be final and binding.
 
 10. TERMINATION
 
-Either party may terminate this Agreement with:
+Either party may terminate this Agreement with ${terminationNoticePeriod} written notice. Upon termination, the Client shall pay for all completed work and materials purchased, and the Contractor shall cease work promptly.
 
-${terminationNoticePeriod} (e.g., 7 days) written notice
-
-Upon termination:
-
-The Client shall pay for all completed work and materials purchased
-The Contractor shall cease work promptly
 11. ENTIRE AGREEMENT
 
 This document represents the full agreement between the parties and supersedes all prior discussions, agreements, or representations.
@@ -2881,7 +2858,7 @@ $${formatCurrency(contractTotal)}
             <DialogTitle>{selectedAgreementKey ? AGREEMENT_LABELS[selectedAgreementKey] : "Agreement"}</DialogTitle>
           </DialogHeader>
           <div
-            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
+            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
             dangerouslySetInnerHTML={{
               __html: renderDocumentTemplateMarkdownHtml(
                 selectedAgreementKey
@@ -2899,7 +2876,7 @@ $${formatCurrency(contractTotal)}
             <DialogTitle>{selectedDocumentPreview?.title || "Agreement"}</DialogTitle>
           </DialogHeader>
           <div
-            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
+            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
             dangerouslySetInnerHTML={{
               __html: renderDocumentTemplateMarkdownHtml(selectedDocumentPreview?.content || "No document text available."),
             }}

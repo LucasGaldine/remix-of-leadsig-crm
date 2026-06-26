@@ -6,6 +6,7 @@ export type PortalJobDocumentConfig = {
   email_timing: string;
   requires_signature: boolean;
   sort_order: number;
+  shared_at: string | null;
   template: {
     id: string;
     name: string;
@@ -103,7 +104,7 @@ export async function fetchPortalDocumentsForLeadFamily(
     supabase
       .from("job_document_configs")
       .select(
-        "id, lead_id, template_id, include_in_job, email_timing, requires_signature, sort_order, template:document_templates(id, name, system_key, body)",
+        "id, lead_id, template_id, include_in_job, email_timing, requires_signature, sort_order, shared_at, template:document_templates(id, name, system_key, body)",
       )
       .in("lead_id", leadIds)
       .order("sort_order", { ascending: true });
@@ -193,6 +194,7 @@ export async function fetchPortalDocumentsForLeadFamily(
           email_timing: String(rawRow?.email_timing || "never"),
           requires_signature: rawRow?.requires_signature === true,
           sort_order: Number(rawRow?.sort_order || 0),
+          shared_at: rawRow?.shared_at ? String(rawRow.shared_at) : null,
           template: template
             ? {
                 id: String(template.id || ""),
@@ -293,6 +295,7 @@ export async function fetchPortalDocumentsForLeadFamily(
         email_timing: "manual",
         requires_signature: true,
         sort_order: index,
+        shared_at: document.created_at || null,
         template: template
           ? {
               id: template.id,

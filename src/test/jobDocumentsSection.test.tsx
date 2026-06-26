@@ -1,13 +1,15 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { JobDocumentsSection } from "@/components/jobs/JobDocumentsSection";
 
-const { supabaseFromMock, storageFromMock, getPublicUrlMock } = vi.hoisted(() => ({
+const { supabaseFromMock, storageFromMock, getPublicUrlMock, updateJobDocumentConfigMock, insertJobDocumentMock } = vi.hoisted(() => ({
   supabaseFromMock: vi.fn(),
   storageFromMock: vi.fn(),
   getPublicUrlMock: vi.fn(),
+  updateJobDocumentConfigMock: vi.fn(),
+  insertJobDocumentMock: vi.fn(),
 }));
 const { generateTemplateDocumentPDFMock } = vi.hoisted(() => ({
   generateTemplateDocumentPDFMock: vi.fn(),
@@ -29,6 +31,7 @@ vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    warning: vi.fn(),
   },
 }));
 
@@ -170,7 +173,7 @@ describe("JobDocumentsSection", () => {
               order: vi.fn().mockResolvedValue({ data: configRows, error: null }),
             })),
           })),
-          update: vi.fn(() => ({
+          update: updateJobDocumentConfigMock.mockImplementation(() => ({
             eq: vi.fn().mockResolvedValue({ error: null }),
           })),
           delete: vi.fn(() => ({
@@ -195,15 +198,29 @@ describe("JobDocumentsSection", () => {
 
       if (table === "job_documents") {
         return {
+          select: vi.fn(() => {
+            const query: any = {
+              eq: vi.fn(() => query),
+              order: vi.fn().mockResolvedValue({ data: jobDocumentRows, error: null }),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            };
+            return query;
+          }),
+          insert: insertJobDocumentMock.mockResolvedValue({ error: null }),
+        };
+      }
+
+      if (table === "job_releases") {
+        return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              order: vi.fn().mockResolvedValue({ data: jobDocumentRows, error: null }),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
             })),
           })),
         };
       }
 
-      if (table === "job_releases") {
+      if (table === "leads") {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
@@ -219,6 +236,7 @@ describe("JobDocumentsSection", () => {
     getPublicUrlMock.mockReturnValue({ data: { publicUrl: "https://example.com/doc.pdf" } });
     storageFromMock.mockReturnValue({
       getPublicUrl: getPublicUrlMock,
+      upload: vi.fn().mockResolvedValue({ error: null }),
     });
   });
 
@@ -350,7 +368,7 @@ describe("JobDocumentsSection", () => {
     expect(screen.queryByText("Requires signature")).not.toBeInTheDocument();
   });
 
-  it("shows Sent when a document exists and Unsent when it does not", async () => {
+  it("shows Shared for estimate approval documents and Not Shared for unshared manual documents", async () => {
     jobDocumentRows = [
       {
         id: "doc-job-agreement",
@@ -360,6 +378,24 @@ describe("JobDocumentsSection", () => {
         file_path: "job_1/job-agreement.pdf",
         mime_type: "application/pdf",
         created_at: "2026-01-02T00:00:00.000Z",
+      },
+    ];
+    configRows = [
+      ...configRows,
+      {
+        id: "cfg-3",
+        lead_id: "job_1",
+        account_id: "acct_1",
+        template_id: "tpl-custom",
+        include_in_job: true,
+        email_timing: "manual",
+        requires_signature: false,
+        shared_at: null,
+        sort_order: 2,
+        created_by: "user_1",
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+        template: templateRows[2],
       },
     ];
 
@@ -372,9 +408,41 @@ describe("JobDocumentsSection", () => {
       />,
     );
 
-    expect(await screen.findByText("Sent")).toBeInTheDocument();
-    expect(screen.getAllByText("Unsent").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Shared")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Not Shared")).toBeInTheDocument();
     expect(screen.getByText("Unapproved")).toBeInTheDocument();
+  });
+
+  it("shows Shared for manual documents when shared_at is set", async () => {
+    configRows = [
+      {
+        id: "cfg-3",
+        lead_id: "job_1",
+        account_id: "acct_1",
+        template_id: "tpl-custom",
+        include_in_job: true,
+        email_timing: "manual",
+        requires_signature: false,
+        shared_at: "2026-01-02T00:00:00.000Z",
+        sort_order: 0,
+        created_by: "user_1",
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-02T00:00:00.000Z",
+        template: templateRows[2],
+      },
+    ];
+
+    renderSection(
+      <JobDocumentsSection
+        leadId="job_1"
+        estimateId="est_1"
+        accountId="acct_1"
+        userId="user_1"
+      />,
+    );
+
+    expect(await screen.findByText("Shared")).toBeInTheDocument();
+    expect(screen.queryByText("Not Shared")).not.toBeInTheDocument();
   });
 
   it("shows Approved estimate status when estimate is accepted", async () => {
@@ -435,6 +503,47 @@ describe("JobDocumentsSection", () => {
     );
 
     expect(await screen.findByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+
+  it("marks manual documents as shared when they are sent", async () => {
+    configRows = [
+      {
+        id: "cfg-3",
+        lead_id: "job_1",
+        account_id: "acct_1",
+        template_id: "tpl-custom",
+        include_in_job: true,
+        email_timing: "manual",
+        requires_signature: false,
+        sort_order: 0,
+        shared_at: null,
+        created_by: "user_1",
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+        template: templateRows[2],
+      },
+    ];
+
+    renderSection(
+      <JobDocumentsSection
+        leadId="job_1"
+        estimateId="est_1"
+        accountId="acct_1"
+        userId="user_1"
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(insertJobDocumentMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(updateJobDocumentConfigMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shared_at: expect.any(String),
+          updated_at: expect.any(String),
+        }),
+      ),
+    );
   });
 
   it("shows Add & Send plus secondary Add in the modal when the selected template is manual", async () => {

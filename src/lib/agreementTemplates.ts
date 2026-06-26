@@ -47,7 +47,6 @@ export function generateAgreementTemplates(params: AgreementTemplateParams): Agr
   const startDate = params.startDate || params.todayIso;
   const completionDate = params.completionDate || startDate;
   const permitResponsibilityOverride = `${params.contractorName} will obtain all required permits unless stated otherwise in writing.`;
-  const arbitrationBody = "American Arbitration Association";
   const terminationNoticePeriod = "7 days";
   const workmanshipWarrantyDuration = (params.workmanshipWarrantyDuration || "2 years").trim() || "2 years";
   const numberedScope = (params.scopeItems.length > 0 ? params.scopeItems : ["Scope details to be finalized in writing."])
@@ -150,11 +149,7 @@ Total Cost: $${formatCurrency(params.totalCost)}
 
 4. PAYMENT SCHEDULE
 
-Payment shall be made as follows:
-
-Deposit (${depositPercentage}%): $${formatCurrency(depositAmount)} — due upon signing
-Midpoint Payment (${midpointPercentage}%): $${formatCurrency(midpointAmount)} — due at project midpoint
-Final Payment (${finalPercentage}%): $${formatCurrency(finalAmount)} — due upon substantial completion
+Payment shall be made as follows: deposit of ${depositPercentage}% ($${formatCurrency(depositAmount)}) due upon signing, midpoint payment of ${midpointPercentage}% ($${formatCurrency(midpointAmount)}) due at project midpoint, and final payment of ${finalPercentage}% ($${formatCurrency(finalAmount)}) due upon substantial completion.
 
 Payment Method: ${params.paymentMethod}
 
@@ -164,8 +159,8 @@ Failure to make payments on time may result in project delays or suspension of w
 
 Any modifications to the scope of work must be documented in a written Change Order signed by both parties prior to execution.
 
-Change Orders may affect cost and timeline
-Verbal agreements are not binding
+Change Orders may affect cost and timeline. Verbal agreements are not binding.
+
 6. PERMITS AND INSPECTIONS
 
 ${params.contractorName} shall obtain all necessary permits and coordinate required inspections unless otherwise specified:
@@ -174,42 +169,24 @@ ${permitResponsibilityOverride}
 
 7. INSURANCE AND LIABILITY
 
-The Contractor shall maintain:
-
-General Liability Insurance
-Workers’ Compensation Insurance
-
-Coverage applies to all employees and subcontractors throughout the duration of the project.
+The Contractor shall maintain general liability insurance and workers’ compensation insurance for employees and subcontractors throughout the duration of the project.
 
 8. SITE ACCESS
 
-The Client agrees to:
-
-Provide full access to the work site
-Ensure the area is clear of obstacles
+The Client agrees to provide full access to the work site and ensure the area is clear of obstacles.
 
 Work Hours: ${workHours} (e.g., Monday–Friday, 7:00 AM – 6:00 PM)
 
 9. DISPUTE RESOLUTION
 
-Any disputes arising from this Agreement shall be resolved through:
-
-Method: Binding arbitration
-Governing Body: American Arbitration Association (or ${arbitrationBody})
-Location: ${params.projectAddress}
+Any disputes arising from this Agreement shall be resolved through binding arbitration administered by the American Arbitration Association at or near ${params.projectAddress}.
 
 The arbitrator’s decision shall be final and binding.
 
 10. TERMINATION
 
-Either party may terminate this Agreement with:
+Either party may terminate this Agreement with ${terminationNoticePeriod} written notice. Upon termination, the Client shall pay for all completed work and materials purchased, and the Contractor shall cease work promptly.
 
-${terminationNoticePeriod} (e.g., 7 days) written notice
-
-Upon termination:
-
-The Client shall pay for all completed work and materials purchased
-The Contractor shall cease work promptly
 11. ENTIRE AGREEMENT
 
 This document represents the full agreement between the parties and supersedes all prior discussions, agreements, or representations.

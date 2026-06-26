@@ -4,7 +4,6 @@ import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { normalizeClientPortalColor, normalizeClientPortalTextColor } from "@/lib/clientPortalTheme";
 import { generateAgreementTemplates } from "@/lib/agreementTemplates";
 import {
-  buildScopeOfWorkValue,
   getDocumentFallbackText,
   renderDocumentTemplateMarkdownHtml,
   type DocumentTemplateMergeFields,
@@ -41,6 +40,7 @@ type PortalJobDocumentConfig = {
   email_timing: string;
   requires_signature: boolean;
   sort_order: number;
+  shared_at: string | null;
   template: PortalDocumentTemplate | null;
 };
 
@@ -136,6 +136,7 @@ interface ClientPortalEstimateProps {
       email_timing: string;
       requires_signature: boolean;
       sort_order: number;
+      shared_at?: string | null;
       template: {
         id: string;
         name: string;
@@ -390,6 +391,7 @@ export function ClientPortalEstimate({
         email_timing: "manual",
         requires_signature: true,
         sort_order: index,
+        shared_at: document.created_at || null,
         template: {
           id: templateId,
           name: String(document.file_name || "Document"),
@@ -551,80 +553,9 @@ export function ClientPortalEstimate({
     () => approvalAgreementTemplates || templateRecord,
     [approvalAgreementTemplates, templateRecord],
   );
-  const fallbackMergeFields = useMemo((): DocumentTemplateMergeFields => {
-    const defaultScheduleRaw =
-      companyDefaultPaymentSchedule && typeof companyDefaultPaymentSchedule === "object"
-        ? companyDefaultPaymentSchedule
-        : {};
-    const readPercent = (value: unknown, fallback: number) => {
-      const numeric = Number(value);
-      if (!Number.isFinite(numeric) || numeric < 0) return fallback;
-      return numeric;
-    };
-    const formatPercent = (value: number) =>
-      Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/u, "");
-    const defaultSchedule = {
-      deposit: readPercent(defaultScheduleRaw.deposit_percentage, 33),
-      midpoint: readPercent(defaultScheduleRaw.midpoint_percentage, 33),
-      final: readPercent(defaultScheduleRaw.final_percentage, 34),
-    };
-
-    const scopeOfWork = Array.isArray(estimate.scope_of_work_items) && estimate.scope_of_work_items.length > 0
-      ? estimate.scope_of_work_items
-          .map((item) => String(item || "").trim())
-          .filter((item) => item.length > 0)
-          .map((item, index) => `${index + 1}. ${item}`)
-          .join("\n")
-      : buildScopeOfWorkValue({
-          lineItems: displayLineItems,
-          fallbackDescription: estimate.notes || "",
-        });
-
-    return {
-      current_date: new Date().toISOString().slice(0, 10),
-      job_name: String(estimate?.proposal_settings?.title || jobName || "").trim(),
-      job_address: String(address || "").trim(),
-      service_type: "",
-      client_name: String(customerName || "").trim(),
-      client_email: "",
-      client_phone: "",
-      company_name: String(companyName || "").trim(),
-      company_email: String(companyEmail || "").trim(),
-      company_phone: String(companyPhone || "").trim() || "Company phone number not provided",
-      estimate_total: `$${Number(displayTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      estimate_subtotal: `$${Number(displaySubtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      estimate_tax: `$${Number(displayTax || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      estimate_discount: `$${Number(displayDiscount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      default_payment_schedule: `Deposit ${formatPercent(defaultSchedule.deposit)}%, Midpoint ${formatPercent(defaultSchedule.midpoint)}%, Final ${formatPercent(defaultSchedule.final)}%`,
-      default_payment_deposit_percentage: formatPercent(defaultSchedule.deposit),
-      default_payment_midpoint_percentage: formatPercent(defaultSchedule.midpoint),
-      default_payment_final_percentage: formatPercent(defaultSchedule.final),
-      scope_of_work: scopeOfWork || "",
-    };
-  }, [
-    address,
-    companyDefaultPaymentSchedule,
-    companyEmail,
-    companyName,
-    companyPhone,
-    customerName,
-    displayDiscount,
-    displayLineItems,
-    displaySubtotal,
-    displayTax,
-    displayTotal,
-    estimate.notes,
-    estimate.proposal_settings?.title,
-    estimate.scope_of_work_items,
-    jobName,
-  ]);
   const mergeFields = useMemo((): DocumentTemplateMergeFields => {
-    const backendMergeFields = normalizeDocumentTemplateMergeFields(estimate.document_template_merge_fields);
-    return {
-      ...fallbackMergeFields,
-      ...backendMergeFields,
-    };
-  }, [estimate.document_template_merge_fields, fallbackMergeFields]);
+    return normalizeDocumentTemplateMergeFields(estimate.document_template_merge_fields);
+  }, [estimate.document_template_merge_fields]);
   const getUploadedDocumentForConfig = useCallback((config: PortalJobDocumentConfig) => {
     const directByConfig = portalDocuments.find((document) => document.config_id === config.id);
     if (directByConfig) return directByConfig;
@@ -666,10 +597,10 @@ export function ClientPortalEstimate({
           return Boolean(config.include_in_job)
             && timing === "manual"
             && config.requires_signature === true
-            && Boolean(getUploadedDocumentForConfig(config));
+            && Boolean(config.shared_at);
         },
       ),
-    [effectivePortalDocumentConfigs, getUploadedDocumentForConfig, normalizeEmailTimingValue],
+    [effectivePortalDocumentConfigs, normalizeEmailTimingValue],
   );
   const visiblePortalDocuments = useMemo(() => {
     if (approvalRequiredDocuments.length === 0 && manuallySentDocuments.length === 0) return [];
@@ -2143,7 +2074,7 @@ export function ClientPortalEstimate({
             <DialogTitle>{activeDocument?.title || "Document"}</DialogTitle>
           </DialogHeader>
           <div
-            className="prose prose-sm min-h-0 max-w-none flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1"
+            className="prose prose-sm min-h-0 max-w-none flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1"
             dangerouslySetInnerHTML={{
               __html: renderDocumentTemplateMarkdownHtml(activeDocument?.content || "No document text available."),
             }}

@@ -980,6 +980,64 @@ describe("JobDetail status guidance", () => {
     expect(within(rightColumn).getByText("job invoice card")).toBeInTheDocument();
   });
 
+  it("allows mention suggestions to overflow the documents tab card", async () => {
+    vi.mocked(supabaseFromMock).mockImplementation((table: string) => {
+      if (table === "leads") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "estimates") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "lead_photos" || table === "invoices") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+            })),
+          })),
+        };
+      }
+
+      if (table === "interactions") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              })),
+            })),
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderJobDetail();
+    await screen.findByRole("button", { name: /open job status guide for scheduled/i });
+
+    fireEvent.click(screen.getByRole("button", { name: "Documents" }));
+
+    const leftCard = screen.getByTestId("job-details-left-card");
+    expect(leftCard).toHaveClass("overflow-visible");
+    expect(leftCard).not.toHaveClass("overflow-hidden");
+    expect(within(screen.getByTestId("job-details-left-column")).getByLabelText("mention input")).toBeInTheDocument();
+  });
+
   it("updates only the selected scheduled instance when editing date and time", async () => {
     const updateEqMock = vi.fn().mockResolvedValue({ error: null });
     const updateMock = vi.fn(() => ({

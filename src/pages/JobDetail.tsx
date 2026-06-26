@@ -63,7 +63,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { ServiceTypeSelect } from "@/components/shared/ServiceTypeSelect";
 import { useServiceTypeOptions } from "@/hooks/useServiceTypeOptions";
 import { fetchDocumentTemplateMergeFields } from "@/lib/documentTemplateMergeFields";
-import type { DocumentTemplateMergeFields } from "@/lib/documentTemplates";
+import { formatScopeOfWorkMarkdownList, type DocumentTemplateMergeFields } from "@/lib/documentTemplates";
 
 const JOB_STATUS_GUIDANCE = [
   {
@@ -243,7 +243,7 @@ export default function JobDetail() {
       return "No scope of work created";
     }
 
-    return taskLines.map((line, index) => `${index + 1}. ${line}`).join("\n");
+    return formatScopeOfWorkMarkdownList(taskLines.join("\n"));
   })();
   const defaultPaymentScheduleRaw =
     currentAccount?.settings &&
@@ -1836,7 +1836,7 @@ export default function JobDetail() {
             <div
               className={cn(
                 "bg-card -mx-4 md:mx-0 rounded-none md:rounded-lg md:border md:border-border",
-                activeTab === "checklist" ? "overflow-visible" : "overflow-hidden",
+                activeTab === "checklist" || activeTab === "documents" ? "overflow-visible" : "overflow-hidden",
               )}
               data-testid="job-details-left-card"
             >
@@ -2243,27 +2243,7 @@ export default function JobDetail() {
                       ? (displayEstimate.agreement_templates as Record<string, unknown>)
                       : null
                   }
-                  templateMergeFields={documentTemplateMergeFields || {
-                    current_date: format(new Date(), "yyyy-MM-dd"),
-                    job_name: job?.name || "",
-                    job_address: [job?.address, job?.city].filter(Boolean).join(", "),
-                    service_type: typeof job?.service_type === "string" && job.service_type.trim() ? job.service_type : "Other",
-                    client_name: job?.customer?.name || "",
-                    client_email: job?.customer?.email || "",
-                    client_phone: job?.customer?.phone || "",
-                    company_name: currentAccount?.company_name || "",
-                    company_email: currentAccount?.company_email || "",
-                    company_phone: currentAccount?.company_phone || "Company phone number not provided",
-                    estimate_total: displayEstimate?.total ?? "",
-                    estimate_subtotal: displayEstimate?.subtotal ?? "",
-                    estimate_tax: displayEstimate?.tax ?? "",
-                    estimate_discount: displayEstimate?.discount ?? "",
-                    default_payment_schedule: defaultPaymentScheduleSummary,
-                    default_payment_deposit_percentage: formatPaymentSchedulePercent(defaultPaymentSchedule.deposit),
-                    default_payment_midpoint_percentage: formatPaymentSchedulePercent(defaultPaymentSchedule.midpoint),
-                    default_payment_final_percentage: formatPaymentSchedulePercent(defaultPaymentSchedule.final),
-                    scope_of_work: scopeOfWorkFromTasks,
-                  }}
+                  templateMergeFields={documentTemplateMergeFields}
                 />
 
                 <div className="py-1">

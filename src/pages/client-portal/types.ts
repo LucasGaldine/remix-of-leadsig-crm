@@ -155,6 +155,7 @@ export interface EstimateData {
     email_timing: string;
     requires_signature: boolean;
     sort_order: number;
+    shared_at?: string | null;
     template: {
       id: string;
       name: string;

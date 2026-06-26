@@ -462,13 +462,13 @@ export default function Inbox() {
           <div className="overflow-hidden md:rounded-2xl md:border md:border-border md:bg-card md:shadow-sm">
 
             {isLoading ? (
-              <div className="px-4 pb-6">
+              <div className="px-4 pt-4 pb-6">
                 <div className="flex items-center justify-center py-10">
                   <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                 </div>
               </div>
             ) : sortedItems.length === 0 ? (
-              <div className="px-4 pb-6">
+              <div className="px-4 pt-4 pb-6">
                 <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                   No matching activity found.
                 </div>

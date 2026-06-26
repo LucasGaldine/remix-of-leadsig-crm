@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildScopeOfWorkValue,
   documentTemplateMarkdownToPlainText,
   DEFAULT_DOCUMENT_TEMPLATE_DEFINITIONS,
   DOCUMENT_TEMPLATE_VARIABLES,
@@ -65,6 +64,14 @@ describe("documentTemplates", () => {
         },
       }),
     ).toBe("Custom template body");
+  });
+
+  it("keeps the default job agreement body free of markdown bullet lists", () => {
+    const jobAgreementTemplate = DEFAULT_DOCUMENT_TEMPLATE_DEFINITIONS.find(
+      (template) => template.system_key === "job_agreement",
+    );
+
+    expect(jobAgreementTemplate?.body).not.toMatch(/^\s*[-*]\s+/m);
   });
 
   it("renders supported [[field]] merge tokens", () => {
@@ -143,17 +150,6 @@ describe("documentTemplates", () => {
     ).toBe("Call us at (555) 123-4567 or client at +1 (555) 765-4321.");
   });
 
-  it("builds scope of work text from line items", () => {
-    expect(
-      buildScopeOfWorkValue({
-        lineItems: [
-          { name: "Demo", description: "Remove old cabinets", quantity: 1, unit: "ea" },
-          { name: "Install", description: "Install new cabinets", quantity: 1, unit: "ea" },
-        ],
-      }),
-    ).toContain("1. Demo (1 ea): Remove old cabinets");
-  });
-
   it("exposes document template variable tokens including scope of work", () => {
     const variableKeys = DOCUMENT_TEMPLATE_VARIABLES.map((variable) => variable.key);
     expect(variableKeys).toContain("scope_of_work");
@@ -170,6 +166,13 @@ describe("documentTemplates", () => {
     expect(html).toContain("<h1>Title</h1>");
     expect(html).toContain("<ul>");
     expect(html).toContain("<strong>One</strong>");
+  });
+
+  it("does not treat leading bold markers as bullet markers", () => {
+    const html = renderDocumentTemplateMarkdownHtml("**Date:** 2026-06-26\n\n* Real bullet");
+    expect(html).toContain("<p><strong>Date:</strong> 2026-06-26</p>");
+    expect(html).toContain("<li>Real bullet</li>");
+    expect(html).not.toContain("<li>*Date:**");
   });
 
   it("converts markdown to plain text for pdf-safe output", () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClientPortalEstimate } from "@/components/client-portal/ClientPortalEstimate";
@@ -784,6 +784,7 @@ describe("ClientPortalEstimate", () => {
               email_timing: "manual",
               requires_signature: true,
               sort_order: 4,
+              shared_at: "2026-03-22T00:00:00.000Z",
               template: {
                 id: "tpl_manual",
                 name: "Manual Signed Addendum",
@@ -832,9 +833,118 @@ describe("ClientPortalEstimate", () => {
     expect(screen.getByText("Job Agreement")).toBeInTheDocument();
     expect(screen.getByText("Warranty Agreement")).toBeInTheDocument();
     expect(screen.getByText("Test Estimate Approval")).toBeInTheDocument();
-    expect(screen.getByText("Manual Signed Addendum")).toBeInTheDocument();
+    expect(screen.getAllByText("Manual Signed Addendum").length).toBeGreaterThan(0);
     expect(screen.queryByText("Manual Unsent Document")).not.toBeInTheDocument();
     expect(screen.queryByText("No approval or manually sent documents are available yet.")).not.toBeInTheDocument();
+  });
+
+  it("uses only database-provided scope of work merge fields in document previews", async () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          id: "estimate_1",
+          total: 1,
+          subtotal: 1,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [],
+          scope_of_work_items: ["This is a test", "Item 2"],
+          document_template_merge_fields: {
+            scope_of_work: "- Centralized scope item",
+          },
+          job_document_configs: [
+            {
+              id: "cfg_scope",
+              lead_id: "lead_1",
+              template_id: "tpl_scope",
+              include_in_job: true,
+              email_timing: "on_estimate_approval",
+              requires_signature: true,
+              sort_order: 1,
+              template: {
+                id: "tpl_scope",
+                name: "Scope Agreement",
+                system_key: null,
+                body: "## Scope of Work\n\n[[scope_of_work]]",
+              },
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View Document" }));
+
+    const firstScopeItem = await screen.findByText("Centralized scope item");
+    expect(firstScopeItem.closest("ul")).not.toBeNull();
+    expect(firstScopeItem.closest("ol")).toBeNull();
+    expect(firstScopeItem.closest("div")?.className).toContain("[&_ul]:list-disc");
+    expect(screen.queryByText("This is a test")).not.toBeInTheDocument();
+    expect(screen.queryByText("Item 2")).not.toBeInTheDocument();
+  });
+
+  it("does not synthesize scope of work when database merge fields are missing", async () => {
+    render(
+      <ClientPortalEstimate
+        estimate={{
+          id: "estimate_1",
+          total: 1,
+          subtotal: 1,
+          tax_rate: 0,
+          tax: 0,
+          discount: 0,
+          status: "sent",
+          updated_at: "2026-03-23T00:00:00.000Z",
+          line_items: [
+            {
+              id: "line_1",
+              name: "Line item fallback",
+              quantity: 1,
+              unit: "ea",
+              unit_price: 1,
+              total: 1,
+            },
+          ],
+          scope_of_work_items: ["Checklist fallback"],
+          document_template_merge_fields: {},
+          job_document_configs: [
+            {
+              id: "cfg_scope",
+              lead_id: "lead_1",
+              template_id: "tpl_scope",
+              include_in_job: true,
+              email_timing: "on_estimate_approval",
+              requires_signature: true,
+              sort_order: 1,
+              template: {
+                id: "tpl_scope",
+                name: "Scope Agreement",
+                system_key: null,
+                body: "Scope: [[scope_of_work]]",
+              },
+            },
+          ],
+        }}
+        token="token_123"
+        apiUrl="https://example.com"
+        apiHeaders={{ "Content-Type": "application/json" }}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View Document" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Scope: Not provided/i)).toBeInTheDocument();
+    expect(within(dialog).queryByText("Checklist fallback")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Line item fallback/i)).not.toBeInTheDocument();
   });
 
   it("numbers duplicate document templates to match job details ordering", () => {
@@ -868,6 +978,7 @@ describe("ClientPortalEstimate", () => {
               email_timing: "manual",
               requires_signature: true,
               sort_order: 1,
+              shared_at: "2026-03-22T00:00:00.000Z",
               template: {
                 id: "tpl_manual",
                 name: "Test Manual",
@@ -898,6 +1009,7 @@ describe("ClientPortalEstimate", () => {
               email_timing: "manual",
               requires_signature: true,
               sort_order: 3,
+              shared_at: "2026-03-22T00:00:00.000Z",
               template: {
                 id: "tpl_manual",
                 name: "Test Manual",
@@ -940,8 +1052,8 @@ describe("ClientPortalEstimate", () => {
       />,
     );
 
-    expect(screen.getByText("Test Manual")).toBeInTheDocument();
-    expect(screen.getByText("Test Manual #3")).toBeInTheDocument();
+    expect(screen.getAllByText("Test Manual").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Test Manual #3").length).toBeGreaterThan(0);
     expect(screen.queryByText("Test Manual #2")).not.toBeInTheDocument();
   });
 
