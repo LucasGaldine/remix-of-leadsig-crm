@@ -36,6 +36,9 @@ verify_jwt = false
 [functions.client-portal-share]
 verify_jwt = false
 
+[functions.job-client-portal]
+verify_jwt = false
+
 [functions.website-share]
 verify_jwt = false
 

@@ -1,4 +1,3 @@
-import { resolveAgreementTemplatesForEstimates } from "./agreement-templates.ts";
 import { handleEstimateAction } from "./handle-estimate-action.ts";
 import { fetchPortalDocumentsForLeadFamily } from "./portal-documents.ts";
 
@@ -24,10 +23,6 @@ export async function handleRecurringJobPortal(
       body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
         ? body.agreement_acceptance
         : null;
-    const agreementTemplates =
-      body && typeof body.agreement_templates === "object" && body.agreement_templates
-        ? body.agreement_templates
-        : null;
     let requiredDocumentConfigIds: string[] = [];
 
     if (action !== "approve" && action !== "decline" && action !== "approve_changes" && action !== "decline_changes") {
@@ -36,7 +31,7 @@ export async function handleRecurringJobPortal(
 
     const { data: estimate, error: estError } = await supabase
       .from("estimates")
-      .select("id, status, expires_at, job_id, recurring_job_id, updated_at, has_pending_changes, account_id, proposal_settings")
+      .select("id, status, expires_at, job_id, recurring_job_id, customer_id, subtotal, tax, discount, total, updated_at, has_pending_changes, account_id, proposal_settings")
       .eq("recurring_job_id", recurringJob.id)
       .maybeSingle();
 
@@ -70,6 +65,7 @@ export async function handleRecurringJobPortal(
 
     return await handleEstimateAction(
       supabase,
+      supabaseUrl,
       estimate,
       action,
       null,
@@ -78,7 +74,6 @@ export async function handleRecurringJobPortal(
       estimateVersionId,
       signatureDataUrl,
       agreementAcceptance,
-      agreementTemplates,
       requiredDocumentConfigIds,
     );
   }
@@ -114,7 +109,7 @@ export async function handleRecurringJobPortal(
       .select(`
         id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at, accepted_at, approved_via, manual_approval_photo_url,
         original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
-        proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
+        proposal_settings, project_visualization_image_url, agreement_acceptance,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
           sort_order, is_change_order, change_order_type, change_order_approved, changed_at
@@ -222,7 +217,9 @@ export async function handleRecurringJobPortal(
     }
   }
 
-  const instanceMap = new Map((instances || []).map((i: any) => [i.id, i]));
+  const instanceMap = new Map<string, { recurring_instance_number?: number | null; status?: string | null }>(
+    (instances || []).map((i: any) => [String(i.id || ""), i]),
+  );
   const schedulesWithVisit = (allSchedules || []).map((s: any) => {
     const inst = instanceMap.get(s.lead_id);
     return {
@@ -235,7 +232,6 @@ export async function handleRecurringJobPortal(
     };
   });
 
-  const recurringResolvedAgreement = resolveAgreementTemplatesForEstimates([estimate]);
   const portalDocuments = await fetchPortalDocumentsForLeadFamily(
     supabase,
     supabaseUrl,
@@ -296,8 +292,6 @@ export async function handleRecurringJobPortal(
           proposal_settings: estimate.proposal_settings || null,
           scope_of_work_items: recurringScopeItems,
           project_visualization_image_url: estimate.project_visualization_image_url || null,
-          agreement_templates: recurringResolvedAgreement.templates,
-          agreement_source_estimate_id: recurringResolvedAgreement.sourceEstimateId,
           agreement_acceptance: estimate.agreement_acceptance || null,
           estimate_versions: estimateVersionsRecurring || [],
           job_document_config_lead_id: portalDocuments.leadId,

@@ -7,6 +7,12 @@ import {
   isManualApprovalPhotoUrlColumnMissing,
   uploadSignatureDataUrl,
 } from "./signature.ts";
+import { fetchPortalDocumentsForLeadFamily } from "./portal-documents.ts";
+import {
+  persistSignedJobDocumentPdfs,
+  resolveDocumentTemplateMergeFields,
+  resolveUploadedDocumentForConfig,
+} from "./signed-documents.ts";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -33,6 +39,7 @@ async function dispatchEstimateApprovalNotification(estimateId: string) {
 
 export async function handleEstimateAction(
   supabase: any,
+  supabaseUrl: string,
   estimate: {
     id: string;
     status: string;
@@ -42,6 +49,11 @@ export async function handleEstimateAction(
     updated_at: string;
     has_pending_changes?: boolean;
     account_id?: string | null;
+    customer_id?: string | null;
+    subtotal?: number | null;
+    tax?: number | null;
+    discount?: number | null;
+    total?: number | null;
     proposal_settings?: Record<string, unknown> | null;
   },
   action: "approve" | "decline" | "approve_changes" | "decline_changes",
@@ -51,21 +63,8 @@ export async function handleEstimateAction(
   estimateVersionId?: string | null,
   signatureDataUrl?: string | null,
   agreementAcceptance?: Record<string, boolean> | null,
-  agreementTemplates?: Record<string, unknown> | null,
   requiredDocumentConfigIds?: string[],
 ) {
-  void portalJobId;
-  const isWarrantyEnabledForVersion = (versionId: string | null | undefined) => {
-    if (!versionId) return true;
-    const settingsRaw = estimate?.proposal_settings?.version_warranty_enabled;
-    const settings =
-      settingsRaw && typeof settingsRaw === "object" && !Array.isArray(settingsRaw)
-        ? (settingsRaw as Record<string, unknown>)
-        : {};
-    const value = settings[versionId];
-    return value === undefined ? true : value === true;
-  };
-
   if (clientUpdatedAt && estimate.updated_at !== clientUpdatedAt) {
     return jsonResponse({
       error: "This estimate has been updated since you loaded this page. Please refresh the page to see the latest version before approving."
@@ -161,19 +160,6 @@ export async function handleEstimateAction(
   }
 
   if (action === "approve") {
-    const activeVersionId =
-      estimateVersionId ||
-      (typeof estimate?.proposal_settings?.recommended_version_id === "string"
-        ? estimate.proposal_settings.recommended_version_id
-        : null);
-    const requiredAgreementKeys = ["job_agreement"];
-    if (isWarrantyEnabledForVersion(activeVersionId)) {
-      requiredAgreementKeys.push("warranty_agreement");
-    }
-    const acceptedKeys = requiredAgreementKeys.filter((key) => agreementAcceptance?.[key] === true);
-    if (acceptedKeys.length !== requiredAgreementKeys.length) {
-      return jsonResponse({ error: "All required agreements must be accepted before approval." }, 400);
-    }
     const requiredConfigIds = (requiredDocumentConfigIds || []).filter((id) => typeof id === "string" && id.length > 0);
     const allRequiredConfigsAccepted = requiredConfigIds.every((id) => agreementAcceptance?.[id] === true);
     if (!allRequiredConfigsAccepted) {
@@ -210,21 +196,11 @@ export async function handleEstimateAction(
       accepted_at: new Date().toISOString(),
       approved_via: "customer_link",
       agreement_acceptance: {
-        job_agreement: agreementAcceptance?.job_agreement === true,
-        warranty_agreement: agreementAcceptance?.warranty_agreement === true,
         accepted_at: new Date().toISOString(),
         ...acceptedDocumentConfigMap,
       },
       updated_at: new Date().toISOString(),
     };
-    if (agreementTemplates && typeof agreementTemplates === "object") {
-      const templates = agreementTemplates as Record<string, unknown>;
-      estimateUpdatePayload.agreement_templates = {
-        job_agreement: templates.job_agreement,
-        warranty_agreement: templates.warranty_agreement,
-      };
-    }
-
     if (uploadedSignature) {
       estimateUpdatePayload.manual_approval_photo_url = uploadedSignature.publicUrl;
     }
@@ -253,6 +229,70 @@ export async function handleEstimateAction(
         await supabase.storage.from("lead-photos").remove([uploadedSignature.filePath]);
       }
       return jsonResponse({ error: "Failed to approve estimate" }, 500);
+    }
+
+    if (uploadedSignature && requiredConfigIds.length > 0) {
+      const seedLeadIds = [estimate.job_id, portalJobId].filter((value): value is string => Boolean(value));
+      const portalDocuments = await fetchPortalDocumentsForLeadFamily(
+        supabase,
+        supabaseUrl,
+        seedLeadIds,
+        "signed estimate approval documents",
+      );
+      const allConfigs = portalDocuments.configs || [];
+      const allDocuments = portalDocuments.documents || [];
+      const signedTargets = requiredConfigIds
+        .map((configId) => {
+          const config = allConfigs.find((row: any) => String(row?.id || "") === configId);
+          if (!config) return null;
+          return {
+            config,
+            uploadedDocument: resolveUploadedDocumentForConfig(config, allConfigs, allDocuments),
+          };
+        })
+        .filter((target): target is { config: any; uploadedDocument: any | null } => Boolean(target));
+
+      if (signedTargets.length > 0) {
+        const accountId = String(estimate.account_id || "");
+        const mergeFieldLeadId = portalDocuments.leadId || estimate.job_id || portalJobId || "";
+        const { data: customer } = estimate.customer_id
+          ? await supabase
+              .from("customers")
+              .select("id, name, email, phone")
+              .eq("id", estimate.customer_id)
+              .maybeSingle()
+          : { data: null };
+        const resolvedMergeFields = await resolveDocumentTemplateMergeFields({
+          supabase,
+          accountId,
+          leadId: mergeFieldLeadId,
+          estimateId: estimate.id,
+        });
+        const mergeFields = {
+          current_date: new Date().toISOString().slice(0, 10),
+          client_name: String(customer?.name || ""),
+          client_email: String(customer?.email || ""),
+          client_phone: String(customer?.phone || ""),
+          estimate_total: `$${Number(estimate.total || 0).toFixed(2)}`,
+          estimate_subtotal: `$${Number(estimate.subtotal || 0).toFixed(2)}`,
+          estimate_tax: `$${Number(estimate.tax || 0).toFixed(2)}`,
+          estimate_discount: `$${Number(estimate.discount || 0).toFixed(2)}`,
+          ...resolvedMergeFields,
+        };
+        const persistResult = await persistSignedJobDocumentPdfs({
+          supabase,
+          supabaseUrl,
+          accountId,
+          acceptedAt: String(estimateUpdatePayload.accepted_at),
+          signaturePublicUrl: uploadedSignature.publicUrl,
+          customerName: String(customer?.name || "Customer"),
+          mergeFields,
+          targets: signedTargets,
+        });
+        if (!persistResult.ok) {
+          return jsonResponse({ error: `Estimate approved, but ${persistResult.error}` }, 500);
+        }
+      }
     }
 
     const pruneResult = await pruneEstimateVersionsAfterApproval(

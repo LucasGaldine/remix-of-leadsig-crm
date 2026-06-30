@@ -47,17 +47,13 @@ describe("documentTemplates", () => {
           ...jobAgreementTemplate!,
           body: "",
         },
-        estimateAgreementTemplates: {
-          job_agreement: "Generated job agreement text",
-        },
         jobReleaseText: null,
       }),
-    ).toBe("Generated job agreement text");
+    ).toBe("");
 
     expect(
       getDocumentFallbackText({
         template: customTemplate,
-        estimateAgreementTemplates: null,
         jobReleaseText: null,
         templateMergeFields: {
           client_name: "Taylor Client",

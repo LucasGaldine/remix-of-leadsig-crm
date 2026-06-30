@@ -96,15 +96,9 @@ function normalizeTiming(value: unknown) {
 
 function resolveTemplateBody(
   template: { system_key?: string | null; body?: string | null } | null | undefined,
-  agreementTemplates: Record<string, unknown>,
 ) {
   const body = normalizeText(template?.body);
   if (body) return body;
-
-  const key = normalizeText(template?.system_key);
-  if (key === "job_agreement") return normalizeText(agreementTemplates.job_agreement);
-  if (key === "warranty_agreement") return normalizeText(agreementTemplates.warranty_agreement);
-  if (key === "job_release") return normalizeText(agreementTemplates.job_release);
   return "";
 }
 
@@ -360,7 +354,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: estimate, error: estimateError } = await supabase
       .from("estimates")
-      .select(`id,account_id,customer_id,job_id,status,total,subtotal,tax_rate,tax,discount,notes,accepted_at,manual_approval_photo_url,agreement_templates,agreement_acceptance,customer:customers(name,email,phone),job:leads!estimates_job_id_fkey(name,address,city,service_type),line_items:estimate_line_items(name,description,quantity,unit,unit_price,total,sort_order,is_change_order,change_order_type)`)
+      .select(`id,account_id,customer_id,job_id,status,total,subtotal,tax_rate,tax,discount,notes,accepted_at,manual_approval_photo_url,agreement_acceptance,customer:customers(name,email,phone),job:leads!estimates_job_id_fkey(name,address,city,service_type),line_items:estimate_line_items(name,description,quantity,unit,unit_price,total,sort_order,is_change_order,change_order_type)`)
       .eq("id", estimateId)
       .maybeSingle();
 
@@ -420,10 +414,6 @@ Deno.serve(async (req: Request) => {
         estimate_discount: `$${Number((estimate as any)?.discount || 0).toFixed(2)}`,
       };
 
-      const agreementTemplates = ((estimate as any)?.agreement_templates && typeof (estimate as any)?.agreement_templates === "object")
-        ? ((estimate as any).agreement_templates as Record<string, unknown>)
-        : {};
-
       if (estimate.job_id) {
         try {
           const leadIds = await expandLeadFamilyIds(supabase, [String(estimate.job_id)]);
@@ -471,7 +461,7 @@ Deno.serve(async (req: Request) => {
 
               const t = row.template;
               const title = normalizeText(t?.name) || "Document";
-              const bodyText = renderTemplate(resolveTemplateBody(t, agreementTemplates), mergeFields);
+              const bodyText = renderTemplate(resolveTemplateBody(t), mergeFields);
               if (!bodyText) continue;
               attachments.push(
                 await buildSignedTemplatePdf({

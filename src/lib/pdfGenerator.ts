@@ -44,6 +44,8 @@ export interface TemplateDocumentPDFData {
   content: string;
   fileName?: string;
   requiresSignature?: boolean;
+  signatureImageUrl?: string;
+  signedAt?: string;
 }
 
 async function getImageDataUrl(imageUrl: string) {
@@ -407,6 +409,11 @@ function sanitizePdfBaseName(value: string) {
 }
 
 type MarkdownLineStyle = "h1" | "h2" | "h3" | "bullet" | "ordered" | "paragraph";
+type PdfInlineFontStyle = "normal" | "bold" | "italic";
+type PdfInlineSegment = {
+  text: string;
+  fontStyle: PdfInlineFontStyle;
+};
 
 function stripInlineMarkdown(value: string) {
   return value
@@ -423,24 +430,104 @@ function normalizeDocumentLine(line: string): { text: string; style: MarkdownLin
   if (!trimmed) return { text: "", style: "paragraph" };
 
   if (/^###\s+/.test(trimmed)) {
-    return { text: stripInlineMarkdown(trimmed.replace(/^###\s+/, "")), style: "h3" };
+    return { text: trimmed.replace(/^###\s+/, ""), style: "h3" };
   }
   if (/^##\s+/.test(trimmed)) {
-    return { text: stripInlineMarkdown(trimmed.replace(/^##\s+/, "")), style: "h2" };
+    return { text: trimmed.replace(/^##\s+/, ""), style: "h2" };
   }
   if (/^#\s+/.test(trimmed)) {
-    return { text: stripInlineMarkdown(trimmed.replace(/^#\s+/, "")), style: "h1" };
+    return { text: trimmed.replace(/^#\s+/, ""), style: "h1" };
   }
   if (/^\s*[-*]\s+/.test(trimmed)) {
-    return { text: `• ${stripInlineMarkdown(trimmed.replace(/^\s*[-*]\s+/, ""))}`, style: "bullet" };
+    return { text: `• ${trimmed.replace(/^\s*[-*]\s+/, "")}`, style: "bullet" };
   }
   if (/^\s*\d+\.\s+/.test(trimmed)) {
-    return { text: stripInlineMarkdown(trimmed.replace(/^\s*(\d+)\.\s+/, "$1. ")), style: "ordered" };
+    return { text: trimmed.replace(/^\s*(\d+)\.\s+/, "$1. "), style: "ordered" };
   }
-  return { text: stripInlineMarkdown(trimmed), style: "paragraph" };
+  return { text: trimmed, style: "paragraph" };
 }
 
-function createTemplateDocumentPdf(data: TemplateDocumentPDFData) {
+function parseInlineMarkdownSegments(value: string): PdfInlineSegment[] {
+  const segments: PdfInlineSegment[] = [];
+  const pattern = /(\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|\*([^*]+)\*|_([^_]+)_)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ text: value.slice(lastIndex, match.index), fontStyle: "normal" });
+    }
+
+    const boldText = match[2] || match[3];
+    const codeText = match[4];
+    const italicText = match[5] || match[6];
+    if (boldText) {
+      segments.push({ text: boldText, fontStyle: "bold" });
+    } else if (codeText) {
+      segments.push({ text: codeText, fontStyle: "normal" });
+    } else if (italicText) {
+      segments.push({ text: italicText, fontStyle: "italic" });
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < value.length) {
+    segments.push({ text: value.slice(lastIndex), fontStyle: "normal" });
+  }
+
+  return segments.filter((segment) => segment.text.length > 0);
+}
+
+function hasInlineMarkdownFormatting(value: string) {
+  return /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\*[^*]+\*|_[^_]+_)/.test(value);
+}
+
+function setTemplateDocumentLineFont(doc: jsPDF, style: MarkdownLineStyle, inlineStyle: PdfInlineFontStyle = "normal") {
+  if (style === "h1") {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+  } else if (style === "h2") {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+  } else if (style === "h3") {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+  } else {
+    doc.setFont("helvetica", inlineStyle);
+    doc.setFontSize(11);
+  }
+}
+
+function renderInlineMarkdownPdfLine(
+  doc: jsPDF,
+  text: string,
+  style: MarkdownLineStyle,
+  margin: number,
+  y: number,
+) {
+  const segments = parseInlineMarkdownSegments(text);
+  let x = margin;
+
+  for (const segment of segments) {
+    const inlineStyle =
+      style === "paragraph" || style === "bullet" || style === "ordered"
+        ? segment.fontStyle
+        : "bold";
+    setTemplateDocumentLineFont(doc, style, inlineStyle);
+    doc.text(segment.text, x, y);
+    x += doc.getTextWidth(segment.text);
+  }
+}
+
+function formatSignedDateLabel(value: string | undefined) {
+  if (!value) return format(new Date(), "MMMM d, yyyy");
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return format(new Date(), "MMMM d, yyyy");
+  return format(date, "MMMM d, yyyy");
+}
+
+function createTemplateDocumentPdf(data: TemplateDocumentPDFData, signatureDataUrl?: string | null) {
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -476,24 +563,17 @@ function createTemplateDocumentPdf(data: TemplateDocumentPDFData) {
       continue;
     }
 
-    if (style === "h1") {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-    } else if (style === "h2") {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-    } else if (style === "h3") {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-    } else {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-    }
-
-    const wrapped = doc.splitTextToSize(text, maxWidth) as string[];
+    setTemplateDocumentLineFont(doc, style);
+    const plainText = stripInlineMarkdown(text);
+    const wrapped = doc.splitTextToSize(plainText, maxWidth) as string[];
     ensurePageRoom(Math.max(lineHeight, wrapped.length * lineHeight));
     for (const segment of wrapped) {
-      doc.text(segment, margin, y);
+      if (wrapped.length === 1 && hasInlineMarkdownFormatting(text)) {
+        renderInlineMarkdownPdfLine(doc, text, style, margin, y);
+      } else {
+        setTemplateDocumentLineFont(doc, style);
+        doc.text(segment, margin, y);
+      }
       y += lineHeight;
     }
     if (style === "h1" || style === "h2" || style === "h3") {
@@ -509,15 +589,40 @@ function createTemplateDocumentPdf(data: TemplateDocumentPDFData) {
     doc.text("Signature", margin, y);
     y += 22;
 
+    const dateX = margin + 300;
+    const dateLineY = y;
+    if (signatureDataUrl) {
+      try {
+        const signatureProps = doc.getImageProperties(signatureDataUrl);
+        const imageFormat = resolveImageFormat(signatureDataUrl);
+        const maxSignatureWidth = 260;
+        const maxSignatureHeight = 52;
+        const widthScale = maxSignatureWidth / signatureProps.width;
+        const heightScale = maxSignatureHeight / signatureProps.height;
+        const imageScale = Math.min(widthScale, heightScale);
+        const imageWidth = signatureProps.width * imageScale;
+        const imageHeight = signatureProps.height * imageScale;
+        doc.addImage(signatureDataUrl, imageFormat, margin, y - imageHeight + 6, imageWidth, imageHeight);
+      } catch {
+        // Keep the signed date/labels when the signature image cannot be embedded.
+      }
+    } else {
+      doc.setDrawColor(120, 120, 120);
+      doc.line(margin, y, margin + 260, y);
+    }
+
     doc.setDrawColor(120, 120, 120);
-    doc.line(margin, y, margin + 260, y);
+    doc.line(dateX, dateLineY, dateX + 140, dateLineY);
     y += 14;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(90, 90, 90);
     doc.text("Client Signature", margin, y);
-    doc.line(margin + 300, y - 14, margin + 440, y - 14);
-    doc.text("Date", margin + 300, y);
+    doc.text("Date", dateX, y);
+    if (data.signedAt) {
+      doc.setFontSize(9);
+      doc.text(formatSignedDateLabel(data.signedAt), dateX, y + 12);
+    }
     doc.setTextColor(0, 0, 0);
   }
 
@@ -533,6 +638,21 @@ export function generateTemplateDocumentPDF(data: TemplateDocumentPDFData) {
 
 export function buildTemplateDocumentPDFBlob(data: TemplateDocumentPDFData) {
   const doc = createTemplateDocumentPdf(data);
+  if (!doc) return null;
+  return doc.output("blob");
+}
+
+export async function buildSignedTemplateDocumentPDFBlob(data: TemplateDocumentPDFData) {
+  let signatureDataUrl: string | null = null;
+  if (data.signatureImageUrl) {
+    try {
+      signatureDataUrl = await getImageDataUrl(data.signatureImageUrl);
+    } catch {
+      signatureDataUrl = null;
+    }
+  }
+
+  const doc = createTemplateDocumentPdf(data, signatureDataUrl);
   if (!doc) return null;
   return doc.output("blob");
 }
