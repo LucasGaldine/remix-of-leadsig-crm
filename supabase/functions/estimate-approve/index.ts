@@ -255,6 +255,7 @@ Deno.serve(async (req: Request) => {
           has_pending_changes,
           proposal_settings,
           project_visualization_image_url,
+          agreement_templates,
           customer:customers(name, email, phone),
           job:leads!estimates_job_id_fkey(name, address, service_type),
           line_items:estimate_line_items(
@@ -349,7 +350,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: estimate, error: fetchError } = await supabase
         .from("estimates")
-        .select("id, status, expires_at, job_id, has_pending_changes, account_id, proposal_settings")
+        .select("id, status, expires_at, job_id, has_pending_changes, account_id, proposal_settings, agreement_templates")
         .eq("approval_token", token)
         .maybeSingle();
 

@@ -464,6 +464,12 @@ export function formatScopeOfWorkMarkdownList(value: unknown) {
     .join("\n");
 }
 
+function readTemplateText(record: Record<string, unknown> | null | undefined, key: string) {
+  if (!record) return "";
+  const value = record[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function getDocumentTemplateSourceText(params: {
   template:
     | {
@@ -472,10 +478,25 @@ export function getDocumentTemplateSourceText(params: {
       }
     | null
     | undefined;
+  estimateAgreementTemplates?: Record<string, unknown> | null;
   jobReleaseText?: string | null;
 }) {
   const template = params.template;
   if (!template) return "";
+
+  if (template.system_key === "job_agreement") {
+    return (
+      (template.body || "").trim()
+      || readTemplateText(params.estimateAgreementTemplates, "job_agreement")
+    );
+  }
+
+  if (template.system_key === "warranty_agreement") {
+    return (
+      (template.body || "").trim()
+      || readTemplateText(params.estimateAgreementTemplates, "warranty_agreement")
+    );
+  }
 
   if (template.system_key === "job_release") {
     const releaseText = (params.jobReleaseText || "").trim();
@@ -493,11 +514,13 @@ export function getDocumentFallbackText(params: {
       }
     | null
     | undefined;
+  estimateAgreementTemplates?: Record<string, unknown> | null;
   jobReleaseText?: string | null;
   templateMergeFields?: DocumentTemplateMergeFields | null;
 }) {
   const raw = getDocumentTemplateSourceText({
     template: params.template,
+    estimateAgreementTemplates: params.estimateAgreementTemplates,
     jobReleaseText: params.jobReleaseText,
   });
   return renderDocumentTemplateText(raw, params.templateMergeFields);

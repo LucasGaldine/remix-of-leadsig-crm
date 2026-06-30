@@ -143,7 +143,9 @@ export interface EstimateData {
     highlight_line_item_ids?: string[];
   } | null;
   project_visualization_image_url?: string | null;
+  agreement_templates?: Record<string, unknown> | null;
   agreement_acceptance?: Record<string, unknown> | null;
+  agreement_source_estimate_id?: string | null;
   job_document_config_lead_id?: string | null;
   job_document_configs?: Array<{
     id: string;

@@ -146,14 +146,10 @@ export async function fetchPortalDocumentsForLeadFamily(
                 default_email_timing: String(row?.default_email_timing || "never"),
                 default_requires_signature: row?.default_requires_signature === true,
               }))
-              .filter((row: { id: string }) => row.id.length > 0 && !existingTemplateIds.has(row.id));
+              .filter((row) => row.id.length > 0 && !existingTemplateIds.has(row.id));
 
             if (templatesToInsert.length > 0) {
-              const insertPayload = templatesToInsert.map((template: {
-                id: string;
-                default_email_timing: string;
-                default_requires_signature: boolean;
-              }, index: number) => ({
+              const insertPayload = templatesToInsert.map((template, index) => ({
                 lead_id: defaultLeadId,
                 account_id: accountId,
                 template_id: template.id,
@@ -209,10 +205,10 @@ export async function fetchPortalDocumentsForLeadFamily(
             : null,
         };
       })
-      .filter((row: PortalJobDocumentConfig) => Boolean(row.id) && Boolean(row.lead_id));
+      .filter((row) => Boolean(row.id) && Boolean(row.lead_id));
 
     const leadPriority = new Map(leadIds.map((id, index) => [id, index]));
-    configs = normalizedConfigRows.sort((a: PortalJobDocumentConfig, b: PortalJobDocumentConfig) => {
+    configs = normalizedConfigRows.sort((a, b) => {
       const aPriority = leadPriority.get(a.lead_id) ?? Number.MAX_SAFE_INTEGER;
       const bPriority = leadPriority.get(b.lead_id) ?? Number.MAX_SAFE_INTEGER;
       if (aPriority !== bPriority) return aPriority - bPriority;
@@ -246,7 +242,7 @@ export async function fetchPortalDocumentsForLeadFamily(
         created_at: String(rawDocument?.created_at || ""),
         url: `${supabaseUrl}/storage/v1/object/public/job-documents/${rawDocument.file_path}`,
       }))
-      .filter((document: PortalJobDocument) => {
+      .filter((document) => {
         if (!document.id || !document.file_path) return false;
         if (document.config_id && selectedConfigIds.has(document.config_id)) return true;
         if (selectedConfigIds.size === 0) return true;

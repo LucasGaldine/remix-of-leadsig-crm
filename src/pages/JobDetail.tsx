@@ -498,7 +498,7 @@ export default function JobDetail() {
         const masterQuote = await fetchPreferredEstimate(() =>
           supabase
             .from("estimates")
-            .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, accepted_at, has_pending_changes, notes, agreement_acceptance, manual_approval_photo_url, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
+            .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, has_pending_changes, notes, agreement_templates, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
             .eq("recurring_job_id", currentJob.recurring_job_id),
         );
         setEstimate(masterQuote);
@@ -509,7 +509,7 @@ export default function JobDetail() {
       let data = await fetchPreferredEstimate(() =>
         supabase
           .from("estimates")
-          .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, accepted_at, has_pending_changes, notes, agreement_acceptance, manual_approval_photo_url, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
+          .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, has_pending_changes, notes, agreement_templates, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
           .eq("job_id", id),
       );
 
@@ -524,7 +524,7 @@ export default function JobDetail() {
           data = await fetchPreferredEstimate(() =>
             supabase
               .from("estimates")
-              .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, accepted_at, has_pending_changes, notes, agreement_acceptance, manual_approval_photo_url, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
+              .select("id, total, subtotal, tax, discount, status, sent_at, viewed_at, has_pending_changes, notes, agreement_templates, line_items:estimate_line_items(id, name, description, quantity, unit), versions:estimate_versions(id, total)")
               .eq("job_id", parentLead.id),
           );
         }
@@ -2238,19 +2238,9 @@ export default function JobDetail() {
                   }
                   accountId={currentAccount?.id}
                   userId={user?.id}
-                  estimateAgreementAcceptance={
-                    displayEstimate?.agreement_acceptance && typeof displayEstimate.agreement_acceptance === "object"
-                      ? (displayEstimate.agreement_acceptance as Record<string, unknown>)
-                      : null
-                  }
-                  estimateSignatureImageUrl={
-                    typeof (displayEstimate as any)?.manual_approval_photo_url === "string"
-                      ? (displayEstimate as any).manual_approval_photo_url
-                      : null
-                  }
-                  estimateSignedAt={
-                    typeof (displayEstimate as any)?.accepted_at === "string"
-                      ? (displayEstimate as any).accepted_at
+                  estimateAgreementTemplates={
+                    displayEstimate?.agreement_templates && typeof displayEstimate.agreement_templates === "object"
+                      ? (displayEstimate.agreement_templates as Record<string, unknown>)
                       : null
                   }
                   templateMergeFields={documentTemplateMergeFields}

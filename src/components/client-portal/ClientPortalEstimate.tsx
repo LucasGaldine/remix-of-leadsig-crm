@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, DollarSign, X, Download, CircleAlert as AlertCircle } from "lucide-react";
 import { generateEstimatePDF } from "@/lib/pdfGenerator";
 import { normalizeClientPortalColor, normalizeClientPortalTextColor } from "@/lib/clientPortalTheme";
+import { generateAgreementTemplates } from "@/lib/agreementTemplates";
 import {
   getDocumentFallbackText,
   renderDocumentTemplateMarkdownHtml,
@@ -120,7 +121,9 @@ interface ClientPortalEstimateProps {
     } | null;
     scope_of_work_items?: string[] | null;
     project_visualization_image_url?: string | null;
+    agreement_templates?: Record<string, unknown> | null;
     agreement_acceptance?: Record<string, unknown> | null;
+    agreement_source_estimate_id?: string | null;
     approved_via?: string | null;
     accepted_at?: string | null;
     manual_approval_photo_url?: string | null;
@@ -275,6 +278,7 @@ export function ClientPortalEstimate({
   portalColor = "",
   portalTextColor = "",
 }: ClientPortalEstimateProps) {
+  const REQUIRED_AGREEMENT_KEYS = ["job_agreement", "warranty_agreement"] as const;
   const SIGNATURE_CANVAS_WIDTH = 600;
   const SIGNATURE_CANVAS_HEIGHT = 180;
   const versionWindowSize = 3;
@@ -286,6 +290,7 @@ export function ClientPortalEstimate({
   const [activeDocument, setActiveDocument] = useState<{ title: string; content: string } | null>(null);
   const [approvalDialogAction, setApprovalDialogAction] = useState<"approve" | "approve_changes" | null>(null);
   const [isSigningOutstandingDocuments, setIsSigningOutstandingDocuments] = useState(false);
+  const [approvalAgreementTemplates, setApprovalAgreementTemplates] = useState<Record<string, string> | null>(null);
   const [isVisualizationPortrait, setIsVisualizationPortrait] = useState(false);
   const [agreementChecks, setAgreementChecks] = useState<Record<string, boolean>>({});
   const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -336,6 +341,13 @@ export function ClientPortalEstimate({
       null;
     return isWarrantyEnabledForVersion(versionId);
   }, [availableVersions, estimate?.proposal_settings?.recommended_version_id, isWarrantyEnabledForVersion, selectedVersionId]);
+  const requiredAgreementKeys = useMemo(
+    () =>
+      REQUIRED_AGREEMENT_KEYS.filter(
+        (key) => key !== "warranty_agreement" || isWarrantyEnabledForCurrentSelection,
+      ),
+    [isWarrantyEnabledForCurrentSelection],
+  );
   const hasPortalDocumentPayload = useMemo(
     () => Array.isArray(estimate.job_document_configs) || Array.isArray(estimate.job_documents),
     [estimate.job_document_configs, estimate.job_documents],
@@ -518,6 +530,29 @@ export function ClientPortalEstimate({
   const proposalSections = estimate.proposal_settings?.sections || {};
   const highlightedLineItemIds = new Set(estimate.proposal_settings?.highlight_line_item_ids || []);
   const highlightedItems = displayLineItems.filter((item) => highlightedLineItemIds.has(item.id));
+  const templateRecord = useMemo(() => {
+    const directTemplates =
+      estimate.agreement_templates && typeof estimate.agreement_templates === "object"
+        ? estimate.agreement_templates
+        : null;
+    const proposalSettings =
+      estimate.proposal_settings && typeof estimate.proposal_settings === "object"
+        ? (estimate.proposal_settings as Record<string, unknown>)
+        : null;
+    const proposalTemplates =
+      proposalSettings?.agreement_templates && typeof proposalSettings.agreement_templates === "object"
+        ? (proposalSettings.agreement_templates as Record<string, unknown>)
+        : null;
+
+    return {
+      ...(directTemplates || {}),
+      ...(proposalTemplates || {}),
+    };
+  }, [estimate.agreement_templates, estimate.proposal_settings]);
+  const effectiveAgreementRecord = useMemo(
+    () => approvalAgreementTemplates || templateRecord,
+    [approvalAgreementTemplates, templateRecord],
+  );
   const mergeFields = useMemo((): DocumentTemplateMergeFields => {
     return normalizeDocumentTemplateMergeFields(estimate.document_template_merge_fields);
   }, [estimate.document_template_merge_fields]);
@@ -621,6 +656,10 @@ export function ClientPortalEstimate({
       documentDisplayNameByConfigId.get(config.id) || String(config.template?.name || "Document"),
     [documentDisplayNameByConfigId],
   );
+  const agreementEntries = requiredAgreementKeys.map((key) => ({
+    key,
+    text: resolveAgreementTextByKey(effectiveAgreementRecord, key),
+  }));
   const approvalCheckboxItems = useMemo(() => {
     if (!hasPortalDocumentPayload) return [];
 
@@ -820,10 +859,11 @@ export function ClientPortalEstimate({
     if (!template) return "";
     return getDocumentFallbackText({
       template,
+      estimateAgreementTemplates: effectiveAgreementRecord,
       jobReleaseText: null,
       templateMergeFields: mergeFields,
     });
-  }, [mergeFields]);
+  }, [effectiveAgreementRecord, mergeFields]);
 
   const openDocumentFromConfig = useCallback((config: PortalJobDocumentConfig) => {
     const title = getConfigDocumentDisplayName(config);
@@ -863,11 +903,30 @@ export function ClientPortalEstimate({
           estimate_version_id: action === "approve" ? selectedVersionId : undefined,
           agreement_acceptance: action === "approve"
             ? {
+                // Backward compatibility with deployed edge functions that may still require this key.
+                job_release_agreement: true,
+                job_agreement:
+                  (() => {
+                    const keyDocument = approvalRequiredDocuments.find((config) => config.template?.system_key === "job_agreement");
+                    if (keyDocument) return agreementChecks[keyDocument.id] === true;
+                    if ("job_agreement" in agreementChecks) return agreementChecks.job_agreement === true;
+                    return true;
+                  })(),
+                warranty_agreement:
+                  isWarrantyEnabledForCurrentSelection
+                    ? (() => {
+                        const keyDocument = approvalRequiredDocuments.find((config) => config.template?.system_key === "warranty_agreement");
+                        if (keyDocument) return agreementChecks[keyDocument.id] === true;
+                        if ("warranty_agreement" in agreementChecks) return agreementChecks.warranty_agreement === true;
+                        return true;
+                      })()
+                    : false,
                 ...Object.fromEntries(
                   approvalCheckboxItems.map((item) => [item.id, agreementChecks[item.id] === true]),
                 ),
               }
             : undefined,
+          agreement_templates: action === "approve" ? approvalAgreementTemplates : undefined,
           ...(action === "approve" ? getSignaturePayloadFields() : {}),
         }),
       });
@@ -933,12 +992,14 @@ export function ClientPortalEstimate({
         return acc;
       }, {} as Record<string, boolean>),
     );
+    setApprovalAgreementTemplates(null);
     setApprovalDialogAction(action);
   };
 
   const closeApprovalDialog = (open: boolean) => {
     if (!open) {
       setApprovalDialogAction(null);
+      setApprovalAgreementTemplates(null);
       clearSignature();
     }
   };
@@ -948,6 +1009,7 @@ export function ClientPortalEstimate({
       const didSucceed = await handleAction("approve");
       if (didSucceed) {
         setApprovalDialogAction(null);
+        setApprovalAgreementTemplates(null);
         clearSignature();
       }
       return;
@@ -957,6 +1019,7 @@ export function ClientPortalEstimate({
       const didSucceed = await handleChangeOrderAction("approve_changes");
       if (didSucceed) {
         setApprovalDialogAction(null);
+        setApprovalAgreementTemplates(null);
         clearSignature();
       }
     }
@@ -1042,6 +1105,90 @@ export function ClientPortalEstimate({
     }
   };
 
+  const generateAgreementsForSelection = useCallback(() => {
+    const activeVersionId =
+      selectedVersionId ||
+      estimate?.proposal_settings?.recommended_version_id ||
+      availableVersions[0]?.id ||
+      null;
+    const selectedVersion =
+      availableVersions.find((version) => version.id === activeVersionId) ||
+      availableVersions[0] ||
+      null;
+    const selectedLineItems =
+      selectedVersion && Array.isArray(selectedVersion.line_items)
+        ? selectedVersion.line_items
+        : displayLineItems;
+    const selectedTotal = Number(selectedVersion?.total ?? displayTotal ?? 0);
+    const scopeItemsFromChecklist = Array.isArray(estimate.scope_of_work_items)
+      ? estimate.scope_of_work_items.map((item) => String(item || "").trim()).filter((value) => value.length > 0)
+      : [];
+    const existingJobAgreementTemplate = resolveAgreementTextByKey(templateRecord, "job_agreement");
+    const scopeItemsFromExistingTemplate = extractScopeItemsFromAgreementText(existingJobAgreementTemplate);
+    const fallbackScopeItems = selectedLineItems
+      .map((item) => String(item?.name || "").trim())
+      .filter((value) => value.length > 0)
+      .slice(0, 25);
+    const paymentSchedule = estimate?.proposal_settings?.payment_schedule;
+    const warrantyLengths = estimate?.proposal_settings?.version_warranty_lengths;
+    const selectedWarrantyLength = (
+      activeVersionId && warrantyLengths && typeof warrantyLengths === "object"
+        ? String((warrantyLengths as Record<string, unknown>)[activeVersionId] || "").trim()
+        : ""
+    ) || "2 years";
+
+    const templates = generateAgreementTemplates({
+      todayIso: new Date().toISOString().slice(0, 10),
+      contractorName: companyName || "Contractor",
+      contractorAddress: "Address on file",
+      contractorPhone: companyPhone || "N/A",
+      contractorEmail: companyEmail || "N/A",
+      clientName: customerName || "Client",
+      projectName: estimate?.proposal_settings?.title || jobName || "Project",
+      projectAddress: address || "Address to be confirmed",
+      scopeItems:
+        scopeItemsFromChecklist.length > 0
+          ? scopeItemsFromChecklist
+          : scopeItemsFromExistingTemplate.length > 0
+            ? scopeItemsFromExistingTemplate
+            : fallbackScopeItems,
+      totalCost: selectedTotal,
+      paymentMethod: "Card, Check, or ACH",
+      paymentSchedule: {
+        depositPercentage: Number(paymentSchedule?.deposit_percentage ?? 33),
+        midpointPercentage: Number(paymentSchedule?.midpoint_percentage ?? 33),
+        finalPercentage: Number(paymentSchedule?.final_percentage ?? 34),
+      },
+      workmanshipWarrantyDuration: selectedWarrantyLength,
+    });
+    if (!isWarrantyEnabledForVersion(activeVersionId)) {
+      templates.warranty_agreement = "";
+    }
+    return templates;
+  }, [
+    address,
+    availableVersions,
+    companyEmail,
+    companyName,
+    companyPhone,
+    customerName,
+    displayLineItems,
+    displayTotal,
+    estimate?.proposal_settings?.title,
+    estimate?.proposal_settings?.recommended_version_id,
+    estimate?.proposal_settings?.payment_schedule,
+    estimate?.proposal_settings?.version_warranty_lengths,
+    estimate.scope_of_work_items,
+    jobName,
+    isWarrantyEnabledForVersion,
+    selectedVersionId,
+    templateRecord,
+  ]);
+
+  useEffect(() => {
+    if (approvalDialogAction !== "approve") return;
+    setApprovalAgreementTemplates(generateAgreementsForSelection());
+  }, [approvalDialogAction, generateAgreementsForSelection]);
 
   const renderComparisonCard = (
     title: string,
@@ -1799,9 +1946,10 @@ export function ClientPortalEstimate({
                           openDocumentFromConfig(item.config);
                           return;
                         }
+                        const entry = agreementEntries.find((value) => value.key === item.id);
                         setActiveDocument({
                           title: item.title,
-                          content: "No document text available for this document.",
+                          content: entry?.text || "No agreement text available for this document.",
                         });
                       }}
                       className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
@@ -2030,4 +2178,52 @@ function buildOriginalEstimateDocumentText(params: {
   lines.push(`Total: $${Number(params.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
   return lines.join("\n");
+}
+
+function readAgreementText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (typeof record.text === "string") return record.text.trim();
+  if (typeof record.content === "string") return record.content.trim();
+  if (typeof record.body === "string") return record.body.trim();
+  return "";
+}
+
+function resolveAgreementTextByKey(
+  templates: Record<string, unknown>,
+  key: string,
+): string {
+  const direct = readAgreementText(templates[key]);
+  if (direct) return direct;
+
+  const normalize = (value: string) =>
+    value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const target = normalize(key);
+
+  for (const [candidateKey, candidateValue] of Object.entries(templates)) {
+    if (normalize(candidateKey) === target) {
+      const candidateText = readAgreementText(candidateValue);
+      if (candidateText) return candidateText;
+    }
+  }
+
+  return "";
+}
+
+function extractScopeItemsFromAgreementText(text: string): string[] {
+  if (!text) return [];
+  const match = text.match(/PROJECT SCOPE[\s\S]*?following scope of work:\s*([\s\S]*?)(?:\n\n[A-Z][A-Z\s]{4,}|$)/i);
+  if (!match?.[1]) return [];
+
+  const lines = match[1]
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const numbered = lines
+    .map((line) => line.replace(/^\d+\.\s*/, "").trim())
+    .filter((line) => line.length > 0);
+
+  return numbered;
 }

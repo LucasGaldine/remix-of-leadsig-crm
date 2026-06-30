@@ -1,19 +1,22 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   buildSignedCopyRecipients,
+  buildSignedTemplatePdf,
   normalizeText,
+  renderTemplate,
   sendSignedCopyEmails,
 } from "../_shared/signed-copy.ts";
-import {
-  persistSignedJobDocumentPdfs,
-  resolveDocumentTemplateMergeFields,
-  resolveUploadedDocumentForConfig,
-} from "./signed-documents.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
+
+const LEGACY_DOCUMENT_KEY_BY_SYSTEM_KEY: Record<string, string> = {
+  job_agreement: "job_agreement",
+  warranty_agreement: "warranty",
+  job_release: "job_release",
 };
 
 const MAX_SIGNATURE_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -31,10 +34,6 @@ function jsonResponse(body: unknown, status = 200) {
 
 function normalizeTiming(value: unknown): string {
   return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-}
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function decodeBase64(base64: string): Uint8Array {
@@ -164,14 +163,10 @@ async function fetchPortalDocumentsForLeadFamily(
               default_email_timing: String(row?.default_email_timing || "never"),
               default_requires_signature: row?.default_requires_signature === true,
             }))
-            .filter((row: { id: string }) => row.id.length > 0 && !existingTemplateIds.has(row.id));
+            .filter((row) => row.id.length > 0 && !existingTemplateIds.has(row.id));
 
           if (templatesToInsert.length > 0) {
-            const insertPayload = templatesToInsert.map((template: {
-              id: string;
-              default_email_timing: string;
-              default_requires_signature: boolean;
-            }, index: number) => ({
+            const insertPayload = templatesToInsert.map((template, index) => ({
               lead_id: defaultLeadId,
               account_id: accountId,
               template_id: template.id,
@@ -315,6 +310,135 @@ async function fetchPortalDocumentsForLeadFamily(
   return { leadIds, leadId: leadIds[0] || null, configs, documents };
 }
 
+function resolveUploadedDocumentForConfig(config: any, allConfigs: any[], allDocuments: any[]) {
+  const configId = String(config?.id || "");
+  if (configId) {
+    const byConfig = allDocuments.find((doc: any) => String(doc?.config_id || "") === configId);
+    if (byConfig) return byConfig;
+
+    const byDocumentKeyConfigSuffix = allDocuments.find((doc: any) =>
+      String(doc?.document_key || "").endsWith(`_${configId}`),
+    );
+    if (byDocumentKeyConfigSuffix) return byDocumentKeyConfigSuffix;
+  }
+
+  const templateId = String(config?.template?.id || config?.template_id || "");
+  if (templateId) {
+    const duplicateCount = allConfigs.filter((row: any) => String(row?.template_id || "") === templateId).length;
+    if (duplicateCount <= 1) {
+      const byTemplate = allDocuments.find((doc: any) => String(doc?.template_id || "") === templateId);
+      if (byTemplate) return byTemplate;
+    }
+  }
+
+  const systemKey = String(config?.template?.system_key || "");
+  const legacyKey = systemKey ? LEGACY_DOCUMENT_KEY_BY_SYSTEM_KEY[systemKey] : "";
+  if (legacyKey) {
+    return allDocuments.find((doc: any) => String(doc?.document_key || "") === legacyKey) || null;
+  }
+
+  return null;
+}
+
+function resolveTemplateBody(
+  template: { system_key?: string | null; body?: string | null } | null | undefined,
+  agreementTemplates: Record<string, unknown>,
+) {
+  const body = normalizeText(template?.body);
+  if (body) return body;
+
+  const key = normalizeText(template?.system_key);
+  if (key === "job_agreement") return normalizeText(agreementTemplates.job_agreement);
+  if (key === "warranty_agreement") return normalizeText(agreementTemplates.warranty_agreement);
+  if (key === "job_release") return normalizeText(agreementTemplates.job_release);
+  return "";
+}
+
+function toMergeFieldsRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const next: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    const key = normalizeText(rawKey).toLowerCase();
+    if (!key) continue;
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      next[key] = String(rawValue);
+      continue;
+    }
+    const text = normalizeText(rawValue);
+    if (!text && rawValue !== "") continue;
+    next[key] = text;
+  }
+  return next;
+}
+
+async function resolveDocumentTemplateMergeFields(params: {
+  supabase: any;
+  accountId: string;
+  leadId: string;
+  estimateId?: string | null;
+  scopeOfWorkOverride?: string | null;
+}): Promise<Record<string, string>> {
+  const { supabase, accountId, leadId, estimateId = null, scopeOfWorkOverride = null } = params;
+  if (!accountId || !leadId) return {};
+
+  const { data, error } = await supabase.rpc("resolve_document_template_merge_fields", {
+    p_account_id: accountId,
+    p_lead_id: leadId,
+    p_estimate_id: estimateId,
+    p_scope_of_work_override: scopeOfWorkOverride,
+  });
+  if (error) {
+    console.error("resolve_document_template_merge_fields failed", { accountId, leadId, estimateId, error });
+    return {};
+  }
+
+  return toMergeFieldsRecord(data);
+}
+
+async function buildManualSignedDocumentAttachments(params: {
+  signableDocs: Array<{ config: any; uploadedDocument: any }>;
+  estimate: any;
+  customer: any;
+  acceptedAt: string;
+  signaturePublicUrl: string;
+  mergeFields: Record<string, string>;
+}) {
+  const { signableDocs, estimate, customer, acceptedAt, signaturePublicUrl, mergeFields } = params;
+  const customerName = normalizeText(customer?.name) || "Customer";
+  const agreementTemplates = estimate?.agreement_templates && typeof estimate.agreement_templates === "object"
+    ? estimate.agreement_templates as Record<string, unknown>
+    : {};
+
+  const attachments: Array<{ filename: string; content: Uint8Array; contentType?: string }> = [];
+  const documentSummaries: Array<{ name: string; url: string }> = [];
+
+  for (const { config, uploadedDocument } of signableDocs) {
+    const title = normalizeText(config?.template?.name || uploadedDocument?.file_name) || "Document";
+    const templateBody = renderTemplate(resolveTemplateBody(config?.template, agreementTemplates), mergeFields);
+    const fallbackBody =
+      `${title}\n\nSigned electronically by ${customerName} on ${new Date(acceptedAt).toLocaleDateString("en-US", { dateStyle: "long" })}.`;
+
+    const attachment = await buildSignedTemplatePdf({
+      title,
+      body: templateBody || fallbackBody,
+      customerName,
+      prefix: title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document",
+      includeSignatureSection: true,
+      signatureImageUrl: signaturePublicUrl,
+      signatureDateIso: acceptedAt,
+    });
+
+    attachments.push(attachment);
+    documentSummaries.push({
+      name: title,
+      url: normalizeText(uploadedDocument?.url),
+    });
+  }
+
+  return { attachments, documentSummaries };
+}
+
 async function sendSignedManualDocumentEmails(params: {
   customer: any;
   account: any;
@@ -370,10 +494,10 @@ async function sendSignedManualDocumentEmails(params: {
 
 async function getEstimateForPortalJob(supabase: any, job: any) {
   const estimateSelect = `
-    id, job_id, account_id, customer_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status,
+    id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status,
     created_at, updated_at, accepted_at, approved_via, manual_approval_photo_url,
     original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
-    proposal_settings, project_visualization_image_url, agreement_acceptance,
+    proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
     line_items:estimate_line_items(
       id, name, description, quantity, unit, unit_price, total,
       sort_order, is_change_order, change_order_type, change_order_approved, changed_at
@@ -791,11 +915,6 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
     const agreementAcceptance = body?.agreement_acceptance && typeof body.agreement_acceptance === "object"
       ? body.agreement_acceptance as Record<string, unknown>
       : {};
-    const acceptedDocumentConfigMap = Object.fromEntries(
-      Object.entries(agreementAcceptance)
-        .filter(([key, value]) => isUuid(key) && value === true)
-        .map(([key]) => [key, true]),
-    );
 
     const allRequiredAccepted = requiredConfigIds.every((id) => agreementAcceptance[id] === true);
     if (!allRequiredAccepted) {
@@ -809,18 +928,20 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
       signaturePublicUrl = upload.publicUrl;
     }
 
-    const acceptedAt = new Date().toISOString();
     const updatePayload: Record<string, unknown> = {
       status: "accepted",
-      accepted_at: acceptedAt,
+      accepted_at: new Date().toISOString(),
       approved_via: signaturePublicUrl ? "manual_signature" : "customer_link",
       agreement_acceptance: {
-        ...acceptedDocumentConfigMap,
-        accepted_at: acceptedAt,
+        ...(agreementAcceptance || {}),
+        accepted_at: new Date().toISOString(),
       },
-      updated_at: acceptedAt,
+      updated_at: new Date().toISOString(),
     };
 
+    if (body?.agreement_templates && typeof body.agreement_templates === "object") {
+      updatePayload.agreement_templates = body.agreement_templates;
+    }
     if (signaturePublicUrl) {
       updatePayload.manual_approval_photo_url = signaturePublicUrl;
     }
@@ -831,60 +952,6 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
       .eq("id", estimate.id);
 
     if (error) return jsonResponse({ error: "Failed to approve estimate" }, 500);
-
-    if (signaturePublicUrl && requiredConfigIds.length > 0) {
-      const allConfigs = portalDocuments.configs || [];
-      const allDocuments = portalDocuments.documents || [];
-      const signedTargets = requiredConfigIds
-        .map((configId) => {
-          const config = allConfigs.find((cfg: any) => String(cfg?.id || "") === configId);
-          if (!config) return null;
-          return {
-            config,
-            uploadedDocument: resolveUploadedDocumentForConfig(config, allConfigs, allDocuments),
-          };
-        })
-        .filter((target): target is { config: any; uploadedDocument: any | null } => Boolean(target));
-
-      if (signedTargets.length > 0) {
-        const accountId = normalizeText(estimate?.account_id || job?.account_id);
-        const mergeFieldLeadId =
-          normalizeText(portalDocuments.leadId) ||
-          normalizeText(effectiveLeadId) ||
-          normalizeText(estimate?.job_id) ||
-          normalizeText(job?.id);
-        const resolvedMergeFields = await resolveDocumentTemplateMergeFields({
-          supabase,
-          accountId,
-          leadId: mergeFieldLeadId,
-          estimateId: normalizeText(estimate?.id) || null,
-        });
-        const fallbackMergeFields: Record<string, string> = {
-          current_date: acceptedAt.slice(0, 10),
-          job_name: normalizeText(job?.name),
-          client_name: normalizeText(customer?.name),
-          client_email: normalizeText(customer?.email),
-          client_phone: normalizeText(customer?.phone),
-          estimate_total: `$${Number(estimate?.total || 0).toFixed(2)}`,
-          estimate_subtotal: `$${Number(estimate?.subtotal || 0).toFixed(2)}`,
-          estimate_tax: `$${Number(estimate?.tax || 0).toFixed(2)}`,
-          estimate_discount: `$${Number(estimate?.discount || 0).toFixed(2)}`,
-        };
-        const persistResult = await persistSignedJobDocumentPdfs({
-          supabase,
-          supabaseUrl,
-          accountId,
-          acceptedAt,
-          signaturePublicUrl,
-          customerName: normalizeText(customer?.name) || "Customer",
-          mergeFields: { ...fallbackMergeFields, ...resolvedMergeFields },
-          targets: signedTargets,
-        });
-        if (!persistResult.ok) {
-          return jsonResponse({ error: `Estimate approved, but ${persistResult.error}` }, 500);
-        }
-      }
-    }
 
     // Intentionally do not send estimate approval SMTP emails from this function.
     // Existing notification flow handles approval emails; this avoids duplicate sends.
@@ -1089,38 +1156,30 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
   };
   const documentTemplateMergeFields = { ...fallbackMergeFields, ...resolvedMergeFields };
 
-  const persistedSignedDocuments = await persistSignedJobDocumentPdfs({
-    supabase,
-    supabaseUrl,
-    accountId: normalizeText(resolvedAccountId),
+  const { attachments, documentSummaries } = await buildManualSignedDocumentAttachments({
+    signableDocs,
+    estimate,
+    customer: customerForEmail,
     acceptedAt,
     signaturePublicUrl: upload.publicUrl,
-    customerName: normalizeText(customerForEmail?.name) || "Customer",
     mergeFields: documentTemplateMergeFields,
-    targets: signableDocs,
   });
-  if (!persistedSignedDocuments.ok) {
-    return jsonResponse({ error: `Document signed, but ${persistedSignedDocuments.error}` }, 500);
+  if (attachments.length === 0 || documentSummaries.length === 0) {
+    return jsonResponse({ error: "Document signed, but no signed copy could be generated." }, 500);
   }
 
   const emailResult = await sendSignedManualDocumentEmails({
     customer: customerForEmail,
     account,
-    documentSummaries: persistedSignedDocuments.documentSummaries,
-    attachments: persistedSignedDocuments.attachments,
+    documentSummaries,
+    attachments,
     signatureUrl: upload.publicUrl,
     portalLink,
   });
 
   if (!emailResult.ok) {
     console.error("Failed to send signed manual document emails:", emailResult.error);
-    return jsonResponse({
-      success: true,
-      message: signableDocs.length > 1
-        ? "Documents signed. Notification emails could not be sent."
-        : "Document signed. Notification emails could not be sent.",
-      notification_error: "Failed to send notification emails.",
-    });
+    return jsonResponse({ error: "Document signed, but failed to send notification emails." }, 500);
   }
 
   return jsonResponse({ success: true, message: signableDocs.length > 1 ? "Documents signed" : "Document signed" });
