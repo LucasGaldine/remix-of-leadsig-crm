@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Calculator, Download, Eye, Loader2, Plus, Send, Settings, X } from "lucide-react";
+import { Calculator, Eye, Loader2, Plus, Send, Settings, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,12 @@ import {
   extractDocumentTemplateVariableKeys,
   findMissingDocumentTemplateVariableKeys,
   getDocumentTemplateSourceText,
-  renderDocumentTemplateMarkdownHtml,
   type DocumentTemplateMergeFields,
   type DocumentTemplateRecord,
   getDocumentFallbackText,
 } from "@/lib/documentTemplates";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
-import { buildTemplateDocumentPDFBlob, generateTemplateDocumentPDF } from "@/lib/pdfGenerator";
+import { buildSignedTemplateDocumentPDFBlob, buildTemplateDocumentPDFBlob } from "@/lib/pdfGenerator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -50,6 +49,13 @@ interface JobDocumentConfigRecord {
   template: DocumentTemplateRecord | null;
 }
 
+interface JobReleaseRecord {
+  release_text: string | null;
+  status: string | null;
+  signed_at: string | null;
+  signature_image_url: string | null;
+}
+
 interface SendDocumentDialogState {
   config: JobDocumentConfigRecord;
   template: DocumentTemplateRecord;
@@ -66,7 +72,9 @@ interface JobDocumentsSectionProps {
   onBuildEstimate?: () => void;
   accountId?: string | null;
   userId?: string | null;
-  estimateAgreementTemplates?: Record<string, unknown> | null;
+  estimateAgreementAcceptance?: Record<string, unknown> | null;
+  estimateSignatureImageUrl?: string | null;
+  estimateSignedAt?: string | null;
   templateMergeFields?: DocumentTemplateMergeFields | null;
 }
 
@@ -170,6 +178,18 @@ const isEstimateApprovalDocumentConfig = (config: Pick<JobDocumentConfigRecord, 
 const isSharedDocumentConfig = (config: Pick<JobDocumentConfigRecord, "email_timing" | "shared_at">) =>
   isEstimateApprovalDocumentConfig(config) || Boolean(config.shared_at);
 
+const isSignedJobReleaseDocument = (
+  config: Pick<JobDocumentConfigRecord, "template">,
+  jobRelease: Pick<JobReleaseRecord, "status" | "signed_at"> | null,
+) =>
+  config.template?.system_key === "job_release" &&
+  (String(jobRelease?.status || "").trim().toLowerCase() === "signed" || Boolean(jobRelease?.signed_at));
+
+const isAcceptedDocumentConfig = (
+  config: Pick<JobDocumentConfigRecord, "id">,
+  estimateAgreementAcceptance: Record<string, unknown> | null | undefined,
+) => estimateAgreementAcceptance?.[config.id] === true;
+
 const normalizeJobDocumentConfigRows = (rows: unknown[]): JobDocumentConfigRecord[] =>
   rows.map((row) => {
     const record = row as Record<string, any>;
@@ -229,21 +249,24 @@ export function JobDocumentsSection({
   onBuildEstimate,
   accountId = null,
   userId = null,
-  estimateAgreementTemplates = null,
+  estimateAgreementAcceptance = null,
+  estimateSignatureImageUrl = null,
+  estimateSignedAt = null,
   templateMergeFields = null,
 }: JobDocumentsSectionProps) {
   const [templates, setTemplates] = useState<DocumentTemplateRecord[]>([]);
   const [jobDocumentConfigs, setJobDocumentConfigs] = useState<JobDocumentConfigRecord[]>([]);
   const [documentsByKey, setDocumentsByKey] = useState<Record<string, JobDocumentRecord>>({});
   const [jobReleaseText, setJobReleaseText] = useState<string | null>(null);
+  const [jobRelease, setJobRelease] = useState<JobReleaseRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [addDocumentOpen, setAddDocumentOpen] = useState(false);
   const [sendDocumentDialog, setSendDocumentDialog] = useState<SendDocumentDialogState | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [addingTemplate, setAddingTemplate] = useState(false);
   const [sendingConfigId, setSendingConfigId] = useState<string | null>(null);
+  const [viewingConfigId, setViewingConfigId] = useState<string | null>(null);
   const [removingConfigId, setRemovingConfigId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ title: string; content: string; fileName: string; requiresSignature: boolean } | null>(null);
   const templateById = useMemo(
     () =>
       templates.reduce((acc, template) => {
@@ -290,6 +313,7 @@ export function JobDocumentsSection({
       setJobDocumentConfigs([]);
       setDocumentsByKey({});
       setJobReleaseText(null);
+      setJobRelease(null);
       setIsLoading(false);
       return;
     }
@@ -318,7 +342,7 @@ export function JobDocumentsSection({
       readJobDocumentConfigs({ includeMergeFieldsOverride: true, includeSharedAt: true }),
       supabase
         .from("job_releases")
-        .select("release_text")
+        .select("release_text, status, signed_at, signature_image_url")
         .eq("lead_id", leadId)
         .maybeSingle(),
     ]);
@@ -395,8 +419,11 @@ export function JobDocumentsSection({
     if (releaseResult.error) {
       console.error("Failed to fetch job release text:", releaseResult.error);
       setJobReleaseText(null);
+      setJobRelease(null);
     } else {
-      setJobReleaseText((releaseResult.data as { release_text?: string | null } | null)?.release_text || null);
+      const release = releaseResult.data as JobReleaseRecord | null;
+      setJobReleaseText(release?.release_text || null);
+      setJobRelease(release);
     }
 
     setIsLoading(false);
@@ -484,6 +511,27 @@ export function JobDocumentsSection({
   const getUploadedDocumentUrl = (document: JobDocumentRecord) =>
     supabase.storage.from("job-documents").getPublicUrl(document.file_path).data.publicUrl;
 
+  const isGeneratedSignedCopy = (document: JobDocumentRecord) =>
+    /-signed\.pdf$/i.test(String(document.file_path || ""));
+
+  const normalizePublicStorageUrl = (url: string | null | undefined, bucket: string) => {
+    const rawUrl = String(url || "").trim();
+    if (!rawUrl) return null;
+
+    try {
+      const parsedUrl = new URL(rawUrl);
+      const marker = `/storage/v1/object/public/${bucket}/`;
+      const markerIndex = parsedUrl.pathname.indexOf(marker);
+      if (markerIndex === -1) return rawUrl;
+
+      const filePath = decodeURIComponent(parsedUrl.pathname.slice(markerIndex + marker.length));
+      if (!filePath) return rawUrl;
+      return supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl || rawUrl;
+    } catch {
+      return rawUrl;
+    }
+  };
+
   const openDocumentUrl = (url: string) => {
     if (!url) return;
     window.open(url, "_blank", "noopener,noreferrer");
@@ -505,7 +553,6 @@ export function JobDocumentsSection({
 
   const getTemplateSourceText = (template: DocumentTemplateRecord) => getDocumentTemplateSourceText({
     template,
-    estimateAgreementTemplates,
     jobReleaseText,
   });
 
@@ -557,7 +604,193 @@ export function JobDocumentsSection({
     return documentsByKey[`legacy:${legacyKey}`] || null;
   };
 
-  const handleViewTemplateDocument = (config: JobDocumentConfigRecord) => {
+  const isUploadedDocumentCompatibleWithConfig = (
+    document: JobDocumentRecord,
+    config: Pick<JobDocumentConfigRecord, "id">,
+    template: DocumentTemplateRecord,
+  ) => {
+    if (document.config_id && document.config_id !== config.id) return false;
+    if (document.template_id && document.template_id !== template.id) return false;
+    return true;
+  };
+
+  const getSignedDocumentMetadata = (
+    config: Pick<JobDocumentConfigRecord, "id" | "template">,
+  ): { signatureImageUrl: string | null; signedAt: string | null } | null => {
+    if (isSignedJobReleaseDocument(config, jobRelease)) {
+      return {
+        signatureImageUrl: normalizePublicStorageUrl(jobRelease?.signature_image_url, "lead-photos"),
+        signedAt: jobRelease?.signed_at || null,
+      };
+    }
+
+    if (isAcceptedDocumentConfig(config, estimateAgreementAcceptance)) {
+      return {
+        signatureImageUrl: normalizePublicStorageUrl(estimateSignatureImageUrl, "lead-photos"),
+        signedAt:
+          estimateSignedAt ||
+          (typeof estimateAgreementAcceptance?.accepted_at === "string"
+            ? estimateAgreementAcceptance.accepted_at
+            : null),
+      };
+    }
+
+    return null;
+  };
+
+  const createTemplatePdfForView = async ({
+    config,
+    template,
+    content,
+    effectiveMergeFields,
+    signedMetadata = null,
+    existingDocument = null,
+  }: {
+    config: JobDocumentConfigRecord;
+    template: DocumentTemplateRecord;
+    content: string;
+    effectiveMergeFields: DocumentTemplateMergeFields;
+    signedMetadata?: { signatureImageUrl: string | null; signedAt: string | null } | null;
+    existingDocument?: JobDocumentRecord | null;
+  }) => {
+    if (!leadId || !accountId || !userId) {
+      toast.error("Missing document context");
+      return null;
+    }
+
+    const fileNameBase = sanitizeDocumentFileName(template.name || "document");
+    const fileName = `${fileNameBase}.pdf`;
+    const filePath = `${accountId}/${leadId}/${template.id}-${Date.now()}${signedMetadata ? "-signed" : ""}.pdf`;
+    const pdfPayload = {
+      title: template.name || "Document",
+      fileName: template.name || "Document",
+      content,
+      requiresSignature: Boolean(config.requires_signature),
+      ...(signedMetadata
+        ? {
+            signatureImageUrl: signedMetadata.signatureImageUrl || undefined,
+            signedAt: signedMetadata.signedAt || undefined,
+          }
+        : {}),
+    };
+    const fileBlob = signedMetadata
+      ? await buildSignedTemplateDocumentPDFBlob(pdfPayload)
+      : buildTemplateDocumentPDFBlob(pdfPayload);
+
+    if (!fileBlob) {
+      toast.error("Failed to create document PDF");
+      return null;
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from("job-documents")
+      .upload(filePath, fileBlob, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error("Failed to upload job document:", uploadError);
+      toast.error("Failed to create document PDF");
+      return null;
+    }
+
+    const documentPayload: Record<string, unknown> = {
+      lead_id: leadId,
+      account_id: accountId,
+      template_id: template.id,
+      config_id: config.id,
+      document_key: template.system_key
+        ? `${template.system_key}_${config.id}`
+        : `template_${template.id}_${config.id}`,
+      file_name: fileName,
+      file_path: filePath,
+      mime_type: "application/pdf",
+      resolved_merge_fields: effectiveMergeFields,
+      uploaded_by: userId,
+    };
+
+    let saveError: unknown = null;
+    if (existingDocument?.id) {
+      const updatePayload = {
+        template_id: template.id,
+        config_id: config.id,
+        document_key: documentPayload.document_key,
+        file_name: fileName,
+        file_path: filePath,
+        mime_type: "application/pdf",
+        resolved_merge_fields: effectiveMergeFields,
+        uploaded_by: userId,
+        updated_at: new Date().toISOString(),
+      };
+      let { error: updateError } = await supabase
+        .from("job_documents")
+        .update(updatePayload)
+        .eq("id", existingDocument.id);
+
+      if (isResolvedMergeFieldsColumnMissing(updateError)) {
+        const { resolved_merge_fields: _ignoredResolvedMergeFields, ...legacyPayload } = updatePayload;
+        const retryResult = await supabase
+          .from("job_documents")
+          .update(legacyPayload)
+          .eq("id", existingDocument.id);
+        updateError = retryResult.error;
+      }
+
+      saveError = updateError;
+    } else {
+      let { error: insertError } = await supabase
+        .from("job_documents")
+        .insert(documentPayload);
+
+      if (isConfigIdColumnMissing(insertError)) {
+        const { config_id: _ignoredConfigId, ...legacyInsertPayload } = documentPayload;
+        const legacyResult = await supabase
+          .from("job_documents")
+          .insert(legacyInsertPayload);
+        insertError = legacyResult.error;
+      } else if (isResolvedMergeFieldsColumnMissing(insertError)) {
+        const { resolved_merge_fields: _ignoredResolvedMergeFields, ...legacyPayload } = documentPayload;
+        const retryResult = await supabase
+          .from("job_documents")
+          .insert(legacyPayload);
+        insertError = retryResult.error;
+      }
+
+      saveError = insertError;
+    }
+
+    if (saveError) {
+      console.error("Failed to save job document:", saveError);
+      toast.error("Failed to save document PDF");
+      return null;
+    }
+
+    const document: JobDocumentRecord = {
+      id: existingDocument?.id || `generated:${filePath}`,
+      template_id: template.id,
+      config_id: config.id,
+      document_key: String(documentPayload.document_key || ""),
+      file_name: fileName,
+      file_path: filePath,
+      mime_type: "application/pdf",
+      created_at: existingDocument?.created_at || new Date().toISOString(),
+      resolved_merge_fields: effectiveMergeFields,
+    };
+
+    setDocumentsByKey((current) => {
+      const next = { ...current };
+      for (const [key, value] of Object.entries(next)) {
+        if (value.id === document.id) delete next[key];
+      }
+      next[`config:${config.id}`] = document;
+      return next;
+    });
+
+    return document;
+  };
+
+  const handleViewTemplateDocument = async (config: JobDocumentConfigRecord) => {
     const template = config.template || templateById[config.template_id] || null;
     if (!template) {
       toast.error("Template not found");
@@ -565,35 +798,45 @@ export function JobDocumentsSection({
     }
 
     const uploadedDocument = getUploadedDocumentForConfig(config);
-    const uploadedDocumentMergeFields = uploadedDocument?.resolved_merge_fields
-      ? normalizeMergeFieldsRecord(uploadedDocument.resolved_merge_fields)
-      : null;
-
-    const fallbackText = getDocumentFallbackText({
-      template,
-      estimateAgreementTemplates,
-      jobReleaseText,
-      templateMergeFields: uploadedDocumentMergeFields
-        ? mergeTemplateFieldMaps(resolveTemplateMergeFields(config), uploadedDocumentMergeFields)
-        : resolveTemplateMergeFields(config),
-    });
-
-    if (fallbackText) {
-      setPreview({
-        title: template.name,
-        content: fallbackText,
-        fileName: template.name,
-        requiresSignature: Boolean(config.requires_signature),
-      });
-      return;
-    }
-
-    if (uploadedDocument) {
+    const signedMetadata = getSignedDocumentMetadata(config);
+    const canOpenUploadedDocument =
+      uploadedDocument &&
+      isUploadedDocumentCompatibleWithConfig(uploadedDocument, config, template) &&
+      (!signedMetadata || isGeneratedSignedCopy(uploadedDocument));
+    if (canOpenUploadedDocument) {
       openDocumentUrl(getUploadedDocumentUrl(uploadedDocument));
       return;
     }
 
-    toast.error("No document available yet");
+    const effectiveMergeFields = resolveTemplateMergeFields(config);
+
+    const fallbackText = getDocumentFallbackText({
+      template,
+      jobReleaseText,
+      templateMergeFields: effectiveMergeFields,
+    });
+
+    if (!fallbackText?.trim()) {
+      toast.error("No document available yet");
+      return;
+    }
+
+    setViewingConfigId(config.id);
+    try {
+      const createdDocument = await createTemplatePdfForView({
+        config,
+        template,
+        content: fallbackText,
+        effectiveMergeFields,
+        signedMetadata,
+        existingDocument: uploadedDocument,
+      });
+      if (createdDocument) {
+        openDocumentUrl(getUploadedDocumentUrl(createdDocument));
+      }
+    } finally {
+      setViewingConfigId(null);
+    }
   };
 
   const addTemplateToJob = async (template: DocumentTemplateRecord) => {
@@ -694,7 +937,6 @@ export function JobDocumentsSection({
 
     const fallbackText = getDocumentFallbackText({
       template,
-      estimateAgreementTemplates,
       jobReleaseText,
       templateMergeFields: effectiveMergeFields,
     });
@@ -1260,7 +1502,6 @@ export function JobDocumentsSection({
                 const uploadedDocument = getUploadedDocumentForConfig(config);
                 const fallbackText = getDocumentFallbackText({
                   template,
-                  estimateAgreementTemplates,
                   jobReleaseText,
                   templateMergeFields: resolveTemplateMergeFields(config),
                 });
@@ -1268,7 +1509,13 @@ export function JobDocumentsSection({
                 const isManualSend = config.email_timing === "manual";
                 const canSendManual = isManualSend && !uploadedDocument;
                 const isShared = isSharedDocumentConfig(config);
+                const isSigned =
+                  isSignedJobReleaseDocument(config, jobRelease) ||
+                  isAcceptedDocumentConfig(config, estimateAgreementAcceptance);
+                const documentStatusLabel = isSigned ? "Signed" : isShared ? "Shared" : "Not Shared";
+                const documentStatusClassName = isSigned || isShared ? "text-emerald-600" : "text-muted-foreground";
                 const isSending = sendingConfigId === config.id;
+                const isViewing = viewingConfigId === config.id;
                 const isRemoving = removingConfigId === config.id;
                 return (
                   <div
@@ -1279,8 +1526,8 @@ export function JobDocumentsSection({
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="text-base md:text-sm font-medium text-foreground">{templateDisplayName}</p>
-                          <p className={`text-sm ${isShared ? "text-emerald-600" : "text-muted-foreground"}`}>
-                            {isShared ? "Shared" : "Not Shared"}
+                          <p className={`text-sm ${documentStatusClassName}`}>
+                            {documentStatusLabel}
                           </p>
                         </div>
 
@@ -1307,10 +1554,14 @@ export function JobDocumentsSection({
                             variant="outline"
                             size="sm"
                             className="whitespace-nowrap"
-                            onClick={() => handleViewTemplateDocument(config)}
-                            disabled={!canView || isRemoving}
+                            onClick={() => void handleViewTemplateDocument(config)}
+                            disabled={!canView || isRemoving || isViewing}
                           >
-                            <Eye className="h-4 w-4" />
+                            {isViewing ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
                             View
                           </Button>
                           <Button
@@ -1471,45 +1722,6 @@ export function JobDocumentsSection({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{preview?.title || "Document"}</DialogTitle>
-            <DialogDescription className="sr-only">
-              Document preview content
-            </DialogDescription>
-          </DialogHeader>
-          <div
-            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
-            dangerouslySetInnerHTML={{
-              __html: renderDocumentTemplateMarkdownHtml(preview?.content || "No document text available."),
-            }}
-          />
-          <div className="flex justify-end pt-2">
-            <Button
-              type="button"
-              variant="default"
-              size="lg"
-              aria-label="Download PDF"
-              title="Download PDF"
-              className="gap-2"
-              onClick={() => {
-                if (!preview) return;
-                generateTemplateDocumentPDF({
-                  title: preview.title,
-                  fileName: preview.fileName,
-                  content: preview.content,
-                  requiresSignature: preview.requiresSignature,
-                });
-              }}
-              disabled={!preview?.content?.trim()}
-            >
-              <Download className="h-5 w-5" />
-              Download PDF
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

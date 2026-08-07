@@ -1,4 +1,3 @@
-import { resolveAgreementTemplatesForEstimates } from "./agreement-templates.ts";
 import { fetchPortalDocumentsForLeadFamily } from "./portal-documents.ts";
 import { getJobReleaseForLead, isLeadFullyPaid } from "./job-release.ts";
 
@@ -34,7 +33,7 @@ export async function handleSingleJobGet(
         `
         id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at, accepted_at, approved_via, manual_approval_photo_url,
         original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
-        proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
+        proposal_settings, project_visualization_image_url, agreement_acceptance,
         line_items:estimate_line_items(
           id, name, description, quantity, unit, unit_price, total,
           sort_order, is_change_order, change_order_type, change_order_approved, changed_at
@@ -82,7 +81,7 @@ export async function handleSingleJobGet(
           `
           id, job_id, subtotal, tax_rate, tax, discount, total, profit_margin, surcharge, notes, status, created_at, updated_at, accepted_at, approved_via, manual_approval_photo_url,
           original_subtotal, original_tax, original_discount, original_total, original_notes, has_pending_changes,
-          proposal_settings, project_visualization_image_url, agreement_templates, agreement_acceptance,
+          proposal_settings, project_visualization_image_url, agreement_acceptance,
           line_items:estimate_line_items(
             id, name, description, quantity, unit, unit_price, total,
             sort_order, is_change_order, change_order_type, change_order_approved
@@ -150,28 +149,6 @@ export async function handleSingleJobGet(
         .eq("estimate_id", parentEstimate.id)
         .order("created_at", { ascending: true })
     : { data: [] };
-
-  const relatedEstimateJobIds = new Set<string>();
-  if (job?.id) relatedEstimateJobIds.add(job.id);
-  if (job?.estimate_job_id) relatedEstimateJobIds.add(job.estimate_job_id);
-  if (estimate?.job_id) relatedEstimateJobIds.add(estimate.job_id);
-  if (parentEstimate?.job_id) relatedEstimateJobIds.add(parentEstimate.job_id);
-
-  let fallbackEstimates: any[] = [];
-  if (relatedEstimateJobIds.size > 0) {
-    const { data: relatedEstimates } = await supabase
-      .from("estimates")
-      .select("id, job_id, agreement_templates, updated_at")
-      .in("job_id", Array.from(relatedEstimateJobIds))
-      .order("updated_at", { ascending: false });
-    fallbackEstimates = relatedEstimates || [];
-  }
-
-  const resolvedAgreement = resolveAgreementTemplatesForEstimates([
-    parentEstimate,
-    estimate,
-    ...fallbackEstimates,
-  ]);
 
   const scopeJobIds = [
     typeof job?.id === "string" ? job.id : null,
@@ -276,8 +253,6 @@ export async function handleSingleJobGet(
           proposal_settings: parentEstimate.proposal_settings || null,
           scope_of_work_items: scopeItems,
           project_visualization_image_url: parentEstimate.project_visualization_image_url || null,
-          agreement_templates: resolvedAgreement.templates,
-          agreement_source_estimate_id: resolvedAgreement.sourceEstimateId,
           agreement_acceptance: parentEstimate.agreement_acceptance || null,
           estimate_versions: estimateVersions || [],
           job_document_config_lead_id: portalDocuments.leadId,

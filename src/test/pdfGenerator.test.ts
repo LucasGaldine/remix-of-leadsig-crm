@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateEstimatePDF, generateInvoicePDF } from "@/lib/pdfGenerator";
+import { buildTemplateDocumentPDFBlob, generateEstimatePDF, generateInvoicePDF } from "@/lib/pdfGenerator";
 
 const jsPdfMock = vi.hoisted(() => ({
   setFontSize: vi.fn(),
@@ -16,6 +16,8 @@ const jsPdfMock = vi.hoisted(() => ({
   addImage: vi.fn(),
   getImageProperties: vi.fn(() => ({ width: 400, height: 400 })),
   save: vi.fn(),
+  getTextWidth: vi.fn((value: string) => value.length * 5),
+  output: vi.fn(() => new Blob(["pdf"], { type: "application/pdf" })),
   internal: {
     pageSize: {
       getWidth: vi.fn(() => 210),
@@ -41,6 +43,8 @@ describe("generateEstimatePDF", () => {
     jsPdfMock.internal.pageSize.getWidth.mockReturnValue(210);
     jsPdfMock.internal.pageSize.getHeight.mockReturnValue(297);
     jsPdfMock.splitTextToSize.mockImplementation((value: string) => [value]);
+    jsPdfMock.getTextWidth.mockImplementation((value: string) => value.length * 5);
+    jsPdfMock.output.mockReturnValue(new Blob(["pdf"], { type: "application/pdf" }));
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       blob: async () =>
@@ -147,5 +151,59 @@ describe("generateEstimatePDF", () => {
     expect(jsPdfMock.text).toHaveBeenCalledWith(expect.stringMatching(/^Due:/), 20, expect.any(Number));
     expect(jsPdfMock.text).toHaveBeenCalledWith("Balance Due:", expect.any(Number), expect.any(Number));
     expect(jsPdfMock.save).toHaveBeenCalledWith("invoice-taylor_smith-2026-03-23.pdf");
+  });
+});
+
+describe("buildTemplateDocumentPDFBlob", () => {
+  beforeEach(() => {
+    Object.values(jsPdfMock).forEach((value) => {
+      if (typeof value === "function" && "mockReset" in value) {
+        value.mockReset();
+      }
+    });
+    jsPdfMock.internal.pageSize.getWidth.mockReturnValue(612);
+    jsPdfMock.internal.pageSize.getHeight.mockReturnValue(792);
+    jsPdfMock.splitTextToSize.mockImplementation((value: string) => [value]);
+    jsPdfMock.getTextWidth.mockImplementation((value: string) => value.length * 5);
+    jsPdfMock.output.mockReturnValue(new Blob(["pdf"], { type: "application/pdf" }));
+  });
+
+  it("renders inline markdown emphasis with distinct PDF font calls", () => {
+    const blob = buildTemplateDocumentPDFBlob({
+      title: "Agreement",
+      content: "**Name:** Taylor Client",
+    });
+
+    expect(blob).toBeInstanceOf(Blob);
+
+    const labelCallIndex = jsPdfMock.text.mock.calls.findIndex(([text]) => text === "Name:");
+    const labelInvocationOrder = jsPdfMock.text.mock.invocationCallOrder[labelCallIndex];
+    let boldCallBeforeLabelIndex = -1;
+    jsPdfMock.setFont.mock.calls.forEach((call, index) => {
+      const [family, style] = call;
+      if (
+        family === "helvetica" &&
+        style === "bold" &&
+        jsPdfMock.setFont.mock.invocationCallOrder[index] < labelInvocationOrder
+      ) {
+        boldCallBeforeLabelIndex = index;
+      }
+    });
+    const normalCallAfterLabelIndex = jsPdfMock.setFont.mock.calls.findIndex((call, index) => {
+      const [family, style] = call;
+      return (
+        family === "helvetica" &&
+        style === "normal" &&
+        jsPdfMock.setFont.mock.invocationCallOrder[index] > labelInvocationOrder
+      );
+    });
+    const valueCallIndex = jsPdfMock.text.mock.calls.findIndex(([text]) => text === " Taylor Client");
+
+    expect(boldCallBeforeLabelIndex).toBeGreaterThanOrEqual(0);
+    expect(labelInvocationOrder).toBeGreaterThan(jsPdfMock.setFont.mock.invocationCallOrder[boldCallBeforeLabelIndex]);
+    expect(jsPdfMock.setFont.mock.invocationCallOrder[normalCallAfterLabelIndex]).toBeGreaterThan(labelInvocationOrder);
+    expect(jsPdfMock.text.mock.invocationCallOrder[valueCallIndex]).toBeGreaterThan(
+      jsPdfMock.setFont.mock.invocationCallOrder[normalCallAfterLabelIndex],
+    );
   });
 });

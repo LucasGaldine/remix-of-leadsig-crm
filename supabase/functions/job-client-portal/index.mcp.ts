@@ -54,7 +54,7 @@ function resolveUploadedDocumentForConfig(config: any, allConfigs: any[], allDoc
 async function getEstimateForPortalJob(supabase: any, job: any) {
   const { data: estimate, error: estError } = await supabase
     .from("estimates")
-    .select("id, status, expires_at, job_id, updated_at, has_pending_changes, account_id, proposal_settings, agreement_acceptance")
+    .select("id, status, expires_at, job_id, customer_id, subtotal, tax, discount, total, updated_at, has_pending_changes, account_id, proposal_settings, agreement_acceptance")
     .eq("job_id", job.id)
     .maybeSingle();
 
@@ -69,7 +69,7 @@ async function getEstimateForPortalJob(supabase: any, job: any) {
 
   const { data: parentEstimate } = await supabase
     .from("estimates")
-    .select("id, status, expires_at, job_id, updated_at, has_pending_changes, account_id, proposal_settings, agreement_acceptance")
+    .select("id, status, expires_at, job_id, customer_id, subtotal, tax, discount, total, updated_at, has_pending_changes, account_id, proposal_settings, agreement_acceptance")
     .eq("job_id", parentLeadId)
     .maybeSingle();
 
@@ -195,10 +195,6 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
     body && typeof body.agreement_acceptance === "object" && body.agreement_acceptance
       ? body.agreement_acceptance
       : null;
-  const agreementTemplates =
-    body && typeof body.agreement_templates === "object" && body.agreement_templates
-      ? body.agreement_templates
-      : null;
 
   if (action === "sign_job_release") {
     return await signJobRelease(
@@ -259,15 +255,15 @@ async function handlePostJobAction(supabase: any, supabaseUrl: string, customer:
 
   return await handleEstimateAction(
     supabase,
+    supabaseUrl,
     estimate,
-    action,
+    action as "approve" | "decline" | "approve_changes" | "decline_changes",
     job.id,
     jsonResponse,
     clientUpdatedAt,
     estimateVersionId,
     signatureDataUrl,
     agreementAcceptance,
-    agreementTemplates,
     requiredDocumentConfigIds,
   );
 }

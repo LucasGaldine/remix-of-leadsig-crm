@@ -44,7 +44,6 @@ interface EstimateData {
     notes?: string | null;
     line_items: LineItem[];
   }>;
-  agreement_templates?: Record<string, string> | null;
   proposal_settings?: {
     recommended_version_id?: string | null;
     version_warranty_enabled?: Record<string, boolean> | null;
@@ -499,11 +498,6 @@ export default function EstimateApproval() {
                   />
                   <span>
                     <span className="font-medium">{key.replaceAll("_", " ")}</span>
-                    {estimate.agreement_templates?.[key] ? (
-                      <span className="block text-xs text-slate-500 mt-0.5">
-                        {estimate.agreement_templates[key]}
-                      </span>
-                    ) : null}
                   </span>
                 </label>
               ))}

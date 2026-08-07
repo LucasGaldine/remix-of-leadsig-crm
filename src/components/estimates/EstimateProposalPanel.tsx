@@ -17,7 +17,6 @@ import { useJobChecklist } from "@/hooks/useJobChecklist";
 import { getBrandFontOption, loadGoogleBrandFont } from "@/lib/brandFonts";
 import { buildClientPortalShareUrl } from "@/lib/clientPortalUrl";
 import { approveEstimateManuallyById } from "@/lib/estimateApproval";
-import { generateAgreementTemplates } from "@/lib/agreementTemplates";
 import { renderDocumentTemplateMarkdownHtml } from "@/lib/documentTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -32,15 +31,6 @@ const SECTIONS = [
   { key: "agreements_and_signatures", label: "Agreements & Signatures" },
 ] as const;
 
-const AGREEMENT_KEYS = [
-  "job_agreement",
-  "warranty_agreement",
-] as const;
-
-const AGREEMENT_LABELS: Record<(typeof AGREEMENT_KEYS)[number], string> = {
-  job_agreement: "Job Agreement",
-  warranty_agreement: "Warranty Agreement",
-};
 
 const formatRoleLabel = (role?: string | null) => {
   if (!role) return "";
@@ -171,7 +161,6 @@ export function EstimateProposalPanel({
   const [activeSlide, setActiveSlide] = useState(0);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
   const [openEditorSection, setOpenEditorSection] = useState<string>("");
-  const [selectedAgreementKey, setSelectedAgreementKey] = useState<(typeof AGREEMENT_KEYS)[number] | null>(null);
   const [selectedDocumentPreview, setSelectedDocumentPreview] = useState<{ title: string; content: string } | null>(null);
   const [approving, setApproving] = useState(false);
   const [portalLink, setPortalLink] = useState("");
@@ -185,7 +174,6 @@ export function EstimateProposalPanel({
   const [scopeItemDraftLabel, setScopeItemDraftLabel] = useState("");
   const [scopeItemDraftDescription, setScopeItemDraftDescription] = useState("");
   const [editingScopeItemId, setEditingScopeItemId] = useState<string | null>(null);
-  const [agreementDrafts, setAgreementDrafts] = useState<Record<string, string>>({});
   const [customDepositPercentage, setCustomDepositPercentage] = useState("33");
   const [customMidpointPercentage, setCustomMidpointPercentage] = useState("33");
   const [customFinalPercentage, setCustomFinalPercentage] = useState("34");
@@ -470,27 +458,10 @@ export function EstimateProposalPanel({
       materials: sectionAvailability.materials ? "" : "Select at least one material item.",
       project_visualization: sectionAvailability.project_visualization ? "" : "Upload or select at least one image.",
       pricing_options: sectionAvailability.pricing_options ? "" : "Create at least one estimate version.",
-      agreements_and_signatures: sectionAvailability.agreements_and_signatures ? "" : "Generate all agreement templates.",
+      agreements_and_signatures: sectionAvailability.agreements_and_signatures ? "" : "Attach approval document templates.",
     }),
     [sectionAvailability],
   );
-
-  const getContractorAddress = () => {
-    const accountSettings = estimate?.account?.settings;
-    const settingsAddressCandidates = [
-      accountSettings?.company_address,
-      accountSettings?.business_address,
-      accountSettings?.address,
-      accountSettings?.website?.company_address,
-      accountSettings?.website?.business_address,
-      accountSettings?.website?.address,
-    ];
-    for (const candidate of settingsAddressCandidates) {
-      const value = typeof candidate === "string" ? candidate.trim() : "";
-      if (value) return value;
-    }
-    return "Address on file";
-  };
 
   const getDefaultPaymentSchedule = () => {
     const paymentDefaultsRaw = estimate?.account?.settings?.default_payment_schedule;
@@ -528,21 +499,6 @@ export function EstimateProposalPanel({
     };
   };
 
-  const getAgreementTotalCost = () => {
-    const activeVersionId = selectedPricingOptionId || currentSettings?.recommended_version_id || null;
-    const activeVersion = activeVersionId
-      ? estimateVersions.find((version) => version?.id === activeVersionId)
-      : null;
-    const activeVersionRawTotal = activeVersion?.total;
-    if (activeVersionRawTotal !== null && activeVersionRawTotal !== undefined && activeVersionRawTotal !== "") {
-      const parsedVersionTotal = Number(activeVersionRawTotal);
-      if (Number.isFinite(parsedVersionTotal)) {
-        return parsedVersionTotal;
-      }
-    }
-    return Number(displayLineItems.reduce((sum, item: any) => sum + (Number(item?.total) || 0), 0)) || 0;
-  };
-
   const getSelectedWarrantyLength = () => {
     const activeVersionId = getActivePricingOptionId();
     const warrantyLengthsRaw = currentSettings?.version_warranty_lengths;
@@ -552,355 +508,6 @@ export function EstimateProposalPanel({
         : {};
     const selectedValue = activeVersionId ? String(warrantyLengths[activeVersionId] || "").trim() : "";
     return selectedValue || "2 years";
-  };
-
-  const getAgreementScopeItems = () => {
-    const scopeItems = checklistItems
-      .map((item) => formatScopeItemForProposal(item))
-      .filter((value) => value.length > 0);
-    const fallbackScopeItems = (displayLineItems || [])
-      .map((item: any) => String(item?.name || "").trim())
-      .filter((value: string) => value.length > 0);
-    return scopeItems.length > 0 ? scopeItems : fallbackScopeItems;
-  };
-
-  const buildAgreementTemplatesForCurrentContext = () =>
-    {
-      const paymentSchedule = getEffectivePaymentSchedule();
-      const includeWarranty = isWarrantyEnabledForActiveVersion;
-      const templates = generateAgreementTemplates({
-        todayIso,
-        contractorName: (estimate?.account?.company_name || "Contractor").trim(),
-        contractorAddress: getContractorAddress(),
-        contractorPhone: (estimate?.account?.company_phone || "N/A").trim() || "N/A",
-        contractorEmail: (estimate?.account?.company_email || "N/A").trim() || "N/A",
-        clientName: (estimate?.customer?.name || "Client").trim(),
-        projectName: displayCoverTitle || estimate?.job?.name || "Project",
-        projectAddress:
-          formatAddressWithCity(estimate?.job?.address || estimate?.customer?.address, estimate?.job?.city || estimate?.customer?.city)
-          || "Address to be confirmed",
-        scopeItems: getAgreementScopeItems(),
-        totalCost: getAgreementTotalCost(),
-        paymentMethod: estimate?.account?.settings?.stripe_account_id ? "Stripe" : "Check or ACH",
-        paymentSchedule: {
-          depositPercentage: paymentSchedule.depositPercentage,
-          midpointPercentage: paymentSchedule.midpointPercentage,
-          finalPercentage: paymentSchedule.finalPercentage,
-        },
-        workmanshipWarrantyDuration: getSelectedWarrantyLength(),
-        startDate: estimate?.job?.scheduled_date || todayIso,
-        completionDate: estimate?.job?.last_scheduled_date || estimate?.job?.scheduled_date || todayIso,
-      });
-
-      if (!includeWarranty) {
-        templates.warranty_agreement = "";
-      }
-      return templates;
-    };
-
-  const buildJobReleaseAgreement = () => {
-    const contractorName = (estimate?.account?.company_name || "Contractor").trim();
-    const contractorAddress = getContractorAddress();
-    const contractorPhone = (estimate?.account?.company_phone || "N/A").trim() || "N/A";
-    const contractorEmail = (estimate?.account?.company_email || "N/A").trim() || "N/A";
-    const clientName = (estimate?.customer?.name || "Client").trim();
-    const projectName = displayCoverTitle || estimate?.job?.name || "Project";
-    const projectAddress =
-      formatAddressWithCity(estimate?.job?.address || estimate?.customer?.address, estimate?.job?.city || estimate?.customer?.city)
-      || "Address to be confirmed";
-
-    const scopeItems = checklistItems
-      .map((item) => formatScopeItemForProposal(item))
-      .filter((value) => value.length > 0);
-
-    const fallbackScopeItems = (displayLineItems || [])
-      .map((item: any) => String(item?.name || "").trim())
-      .filter((value: string) => value.length > 0);
-
-    const finalScopeItems = (scopeItems.length > 0 ? scopeItems : fallbackScopeItems).slice(0, 25);
-    const numberedScope = (finalScopeItems.length > 0 ? finalScopeItems : ["Scope details to be finalized in writing."])
-      .map((item, index) => `${index + 1}. ${item}`)
-      .join("\n");
-
-    const totalCost = getAgreementTotalCost();
-
-    return `JOB RELEASE AGREEMENT
-
-Date: ${todayIso}
-
-PARTIES
-
-Contractor: ${contractorName}
-Address: ${contractorAddress}
-Phone: ${contractorPhone}
-Email: ${contractorEmail}
-
-Client: ${clientName}
-Project Name: ${projectName}
-Project Address: ${projectAddress}
-
-FINAL JOB RELEASE
-
-This Job Release Agreement is being issued after completion of the project listed above.
-
-By signing this agreement, the Client confirms that ${contractorName} has completed the agreed-upon work, that the completed work has been reviewed, and that the Client accepts the project as complete.
-
-The purpose of this agreement is to confirm that the Contractor has fulfilled the agreed scope of work and that no further work, corrections, changes, or claims are being requested by the Client at this time, except for any written warranty obligations separately provided by the Contractor.
-
-COMPLETED PROJECT SCOPE
-
-The following scope of work was completed:
-
-${numberedScope}
-
-The Contractor confirms that the work was completed in a professional and workmanlike manner.
-
-The Client confirms that they have had the opportunity to inspect the completed work and that the work has been completed to their satisfaction.
-
-PAYMENT CONFIRMATION
-
-Total Project Cost: $${formatCurrency(totalCost)}
-
-The Client confirms that all payments due for the project have been received by the Contractor.
-
-No remaining balance is due unless otherwise agreed to in writing by both parties.
-
-CLIENT ACCEPTANCE
-
-By signing this agreement, the Client acknowledges and agrees that:
-
-The agreed scope of work has been completed.
-The Client has reviewed the completed work.
-The completed work is accepted as satisfactory.
-All project payments have been made.
-No additional work, corrections, or changes are being requested at this time.
-This agreement does not waive any written warranty provided by the Contractor.
-
-RELEASE OF PROJECT
-
-The Client releases ${contractorName} from any further obligation related to the completed project, except for obligations specifically covered under a written warranty or separate written agreement.
-
-This release confirms that the project is considered complete and closed as of the date signed below.`;
-  };
-
-  const buildJobAgreement = () => {
-    const contractorName = (estimate?.account?.company_name || "Contractor").trim();
-    const contractorAddress = getContractorAddress();
-    const contractorPhone = (estimate?.account?.company_phone || "N/A").trim() || "N/A";
-    const contractorEmail = (estimate?.account?.company_email || "N/A").trim() || "N/A";
-    const clientName = (estimate?.customer?.name || "Client").trim();
-    const projectName = displayCoverTitle || estimate?.job?.name || "Project";
-    const projectAddress =
-      formatAddressWithCity(estimate?.job?.address || estimate?.customer?.address, estimate?.job?.city || estimate?.customer?.city)
-      || "Address to be confirmed";
-
-    const scopeItems = checklistItems
-      .map((item) => formatScopeItemForProposal(item))
-      .filter((value) => value.length > 0);
-    const fallbackScopeItems = (displayLineItems || [])
-      .map((item: any) => String(item?.name || "").trim())
-      .filter((value: string) => value.length > 0);
-    const finalScopeItems = (scopeItems.length > 0 ? scopeItems : fallbackScopeItems).slice(0, 25);
-    const numberedScope = (finalScopeItems.length > 0 ? finalScopeItems : ["Scope details to be finalized in writing."])
-      .map((item, index) => `${index + 1}. ${item}`)
-      .join("\n");
-
-    const totalCost = getAgreementTotalCost();
-    const paymentSchedule = getEffectivePaymentSchedule();
-    const depositPercentage = paymentSchedule.depositPercentage;
-    const midpointPercentage = paymentSchedule.midpointPercentage;
-    const finalPercentage = paymentSchedule.finalPercentage;
-    const depositAmount = Number((totalCost * (depositPercentage / 100)).toFixed(2));
-    const midpointAmount = Number((totalCost * (midpointPercentage / 100)).toFixed(2));
-    const finalAmount = Number((totalCost - depositAmount - midpointAmount).toFixed(2));
-
-    const paymentMethod = estimate?.account?.settings?.stripe_account_id ? "Stripe" : "Check or ACH";
-    const workHours = "Monday-Friday, 7:00 AM - 6:00 PM";
-    const startDate = estimate?.job?.scheduled_date || todayIso;
-    const completionDate = estimate?.job?.last_scheduled_date || startDate;
-    const permitResponsibilityOverride = `${contractorName} will obtain all required permits unless stated otherwise in writing.`;
-    const jurisdiction = (estimate?.job?.city || estimate?.customer?.city || "Project jurisdiction").trim();
-    const terminationNoticePeriod = "7 days";
-
-    return `CONSTRUCTION CONTRACT / JOB AGREEMENT
-
-Date: ${todayIso}
-
-PARTIES
-
-Contractor: ${contractorName}
-Address: ${contractorAddress}
-Phone: ${contractorPhone}
-Email: ${contractorEmail}
-
-Client: ${clientName}
-Project Name: ${projectName}
-Project Address: ${projectAddress}
-
-This Construction Contract (“Agreement”) is entered into by and between ${contractorName} (“Contractor”) and ${clientName} (“Client”) for the project described below.
-
-1. SCOPE OF WORK
-
-The Contractor agrees to perform the following work:
-
-${numberedScope}
-
-All work shall be completed in a professional and workmanlike manner and in compliance with all applicable laws, codes, and regulations.
-
-2. PROJECT TIMELINE
-Estimated Start Date: ${startDate} (or upon deposit receipt)
-Estimated Completion Date: ${completionDate}
-
-The Contractor may adjust the schedule due to weather conditions, material availability, or unforeseen circumstances.
-
-3. TOTAL CONTRACT PRICE
-
-Total Cost: $${formatCurrency(totalCost)}
-
-4. PAYMENT SCHEDULE
-
-Payment shall be made as follows: deposit of ${depositPercentage}% ($${formatCurrency(depositAmount)}) due upon signing, midpoint payment of ${midpointPercentage}% ($${formatCurrency(midpointAmount)}) due at project midpoint, and final payment of ${finalPercentage}% ($${formatCurrency(finalAmount)}) due upon substantial completion.
-
-Payment Method: ${paymentMethod}
-
-Failure to make payments on time may result in project delays or suspension of work.
-
-5. CHANGE ORDERS
-
-Any modifications to the scope of work must be documented in a written Change Order signed by both parties prior to execution.
-
-Change Orders may affect cost and timeline. Verbal agreements are not binding.
-
-6. PERMITS AND INSPECTIONS
-
-${contractorName} shall obtain all necessary permits and coordinate required inspections unless otherwise specified:
-
-${permitResponsibilityOverride}
-
-7. INSURANCE AND LIABILITY
-
-The Contractor shall maintain general liability insurance and workers’ compensation insurance for employees and subcontractors throughout the duration of the project.
-
-8. SITE ACCESS
-
-The Client agrees to provide full access to the work site and ensure the area is clear of obstacles.
-
-Work Hours: ${workHours} (e.g., Monday–Friday, 7:00 AM – 6:00 PM)
-
-9. DISPUTE RESOLUTION
-
-Any disputes arising from this Agreement shall be resolved through binding arbitration administered by the American Arbitration Association at or near ${jurisdiction}.
-
-The arbitrator’s decision shall be final and binding.
-
-10. TERMINATION
-
-Either party may terminate this Agreement with ${terminationNoticePeriod} written notice. Upon termination, the Client shall pay for all completed work and materials purchased, and the Contractor shall cease work promptly.
-
-11. ENTIRE AGREEMENT
-
-This document represents the full agreement between the parties and supersedes all prior discussions, agreements, or representations.
-`;
-  };
-
-  const buildWarrantyAgreement = () => {
-    const contractorName = (estimate?.account?.company_name || "Contractor").trim();
-    const contractorAddress = getContractorAddress();
-    const contractorPhone = (estimate?.account?.company_phone || "N/A").trim() || "N/A";
-    const contractorEmail = (estimate?.account?.company_email || "N/A").trim() || "N/A";
-    const clientName = (estimate?.customer?.name || "Client").trim();
-    const projectName = displayCoverTitle || estimate?.job?.name || "Project";
-    const projectAddress =
-      formatAddressWithCity(estimate?.job?.address || estimate?.customer?.address, estimate?.job?.city || estimate?.customer?.city)
-      || "Address to be confirmed";
-
-    const scopeItems = checklistItems
-      .map((item) => formatScopeItemForProposal(item))
-      .filter((value) => value.length > 0);
-    const fallbackScopeItems = (displayLineItems || [])
-      .map((item: any) => String(item?.name || "").trim())
-      .filter((value: string) => value.length > 0);
-    const finalScopeItems = (scopeItems.length > 0 ? scopeItems : fallbackScopeItems).slice(0, 25);
-    const numberedScope = (finalScopeItems.length > 0 ? finalScopeItems : ["Scope details to be finalized in writing."])
-      .map((item, index) => `${index + 1}. ${item}`)
-      .join("\n");
-
-    const contractTotal = getAgreementTotalCost();
-    const workmanshipWarrantyDuration = getSelectedWarrantyLength();
-    const materialWarrantyNotes = "Manufacturer warranty details available upon request.";
-    const inspectionTimeframe = "14 business days";
-
-    return `WARRANTY AGREEMENT
-
-Date: ${todayIso}
-
-PARTIES
-
-Contractor: ${contractorName}
-Address: ${contractorAddress}
-Phone: ${contractorPhone}
-Email: ${contractorEmail}
-
-Client: ${clientName}
-Project Name: ${projectName}
-Project Address: ${projectAddress}
-
-This Warranty Agreement (“Agreement”) is provided by ${contractorName} (“Contractor”) to ${clientName} (“Client”) in connection with the completed project at the address listed above.
-
-1. WORKMANSHIP WARRANTY
-
-The Contractor warrants all workmanship for a period of:
-
-${workmanshipWarrantyDuration}
-
-from the date of substantial completion.
-
-During this period, the Contractor will repair or correct, at no additional cost to the Client, any defects in workmanship arising under normal use and conditions.
-
-2. MATERIALS WARRANTY
-
-All materials are subject to their respective manufacturer warranties.
-
-Warranty terms vary by product
-The Contractor will assist in submitting claims when applicable
-
-Manufacturer Warranty Details (optional):
-${materialWarrantyNotes}
-
-3. SCOPE OF WARRANTY COVERAGE
-
-This warranty applies to the following work:
-
-${numberedScope}
-
-4. EXCLUSIONS
-
-This warranty does not cover:
-
-Acts of God (e.g., floods, earthquakes, severe weather)
-Misuse, neglect, or lack of proper maintenance
-Normal wear and tear
-Work altered or modified by others
-Damage due to soil movement, settlement, or pre-existing structural conditions
-5. WARRANTY CLAIM PROCESS
-
-To submit a claim:
-
-The Client must notify the Contractor in writing within the warranty period
-The Contractor will inspect the issue within ${inspectionTimeframe} (e.g., 14 business days)
-If covered, the Contractor will provide a repair or correction plan
-
-Contact for Claims:
-${contractorEmail} | ${contractorPhone}
-
-6. LIMITATION OF LIABILITY
-
-The Contractor’s total liability under this warranty shall not exceed:
-
-$${formatCurrency(contractTotal)}
-
-(as defined in the associated Construction Contract / Job Agreement)
-`;
   };
 
   const getSignatureContext = () => {
@@ -913,16 +520,6 @@ $${formatCurrency(contractTotal)}
     }
   };
 
-  useEffect(() => {
-    const templates = estimate?.agreement_templates && typeof estimate.agreement_templates === "object"
-      ? estimate.agreement_templates
-      : {};
-    setAgreementDrafts({
-      job_release_agreement: typeof templates.job_release_agreement === "string" ? templates.job_release_agreement : "",
-      job_agreement: typeof templates.job_agreement === "string" ? templates.job_agreement : "",
-      warranty_agreement: typeof templates.warranty_agreement === "string" ? templates.warranty_agreement : "",
-    });
-  }, [estimate?.id, estimate?.agreement_templates]);
 
   useEffect(() => {
     const context = getSignatureContext();
@@ -1239,19 +836,6 @@ $${formatCurrency(contractTotal)}
     }
   };
 
-  const updateAgreementTemplate = (key: string, value: string) => {
-    const currentTemplates = estimate?.agreement_templates || {};
-    void saveProposal(currentSettings, {
-      agreement_templates: { ...currentTemplates, [key]: value },
-    });
-  };
-
-  const setAndPersistAgreementTemplate = (key: (typeof AGREEMENT_KEYS)[number], value: string) => {
-    if (isProposalLocked) return;
-    setAgreementDrafts((previous) => ({ ...previous, [key]: value }));
-    updateAgreementTemplate(key, value);
-  };
-
   const updateVersionDescription = (versionId: string, description: string) => {
     const currentDescriptions =
       currentSettings.version_descriptions && typeof currentSettings.version_descriptions === "object"
@@ -1288,17 +872,6 @@ $${formatCurrency(contractTotal)}
     });
   };
 
-  const handleViewAgreement = (key: (typeof AGREEMENT_KEYS)[number]) => {
-    if (key === "warranty_agreement" && !isWarrantyEnabledForActiveVersion) {
-      toast.info("Warranty is off for the selected pricing option.");
-      return;
-    }
-    const templates = buildAgreementTemplatesForCurrentContext();
-    const templateValue = templates[key] || "";
-    setAndPersistAgreementTemplate(key, templateValue);
-    setSelectedAgreementKey(key);
-  };
-
   const openApprovalDocumentPreview = useCallback((config: ProposalJobDocumentConfigRecord) => {
     const template = config.template;
     if (!template) {
@@ -1306,24 +879,7 @@ $${formatCurrency(contractTotal)}
       return;
     }
 
-    const generatedTemplates = buildAgreementTemplatesForCurrentContext();
-    const systemKey = String(template.system_key || "").trim();
-    const templateBody = String(template.body || "").trim();
-    let content = templateBody;
-
-    if (systemKey === "job_agreement") {
-      content =
-        String(agreementDrafts.job_agreement || "").trim()
-        || String(estimate?.agreement_templates?.job_agreement || "").trim()
-        || String(generatedTemplates.job_agreement || "").trim()
-        || templateBody;
-    } else if (systemKey === "warranty_agreement") {
-      content =
-        String(agreementDrafts.warranty_agreement || "").trim()
-        || String(estimate?.agreement_templates?.warranty_agreement || "").trim()
-        || String(generatedTemplates.warranty_agreement || "").trim()
-        || templateBody;
-    }
+    const content = String(template.body || "").trim();
 
     if (!content) {
       toast.error("No agreement text available for this document.");
@@ -1334,7 +890,7 @@ $${formatCurrency(contractTotal)}
       title: template.name || "Agreement",
       content,
     });
-  }, [agreementDrafts.job_agreement, agreementDrafts.warranty_agreement, buildAgreementTemplatesForCurrentContext, estimate?.agreement_templates]);
+  }, []);
 
   const saveCustomPaymentSchedule = () => {
     if (isProposalLocked) return;
@@ -1831,7 +1387,6 @@ $${formatCurrency(contractTotal)}
     displayLineItems,
     estimate?.account?.company_name,
     estimate?.account?.logo_url,
-    estimate?.agreement_templates,
     estimate?.customer?.name,
     estimate?.job?.name,
     estimate?.job?.address,
@@ -1958,11 +1513,6 @@ $${formatCurrency(contractTotal)}
     toast.info("Export PDF will be available here next.");
   };
 
-  const regenerateAgreementsForSelection = async () => {
-    const agreementTemplates = buildAgreementTemplatesForCurrentContext();
-    setAgreementDrafts(agreementTemplates);
-    await saveProposal(currentSettings, { agreement_templates: agreementTemplates });
-  };
 
   const handlePresentationNext = async () => {
     const currentSlideKey = slides[activeSlide]?.key;
@@ -2640,27 +2190,6 @@ $${formatCurrency(contractTotal)}
                         />
                       </div>
                     ) : null}
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Agreement Templates</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewAgreement("job_agreement")}
-                      >
-                        View Job Agreement
-                      </Button>
-                      {isWarrantyEnabledForActiveVersion ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewAgreement("warranty_agreement")}
-                        >
-                          View Warranty Agreement
-                        </Button>
-                      ) : null}
-                    </div>
                   </>
                 ) : null}
               </div>
@@ -2851,24 +2380,6 @@ $${formatCurrency(contractTotal)}
           </div>,
           document.body,
         )}
-
-      <Dialog open={selectedAgreementKey !== null} onOpenChange={(open) => !open && setSelectedAgreementKey(null)}>
-        <DialogContent className="z-[130]">
-          <DialogHeader>
-            <DialogTitle>{selectedAgreementKey ? AGREEMENT_LABELS[selectedAgreementKey] : "Agreement"}</DialogTitle>
-          </DialogHeader>
-          <div
-            className="prose prose-sm max-w-none leading-relaxed [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-1 [&_h1]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-9 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-4"
-            dangerouslySetInnerHTML={{
-              __html: renderDocumentTemplateMarkdownHtml(
-                selectedAgreementKey
-                  ? agreementDrafts[selectedAgreementKey]?.trim() || estimate?.agreement_templates?.[selectedAgreementKey]?.trim() || "No agreement text added yet."
-                  : "No agreement text added yet.",
-              ),
-            }}
-          />
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(selectedDocumentPreview)} onOpenChange={(open) => !open && setSelectedDocumentPreview(null)}>
         <DialogContent className="z-[130]">

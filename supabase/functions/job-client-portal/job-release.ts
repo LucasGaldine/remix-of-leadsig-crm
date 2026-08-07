@@ -1,4 +1,10 @@
+import { fetchPortalDocumentsForLeadFamily } from "./portal-documents.ts";
 import { uploadJobReleaseSignatureDataUrl } from "./signature.ts";
+import {
+  persistSignedJobDocumentPdfs,
+  resolveDocumentTemplateMergeFields,
+  resolveUploadedDocumentForConfig,
+} from "./signed-documents.ts";
 
 export async function isLeadFullyPaid(supabase: any, leadId: string): Promise<boolean> {
   const { data: invoices } = await supabase
@@ -35,7 +41,7 @@ export async function signJobRelease(
 
   const { data: jobRelease, error: releaseError } = await supabase
     .from("job_releases")
-    .select("id, status")
+    .select("id, status, release_text")
     .eq("lead_id", lead.id)
     .maybeSingle();
 
@@ -56,19 +62,75 @@ export async function signJobRelease(
     signaturePublicUrl = uploadResult.publicUrl;
   }
 
+  const acceptedAt = new Date().toISOString();
   const { error: updateError } = await supabase
     .from("job_releases")
     .update({
       status: "signed",
-      signed_at: new Date().toISOString(),
+      signed_at: acceptedAt,
       signature_image_url: signaturePublicUrl,
-      updated_at: new Date().toISOString(),
+      updated_at: acceptedAt,
     })
     .eq("id", jobRelease.id)
     .eq("status", "pending_signature");
 
   if (updateError) {
     return jsonResponse({ error: "Failed to sign job release." }, 500);
+  }
+
+  if (signaturePublicUrl) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const portalDocuments = await fetchPortalDocumentsForLeadFamily(
+      supabase,
+      supabaseUrl,
+      [lead.id],
+      "signed job release documents",
+    );
+    const allConfigs = portalDocuments.configs || [];
+    const releaseConfig = allConfigs.find((config: any) =>
+      String(config?.template?.system_key || "") === "job_release" && config?.requires_signature === true,
+    );
+
+    if (releaseConfig) {
+      const allDocuments = portalDocuments.documents || [];
+      const { data: customer } = lead.customer_id
+        ? await supabase
+            .from("customers")
+            .select("id, name, email, phone")
+            .eq("id", lead.customer_id)
+            .maybeSingle()
+        : { data: null };
+      const resolvedMergeFields = await resolveDocumentTemplateMergeFields({
+        supabase,
+        accountId: lead.account_id,
+        leadId: portalDocuments.leadId || lead.id,
+      });
+      const mergeFields = {
+        current_date: acceptedAt.slice(0, 10),
+        client_name: String(customer?.name || ""),
+        client_email: String(customer?.email || ""),
+        client_phone: String(customer?.phone || ""),
+        ...resolvedMergeFields,
+      };
+      const releaseText = String(jobRelease.release_text || "");
+      const persistResult = await persistSignedJobDocumentPdfs({
+        supabase,
+        supabaseUrl,
+        accountId: lead.account_id,
+        acceptedAt,
+        signaturePublicUrl,
+        customerName: String(customer?.name || "Customer"),
+        mergeFields,
+        targets: [{
+          config: releaseConfig,
+          uploadedDocument: resolveUploadedDocumentForConfig(releaseConfig, allConfigs, allDocuments),
+          bodyOverride: releaseText,
+        }],
+      });
+      if (!persistResult.ok) {
+        return jsonResponse({ error: `Job release signed, but ${persistResult.error}` }, 500);
+      }
+    }
   }
 
   try {
